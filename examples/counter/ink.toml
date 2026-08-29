@@ -1,0 +1,8 @@
+name = "Counter"
+package = "com.vandam.counter"
+version = "0.1.0"
+version_code = 1
+source = "App.tsx"
+generated = "../../platform/android/native/src/generated_app.rs"
+font = "../../assets/fonts/PublicSans-Regular.ttf"
+android_resources = "../../platform/android/app/src/main/res"

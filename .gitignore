@@ -1,0 +1,42 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# TypeScript
+node_modules/
+
+# Ink applications
+**/.ink/
+/examples/**/dist/
+*.apk
+*.aab
+
+# Android
+/platform/android/.gradle/
+/platform/android/.kotlin/
+/platform/android/**/build/
+/platform/android/**/.cxx/
+/platform/android/**/.externalNativeBuild/
+/platform/android/captures/
+/platform/android/local.properties
+/platform/android/key.properties
+*.hprof
+
+# Signing and environment
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+
+# Editors
+/.idea/
+/.vscode/
+/.fleet/
+*.iml
+
+# Logs and operating systems
+*.log
+.DS_Store
+._*
+Thumbs.db

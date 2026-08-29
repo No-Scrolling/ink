@@ -1,0 +1,14 @@
+#!/bin/sh
+
+script="$0"
+while [ -L "$script" ]; do
+  directory=$(cd -P "$(dirname "$script")" && pwd)
+  script=$(readlink "$script")
+  case "$script" in
+    /*) ;;
+    *) script="$directory/$script" ;;
+  esac
+done
+
+repository=$(cd -P "$(dirname "$script")/.." && pwd)
+exec cargo run --quiet --manifest-path "$repository/Cargo.toml" -p ink-cli -- "$@"
