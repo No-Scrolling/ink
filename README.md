@@ -1,6 +1,8 @@
-# Ink
-
-<img src="docs/images/counter.png" alt="Ink counter running on the Light Phone III emulator">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/images/title-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/images/title-light.png">
+  <img src="./assets/images/title-light.png" alt="Ink" width="360">
+</picture>
 
 <p>An experimental TypeScript framework for small, native Light Phone III apps.</p>
 
