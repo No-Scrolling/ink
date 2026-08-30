@@ -53,16 +53,9 @@ impl AndroidEngine {
         }
     }
 
-    fn attach(
-        &mut self,
-        env: &EnvUnowned<'_>,
-        surface: &JObject<'_>,
-        width: u32,
-        height: u32,
-        density: f32,
-    ) {
+    fn attach(&mut self, env: &EnvUnowned<'_>, surface: &JObject<'_>, width: u32, height: u32) {
         self.surface = None;
-        self.engine.set_viewport(width, height, density);
+        self.engine.set_viewport(width, height);
 
         let Some(window) =
             (unsafe { NativeWindow::from_surface(env.as_raw().cast(), surface.as_raw()) })
@@ -102,13 +95,13 @@ impl AndroidEngine {
         });
         android_log(
             ANDROID_LOG_INFO,
-            &format!("attached Vulkan surface {width}x{height} at density {density}"),
+            &format!("attached Vulkan surface {width}x{height}"),
         );
         self.render();
     }
 
-    fn resize(&mut self, width: u32, height: u32, density: f32) {
-        if !self.engine.set_viewport(width, height, density) {
+    fn resize(&mut self, width: u32, height: u32) {
+        if !self.engine.set_viewport(width, height) {
             return;
         }
         if let Some(surface) = &mut self.surface {
@@ -117,8 +110,28 @@ impl AndroidEngine {
         self.render();
     }
 
-    fn tap(&mut self, x: f32, y: f32) -> bool {
-        if !self.engine.tap(x, y) {
+    fn pointer(&mut self, action: i32, x: f32, y: f32) -> bool {
+        let changed = match action {
+            0 => {
+                self.engine.pointer_down(y);
+                false
+            }
+            1 => self.engine.pointer_up(x, y),
+            2 => self.engine.pointer_move(y),
+            3 => {
+                self.engine.pointer_cancel();
+                false
+            }
+            _ => false,
+        };
+        if changed {
+            self.render();
+        }
+        changed
+    }
+
+    fn scroll_by(&mut self, delta: f32) -> bool {
+        if !self.engine.scroll_by(delta) {
             return false;
         }
         self.render();
@@ -167,7 +180,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAttachSurface(
     surface: JObject<'_>,
     width: jint,
     height: jint,
-    density: jfloat,
 ) {
     let Some(engine) = engine(handle) else {
         return;
@@ -175,7 +187,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAttachSurface(
     let Ok(mut engine) = engine.lock() else {
         return;
     };
-    engine.attach(&env, &surface, dimension(width), dimension(height), density);
+    engine.attach(&env, &surface, dimension(width), dimension(height));
 }
 
 #[unsafe(no_mangle)]
@@ -185,7 +197,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
     handle: jlong,
     width: jint,
     height: jint,
-    density: jfloat,
 ) {
     let Some(engine) = engine(handle) else {
         return;
@@ -193,20 +204,33 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
     let Ok(mut engine) = engine.lock() else {
         return;
     };
-    engine.resize(dimension(width), dimension(height), density);
+    engine.resize(dimension(width), dimension(height));
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTap(
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePointer(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
+    action: jint,
     x: jfloat,
     y: jfloat,
 ) -> jboolean {
     engine(handle)
         .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| engine.tap(x, y)) as jboolean
+        .is_some_and(|mut engine| engine.pointer(action, x, y)) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollBy(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    delta: jfloat,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.scroll_by(delta)) as jboolean
 }
 
 #[unsafe(no_mangle)]

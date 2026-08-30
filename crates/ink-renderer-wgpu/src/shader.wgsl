@@ -49,3 +49,8 @@ fn text_fragment(input: TextOutput) -> @location(0) vec4<f32> {
     let coverage = textureSample(glyph_atlas, glyph_sampler, input.uv).r;
     return vec4<f32>(input.colour.rgb, input.colour.a * coverage);
 }
+
+@fragment
+fn image_fragment(input: TextOutput) -> @location(0) vec4<f32> {
+    return textureSample(glyph_atlas, glyph_sampler, input.uv);
+}

@@ -11,4 +11,4 @@ while [ -L "$script" ]; do
 done
 
 repository=$(cd -P "$(dirname "$script")/.." && pwd)
-exec cargo run --quiet --manifest-path "$repository/Cargo.toml" -p ink-cli -- "$@"
+exec cargo +1.96.0 run --quiet --manifest-path "$repository/Cargo.toml" -p ink-cli -- "$@"

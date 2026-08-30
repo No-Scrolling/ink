@@ -7,10 +7,20 @@ export const Fragment: unique symbol;
 export namespace JSX {
   type Element = Ink.Element;
 
+  interface ElementChildrenAttribute {
+    children: {};
+  }
+
   interface IntrinsicElements {
     Screen: Ink.ScreenProps;
-    Column: Ink.ColumnProps;
+    Stack: Ink.StackProps;
     Text: Ink.TextProps;
+    TextInput: Ink.TextInputProps;
     Button: Ink.ButtonProps;
+    Icon: Ink.IconProps;
+    Image: Ink.ImageProps;
+    Toggle: Ink.ToggleProps;
+    Tabs: Ink.TabsProps;
+    Tab: Ink.TabProps;
   }
 }

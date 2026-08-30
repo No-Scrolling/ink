@@ -161,12 +161,18 @@ fn gradle_command(project: &Project, profile: Profile) -> Result<Command> {
         .current_dir(&framework)
         .arg("-p")
         .arg(&android)
-        .arg("-PinkSkipGenerate=true")
-        .arg(format!("-PinkConfig={}", project.config_path().display()))
         .arg(format!("-PinkAppName={}", project.name()))
         .arg(format!("-PinkApplicationId={}", project.package()))
         .arg(format!("-PinkVersionName={}", project.version()))
-        .arg(format!("-PinkVersionCode={}", project.version_code()));
+        .arg(format!("-PinkVersionCode={}", project.version_code()))
+        .arg(format!(
+            "-PinkGeneratedSource={}",
+            project.generated_source_path().display()
+        ))
+        .arg(format!(
+            "-PinkAndroidResources={}",
+            project.android_resources_path().display()
+        ));
 
     if let Some(signing) = release_signing {
         gradle

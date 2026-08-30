@@ -12,10 +12,6 @@ struct AppConfig {
     version: String,
     #[serde(default = "default_version_code")]
     version_code: u32,
-    source: PathBuf,
-    generated: PathBuf,
-    font: PathBuf,
-    android_resources: PathBuf,
     signing: Option<SigningConfig>,
 }
 
@@ -40,7 +36,6 @@ pub(crate) struct ResolvedConfig {
     pub(crate) version_code: u32,
     pub(crate) source: PathBuf,
     pub(crate) generated: PathBuf,
-    pub(crate) font: PathBuf,
     pub(crate) android_resources: PathBuf,
     pub(crate) signing: Option<ReleaseSigning>,
 }
@@ -59,10 +54,9 @@ impl ResolvedConfig {
             package: config.package,
             version: config.version,
             version_code: config.version_code,
-            source: directory.join(config.source),
-            generated: directory.join(config.generated),
-            font: directory.join(config.font),
-            android_resources: directory.join(config.android_resources),
+            source: directory.join("App.tsx"),
+            generated: directory.join(".ink/generated/app.rs"),
+            android_resources: directory.join(".ink/android/res"),
             signing: config.signing.map(|signing| ReleaseSigning {
                 keystore: directory.join(signing.keystore),
                 key_alias: signing.key_alias,

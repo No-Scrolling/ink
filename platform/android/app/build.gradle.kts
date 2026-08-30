@@ -13,7 +13,8 @@ val inkApplicationId = providers.gradleProperty("inkApplicationId").orElse("com.
 val inkVersionName = providers.gradleProperty("inkVersionName").orElse("0.1.0")
 val inkVersionCode = providers.gradleProperty("inkVersionCode").orElse("1")
 val inkSigning = providers.gradleProperty("inkSigning").orElse("development")
-val inkConfig = providers.gradleProperty("inkConfig").orElse("examples/counter/ink.toml")
+val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
+val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
 
 android {
     namespace = "com.vandam.ink"
@@ -48,6 +49,7 @@ android {
     }
 
     sourceSets {
+        getByName("main").res.srcDir(inkAndroidResources)
         getByName("debug").jniLibs.srcDir(generatedJniRoot.map { it.dir("debug") })
         getByName("release").jniLibs.srcDir(generatedJniRoot.map { it.dir("release") })
     }
@@ -87,24 +89,6 @@ kotlin {
     }
 }
 
-val generateInkApp by tasks.registering(Exec::class) {
-    group = "ink"
-    description = "Compiles the Ink application and generates its Android resources."
-    workingDir(repositoryRoot)
-    commandLine(
-        "cargo",
-        "run",
-        "-p",
-        "ink-compiler",
-        "--",
-        "compile",
-        inkConfig.get(),
-    )
-    onlyIf {
-        providers.gradleProperty("inkSkipGenerate").getOrElse("false") != "true"
-    }
-}
-
 val cargoBuildDebug by tasks.registering(Exec::class) {
     group = "rust"
     description = "Builds the Ink runtime for the arm64 LP3 emulator."
@@ -120,7 +104,7 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
         "-p",
         "ink-android",
     )
-    dependsOn(generateInkApp)
+    environment("INK_APP_RS", inkGeneratedSource.get())
 }
 
 val cargoBuildRelease by tasks.registering(Exec::class) {
@@ -139,12 +123,11 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
         "ink-android",
         "--release",
     )
-    dependsOn(generateInkApp)
+    environment("INK_APP_RS", inkGeneratedSource.get())
 }
 
 tasks.configureEach {
     when (name) {
-        "preBuild" -> dependsOn(generateInkApp)
         "mergeDebugJniLibFolders" -> dependsOn(cargoBuildDebug)
         "mergeReleaseJniLibFolders" -> dependsOn(cargoBuildRelease)
     }

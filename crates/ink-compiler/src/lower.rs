@@ -7,23 +7,44 @@ use oxc::{
         JSXElement, JSXElementName, JSXExpression, Statement, VariableDeclarationKind,
     },
     span::{GetSpan, Span},
-    syntax::operator::BinaryOperator,
+    syntax::operator::{BinaryOperator, UnaryOperator},
 };
 
 use crate::{
     diagnostic::CompileError,
-    ir::{Action, App, Node, State, StateId, TextPart},
+    ir::{
+        Action, Alignment, App, Axis, ImageFit, Justification, Node, State, StateId, StateValue,
+        Tab, TextAlignment, TextPart, Tone,
+    },
 };
 
-const INK_IMPORTS: [&str; 5] = ["Button", "Column", "Screen", "Text", "state"];
+const INK_IMPORTS: [&str; 11] = [
+    "Button",
+    "Icon",
+    "Image",
+    "Screen",
+    "Stack",
+    "Tab",
+    "Tabs",
+    "Text",
+    "TextInput",
+    "Toggle",
+    "state",
+];
 
-pub fn lower(program: &oxc::ast::ast::Program<'_>) -> Result<App, CompileError> {
-    validate_imports(program)?;
-    let function = app_function(program)?;
-    lower_function(function)
+#[derive(Clone, Copy)]
+struct StateBinding {
+    id: StateId,
+    value: StateValue,
 }
 
-fn validate_imports(program: &oxc::ast::ast::Program<'_>) -> Result<(), CompileError> {
+pub fn lower(program: &oxc::ast::ast::Program<'_>) -> Result<App, CompileError> {
+    let imports = validate_imports(program)?;
+    let function = app_function(program)?;
+    lower_function(function, &imports)
+}
+
+fn validate_imports(program: &oxc::ast::ast::Program<'_>) -> Result<HashSet<String>, CompileError> {
     let allowed = HashSet::from(INK_IMPORTS);
     let mut imported = HashSet::new();
 
@@ -66,24 +87,15 @@ fn validate_imports(program: &oxc::ast::ast::Program<'_>) -> Result<(), CompileE
             }
             if !allowed.contains(imported_name) {
                 return Err(CompileError::new(
-                    format!("{imported_name} is not an Ink v0 primitive"),
+                    format!("{imported_name} is not an Ink primitive"),
                     specifier.span,
                 ));
             }
-            imported.insert(imported_name);
+            imported.insert(imported_name.to_owned());
         }
     }
 
-    for required in INK_IMPORTS {
-        if !imported.contains(required) {
-            return Err(CompileError::new(
-                format!("missing {required} import from \"ink\""),
-                program.span,
-            ));
-        }
-    }
-
-    Ok(())
+    Ok(imported)
 }
 
 fn app_function<'a>(
@@ -125,7 +137,7 @@ fn app_function<'a>(
     })
 }
 
-fn lower_function(function: &Function<'_>) -> Result<App, CompileError> {
+fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<App, CompileError> {
     if function.r#async || function.generator || !function.params.items.is_empty() {
         return Err(CompileError::new(
             "the app function must be synchronous and take no arguments",
@@ -149,6 +161,7 @@ fn lower_function(function: &Function<'_>) -> Result<App, CompileError> {
                         declaration.span,
                     ));
                 }
+                require_import(imports, "state", declaration.span)?;
                 for declarator in &declaration.declarations {
                     let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
                         return Err(CompileError::new(
@@ -158,11 +171,14 @@ fn lower_function(function: &Function<'_>) -> Result<App, CompileError> {
                     };
                     let initial = state_initialiser(declarator.init.as_ref(), declarator.span)?;
                     let name = binding.name.as_str();
-                    let id = StateId(states.len());
-                    if state_names.insert(name, id).is_some() {
+                    let binding = StateBinding {
+                        id: StateId(states.len()),
+                        value: initial,
+                    };
+                    if state_names.insert(name, binding).is_some() {
                         return Err(CompileError::new(
                             format!("state {name} is declared twice"),
-                            binding.span,
+                            declarator.span,
                         ));
                     }
                     states.push(State { initial });
@@ -171,17 +187,24 @@ fn lower_function(function: &Function<'_>) -> Result<App, CompileError> {
             Statement::ReturnStatement(statement) if root.is_none() => {
                 let Some(argument) = &statement.argument else {
                     return Err(CompileError::new(
-                        "the app function must return <Screen>",
+                        "the app function must return <Screen> or <Tabs>",
                         statement.span,
                     ));
                 };
                 let Expression::JSXElement(element) = unparenthesised(argument) else {
                     return Err(CompileError::new(
-                        "the app function must return <Screen>",
+                        "the app function must return <Screen> or <Tabs>",
                         argument.span(),
                     ));
                 };
-                root = Some(lower_screen(element, &state_names)?);
+                let node = lower_node(element, &state_names, imports)?;
+                if !matches!(node, Node::Screen { .. } | Node::Tabs { .. }) {
+                    return Err(CompileError::new(
+                        "the app root must be <Screen> or <Tabs>",
+                        element.span,
+                    ));
+                }
+                root = Some(node);
             }
             _ => {
                 return Err(CompileError::new(
@@ -192,122 +215,160 @@ fn lower_function(function: &Function<'_>) -> Result<App, CompileError> {
         }
     }
 
-    let root =
-        root.ok_or_else(|| CompileError::new("the app function must return <Screen>", body.span))?;
+    let root = root.ok_or_else(|| {
+        CompileError::new("the app function must return <Screen> or <Tabs>", body.span)
+    })?;
     Ok(App { states, root })
 }
 
 fn state_initialiser(
     initialiser: Option<&Expression<'_>>,
     span: Span,
-) -> Result<i64, CompileError> {
+) -> Result<StateValue, CompileError> {
     let Some(Expression::CallExpression(call)) = initialiser else {
         return Err(CompileError::new(
-            "state must be initialised with state(integer)",
+            "state must be initialised with state(number) or state(boolean)",
             span,
         ));
     };
     let Expression::Identifier(callee) = &call.callee else {
         return Err(CompileError::new(
-            "expected state(integer)",
+            "expected state(value)",
             call.callee.span(),
         ));
     };
     if callee.name.as_str() != "state" || call.arguments.len() != 1 {
-        return Err(CompileError::new("expected state(integer)", call.span));
+        return Err(CompileError::new("expected state(value)", call.span));
     }
-    let Argument::NumericLiteral(value) = &call.arguments[0] else {
-        return Err(CompileError::new(
-            "state currently accepts one integer literal",
-            call.arguments[0].span(),
-        ));
-    };
-    integer(value.value, value.span, "state value")
-}
-
-fn lower_screen(
-    element: &JSXElement<'_>,
-    states: &HashMap<&str, StateId>,
-) -> Result<Node, CompileError> {
-    expect_element(element, "Screen")?;
-    if !element.opening_element.attributes.is_empty() {
-        return Err(CompileError::new(
-            "Screen does not accept props in v0",
-            element.opening_element.span,
-        ));
+    match &call.arguments[0] {
+        Argument::NumericLiteral(value) => Ok(StateValue::Int(integer(
+            value.value,
+            value.span,
+            "state value",
+        )?)),
+        Argument::BooleanLiteral(value) => Ok(StateValue::Bool(value.value)),
+        value => Err(CompileError::new(
+            "state currently accepts one integer or boolean literal",
+            value.span(),
+        )),
     }
-    let children = element_children(element)?;
-    if children.len() != 1 {
-        return Err(CompileError::new(
-            "Screen must contain exactly one root element",
-            element.span,
-        ));
-    }
-    let JSXChild::Element(child) = children[0] else {
-        return Err(CompileError::new(
-            "Screen's root child must be an element",
-            children[0].span(),
-        ));
-    };
-    lower_node(child.as_ref(), states)
 }
 
 fn lower_node(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateId>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
 ) -> Result<Node, CompileError> {
-    match element_name(&element.opening_element.name)? {
-        "Column" => lower_column(element, states),
+    let name = element_name(&element.opening_element.name)?;
+    require_import(imports, name, element.opening_element.name.span())?;
+    match name {
+        "Screen" => lower_screen(element, states, imports),
+        "Stack" => lower_stack(element, states, imports),
         "Text" => lower_text(element, states),
+        "TextInput" => lower_text_input(element),
         "Button" => lower_button(element, states),
-        name => Err(CompileError::new(
-            format!("{name} cannot appear here"),
+        "Icon" => lower_icon(element),
+        "Image" => lower_image(element),
+        "Toggle" => lower_toggle(element, states),
+        "Tabs" => lower_tabs(element, states, imports),
+        "Tab" => Err(CompileError::new(
+            "<Tab> may only appear directly inside <Tabs>",
+            element.span,
+        )),
+        _ => Err(CompileError::new(
+            format!("{name} is not an Ink element"),
             element.opening_element.name.span(),
         )),
     }
 }
 
-fn lower_column(
+fn lower_screen(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateId>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
 ) -> Result<Node, CompileError> {
+    let title = optional_string_attribute(element, "title")?;
+    let centered = boolean_attribute(element, "centered")?;
+    reject_other_attributes(element, &["title", "centered"])?;
+    Ok(Node::Screen {
+        children: lower_element_children(element, states, imports, "Screen")?,
+        title,
+        centered,
+    })
+}
+
+fn lower_stack(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+) -> Result<Node, CompileError> {
+    let axis = match optional_string_attribute(element, "axis")?.as_deref() {
+        None | Some("vertical") => Axis::Vertical,
+        Some("horizontal") => Axis::Horizontal,
+        Some(_) => return invalid_value(element, "axis", "vertical or horizontal"),
+    };
+    let align = match optional_string_attribute(element, "align")?.as_deref() {
+        None | Some("stretch") => Alignment::Stretch,
+        Some("start") => Alignment::Start,
+        Some("center") => Alignment::Center,
+        Some("end") => Alignment::End,
+        Some(_) => return invalid_value(element, "align", "start, center, end or stretch"),
+    };
+    let justify = match optional_string_attribute(element, "justify")?.as_deref() {
+        None | Some("start") => Justification::Start,
+        Some("center") => Justification::Center,
+        Some("end") => Justification::End,
+        Some("space-between") => Justification::SpaceBetween,
+        Some(_) => {
+            return invalid_value(element, "justify", "start, center, end or space-between");
+        }
+    };
     let gap = optional_number_attribute(element, "gap")?;
-    reject_other_attributes(element, &["gap"])?;
-    let mut children = Vec::new();
-    for child in element_children(element)? {
-        let JSXChild::Element(child) = child else {
-            return Err(CompileError::new(
-                "Column children must be Ink elements",
-                child.span(),
-            ));
-        };
-        children.push(lower_node(child.as_ref(), states)?);
-    }
-    Ok(Node::Column { children, gap })
+    reject_other_attributes(element, &["axis", "gap", "align", "justify"])?;
+    Ok(Node::Stack {
+        children: lower_element_children(element, states, imports, "Stack")?,
+        axis,
+        gap,
+        align,
+        justify,
+    })
 }
 
 fn lower_text(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateId>,
+    states: &HashMap<&str, StateBinding>,
 ) -> Result<Node, CompileError> {
     let font_size = optional_number_attribute(element, "size")?;
-    reject_other_attributes(element, &["size"])?;
+    let align = text_alignment(element)?;
+    reject_other_attributes(element, &["size", "align"])?;
     let mut parts = Vec::new();
 
-    for child in &element.children {
+    for (index, child) in element.children.iter().enumerate() {
         match child {
             JSXChild::Text(text) => {
-                let value = normalise_text(text.value.as_str());
+                let value = normalise_inline_text(
+                    text.value.as_str(),
+                    index
+                        .checked_sub(1)
+                        .and_then(|index| element.children.get(index))
+                        .is_some_and(|child| matches!(child, JSXChild::ExpressionContainer(_))),
+                    element
+                        .children
+                        .get(index + 1)
+                        .is_some_and(|child| matches!(child, JSXChild::ExpressionContainer(_))),
+                );
                 if !value.is_empty() {
                     parts.push(TextPart::Literal(value));
                 }
             }
             JSXChild::ExpressionContainer(container) => {
-                parts.push(TextPart::State(state_value(&container.expression, states)?));
+                parts.push(TextPart::State(
+                    state_value(&container.expression, states)?.id,
+                ));
             }
             _ => {
                 return Err(CompileError::new(
-                    "Text supports literal text and {state.value} in v0",
+                    "Text supports literal text and {state.value}",
                     child.span(),
                 ));
             }
@@ -317,63 +378,239 @@ fn lower_text(
     if parts.is_empty() {
         return Err(CompileError::new("Text cannot be empty", element.span));
     }
-    Ok(Node::Text { parts, font_size })
+    Ok(Node::Text {
+        parts,
+        font_size,
+        align,
+    })
+}
+
+fn lower_text_input(element: &JSXElement<'_>) -> Result<Node, CompileError> {
+    let placeholder = required_string_attribute(element, "placeholder")?;
+    reject_other_attributes(element, &["placeholder"])?;
+    if !element_children(element)?.is_empty() {
+        return Err(CompileError::new(
+            "TextInput cannot have children",
+            element.span,
+        ));
+    }
+    Ok(Node::TextInput { placeholder })
 }
 
 fn lower_button(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateId>,
+    states: &HashMap<&str, StateBinding>,
 ) -> Result<Node, CompileError> {
-    reject_other_attributes(element, &["onPress"])?;
-    let on_press = attribute(element, "onPress").ok_or_else(|| {
-        CompileError::new("Button requires onPress", element.opening_element.span)
-    })?;
-    let Some(JSXAttributeValue::ExpressionContainer(container)) = &on_press.value else {
+    let action = optional_action_attribute(element, "onPress", states)?;
+    let icon = optional_icon_attribute(element, "icon")?;
+    let underline = boolean_attribute(element, "underline")?;
+    reject_other_attributes(element, &["onPress", "icon", "underline"])?;
+    let label = literal_children(element, "Button labels must be literal text")?;
+    Ok(Node::Button {
+        label,
+        icon,
+        underline,
+        action,
+    })
+}
+
+fn lower_icon(element: &JSXElement<'_>) -> Result<Node, CompileError> {
+    let name = required_icon_attribute(element, "name")?;
+    let size = optional_number_attribute(element, "size")?;
+    let tone = tone(element)?;
+    reject_other_attributes(element, &["name", "size", "tone"])?;
+    if !element_children(element)?.is_empty() {
+        return Err(CompileError::new("Icon cannot have children", element.span));
+    }
+    Ok(Node::Icon { name, size, tone })
+}
+
+fn lower_image(element: &JSXElement<'_>) -> Result<Node, CompileError> {
+    let source = required_string_attribute(element, "src")?;
+    let width = required_number_attribute(element, "width")?;
+    let height = required_number_attribute(element, "height")?;
+    if width == 0.0 || height == 0.0 {
         return Err(CompileError::new(
-            "onPress must be an arrow function",
-            on_press.span,
+            "Image width and height must be greater than zero",
+            element.opening_element.span,
+        ));
+    }
+    let fit = match optional_string_attribute(element, "fit")?.as_deref() {
+        None | Some("cover") => ImageFit::Cover,
+        Some("contain") => ImageFit::Contain,
+        Some(_) => return invalid_value(element, "fit", "cover or contain"),
+    };
+    reject_other_attributes(element, &["src", "width", "height", "fit"])?;
+    if !element_children(element)?.is_empty() {
+        return Err(CompileError::new(
+            "Image cannot have children",
+            element.span,
+        ));
+    }
+    Ok(Node::Image {
+        source,
+        width,
+        height,
+        fit,
+    })
+}
+
+fn lower_toggle(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<Node, CompileError> {
+    let label = required_string_attribute(element, "label")?;
+    let state = state_attribute(element, "value", states, StateValue::Bool(false))?;
+    let action = action_attribute(element, "onChange", states)?;
+    reject_other_attributes(element, &["label", "value", "onChange"])?;
+    if !element_children(element)?.is_empty() {
+        return Err(CompileError::new(
+            "Toggle cannot have children",
+            element.span,
+        ));
+    }
+    Ok(Node::Toggle {
+        label,
+        state: state.id,
+        action,
+    })
+}
+
+fn lower_tabs(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+) -> Result<Node, CompileError> {
+    let state = state_attribute(element, "value", states, StateValue::Int(0))?;
+    reject_other_attributes(element, &["value"])?;
+    require_import(imports, "Tab", element.span)?;
+    let mut tabs = Vec::new();
+    for child in element_children(element)? {
+        let JSXChild::Element(child) = child else {
+            return Err(CompileError::new(
+                "Tabs children must be <Tab> elements",
+                child.span(),
+            ));
+        };
+        tabs.push(lower_tab(child, states, imports)?);
+    }
+    if tabs.is_empty() {
+        return Err(CompileError::new(
+            "Tabs needs at least one Tab",
+            element.span,
+        ));
+    }
+    Ok(Node::Tabs {
+        state: state.id,
+        tabs,
+    })
+}
+
+fn lower_tab(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+) -> Result<Tab, CompileError> {
+    expect_element(element, "Tab")?;
+    let icon = required_icon_attribute(element, "icon")?;
+    let action = action_attribute(element, "onPress", states)?;
+    reject_other_attributes(element, &["icon", "onPress"])?;
+    let children = element_children(element)?;
+    if children.len() != 1 {
+        return Err(CompileError::new(
+            "Tab must contain exactly one Screen",
+            element.span,
+        ));
+    }
+    let JSXChild::Element(screen) = children[0] else {
+        return Err(CompileError::new(
+            "Tab must contain exactly one Screen",
+            children[0].span(),
+        ));
+    };
+    expect_element(screen, "Screen")?;
+    require_import(imports, "Screen", screen.span)?;
+    Ok(Tab {
+        icon,
+        action,
+        screen: Box::new(lower_screen(screen, states, imports)?),
+    })
+}
+
+fn lower_element_children(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+    parent: &str,
+) -> Result<Vec<Node>, CompileError> {
+    element_children(element)?
+        .into_iter()
+        .map(|child| {
+            let JSXChild::Element(child) = child else {
+                return Err(CompileError::new(
+                    format!("{parent} children must be Ink elements"),
+                    child.span(),
+                ));
+            };
+            lower_node(child, states, imports)
+        })
+        .collect()
+}
+
+fn action_attribute(
+    element: &JSXElement<'_>,
+    name: &str,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<Action, CompileError> {
+    let attribute = attribute(element, name).ok_or_else(|| {
+        CompileError::new(
+            format!(
+                "{} requires {name}",
+                element_name(&element.opening_element.name).unwrap_or("element")
+            ),
+            element.opening_element.span,
+        )
+    })?;
+    let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
+        return Err(CompileError::new(
+            format!("{name} must be an arrow function"),
+            attribute.span,
         ));
     };
     let JSXExpression::ArrowFunctionExpression(function) = &container.expression else {
         return Err(CompileError::new(
-            "onPress must be an arrow function",
+            format!("{name} must be an arrow function"),
             container.span,
         ));
     };
     if function.r#async || !function.params.items.is_empty() {
         return Err(CompileError::new(
-            "onPress must be a synchronous zero-argument arrow function",
+            format!("{name} must be a synchronous zero-argument arrow function"),
             function.span,
         ));
     }
-    let action = lower_action(&function.body, states)?;
-    let label = element
-        .children
-        .iter()
-        .map(|child| match child {
-            JSXChild::Text(text) => Ok(normalise_text(text.value.as_str())),
-            _ => Err(CompileError::new(
-                "Button labels must be literal text",
-                child.span(),
-            )),
-        })
-        .collect::<Result<Vec<_>, _>>()?
-        .join(" ")
-        .trim()
-        .to_owned();
-    if label.is_empty() {
-        return Err(CompileError::new("Button needs a label", element.span));
+    lower_action(&function.body, states)
+}
+
+fn optional_action_attribute(
+    element: &JSXElement<'_>,
+    name: &str,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<Option<Action>, CompileError> {
+    if attribute(element, name).is_none() {
+        Ok(None)
+    } else {
+        action_attribute(element, name, states).map(Some)
     }
-    Ok(Node::Button { label, action })
 }
 
 fn lower_action(
     body: &ArrowFunctionBody<'_>,
-    states: &HashMap<&str, StateId>,
+    states: &HashMap<&str, StateBinding>,
 ) -> Result<Action, CompileError> {
     let ArrowFunctionBody::CallExpression(call) = body else {
         return Err(CompileError::new(
-            "onPress currently supports one state.set(...) call",
+            "an action currently supports one state.set(...) call",
             body.span(),
         ));
     };
@@ -393,47 +630,109 @@ fn lower_action(
         return Err(CompileError::new("expected state.set(...)", call.span));
     }
     let name = state_object.name.as_str();
-    let state = states
+    let binding = states
         .get(name)
         .copied()
         .ok_or_else(|| CompileError::new(format!("unknown state {name}"), state_object.span))?;
-    let Argument::BinaryExpression(value) = &call.arguments[0] else {
-        return Err(CompileError::new(
-            "state.set currently accepts state.value + integer",
-            call.arguments[0].span(),
-        ));
-    };
-    let read_state = expression_state_value(&value.left, states)?;
-    if read_state != state {
-        return Err(CompileError::new(
-            "an action must update the state value it reads",
-            value.left.span(),
-        ));
-    }
-    let Expression::NumericLiteral(amount) = &value.right else {
-        return Err(CompileError::new(
-            "the increment must be an integer literal",
-            value.right.span(),
-        ));
-    };
-    let mut by = integer(amount.value, amount.span, "increment")?;
-    match value.operator {
-        BinaryOperator::Addition => {}
-        BinaryOperator::Subtraction => by = -by,
-        _ => {
-            return Err(CompileError::new(
-                "state updates support + and - in v0",
-                value.span,
-            ));
+
+    match &call.arguments[0] {
+        Argument::NumericLiteral(value) if matches!(binding.value, StateValue::Int(_)) => {
+            Ok(Action::SetInt {
+                state: binding.id,
+                value: integer(value.value, value.span, "state value")?,
+            })
         }
+        Argument::BooleanLiteral(value) if matches!(binding.value, StateValue::Bool(_)) => {
+            Ok(Action::SetBool {
+                state: binding.id,
+                value: value.value,
+            })
+        }
+        Argument::BinaryExpression(value) if matches!(binding.value, StateValue::Int(_)) => {
+            let read_state = expression_state_value(&value.left, states)?;
+            if read_state.id != binding.id {
+                return Err(CompileError::new(
+                    "an action must update the state value it reads",
+                    value.left.span(),
+                ));
+            }
+            let Expression::NumericLiteral(amount) = &value.right else {
+                return Err(CompileError::new(
+                    "the increment must be an integer literal",
+                    value.right.span(),
+                ));
+            };
+            let mut by = integer(amount.value, amount.span, "increment")?;
+            match value.operator {
+                BinaryOperator::Addition => {}
+                BinaryOperator::Subtraction => by = -by,
+                _ => {
+                    return Err(CompileError::new(
+                        "state increments support + and -",
+                        value.span,
+                    ));
+                }
+            }
+            Ok(Action::Increment {
+                state: binding.id,
+                by,
+            })
+        }
+        Argument::UnaryExpression(value)
+            if value.operator == UnaryOperator::LogicalNot
+                && matches!(binding.value, StateValue::Bool(_)) =>
+        {
+            let read_state = expression_state_value(&value.argument, states)?;
+            if read_state.id != binding.id {
+                return Err(CompileError::new(
+                    "an action must update the state value it reads",
+                    value.argument.span(),
+                ));
+            }
+            Ok(Action::Toggle { state: binding.id })
+        }
+        value => Err(CompileError::new(
+            "state.set value does not match the state's type",
+            value.span(),
+        )),
     }
-    Ok(Action::Increment { state, by })
+}
+
+fn state_attribute<'a>(
+    element: &JSXElement<'a>,
+    name: &str,
+    states: &HashMap<&str, StateBinding>,
+    expected: StateValue,
+) -> Result<StateBinding, CompileError> {
+    let attribute = attribute(element, name).ok_or_else(|| {
+        CompileError::new(
+            format!(
+                "{} requires {name}",
+                element_name(&element.opening_element.name).unwrap_or("element")
+            ),
+            element.opening_element.span,
+        )
+    })?;
+    let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
+        return Err(CompileError::new(
+            format!("{name} must be a state value"),
+            attribute.span,
+        ));
+    };
+    let binding = state_value(&container.expression, states)?;
+    if std::mem::discriminant(&binding.value) != std::mem::discriminant(&expected) {
+        return Err(CompileError::new(
+            format!("{name} has the wrong state type"),
+            container.span,
+        ));
+    }
+    Ok(binding)
 }
 
 fn state_value(
     expression: &JSXExpression<'_>,
-    states: &HashMap<&str, StateId>,
-) -> Result<StateId, CompileError> {
+    states: &HashMap<&str, StateBinding>,
+) -> Result<StateBinding, CompileError> {
     let JSXExpression::StaticMemberExpression(member) = expression else {
         return Err(CompileError::new(
             "expected {state.value}",
@@ -445,8 +744,8 @@ fn state_value(
 
 fn expression_state_value(
     expression: &Expression<'_>,
-    states: &HashMap<&str, StateId>,
-) -> Result<StateId, CompileError> {
+    states: &HashMap<&str, StateBinding>,
+) -> Result<StateBinding, CompileError> {
     let Expression::StaticMemberExpression(member) = expression else {
         return Err(CompileError::new("expected state.value", expression.span()));
     };
@@ -455,8 +754,8 @@ fn expression_state_value(
 
 fn member_state_value(
     member: &oxc::ast::ast::StaticMemberExpression<'_>,
-    states: &HashMap<&str, StateId>,
-) -> Result<StateId, CompileError> {
+    states: &HashMap<&str, StateBinding>,
+) -> Result<StateBinding, CompileError> {
     let Expression::Identifier(object) = &member.object else {
         return Err(CompileError::new(
             "expected state.value",
@@ -502,6 +801,149 @@ fn optional_number_attribute(
     Ok(Some(value.value as f32))
 }
 
+fn required_number_attribute(element: &JSXElement<'_>, name: &str) -> Result<f32, CompileError> {
+    optional_number_attribute(element, name)?.ok_or_else(|| {
+        CompileError::new(
+            format!(
+                "{} requires {name}",
+                element_name(&element.opening_element.name).unwrap_or("element")
+            ),
+            element.opening_element.span,
+        )
+    })
+}
+
+fn optional_string_attribute(
+    element: &JSXElement<'_>,
+    name: &str,
+) -> Result<Option<String>, CompileError> {
+    let Some(attribute) = attribute(element, name) else {
+        return Ok(None);
+    };
+    let Some(JSXAttributeValue::StringLiteral(value)) = &attribute.value else {
+        return Err(CompileError::new(
+            format!("{name} must be a string literal"),
+            attribute.span,
+        ));
+    };
+    Ok(Some(value.value.as_str().to_owned()))
+}
+
+fn required_string_attribute(element: &JSXElement<'_>, name: &str) -> Result<String, CompileError> {
+    optional_string_attribute(element, name)?.ok_or_else(|| {
+        CompileError::new(
+            format!(
+                "{} requires {name}",
+                element_name(&element.opening_element.name).unwrap_or("element")
+            ),
+            element.opening_element.span,
+        )
+    })
+}
+
+fn optional_icon_attribute(
+    element: &JSXElement<'_>,
+    name: &str,
+) -> Result<Option<String>, CompileError> {
+    let Some(value) = optional_string_attribute(element, name)? else {
+        return Ok(None);
+    };
+    validate_icon(element, name, value).map(Some)
+}
+
+fn required_icon_attribute(element: &JSXElement<'_>, name: &str) -> Result<String, CompileError> {
+    let value = required_string_attribute(element, name)?;
+    validate_icon(element, name, value)
+}
+
+fn validate_icon(
+    element: &JSXElement<'_>,
+    attribute_name: &str,
+    value: String,
+) -> Result<String, CompileError> {
+    let value = value.replace('-', "_");
+    if crate::icons::exists(&value) {
+        Ok(value)
+    } else {
+        let span = attribute(element, attribute_name)
+            .map_or(element.opening_element.span, |attribute| attribute.span);
+        Err(CompileError::new(
+            format!("unknown Material icon {value:?}"),
+            span,
+        ))
+    }
+}
+
+fn boolean_attribute(element: &JSXElement<'_>, name: &str) -> Result<bool, CompileError> {
+    let Some(attribute) = attribute(element, name) else {
+        return Ok(false);
+    };
+    match &attribute.value {
+        None => Ok(true),
+        Some(JSXAttributeValue::ExpressionContainer(container)) => {
+            let JSXExpression::BooleanLiteral(value) = &container.expression else {
+                return Err(CompileError::new(
+                    format!("{name} must be a boolean literal"),
+                    container.span,
+                ));
+            };
+            Ok(value.value)
+        }
+        _ => Err(CompileError::new(
+            format!("{name} must be a boolean literal"),
+            attribute.span,
+        )),
+    }
+}
+
+fn text_alignment(element: &JSXElement<'_>) -> Result<TextAlignment, CompileError> {
+    match optional_string_attribute(element, "align")?.as_deref() {
+        None | Some("start") => Ok(TextAlignment::Start),
+        Some("center") => Ok(TextAlignment::Center),
+        Some("end") => Ok(TextAlignment::End),
+        Some(_) => invalid_value(element, "align", "start, center or end"),
+    }
+}
+
+fn tone(element: &JSXElement<'_>) -> Result<Tone, CompileError> {
+    match optional_string_attribute(element, "tone")?.as_deref() {
+        None | Some("primary") => Ok(Tone::Primary),
+        Some("muted") => Ok(Tone::Muted),
+        Some(_) => invalid_value(element, "tone", "primary or muted"),
+    }
+}
+
+fn invalid_value<T>(
+    element: &JSXElement<'_>,
+    name: &str,
+    expected: &str,
+) -> Result<T, CompileError> {
+    let span =
+        attribute(element, name).map_or(element.opening_element.span, |attribute| attribute.span);
+    Err(CompileError::new(
+        format!("{name} must be {expected}"),
+        span,
+    ))
+}
+
+fn literal_children(element: &JSXElement<'_>, error: &str) -> Result<String, CompileError> {
+    let label = element
+        .children
+        .iter()
+        .map(|child| match child {
+            JSXChild::Text(text) => Ok(normalise_text(text.value.as_str())),
+            _ => Err(CompileError::new(error, child.span())),
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .join(" ")
+        .trim()
+        .to_owned();
+    if label.is_empty() {
+        return Err(CompileError::new("text cannot be empty", element.span));
+    }
+    Ok(label)
+}
+
 fn reject_other_attributes(element: &JSXElement<'_>, allowed: &[&str]) -> Result<(), CompileError> {
     for item in &element.opening_element.attributes {
         let JSXAttributeItem::Attribute(attribute) = item else {
@@ -514,7 +956,7 @@ fn reject_other_attributes(element: &JSXElement<'_>, allowed: &[&str]) -> Result
         if !allowed.contains(&name) {
             return Err(CompileError::new(
                 format!(
-                    "{} does not accept {name} in v0",
+                    "{} does not accept {name}",
                     element_name(&element.opening_element.name)?
                 ),
                 attribute.span,
@@ -549,7 +991,7 @@ fn expect_element(element: &JSXElement<'_>, expected: &str) -> Result<(), Compil
         Ok(())
     } else {
         Err(CompileError::new(
-            format!("expected <{expected}>, found <{actual}>",),
+            format!("expected <{expected}>, found <{actual}>"),
             element.opening_element.name.span(),
         ))
     }
@@ -579,6 +1021,17 @@ fn element_children<'a>(
         .collect())
 }
 
+fn require_import(imports: &HashSet<String>, name: &str, span: Span) -> Result<(), CompileError> {
+    if imports.contains(name) {
+        Ok(())
+    } else {
+        Err(CompileError::new(
+            format!("{name} must be imported from \"ink\""),
+            span,
+        ))
+    }
+}
+
 fn integer(value: f64, span: Span, label: &str) -> Result<i64, CompileError> {
     if value.is_finite()
         && value.fract() == 0.0
@@ -595,19 +1048,21 @@ fn integer(value: f64, span: Span, label: &str) -> Result<i64, CompileError> {
 }
 
 fn normalise_text(value: &str) -> String {
-    let core = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if core.is_empty() {
-        return core;
-    }
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
 
-    let leading_space = value.chars().next().is_some_and(char::is_whitespace);
-    let trailing_space = value.chars().next_back().is_some_and(char::is_whitespace);
-    format!(
-        "{}{}{}",
-        if leading_space { " " } else { "" },
-        core,
-        if trailing_space { " " } else { "" },
-    )
+fn normalise_inline_text(value: &str, after_expression: bool, before_expression: bool) -> String {
+    let mut text = normalise_text(value);
+    if text.is_empty() {
+        return text;
+    }
+    if after_expression && value.chars().next().is_some_and(char::is_whitespace) {
+        text.insert(0, ' ');
+    }
+    if before_expression && value.chars().next_back().is_some_and(char::is_whitespace) {
+        text.push(' ');
+    }
+    text
 }
 
 fn unparenthesised<'a>(mut expression: &'a Expression<'a>) -> &'a Expression<'a> {

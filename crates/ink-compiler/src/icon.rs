@@ -12,16 +12,15 @@ const ICONS: [(&str, u32); 5] = [
     ("mipmap-xxhdpi", 144),
     ("mipmap-xxxhdpi", 192),
 ];
+const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
 
-pub fn generate(name: &str, font_path: &Path, resources: &Path) -> Result<()> {
+pub fn generate(name: &str, resources: &Path) -> Result<()> {
     let label = name
         .graphemes(true)
         .find(|grapheme| grapheme.chars().any(char::is_alphanumeric))
         .context("the app name must contain a letter or number")?
         .to_uppercase();
-    let bytes = std::fs::read(font_path)
-        .with_context(|| format!("could not read {}", font_path.display()))?;
-    let font = FontArc::try_from_vec(bytes).context("Public Sans is not a valid font")?;
+    let font = FontArc::try_from_vec(PUBLIC_SANS.to_vec()).context("Public Sans is not valid")?;
 
     for (directory, size) in ICONS {
         let image = render(&font, &label, size)?;

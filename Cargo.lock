@@ -536,6 +536,8 @@ dependencies = [
  "ab_glyph",
  "anyhow",
  "image",
+ "material-icons",
+ "miniz_oxide 0.8.9",
  "oxc",
  "prettyplease",
  "proc-macro2",
@@ -549,6 +551,9 @@ dependencies = [
 [[package]]
 name = "ink-core"
 version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+]
 
 [[package]]
 name = "ink-renderer-wgpu"
@@ -558,6 +563,7 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "ink-core",
+ "miniz_oxide 0.8.9",
  "naga",
  "wgpu",
 ]
@@ -711,6 +717,12 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "material-icons"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51749189f2b4bf6a522337b504a85a543b5e2af670cb08bcf48297ada61dc2d7"
 
 [[package]]
 name = "memchr"

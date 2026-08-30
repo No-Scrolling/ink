@@ -10,6 +10,7 @@ ab_glyph.workspace = true
 anyhow.workspace = true
 bytemuck.workspace = true
 ink-core = { path = "../ink-core" }
+miniz_oxide.workspace = true
 wgpu.workspace = true
 
 [build-dependencies]

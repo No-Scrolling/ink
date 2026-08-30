@@ -2,6 +2,7 @@ mod codegen;
 mod config;
 mod diagnostic;
 mod icon;
+mod icons;
 mod ir;
 mod lower;
 
@@ -64,6 +65,14 @@ impl Project {
     pub fn source_path(&self) -> &Path {
         &self.config.source
     }
+
+    pub fn generated_source_path(&self) -> &Path {
+        &self.config.generated
+    }
+
+    pub fn android_resources_path(&self) -> &Path {
+        &self.config.android_resources
+    }
 }
 
 pub fn check(project: &Project) -> Result<()> {
@@ -74,19 +83,11 @@ pub fn check(project: &Project) -> Result<()> {
 pub fn compile(project: &Project) -> Result<()> {
     let generated = generate(project)?;
     write_if_changed(&project.config.generated, generated.as_bytes())?;
-    icon::generate(
-        &project.config.name,
-        &project.config.font,
-        &project.config.android_resources,
-    )
+    icon::generate(&project.config.name, &project.config.android_resources)
 }
 
 pub fn generate_icon(project: &Project) -> Result<()> {
-    icon::generate(
-        &project.config.name,
-        &project.config.font,
-        &project.config.android_resources,
-    )
+    icon::generate(&project.config.name, &project.config.android_resources)
 }
 
 fn generate(project: &Project) -> Result<String> {
@@ -124,7 +125,7 @@ fn generate(project: &Project) -> Result<String> {
 
     let app = lower::lower(&parsed.program)
         .map_err(|error| anyhow::anyhow!(error.render(&project.config.source, &source)))?;
-    codegen::generate(&app)
+    codegen::generate(&app, project.root())
 }
 
 fn write_if_changed(path: &Path, contents: &[u8]) -> Result<()> {

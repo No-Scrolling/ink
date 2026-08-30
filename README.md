@@ -2,24 +2,24 @@
 
 Ink is an experimental Android UI framework for small Light Phone III apps. Apps are written in a deliberately restricted TypeScript/TSX dialect and compiled ahead of time into Rust. There is no JavaScript runtime in the APK.
 
-The first vertical slice is a native counter rendered by `wgpu`, with Public Sans Regular rasterised into a small glyph atlas by Ink's compact text path.
+The first vertical slice is a native component set rendered by `wgpu`, with Public Sans Regular rasterised into a small glyph atlas by Ink's compact text path.
 
 ![Ink counter running on the LP3 emulator](docs/images/counter.png)
 
 ## Counter
 
 ```tsx
-import { Button, Column, Screen, Text, state } from "ink";
+import { Button, Screen, Stack, Text, state } from "ink";
 
 export default function Counter() {
   const count = state(0);
 
   return (
-    <Screen>
-      <Column gap={16}>
-        <Text size={32}>Count: {count.value}</Text>
+    <Screen title="Counter" centered>
+      <Stack gap={16} align="center">
+        <Text size={40}>Count: {count.value}</Text>
         <Button onPress={() => count.set(count.value + 1)}>Increase</Button>
-      </Column>
+      </Stack>
     </Screen>
   );
 }
@@ -51,6 +51,8 @@ version = "0.1.0"
 version_code = 1
 ```
 
+Ink uses `App.tsx` as the application entry point. Generated Rust, launcher icons and other build inputs stay in the application's ignored `.ink/` directory; their paths are framework implementation details.
+
 Debug builds use Android's local development key automatically. A release build requires non-secret key metadata in `ink.toml`:
 
 ```toml
@@ -65,6 +67,22 @@ The current signed, optimised arm64 APK is approximately 2.4 MB. The development
 
 Ink currently targets Android API 34 or newer. The saved LP3 emulator and physical LP3 builds are arm64-only.
 
+Style values are authored directly in Ink's LP3 logical units. At the LP3's 1080-pixel width they match the template's established 2.55-pixel scale, without an application-side scaling helper.
+
+## Components
+
+- `Screen` owns the app header, content insets, vertical rhythm, overflow scrolling and scroll indicator.
+- `Stack` arranges children vertically or horizontally with optional gap, alignment and distribution.
+- `Text` uses Public Sans and always renders at the full foreground colour. It supports an optional size and alignment, but no opacity or muted-text styling.
+- `TextInput` renders the established LP3 text-field treatment. Editing waits for the Light Keyboard adapter.
+- `Button` is a text-first action with optional Material icon and underline.
+- `Icon` accepts a Material icon name. Ink embeds only the icon masks referenced by the app.
+- `Image` embeds a local PNG at compile time with `cover` or `contain` fitting.
+- `Toggle` provides the established LP3 line-and-circle setting control.
+- `Tabs` and `Tab` own the fixed bottom navigation bar and screen switching.
+
+`examples/counter` is the smallest interactive example: one screen, one state value and one action. `examples/light-template` mirrors the three top-level template pages for visual comparisons with the React Native and Light SDK components.
+
 ## Status
 
-Ink is a narrow prototype. The compiler accepts only the language exercised by the counter. Light SDK and Light Keyboard integrations will be adapters once the core source and rendering interfaces have settled.
+Ink remains a deliberately narrow prototype. Editable text, Light SDK resources, Light Keyboard, nested screen navigation and persistence are not implemented yet. Those integrations will sit behind framework-owned adapters rather than expanding every component's surface.
