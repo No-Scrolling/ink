@@ -25,6 +25,46 @@ export default function Counter() {
 }
 ```
 
+## Screen modules
+
+`App.tsx` is the composition root, so tabs, routes and their ordering remain visible in one place. Page content and page-local state can live in relative `.tsx` screen modules:
+
+```tsx
+import { Navigator, Route } from "ink";
+import Settings from "./screens/Settings";
+
+export default function App() {
+  return (
+    <Navigator>
+      <Route path="/">
+        <Settings />
+      </Route>
+    </Navigator>
+  );
+}
+```
+
+```tsx
+// screens/Settings.tsx
+import { Screen, Toggle, state } from "ink";
+
+export default function Settings() {
+  const enabled = state(false);
+
+  return (
+    <Screen title="Settings">
+      <Toggle
+        label="Enabled"
+        value={enabled.value}
+        onChange={() => enabled.set(!enabled.value)}
+      />
+    </Screen>
+  );
+}
+```
+
+Screen modules use one default export, take no arguments and return `Screen`. They may appear directly inside `Route` or `Tab`. Ink follows extensionless relative imports to `.tsx` files inside the application, expands every screen at compile time and keeps its state local to that screen instance. There is no runtime module loader or JavaScript cost.
+
 ## Commands
 
 - `ink check` validates the application without producing build artefacts.
@@ -80,7 +120,7 @@ version = "0.1.0"
 version_code = 1
 ```
 
-Ink uses `App.tsx` as the application entry point. Generated Rust, launcher icons and other build inputs stay in the application's ignored `.ink/` directory; their paths are framework implementation details.
+Ink uses `App.tsx` as the application entry point and follows its relative screen imports. Generated Rust, launcher icons and other build inputs stay in the application's ignored `.ink/` directory; their paths are framework implementation details.
 
 Debug builds use Android's local development key automatically. A release build requires non-secret key metadata in `ink.toml`:
 

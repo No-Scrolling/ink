@@ -3,7 +3,7 @@
 Ink keeps its public authoring surface small and pushes complexity into a few deep modules.
 
 ```text
-App.tsx
+App.tsx + local screen modules
    |
    v
 ink-compiler: parse -> validate -> typed lowering -> generated Rust
@@ -30,7 +30,7 @@ This is the app-author interface. It contains compile-time TypeScript declaratio
 
 ### `crates/ink-compiler`
 
-The compiler module hides TSX parsing, restricted-language validation, typed lowering, Rust generation, diagnostics and app branding. Its interface is one build input, a set of generated native artefacts and the native capabilities used by that app. Oxc is an implementation detail behind this seam.
+The compiler module hides TSX parsing, the local screen-module graph, restricted-language validation, typed lowering, Rust generation, diagnostics and app branding. `App.tsx` is the composition root; relative `.tsx` modules are zero-argument screens expanded at compile time, with state IDs rebased into the linked application. Its interface is one build input, a set of generated native artefacts and the native capabilities used by that app. Oxc is an implementation detail behind this seam.
 
 ### `crates/ink-core`
 
@@ -46,7 +46,7 @@ Android is an adapter. It supplies a surface, lifecycle, pointer events, text ed
 
 ### `examples`
 
-The counter is the smallest interactive example, exercising one state value and one action on a single screen. The light-template example mirrors the template's top-level tabs and nested settings pages for deterministic visual comparisons while exercising framework-owned screen density, automatic scrolling, tabs, navigation and keyboard text entry. Their public files are `App.tsx` and metadata-only `ink.toml`; generated Rust and Android resources stay in each example's ignored `.ink/` directory.
+The counter is the smallest interactive example, exercising one state value and one action on a single screen. The light-template example keeps navigation composition in `App.tsx` and places each tab or nested page in a screen module, while mirroring the template for deterministic visual comparisons. Generated Rust and Android resources stay in each example's ignored `.ink/` directory.
 
 ## Deliberate constraints
 

@@ -5,14 +5,13 @@ mod icon;
 mod icons;
 mod ir;
 mod lower;
+mod source;
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 pub use config::ReleaseSigning;
 use config::ResolvedConfig;
-use oxc::{allocator::Allocator, parser::Parser, semantic::SemanticBuilder, span::SourceType};
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AppFeatures {
     pub text_input: bool,
@@ -102,40 +101,7 @@ struct GeneratedApp {
 }
 
 fn generate(project: &Project) -> Result<GeneratedApp> {
-    let source = std::fs::read_to_string(&project.config.source)
-        .with_context(|| format!("could not read {}", project.config.source.display()))?;
-    let source_type = SourceType::from_path(&project.config.source).with_context(|| {
-        format!(
-            "{} is not a TypeScript/TSX source path",
-            project.config.source.display()
-        )
-    })?;
-    let allocator = Allocator::default();
-    let parsed = Parser::new(&allocator, &source, source_type).parse();
-
-    if !parsed.diagnostics.is_empty() {
-        let diagnostics = parsed
-            .diagnostics
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
-        anyhow::bail!("{}:\n{diagnostics}", project.config.source.display());
-    }
-
-    let semantic = SemanticBuilder::new_compiler().build(&parsed.program);
-    if !semantic.diagnostics.is_empty() {
-        let diagnostics = semantic
-            .diagnostics
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
-        anyhow::bail!("{}:\n{diagnostics}", project.config.source.display());
-    }
-
-    let app = lower::lower(&parsed.program)
-        .map_err(|error| anyhow::anyhow!(error.render(&project.config.source, &source)))?;
+    let app = source::compile(project.root(), &project.config.source)?;
     Ok(GeneratedApp {
         features: AppFeatures {
             text_input: uses_text_input(&app.root),
@@ -163,6 +129,9 @@ fn uses_text_input(node: &ir::Node) -> bool {
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
         | ir::Node::Toggle { .. } => false,
+        ir::Node::ScreenModule { .. } => {
+            unreachable!("screen modules are expanded before feature detection")
+        }
     }
 }
 

@@ -1,7 +1,15 @@
+use std::path::PathBuf;
+
 use oxc::span::Span;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateId(pub usize);
+
+#[derive(Debug)]
+pub struct SourceSpan {
+    pub path: PathBuf,
+    pub span: Span,
+}
 
 #[derive(Debug)]
 pub struct App {
@@ -140,6 +148,9 @@ pub enum Node {
         state: StateId,
         template: Box<Node>,
     },
+    ScreenModule {
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug)]
@@ -191,5 +202,5 @@ pub enum Action {
     RemoveListItem { state: StateId },
     ReplaceListItem { state: StateId, value: Value },
     ClearList { state: StateId },
-    Navigate { path: String, span: Span },
+    Navigate { path: String, source: SourceSpan },
 }

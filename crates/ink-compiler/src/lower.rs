@@ -1,11 +1,14 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    path::{Path, PathBuf},
+};
 
 use oxc::{
     ast::ast::{
         Argument, ArrowFunctionBody, BindingPattern, ExportDefaultDeclarationKind, Expression,
-        Function, JSXAttribute, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild,
-        JSXElement, JSXElementName, JSXExpression, ObjectPropertyKind, PropertyKey, PropertyKind,
-        Statement, TSSignature, TSType, VariableDeclarationKind,
+        Function, ImportDeclarationSpecifier, JSXAttribute, JSXAttributeItem, JSXAttributeName,
+        JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, ObjectPropertyKind,
+        PropertyKey, PropertyKind, Statement, TSSignature, TSType, VariableDeclarationKind,
     },
     span::{GetSpan, Span},
     syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator},
@@ -14,8 +17,8 @@ use oxc::{
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, Route, State,
-        StateId, StateValue, Tab, TextAlignment, TextPart, Tone, Value,
+        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, Route, SourceSpan,
+        State, StateId, StateValue, Tab, TextAlignment, TextPart, Tone, Value,
     },
 };
 
@@ -56,28 +59,41 @@ struct ItemBinding<'a> {
     kind: &'a StateKind,
 }
 
-pub fn lower(program: &oxc::ast::ast::Program<'_>) -> Result<App, CompileError> {
-    let imports = validate_imports(program)?;
-    let function = app_function(program)?;
-    lower_function(function, &imports)
+pub enum ModuleKind {
+    App,
+    Screen,
 }
 
-fn validate_imports(program: &oxc::ast::ast::Program<'_>) -> Result<HashSet<String>, CompileError> {
+struct Imports {
+    ink: HashSet<String>,
+    screens: HashMap<String, PathBuf>,
+    source_path: PathBuf,
+}
+
+pub fn lower(
+    program: &oxc::ast::ast::Program<'_>,
+    project_root: &Path,
+    source_path: &Path,
+    kind: ModuleKind,
+) -> Result<App, CompileError> {
+    let imports = validate_imports(program, project_root, source_path)?;
+    let function = app_function(program)?;
+    lower_function(function, &imports, kind)
+}
+
+fn validate_imports(
+    program: &oxc::ast::ast::Program<'_>,
+    project_root: &Path,
+    source_path: &Path,
+) -> Result<Imports, CompileError> {
     let allowed = HashSet::from(INK_IMPORTS);
-    let mut imported = HashSet::new();
+    let mut ink = HashSet::new();
+    let mut screens = HashMap::new();
 
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else {
             continue;
         };
-
-        if declaration.source.value.as_str() != "ink" {
-            return Err(CompileError::new(
-                "Ink apps may only import from \"ink\" in v0",
-                declaration.source.span,
-            ));
-        }
-
         let Some(specifiers) = &declaration.specifiers else {
             return Err(CompileError::new(
                 "side-effect imports are not supported",
@@ -85,9 +101,40 @@ fn validate_imports(program: &oxc::ast::ast::Program<'_>) -> Result<HashSet<Stri
             ));
         };
 
-        for specifier in specifiers {
-            let oxc::ast::ast::ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier
+        let source = declaration.source.value.as_str();
+        if source != "ink" {
+            if !source.starts_with("./") && !source.starts_with("../") {
+                return Err(CompileError::new(
+                    "screen modules use relative imports",
+                    declaration.source.span,
+                )
+                .with_help("import Settings from \"./screens/Settings\""));
+            }
+            let [ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier)] =
+                specifiers.as_slice()
             else {
+                return Err(CompileError::new(
+                    "screen modules use one default import",
+                    declaration.span,
+                )
+                .with_help("import Settings from \"./screens/Settings\""));
+            };
+            let local = specifier.local.name.as_str();
+            if ink.contains(local) || screens.contains_key(local) {
+                return Err(CompileError::new(
+                    format!("{local} is imported twice"),
+                    specifier.span,
+                ));
+            }
+            screens.insert(
+                local.to_owned(),
+                resolve_screen_module(project_root, source_path, source, declaration.source.span)?,
+            );
+            continue;
+        }
+
+        for specifier in specifiers {
+            let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
                 return Err(CompileError::new(
                     "use named imports from \"ink\"",
                     specifier.span(),
@@ -109,11 +156,48 @@ fn validate_imports(program: &oxc::ast::ast::Program<'_>) -> Result<HashSet<Stri
                     specifier.span,
                 ));
             }
-            imported.insert(imported_name.to_owned());
+            if screens.contains_key(local_name) || !ink.insert(imported_name.to_owned()) {
+                return Err(CompileError::new(
+                    format!("{local_name} is imported twice"),
+                    specifier.span,
+                ));
+            }
         }
     }
 
-    Ok(imported)
+    Ok(Imports {
+        ink,
+        screens,
+        source_path: source_path.to_owned(),
+    })
+}
+
+fn resolve_screen_module(
+    project_root: &Path,
+    source_path: &Path,
+    source: &str,
+    span: Span,
+) -> Result<PathBuf, CompileError> {
+    let mut path = source_path
+        .parent()
+        .expect("a source path has a parent")
+        .join(source);
+    if path.extension().is_none() {
+        path.set_extension("tsx");
+    }
+    if path.extension().and_then(|extension| extension.to_str()) != Some("tsx") {
+        return Err(CompileError::new("screen modules must be .tsx files", span));
+    }
+    let path = path
+        .canonicalize()
+        .map_err(|_| CompileError::new(format!("could not find screen module {source:?}"), span))?;
+    if !path.starts_with(project_root) {
+        return Err(CompileError::new(
+            "screen modules must stay inside the Ink application",
+            span,
+        ));
+    }
+    Ok(path)
 }
 
 fn app_function<'a>(
@@ -155,10 +239,14 @@ fn app_function<'a>(
     })
 }
 
-fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<App, CompileError> {
+fn lower_function(
+    function: &Function<'_>,
+    imports: &Imports,
+    kind: ModuleKind,
+) -> Result<App, CompileError> {
     if function.r#async || function.generator || !function.params.items.is_empty() {
         return Err(CompileError::new(
-            "the app function must be synchronous and take no arguments",
+            "Ink functions must be synchronous and take no arguments",
             function.span,
         ));
     }
@@ -221,16 +309,28 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
                 } else {
                     lower_node(element, &state_names, imports, None)?
                 };
-                if !matches!(
-                    node,
-                    Node::Screen { .. } | Node::Tabs { .. } | Node::Navigator { .. }
-                ) {
-                    return Err(CompileError::new(
-                        "the app root must be <Screen>, <Tabs> or <Navigator>",
-                        element.span,
-                    ));
+                match kind {
+                    ModuleKind::App
+                        if !matches!(
+                            node,
+                            Node::Screen { .. } | Node::Tabs { .. } | Node::Navigator { .. }
+                        ) =>
+                    {
+                        return Err(CompileError::new(
+                            "the app root must be <Screen>, <Tabs> or <Navigator>",
+                            element.span,
+                        ));
+                    }
+                    ModuleKind::Screen
+                        if !matches!(node, Node::Screen { .. } | Node::ScreenModule { .. }) =>
+                    {
+                        return Err(CompileError::new(
+                            "a screen module must return <Screen>",
+                            element.span,
+                        ));
+                    }
+                    _ => {}
                 }
-                validate_navigation(&node)?;
                 root = Some(node);
             }
             _ => {
@@ -242,11 +342,12 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
         }
     }
 
-    let root = root.ok_or_else(|| {
-        CompileError::new(
+    let root = root.ok_or_else(|| match kind {
+        ModuleKind::App => CompileError::new(
             "the app function must return <Screen>, <Tabs> or <Navigator>",
             body.span,
-        )
+        ),
+        ModuleKind::Screen => CompileError::new("a screen module must return <Screen>", body.span),
     })?;
     Ok(App { states, root })
 }
@@ -476,17 +577,27 @@ fn property_name(key: &PropertyKey<'_>) -> Result<String, CompileError> {
 fn lower_node(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let name = element_name(&element.opening_element.name)?;
+    if let Some(path) = imports.screens.get(name) {
+        reject_other_attributes(element, &[])?;
+        if !element_children(element)?.is_empty() {
+            return Err(CompileError::new(
+                "screen modules cannot have children",
+                element.span,
+            ));
+        }
+        return Ok(Node::ScreenModule { path: path.clone() });
+    }
     require_import(imports, name, element.opening_element.name.span())?;
     match name {
         "Screen" => lower_screen(element, states, imports, item),
         "Stack" => lower_stack(element, states, imports, item),
         "Text" => lower_text(element, states, item),
         "TextInput" => lower_text_input(element, states),
-        "Button" => lower_button(element, states, item),
+        "Button" => lower_button(element, states, imports, item),
         "Icon" => lower_icon(element),
         "Image" => lower_image(element),
         "Toggle" => lower_toggle(element, states),
@@ -510,10 +621,26 @@ fn lower_node(
     }
 }
 
+fn lower_content_node(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &Imports,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Node, CompileError> {
+    let node = lower_node(element, states, imports, item)?;
+    if matches!(node, Node::ScreenModule { .. }) {
+        return Err(CompileError::new(
+            "screen modules may only appear inside Route or Tab",
+            element.span,
+        ));
+    }
+    Ok(node)
+}
+
 fn lower_screen(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let title = optional_string_attribute(element, "title")?;
@@ -529,7 +656,7 @@ fn lower_screen(
 fn lower_stack(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let axis = match optional_string_attribute(element, "axis")?.as_deref() {
@@ -609,6 +736,7 @@ fn lower_text_input(
 fn lower_button(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let href = optional_string_attribute(element, "href")?;
@@ -623,7 +751,13 @@ fn lower_button(
             let span = attribute(element, "href")
                 .map_or(element.opening_element.span, |attribute| attribute.span);
             validate_route_path(&path, span)?;
-            Some(Action::Navigate { path, span })
+            Some(Action::Navigate {
+                path,
+                source: SourceSpan {
+                    path: imports.source_path.clone(),
+                    span,
+                },
+            })
         }
         None => optional_action_attribute(element, "onPress", states, item)?,
     };
@@ -704,7 +838,7 @@ fn lower_toggle(
 fn lower_tabs(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
 ) -> Result<Node, CompileError> {
     let state = state_attribute(element, "value", states, StateKind::Int)?;
     reject_other_attributes(element, &["value"])?;
@@ -734,7 +868,7 @@ fn lower_tabs(
 fn lower_navigator(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
 ) -> Result<Node, CompileError> {
     require_import(imports, "Navigator", element.span)?;
     reject_other_attributes(element, &[])?;
@@ -776,7 +910,10 @@ fn lower_navigator(
             ));
         };
         let screen = lower_node(screen, states, imports, None)?;
-        if !matches!(screen, Node::Screen { .. } | Node::Tabs { .. }) {
+        if !matches!(
+            screen,
+            Node::Screen { .. } | Node::Tabs { .. } | Node::ScreenModule { .. }
+        ) {
             return Err(CompileError::new(
                 "Route must contain exactly one Screen or Tabs",
                 children[0].span(),
@@ -800,7 +937,7 @@ fn lower_navigator(
 fn lower_tab(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
 ) -> Result<Tab, CompileError> {
     expect_element(element, "Tab")?;
     let icon = required_icon_attribute(element, "icon")?;
@@ -819,16 +956,35 @@ fn lower_tab(
             children[0].span(),
         ));
     };
-    expect_element(screen, "Screen")?;
-    require_import(imports, "Screen", screen.span)?;
+    let screen = lower_node(screen, states, imports, None)?;
+    if !matches!(screen, Node::Screen { .. } | Node::ScreenModule { .. }) {
+        return Err(CompileError::new(
+            "Tab must contain exactly one Screen",
+            children[0].span(),
+        ));
+    }
     Ok(Tab {
         icon,
         action,
-        screen: Box::new(lower_screen(screen, states, imports, None)?),
+        screen: Box::new(screen),
     })
 }
 
-fn validate_navigation(root: &Node) -> Result<(), CompileError> {
+pub struct NavigationError {
+    source: PathBuf,
+    error: CompileError,
+}
+
+impl NavigationError {
+    pub fn render(&self) -> String {
+        match std::fs::read_to_string(&self.source) {
+            Ok(source) => self.error.render(&self.source, &source),
+            Err(_) => format!("{}: {}", self.source.display(), self.error),
+        }
+    }
+}
+
+pub fn validate_navigation(root: &Node) -> Result<(), NavigationError> {
     let routes = match root {
         Node::Navigator { routes } => Some(
             routes
@@ -844,7 +1000,7 @@ fn validate_navigation(root: &Node) -> Result<(), CompileError> {
 fn validate_navigation_node(
     node: &Node,
     routes: Option<&HashSet<&str>>,
-) -> Result<(), CompileError> {
+) -> Result<(), NavigationError> {
     match node {
         Node::Screen { children, .. } | Node::Stack { children, .. } => {
             for child in children {
@@ -852,17 +1008,20 @@ fn validate_navigation_node(
             }
         }
         Node::Button {
-            action: Some(Action::Navigate { path, span }),
+            action: Some(Action::Navigate { path, source }),
             ..
         } => {
             let Some(routes) = routes else {
-                return Err(CompileError::new("Button href requires a Navigator", *span));
+                return Err(NavigationError {
+                    source: source.path.clone(),
+                    error: CompileError::new("Button href requires a Navigator", source.span),
+                });
             };
             if !routes.contains(path.as_str()) {
-                return Err(CompileError::new(
-                    format!("no route matches {path:?}"),
-                    *span,
-                ));
+                return Err(NavigationError {
+                    source: source.path.clone(),
+                    error: CompileError::new(format!("no route matches {path:?}"), source.span),
+                });
             }
         }
         Node::Tabs { tabs, .. } => {
@@ -892,6 +1051,7 @@ fn validate_navigation_node(
         | Node::Icon { .. }
         | Node::Image { .. }
         | Node::Toggle { .. } => {}
+        Node::ScreenModule { .. } => unreachable!("screen modules are expanded before validation"),
     }
     Ok(())
 }
@@ -913,14 +1073,14 @@ fn validate_route_path(path: &str, span: Span) -> Result<(), CompileError> {
 fn lower_element_children(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
     parent: &str,
 ) -> Result<Vec<Node>, CompileError> {
     element_children(element)?
         .into_iter()
         .map(|child| match child {
-            JSXChild::Element(child) => lower_node(child, states, imports, item),
+            JSXChild::Element(child) => lower_content_node(child, states, imports, item),
             JSXChild::ExpressionContainer(container) => {
                 let Some(expression) = container.expression.as_expression() else {
                     return Err(CompileError::new(
@@ -941,7 +1101,7 @@ fn lower_element_children(
 fn lower_dynamic_child(
     expression: &Expression<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     match unparenthesised(expression) {
@@ -1085,11 +1245,13 @@ fn list_length_state(
 fn dynamic_branch(
     expression: &Expression<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Option<Node>, CompileError> {
     match unparenthesised(expression) {
-        Expression::JSXElement(element) => lower_node(element, states, imports, item).map(Some),
+        Expression::JSXElement(element) => {
+            lower_content_node(element, states, imports, item).map(Some)
+        }
         Expression::NullLiteral(_) => Ok(None),
         expression => Err(CompileError::new(
             "conditional branches must be an Ink element or null",
@@ -1101,7 +1263,7 @@ fn dynamic_branch(
 fn lower_collection(
     call: &oxc::ast::ast::CallExpression<'_>,
     states: &HashMap<&str, StateBinding>,
-    imports: &HashSet<String>,
+    imports: &Imports,
     current_item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     if current_item.is_some() {
@@ -1168,7 +1330,7 @@ fn lower_collection(
     };
     Ok(Node::ForEach {
         state: binding.id,
-        template: Box::new(lower_node(element, states, imports, Some(item))?),
+        template: Box::new(lower_content_node(element, states, imports, Some(item))?),
     })
 }
 
@@ -2015,8 +2177,8 @@ fn element_children<'a>(
         .collect())
 }
 
-fn require_import(imports: &HashSet<String>, name: &str, span: Span) -> Result<(), CompileError> {
-    if imports.contains(name) {
+fn require_import(imports: &Imports, name: &str, span: Span) -> Result<(), CompileError> {
+    if imports.ink.contains(name) {
         Ok(())
     } else {
         Err(CompileError::new(

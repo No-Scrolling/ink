@@ -219,6 +219,9 @@ impl<'a> Emitter<'a> {
                 let template = self.node(template)?;
                 quote! { Node::for_each(StateId::new(#state), #template) }
             }
+            Node::ScreenModule { .. } => {
+                unreachable!("screen modules are expanded before code generation")
+            }
         };
 
         let name = format_ident!("node_{}", self.next_node);

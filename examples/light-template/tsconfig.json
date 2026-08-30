@@ -8,5 +8,5 @@
     "strict": true,
     "target": "ESNext"
   },
-  "include": ["App.tsx"]
+  "include": ["**/*.tsx"]
 }
