@@ -25,6 +25,7 @@ pub struct AppFeatures {
     pub microphone_permission: bool,
     pub location: bool,
     pub nfc: bool,
+    pub background: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -120,6 +121,7 @@ struct GeneratedApp {
 
 fn generate(project: &Project) -> Result<GeneratedApp> {
     let app = source::compile(project.root(), &project.config.source)?;
+    write_background_registry(project, &app)?;
     let audio_playback = app
         .controllers
         .iter()
@@ -146,9 +148,41 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
                 .contains(&ir::AndroidPermission::Microphone),
             location: app.extensions.contains(&ir::Extension::Location),
             nfc: app.extensions.contains(&ir::Extension::Nfc),
+            background: app.extensions.contains(&ir::Extension::Background),
         },
         source: codegen::generate(&app, project.root())?,
     })
+}
+
+fn write_background_registry(project: &Project, app: &ir::App) -> Result<()> {
+    let path = project.android_assets_path().join("ink-background-v1.json");
+    let mut jobs = std::collections::BTreeMap::new();
+    for resource in app
+        .resources
+        .iter()
+        .filter(|resource| resource.module == "background")
+    {
+        let [ir::PayloadPart::Literal(payload)] = resource.payload.as_slice() else {
+            continue;
+        };
+        let mut value: serde_json::Value = serde_json::from_str(payload)?;
+        let key = value["key"].as_str().unwrap_or_default().to_owned();
+        value["bootstrapJobId"] = source::background_job_id(&key, "bootstrap").into();
+        value["periodicJobId"] = source::background_job_id(&key, "periodic").into();
+        jobs.insert(key, value);
+    }
+    if jobs.is_empty() {
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .with_context(|| format!("could not remove {}", path.display()))?;
+        }
+        return Ok(());
+    }
+    let registry = serde_json::json!({
+        "version": 1,
+        "jobs": jobs.into_values().collect::<Vec<_>>(),
+    });
+    write_if_changed(&path, registry.to_string().as_bytes())
 }
 
 fn uses_remote_image(node: &ir::Node) -> bool {

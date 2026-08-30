@@ -19,8 +19,9 @@ use crate::{
     ir::{
         Action, Alignment, AndroidPermission, App, Axis, Collection, Condition, Controller,
         ControllerId, Extension, ImageFit, ImageSource, Justification, NativeOperation, Node,
-        PayloadPart, Resource, ResourceField, ResourceId, Route, SourceSpan, State, StateId,
-        StateLifetime, StateShape, StateValue, Tab, TextAlignment, TextPart, Tone, Value,
+        PayloadPart, Resource, ResourceField, ResourceId, ResourceProtocol, Route, SourceSpan,
+        State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment, TextPart, Tone,
+        Value,
     },
     resolver::ModuleResolver,
 };
@@ -55,6 +56,7 @@ struct ResourceBinding {
     id: ResourceId,
     shape: StateShape,
     request: Option<NativeOperation>,
+    protocol: ResourceProtocol,
 }
 
 struct ResourceValueBinding {
@@ -115,6 +117,7 @@ enum ExtensionFunction {
     LocationPermission,
     CurrentLocation,
     NfcTag,
+    PeriodicJson,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -255,6 +258,7 @@ fn validate_imports(
                             ExtensionFunction::CurrentLocation
                         }
                         (Extension::Nfc, "nfcTag") => ExtensionFunction::NfcTag,
+                        (Extension::Background, "periodicJson") => ExtensionFunction::PeriodicJson,
                         _ => {
                             return Err(CompileError::new(
                                 format!("{imported} is not exported by this Ink extension"),
@@ -456,6 +460,7 @@ fn lower_function(
                                 id,
                                 shape: resource.definition.shape.clone(),
                                 request: resource.request,
+                                protocol: resource.definition.protocol,
                             },
                         );
                         resources.push(resource.definition);
@@ -622,7 +627,11 @@ fn resource_initialiser(
     ) {
         return Ok(None);
     }
-    if function != ExtensionFunction::Json && call.type_arguments.is_some() {
+    if !matches!(
+        function,
+        ExtensionFunction::Json | ExtensionFunction::PeriodicJson
+    ) && call.type_arguments.is_some()
+    {
         return Err(CompileError::new(
             "Ink resources do not take type arguments",
             call.span,
@@ -644,6 +653,7 @@ fn resource_initialiser(
                     shape: StateShape::String,
                     timeout_ms: 10_000,
                     reload_on_resume: true,
+                    protocol: ResourceProtocol::Async,
                 },
                 request: None,
                 android_permission: None,
@@ -670,6 +680,7 @@ fn resource_initialiser(
                     shape: StateShape::String,
                     timeout_ms: 10_000,
                     reload_on_resume: true,
+                    protocol: ResourceProtocol::Async,
                 },
                 request: Some(NativeOperation {
                     module: "light-sdk".to_owned(),
@@ -681,6 +692,7 @@ fn resource_initialiser(
             }
         }
         ExtensionFunction::Json => network_json_resource(call, imports, states)?,
+        ExtensionFunction::PeriodicJson => background_json_resource(call, imports)?,
         ExtensionFunction::MicrophonePermission => {
             if !call.arguments.is_empty() {
                 return Err(CompileError::new(
@@ -696,6 +708,7 @@ fn resource_initialiser(
                     shape: StateShape::String,
                     timeout_ms: 10_000,
                     reload_on_resume: true,
+                    protocol: ResourceProtocol::Async,
                 },
                 request: Some(NativeOperation {
                     module: "audio".to_owned(),
@@ -716,6 +729,7 @@ fn resource_initialiser(
                     shape: StateShape::String,
                     timeout_ms: 10_000,
                     reload_on_resume: true,
+                    protocol: ResourceProtocol::Async,
                 },
                 request: Some(NativeOperation {
                     module: "light-sdk".to_owned(),
@@ -866,6 +880,7 @@ fn current_location_resource(
             ]),
             timeout_ms,
             reload_on_resume: true,
+            protocol: ResourceProtocol::Async,
         },
         request: None,
         android_permission: Some(AndroidPermission::Location),
@@ -952,6 +967,7 @@ fn nfc_tag_resource(
             ]),
             timeout_ms,
             reload_on_resume: false,
+            protocol: ResourceProtocol::Async,
         },
         request: None,
         android_permission: Some(AndroidPermission::Nfc),
@@ -1384,9 +1400,255 @@ fn network_json_resource(
             shape,
             timeout_ms,
             reload_on_resume: true,
+            protocol: ResourceProtocol::Async,
         },
         request: None,
         android_permission: None,
+    })
+}
+
+fn background_json_resource(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    imports: &Imports,
+) -> Result<ResourceInitialiser, CompileError> {
+    let Some(arguments) = &call.type_arguments else {
+        return Err(CompileError::new(
+            "periodicJson<T>() needs the response data type",
+            call.span,
+        ));
+    };
+    let [response_type] = arguments.params.as_slice() else {
+        return Err(CompileError::new(
+            "periodicJson<T>() accepts one response data type",
+            arguments.span,
+        ));
+    };
+    let shape = match response_type {
+        TSType::TSTypeReference(reference) if reference.type_arguments.is_none() => {
+            let oxc::ast::ast::TSTypeName::IdentifierReference(name) = &reference.type_name else {
+                return Err(CompileError::new(
+                    "background response types use a local type alias or an inline data type",
+                    reference.span,
+                ));
+            };
+            imports
+                .type_aliases
+                .get(name.name.as_str())
+                .cloned()
+                .ok_or_else(|| {
+                    CompileError::new(
+                        format!("unknown response type {}", name.name),
+                        reference.span,
+                    )
+                })?
+        }
+        response_type => state_kind_from_type(response_type)?,
+    };
+    let [
+        Argument::StringLiteral(key),
+        Argument::StringLiteral(url),
+        Argument::ObjectExpression(options),
+    ] = call.arguments.as_slice()
+    else {
+        return Err(CompileError::new(
+            "periodicJson<T>() takes a key, HTTPS URL and options object",
+            call.span,
+        ));
+    };
+    if key.value.is_empty() || key.value.len() > 128 {
+        return Err(CompileError::new(
+            "background keys must contain between 1 and 128 bytes",
+            key.span,
+        ));
+    }
+    if !url.value.as_str().starts_with("https://") {
+        return Err(CompileError::new(
+            "background requests require HTTPS",
+            url.span,
+        ));
+    }
+    let mut every_minutes = None;
+    let mut timeout_ms = 15_000_u64;
+    let mut query = serde_json::Map::new();
+    let mut headers = serde_json::Map::new();
+    let mut seen = HashSet::new();
+    for property in &options.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "background options cannot use spreads",
+                property.span(),
+            ));
+        };
+        let name = property_name(&property.key)?;
+        if !seen.insert(name.clone()) {
+            return Err(CompileError::new(
+                format!("background option {name:?} is declared twice"),
+                property.span,
+            ));
+        }
+        match name.as_str() {
+            "everyMinutes" => {
+                let Expression::NumericLiteral(value) = &property.value else {
+                    return Err(CompileError::new(
+                        "everyMinutes must be a number literal",
+                        property.value.span(),
+                    ));
+                };
+                every_minutes = Some(
+                    integer(value.value, value.span, "everyMinutes")?
+                        .try_into()
+                        .ok()
+                        .filter(|value: &u64| (15..=10_080).contains(value))
+                        .ok_or_else(|| {
+                            CompileError::new(
+                                "everyMinutes must be between 15 and 10080",
+                                value.span,
+                            )
+                        })?,
+                );
+            }
+            "timeoutMs" => {
+                let Expression::NumericLiteral(value) = &property.value else {
+                    return Err(CompileError::new(
+                        "timeoutMs must be a number literal",
+                        property.value.span(),
+                    ));
+                };
+                timeout_ms = integer(value.value, value.span, "timeoutMs")?
+                    .try_into()
+                    .ok()
+                    .filter(|value: &u64| (1_000..=120_000).contains(value))
+                    .ok_or_else(|| {
+                        CompileError::new("timeoutMs must be between 1000 and 120000", value.span)
+                    })?;
+            }
+            "query" => query = background_values(&property.value, false)?,
+            "headers" => headers = background_values(&property.value, true)?,
+            _ => {
+                return Err(CompileError::new(
+                    format!("unknown background option {name:?}"),
+                    property.key.span(),
+                ));
+            }
+        }
+    }
+    let every_minutes = every_minutes.ok_or_else(|| {
+        CompileError::new("background options require everyMinutes", options.span)
+    })?;
+    let schema = shape_schema(&shape);
+    let request = serde_json::json!({
+        "url": url.value.as_str(),
+        "query": query,
+        "headers": headers,
+        "schema": schema,
+    });
+    let request_fingerprint = stable_hash(&request.to_string());
+    let payload = serde_json::json!({
+        "key": key.value.as_str(),
+        "url": url.value.as_str(),
+        "query": request["query"].clone(),
+        "headers": request["headers"].clone(),
+        "schema": request["schema"].clone(),
+        "everyMinutes": every_minutes,
+        "timeoutMs": timeout_ms,
+        "requestFingerprint": format!("{request_fingerprint:016x}"),
+    });
+    Ok(ResourceInitialiser {
+        definition: Resource {
+            module: "background".to_owned(),
+            operation: "periodic-json".to_owned(),
+            payload: vec![PayloadPart::Literal(payload.to_string())],
+            shape,
+            timeout_ms: 5_000,
+            reload_on_resume: false,
+            protocol: ResourceProtocol::Background,
+        },
+        request: None,
+        android_permission: None,
+    })
+}
+
+fn background_values(
+    expression: &Expression<'_>,
+    strings_only: bool,
+) -> Result<serde_json::Map<String, serde_json::Value>, CompileError> {
+    let Expression::ObjectExpression(object) = expression else {
+        return Err(CompileError::new(
+            "background query and headers must be object literals",
+            expression.span(),
+        ));
+    };
+    let mut values = serde_json::Map::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "background query and headers cannot use spreads",
+                property.span(),
+            ));
+        };
+        let name = property_name(&property.key)?;
+        let value = match &property.value {
+            Expression::StringLiteral(value) => serde_json::Value::String(value.value.to_string()),
+            Expression::BooleanLiteral(value) if !strings_only => {
+                serde_json::Value::Bool(value.value)
+            }
+            Expression::NumericLiteral(value) if !strings_only && value.value.is_finite() => {
+                serde_json::Number::from_f64(value.value)
+                    .map(serde_json::Value::Number)
+                    .expect("a finite number has a JSON representation")
+            }
+            Expression::UnaryExpression(value)
+                if !strings_only && value.operator == UnaryOperator::UnaryNegation =>
+            {
+                let Expression::NumericLiteral(number) = &value.argument else {
+                    return Err(CompileError::new(
+                        "background query values must be literal scalars",
+                        value.span,
+                    ));
+                };
+                serde_json::Number::from_f64(-number.value)
+                    .map(serde_json::Value::Number)
+                    .expect("a finite number has a JSON representation")
+            }
+            _ => {
+                return Err(CompileError::new(
+                    if strings_only {
+                        "background header values must be string literals"
+                    } else {
+                        "background query values must be string, number or boolean literals"
+                    },
+                    property.value.span(),
+                ));
+            }
+        };
+        if values.insert(name.clone(), value).is_some() {
+            return Err(CompileError::new(
+                format!("background value {name:?} is declared twice"),
+                property.span,
+            ));
+        }
+    }
+    Ok(values)
+}
+
+fn shape_schema(shape: &StateShape) -> serde_json::Value {
+    match shape {
+        StateShape::Number => serde_json::Value::String("number".to_owned()),
+        StateShape::Bool => serde_json::Value::String("boolean".to_owned()),
+        StateShape::String => serde_json::Value::String("string".to_owned()),
+        StateShape::List(item) => serde_json::json!({ "array": shape_schema(item) }),
+        StateShape::Object(fields) => serde_json::Value::Object(
+            fields
+                .iter()
+                .map(|(name, shape)| (name.clone(), shape_schema(shape)))
+                .collect(),
+        ),
+    }
+}
+
+fn stable_hash(value: &str) -> u64 {
+    value.bytes().fold(0xcbf29ce484222325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
     })
 }
 
@@ -3052,6 +3314,12 @@ fn lower_state_action(
                 call.span,
             ));
         }
+        if binding.protocol == ResourceProtocol::Background {
+            return Err(CompileError::new(
+                "background resources do not expose actions",
+                call.span,
+            ));
+        }
         return match method {
             "reload" => Ok(Action::ReloadResource {
                 resource: binding.id,
@@ -4029,24 +4297,68 @@ fn expression_resource_value(
     let Some(resource) = states.resources.get(name) else {
         return Ok(None);
     };
-    let (field, kind) = match path.as_slice() {
-        [field] if field == "status" => (ResourceField::Status, StateShape::String),
-        [field, property] if field == "error" && property == "kind" => {
+    let (field, kind) = match (resource.protocol, path.as_slice()) {
+        (ResourceProtocol::Background, [field]) if field == "status" => {
+            (ResourceField::Status, StateShape::String)
+        }
+        (ResourceProtocol::Background, [field]) if field == "updatedAtMs" => {
+            (ResourceField::UpdatedAtMs, StateShape::Number)
+        }
+        (ResourceProtocol::Background, [field, property])
+            if field == "error" && property == "kind" =>
+        {
             (ResourceField::ErrorKind, StateShape::String)
         }
-        [field, property] if field == "error" && property == "message" => {
+        (ResourceProtocol::Background, [field, property])
+            if field == "error" && property == "message" =>
+        {
             (ResourceField::ErrorMessage, StateShape::String)
         }
-        [field, property] if field == "error" && property == "retryable" => {
+        (ResourceProtocol::Background, [field, property])
+            if field == "error" && property == "retryable" =>
+        {
             (ResourceField::ErrorRetryable, StateShape::Bool)
         }
-        [field, path @ ..] if field == "value" => {
+        (ResourceProtocol::Background, [field, property])
+            if field == "error" && property == "attemptedAtMs" =>
+        {
+            (ResourceField::ErrorAttemptedAtMs, StateShape::Number)
+        }
+        (ResourceProtocol::Background, [field, path @ ..]) if field == "value" => {
+            let kind = kind_at_path(&resource.shape, path).ok_or_else(|| {
+                CompileError::new("unknown background value field", expression.span())
+            })?;
+            (ResourceField::Value(path.to_vec()), kind.clone())
+        }
+        (ResourceProtocol::Background, _) => {
+            return Err(CompileError::new(
+                "background resource fields are status, value, updatedAtMs or error details",
+                expression.span(),
+            ));
+        }
+        (ResourceProtocol::Async, [field]) if field == "status" => {
+            (ResourceField::Status, StateShape::String)
+        }
+        (ResourceProtocol::Async, [field, property]) if field == "error" && property == "kind" => {
+            (ResourceField::ErrorKind, StateShape::String)
+        }
+        (ResourceProtocol::Async, [field, property])
+            if field == "error" && property == "message" =>
+        {
+            (ResourceField::ErrorMessage, StateShape::String)
+        }
+        (ResourceProtocol::Async, [field, property])
+            if field == "error" && property == "retryable" =>
+        {
+            (ResourceField::ErrorRetryable, StateShape::Bool)
+        }
+        (ResourceProtocol::Async, [field, path @ ..]) if field == "value" => {
             let kind = kind_at_path(&resource.shape, path).ok_or_else(|| {
                 CompileError::new("unknown resource value field", expression.span())
             })?;
             (ResourceField::Value(path.to_vec()), kind.clone())
         }
-        _ => {
+        (ResourceProtocol::Async, _) => {
             return Err(CompileError::new(
                 "resource fields are status, value, or error details",
                 expression.span(),
@@ -4081,7 +4393,7 @@ fn validate_resource_comparison(
         return Ok(());
     };
     let allowed = match field {
-        ResourceField::Status => Some(&["loading", "ready", "error"][..]),
+        ResourceField::Status => Some(&["loading", "waiting", "ready", "stale", "error"][..]),
         ResourceField::ErrorKind => Some(
             &[
                 "unavailable",
@@ -4091,6 +4403,10 @@ fn validate_resource_comparison(
                 "nfc-disabled",
                 "timeout",
                 "protocol",
+                "http",
+                "invalid-data",
+                "storage",
+                "scheduler",
                 "unexpected",
             ][..],
         ),

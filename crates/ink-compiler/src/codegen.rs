@@ -11,9 +11,9 @@ use crate::{
     icons,
     ir::{
         Action, Alignment, App, Axis, Collection, Condition, Controller, ImageFit, ImageSource,
-        Justification, NativeOperation, Node, PayloadPart, Resource, ResourceField, State,
-        StateLifetime, StateShape, StateValue, TextAlignment, TextInputAction, TextPart, Tone,
-        Value,
+        Justification, NativeOperation, Node, PayloadPart, Resource, ResourceField,
+        ResourceProtocol, State, StateLifetime, StateShape, StateValue, TextAlignment,
+        TextInputAction, TextPart, Tone, Value,
     },
 };
 
@@ -470,11 +470,16 @@ fn resource_definition(resource: &Resource) -> TokenStream {
     let timeout_ms = resource.timeout_ms;
     let reload_on_resume = resource.reload_on_resume;
     let shape = state_shape(&resource.shape);
+    let protocol = match resource.protocol {
+        ResourceProtocol::Async => quote! { ink_core::ResourceProtocol::Async },
+        ResourceProtocol::Background => quote! { ink_core::ResourceProtocol::Background },
+    };
     quote! {
-        ResourceDefinition::new(
+        ResourceDefinition::with_protocol(
             #shape,
             NativeOperation::templated(#module, #operation, vec![#(#payload),*], #timeout_ms),
             #reload_on_resume,
+            #protocol,
         )
     }
 }
@@ -728,6 +733,8 @@ fn resource_field_tokens(field: &ResourceField) -> TokenStream {
         ResourceField::ErrorKind => quote! { ResourceField::ErrorKind },
         ResourceField::ErrorMessage => quote! { ResourceField::ErrorMessage },
         ResourceField::ErrorRetryable => quote! { ResourceField::ErrorRetryable },
+        ResourceField::UpdatedAtMs => quote! { ResourceField::UpdatedAtMs },
+        ResourceField::ErrorAttemptedAtMs => quote! { ResourceField::ErrorAttemptedAtMs },
     }
 }
 

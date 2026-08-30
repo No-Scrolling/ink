@@ -6,6 +6,7 @@
       "name": "ink-light-template-example",
       "dependencies": {
         "@ink/audio": "file:../../packages/audio",
+        "@ink/background": "file:../../packages/background",
         "@ink/light-sdk": "file:../../packages/light-sdk",
         "@ink/location": "file:../../packages/location",
         "@ink/network": "file:../../packages/network",
@@ -19,6 +20,8 @@
   },
   "packages": {
     "@ink/audio": ["@ink/audio@file:../../packages/audio", {}],
+
+    "@ink/background": ["@ink/background@file:../../packages/background", {}],
 
     "@ink/light-sdk": ["@ink/light-sdk@file:../../packages/light-sdk", {}],
 

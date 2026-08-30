@@ -47,8 +47,58 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
     };
     lower::validate_navigation(&app.root).map_err(|error| anyhow::anyhow!(error.render()))?;
     validate_audio(&app)?;
+    validate_background(&app)?;
     bundle_audio_assets(project_root, &mut app.root)?;
     Ok(app)
+}
+
+fn validate_background(app: &App) -> Result<()> {
+    let mut jobs = HashMap::<String, serde_json::Value>::new();
+    let mut ids = HashMap::<u32, String>::new();
+    for resource in app
+        .resources
+        .iter()
+        .filter(|resource| resource.module == "background")
+    {
+        let [PayloadPart::Literal(payload)] = resource.payload.as_slice() else {
+            bail!("background resource configuration must be literal");
+        };
+        let value: serde_json::Value = serde_json::from_str(payload)
+            .context("background resource configuration was invalid")?;
+        let key = value["key"]
+            .as_str()
+            .context("background resource configuration had no key")?
+            .to_owned();
+        if let Some(existing) = jobs.get(&key) {
+            if existing != &value {
+                bail!("background key {key:?} is declared with different configurations");
+            }
+            continue;
+        }
+        if jobs.len() == 16 {
+            bail!("an Ink app can declare at most 16 background jobs");
+        }
+        for kind in ["bootstrap", "periodic"] {
+            let id = background_job_id(&key, kind);
+            if let Some(existing) = ids.insert(id, format!("{key}:{kind}")) {
+                bail!(
+                    "background jobs {existing:?} and {:?} have the same scheduler ID; rename one key",
+                    format!("{key}:{kind}"),
+                );
+            }
+        }
+        jobs.insert(key, value);
+    }
+    Ok(())
+}
+
+pub(crate) fn background_job_id(key: &str, kind: &str) -> u32 {
+    format!("ink.background:{kind}:{key}")
+        .bytes()
+        .fold(0x811c9dc5_u32, |hash, byte| {
+            (hash ^ u32::from(byte)).wrapping_mul(0x01000193)
+        })
+        & 0x7fff_ffff
 }
 
 fn validate_audio(app: &App) -> Result<()> {

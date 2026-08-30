@@ -12,6 +12,7 @@ const NETWORK_PACKAGE: &str = "@ink/network";
 const AUDIO_PACKAGE: &str = "@ink/audio";
 const LOCATION_PACKAGE: &str = "@ink/location";
 const NFC_PACKAGE: &str = "@ink/nfc";
+const BACKGROUND_PACKAGE: &str = "@ink/background";
 
 pub struct ModuleResolver {
     project_root: PathBuf,
@@ -186,6 +187,16 @@ impl ModuleResolver {
             (NFC_PACKAGE, "nfc") => Err(CompileError::new(
                 format!(
                     "@ink/nfc targets Ink NFC API {}, but this Ink version supports 1",
+                    ink.sdk_version
+                ),
+                span,
+            )),
+            (BACKGROUND_PACKAGE, "background") if ink.sdk_version == "1" => {
+                Ok(Extension::Background)
+            }
+            (BACKGROUND_PACKAGE, "background") => Err(CompileError::new(
+                format!(
+                    "@ink/background targets Ink background API {}, but this Ink version supports 1",
                     ink.sdk_version
                 ),
                 span,

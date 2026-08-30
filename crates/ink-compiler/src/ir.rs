@@ -39,6 +39,7 @@ pub enum Extension {
     Audio,
     Location,
     Nfc,
+    Background,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -65,6 +66,13 @@ pub struct Resource {
     pub shape: StateShape,
     pub timeout_ms: u64,
     pub reload_on_resume: bool,
+    pub protocol: ResourceProtocol,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceProtocol {
+    Async,
+    Background,
 }
 
 #[derive(Clone, Debug)]
@@ -97,6 +105,8 @@ pub enum ResourceField {
     ErrorKind,
     ErrorMessage,
     ErrorRetryable,
+    UpdatedAtMs,
+    ErrorAttemptedAtMs,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

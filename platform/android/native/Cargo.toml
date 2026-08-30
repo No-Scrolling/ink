@@ -13,6 +13,7 @@ path = "src/lib.rs"
 [features]
 audio = ["dep:ink-audio", "dep:serde_json"]
 network = []
+background = []
 
 [dependencies]
 ink-core = { path = "../../../crates/ink-core" }

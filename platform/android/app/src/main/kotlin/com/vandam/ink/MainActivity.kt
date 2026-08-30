@@ -42,6 +42,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var audioAdapter: AudioAdapter
     private lateinit var locationAdapter: LocationAdapter
     private lateinit var nfcAdapter: NfcAdapter
+    private lateinit var backgroundAdapter: BackgroundAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
@@ -105,6 +106,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         networkAdapter = createNetworkAdapter(this)
         locationAdapter = createLocationAdapter(this)
         nfcAdapter = createNfcAdapter(this)
+        backgroundAdapter = createBackgroundAdapter(this)
         audioAdapter = createAudioAdapter(
             this,
             { samples, sampleRate ->
@@ -134,6 +136,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             },
         )
         lightSdkAdapter.start()
+        backgroundAdapter.reconcile()
         drainNativeRequests()
         setContentView(
             root,
@@ -159,6 +162,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     override fun onResume() {
         super.onResume()
         lightSdkAdapter.refresh()
+        backgroundAdapter.reconcile()
         if (resumedOnce && engineHandle != 0L && nativeResume(engineHandle)) {
             drainNativeRequests()
         }
@@ -215,6 +219,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         audioAdapter.stop()
         locationAdapter.stop()
         nfcAdapter.stop()
+        backgroundAdapter.stop()
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
         detachSurface()
@@ -311,6 +316,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 audioAdapter.cancel(requestId)
                 locationAdapter.cancel(requestId)
                 nfcAdapter.cancel(requestId)
+                backgroundAdapter.cancel(requestId)
                 continue
             }
             val module = nativeRequestModule(engineHandle, requestId)
@@ -327,6 +333,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 AUDIO_MODULE -> if (lightAudioPermission) lightSdkAdapter else audioAdapter
                 LOCATION_MODULE -> locationAdapter
                 NFC_MODULE -> nfcAdapter
+                BACKGROUND_MODULE -> backgroundAdapter
                 else -> null
             }
             if (adapter == null) {
@@ -583,6 +590,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val AUDIO_MODULE = "audio"
         private const val LOCATION_MODULE = "location"
         private const val NFC_MODULE = "nfc"
+        private const val BACKGROUND_MODULE = "background"
         private const val PERMISSION_STATUS_OPERATION = "permission-status"
         private const val REQUEST_PERMISSION_OPERATION = "request-permission"
         private const val MICROPHONE_PERMISSION = "microphone"

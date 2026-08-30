@@ -242,6 +242,13 @@ pub struct ResourceDefinition {
     shape: StateShape,
     read: NativeOperation,
     reload_on_resume: bool,
+    protocol: ResourceProtocol,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceProtocol {
+    Async,
+    Background,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -274,6 +281,21 @@ impl ResourceDefinition {
             shape,
             read,
             reload_on_resume,
+            protocol: ResourceProtocol::Async,
+        }
+    }
+
+    pub const fn with_protocol(
+        shape: StateShape,
+        read: NativeOperation,
+        reload_on_resume: bool,
+        protocol: ResourceProtocol,
+    ) -> Self {
+        Self {
+            shape,
+            read,
+            reload_on_resume,
+            protocol,
         }
     }
 }
@@ -333,6 +355,21 @@ enum ResourceState {
         error: ResourceError,
         previous: Option<StateValue>,
     },
+    BackgroundWaiting,
+    BackgroundReady {
+        value: StateValue,
+        updated_at_ms: f64,
+        error: Option<BackgroundError>,
+    },
+    BackgroundFailed(BackgroundError),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct BackgroundError {
+    kind: String,
+    message: String,
+    retryable: bool,
+    attempted_at_ms: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -342,6 +379,8 @@ pub enum ResourceField {
     ErrorKind,
     ErrorMessage,
     ErrorRetryable,
+    UpdatedAtMs,
+    ErrorAttemptedAtMs,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1352,6 +1391,22 @@ impl Engine {
             _ => None,
         };
         self.resources[resource.0] = match result {
+            Err(error) if definition.protocol == ResourceProtocol::Background => {
+                ResourceState::BackgroundFailed(BackgroundError {
+                    kind: "unexpected".to_owned(),
+                    message: error.message,
+                    retryable: error.retryable,
+                    attempted_at_ms: now_ms_fallback(),
+                })
+            }
+            Ok(_) if definition.protocol == ResourceProtocol::Background => {
+                ResourceState::BackgroundFailed(BackgroundError {
+                    kind: "unexpected".to_owned(),
+                    message: "native background state used the wrong protocol".to_owned(),
+                    retryable: false,
+                    attempted_at_ms: now_ms_fallback(),
+                })
+            }
             Ok(value) if definition.shape.accepts(&value) => ResourceState::Ready(value),
             Ok(_) => ResourceState::Failed {
                 error: ResourceError::new(
@@ -1376,6 +1431,21 @@ impl Engine {
             return false;
         };
         let shape = self.definition.resources[resource.0].shape.clone();
+        if self.definition.resources[resource.0].protocol == ResourceProtocol::Background {
+            let result = parse_background_state(&shape, bytes);
+            let Some(pending) = self.in_flight_requests.remove(&request_id) else {
+                return false;
+            };
+            let RequestOwner::Resource(resource) = pending.owner else {
+                return false;
+            };
+            if self.resource_requests.remove(&resource) != Some(request_id) {
+                return false;
+            }
+            self.resources[resource.0] = result;
+            self.rebuild_scene();
+            return true;
+        }
         let result = serde_json::from_slice(bytes)
             .map_err(|error| {
                 ResourceError::new(
@@ -1599,8 +1669,17 @@ impl Engine {
                 previous.clone()
             }
             ResourceState::Inactive => None,
+            ResourceState::BackgroundWaiting
+            | ResourceState::BackgroundReady { .. }
+            | ResourceState::BackgroundFailed(_) => None,
         };
-        self.resources[resource.0] = ResourceState::Loading { previous };
+        if definition.protocol == ResourceProtocol::Background {
+            if matches!(self.resources[resource.0], ResourceState::Inactive) {
+                self.resources[resource.0] = ResourceState::BackgroundWaiting;
+            }
+        } else {
+            self.resources[resource.0] = ResourceState::Loading { previous };
+        }
         let request_id = self.next_request_id();
         let Some(payload) = definition.read.materialise(&self.state) else {
             return false;
@@ -2338,33 +2417,70 @@ impl Engine {
                     ResourceState::Inactive | ResourceState::Loading { .. } => "loading",
                     ResourceState::Ready(_) => "ready",
                     ResourceState::Failed { .. } => "error",
+                    ResourceState::BackgroundWaiting => "waiting",
+                    ResourceState::BackgroundReady { error: None, .. } => "ready",
+                    ResourceState::BackgroundReady { error: Some(_), .. } => "stale",
+                    ResourceState::BackgroundFailed(_) => "error",
                 }
                 .to_owned(),
             )),
             ResourceField::Value(path) => {
-                let ResourceState::Ready(value) = state else {
-                    return None;
+                let value = match state {
+                    ResourceState::Ready(value) | ResourceState::BackgroundReady { value, .. } => {
+                        value
+                    }
+                    _ => return None,
                 };
                 item_at_path(value, path).cloned()
             }
             ResourceField::ErrorKind => {
-                let ResourceState::Failed { error, .. } = state else {
-                    return None;
+                let value = match state {
+                    ResourceState::Failed { error, .. } => error.kind.as_str(),
+                    ResourceState::BackgroundReady {
+                        error: Some(error), ..
+                    }
+                    | ResourceState::BackgroundFailed(error) => &error.kind,
+                    _ => return None,
                 };
-                Some(StateValue::String(error.kind.as_str().to_owned()))
+                Some(StateValue::String(value.to_owned()))
             }
             ResourceField::ErrorMessage => {
-                let ResourceState::Failed { error, .. } = state else {
-                    return None;
+                let value = match state {
+                    ResourceState::Failed { error, .. } => &error.message,
+                    ResourceState::BackgroundReady {
+                        error: Some(error), ..
+                    }
+                    | ResourceState::BackgroundFailed(error) => &error.message,
+                    _ => return None,
                 };
-                Some(StateValue::String(error.message.clone()))
+                Some(StateValue::String(value.clone()))
             }
             ResourceField::ErrorRetryable => {
-                let ResourceState::Failed { error, .. } = state else {
-                    return None;
+                let value = match state {
+                    ResourceState::Failed { error, .. } => error.retryable,
+                    ResourceState::BackgroundReady {
+                        error: Some(error), ..
+                    }
+                    | ResourceState::BackgroundFailed(error) => error.retryable,
+                    _ => return None,
                 };
-                Some(StateValue::Bool(error.retryable))
+                Some(StateValue::Bool(value))
             }
+            ResourceField::UpdatedAtMs => match state {
+                ResourceState::BackgroundReady { updated_at_ms, .. } => {
+                    Some(StateValue::Number(*updated_at_ms))
+                }
+                _ => None,
+            },
+            ResourceField::ErrorAttemptedAtMs => match state {
+                ResourceState::BackgroundReady {
+                    error: Some(error), ..
+                }
+                | ResourceState::BackgroundFailed(error) => {
+                    Some(StateValue::Number(error.attempted_at_ms))
+                }
+                _ => None,
+            },
         }
     }
 
@@ -3754,6 +3870,93 @@ fn state_from_json(
                 .map(StateValue::Object)
         }
     }
+}
+
+fn parse_background_state(shape: &StateShape, bytes: &[u8]) -> ResourceState {
+    let attempted_at_ms = now_ms_fallback();
+    let failure = |message: String| {
+        ResourceState::BackgroundFailed(BackgroundError {
+            kind: "unexpected".to_owned(),
+            message,
+            retryable: false,
+            attempted_at_ms,
+        })
+    };
+    let value: serde_json::Value = match serde_json::from_slice(bytes) {
+        Ok(value) => value,
+        Err(error) => return failure(format!("background state was not valid JSON: {error}")),
+    };
+    let Some(object) = value.as_object() else {
+        return failure("background state was not an object".to_owned());
+    };
+    let Some(status) = object.get("status").and_then(serde_json::Value::as_str) else {
+        return failure("background state had no status".to_owned());
+    };
+    let parse_error = || -> Option<BackgroundError> {
+        let error = object.get("error")?.as_object()?;
+        let kind = error.get("kind")?.as_str()?;
+        if ![
+            "unavailable",
+            "timeout",
+            "http",
+            "invalid-data",
+            "storage",
+            "scheduler",
+            "unexpected",
+        ]
+        .contains(&kind)
+        {
+            return None;
+        }
+        Some(BackgroundError {
+            kind: kind.to_owned(),
+            message: error.get("message")?.as_str()?.to_owned(),
+            retryable: error.get("retryable")?.as_bool()?,
+            attempted_at_ms: error.get("attemptedAtMs")?.as_f64()?,
+        })
+    };
+    match status {
+        "waiting" => ResourceState::BackgroundWaiting,
+        "ready" | "stale" => {
+            let Some(updated_at_ms) = object
+                .get("updatedAtMs")
+                .and_then(serde_json::Value::as_f64)
+            else {
+                return failure("background state had no update time".to_owned());
+            };
+            let Some(json) = object.get("value") else {
+                return failure("background state had no value".to_owned());
+            };
+            let value = match state_from_json(shape, json, "$.value") {
+                Ok(value) => value,
+                Err(error) => return failure(error.message),
+            };
+            let error = if status == "stale" {
+                let Some(error) = parse_error() else {
+                    return failure("stale background state had no valid error".to_owned());
+                };
+                Some(error)
+            } else {
+                None
+            };
+            ResourceState::BackgroundReady {
+                value,
+                updated_at_ms,
+                error,
+            }
+        }
+        "error" => parse_error().map_or_else(
+            || failure("failed background state had no valid error".to_owned()),
+            ResourceState::BackgroundFailed,
+        ),
+        _ => failure(format!("unknown background status {status:?}")),
+    }
+}
+
+fn now_ms_fallback() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |duration| duration.as_millis() as f64)
 }
 
 fn image_id(key: &RemoteImageKey) -> u64 {

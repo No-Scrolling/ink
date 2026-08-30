@@ -228,6 +228,7 @@ fn gradle_command(
         ))
         .arg(format!("-PinkUsesLocation={}", features.location))
         .arg(format!("-PinkUsesNfc={}", features.nfc))
+        .arg(format!("-PinkUsesBackground={}", features.background))
         .arg(format!("-PinkLightServerPackage={light_server}"))
         .arg(format!("-PinkUsesTextInput={}", features.text_input))
         .arg(format!(

@@ -62,7 +62,7 @@ export default function Counter() {
 - `@ink/camera` — Camera and code scanning (planned)
 - `@ink/nfc` — NFC tag and NDEF reading
 - `@ink/notifications` — Local notifications (planned)
-- `@ink/background` — Scheduled background work (planned)
+- `@ink/background` — Typed, persisted periodic JSON resources
 
 ## LightOS support
 

@@ -25,11 +25,16 @@ val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission"
 val inkUsesMicrophonePermission = providers.gradleProperty("inkUsesMicrophonePermission").orElse("false")
 val inkUsesLocation = providers.gradleProperty("inkUsesLocation").orElse("false")
 val inkUsesNfc = providers.gradleProperty("inkUsesNfc").orElse("false")
+val inkUsesBackground = providers.gradleProperty("inkUsesBackground").orElse("false")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 val inkLightSdkVersion = "0.1.1"
 val inkPermissions = buildList {
-    if (inkUsesNetwork.get().toBoolean() || inkUsesDetachedAudio.get().toBoolean()) {
+    if (
+        inkUsesNetwork.get().toBoolean() ||
+        inkUsesDetachedAudio.get().toBoolean() ||
+        inkUsesBackground.get().toBoolean()
+    ) {
         add("android.permission.ACCESS_NETWORK_STATE")
         add("android.permission.INTERNET")
     }
@@ -50,6 +55,9 @@ val inkPermissions = buildList {
     if (inkUsesNfc.get().toBoolean()) {
         add("android.permission.NFC")
     }
+    if (inkUsesBackground.get().toBoolean()) {
+        add("android.permission.RECEIVE_BOOT_COMPLETED")
+    }
 }
 val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
 val generateInkPermissionManifest by tasks.registering {
@@ -69,6 +77,14 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine(
                     "    <uses-feature android:name=\"android.hardware.nfc\" android:required=\"false\" />",
                 )
+            }
+            if (inkUsesBackground.get().toBoolean()) {
+                appendLine("    <application>")
+                appendLine("        <service")
+                appendLine("            android:name=\".InkBackgroundJobService\"")
+                appendLine("            android:exported=\"true\"")
+                appendLine("            android:permission=\"android.permission.BIND_JOB_SERVICE\" />")
+                appendLine("    </application>")
             }
             appendLine("</manifest>")
         })
@@ -184,6 +200,13 @@ android {
                 "src/noNfc/kotlin"
             },
         )
+        getByName("main").java.srcDir(
+            if (inkUsesBackground.get().toBoolean()) {
+                "src/background/kotlin"
+            } else {
+                "src/noBackground/kotlin"
+            },
+        )
         if (inkUsesTextInput.get().toBoolean()) {
             getByName("main").res.srcDir("src/textInput/res")
         }
@@ -256,6 +279,9 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
         if (inkUsesAudio.get().toBoolean()) {
             addAll(listOf("--features", "audio"))
         }
+        if (inkUsesBackground.get().toBoolean()) {
+            addAll(listOf("--features", "background"))
+        }
     })
     environment("INK_APP_RS", inkGeneratedSource.get())
 }
@@ -284,6 +310,9 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
         }
         if (inkUsesAudio.get().toBoolean()) {
             addAll(listOf("--features", "audio"))
+        }
+        if (inkUsesBackground.get().toBoolean()) {
+            addAll(listOf("--features", "background"))
         }
     })
     environment("INK_APP_RS", inkGeneratedSource.get())

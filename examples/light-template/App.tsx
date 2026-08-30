@@ -6,6 +6,7 @@ import Modules from "./screens/Modules";
 import Search from "./screens/Search";
 import Settings from "./screens/Settings";
 import Audio from "./screens/modules/Audio";
+import Background from "./screens/modules/Background";
 import LightSdk from "./screens/modules/LightSdk";
 import Location from "./screens/modules/Location";
 import Nfc from "./screens/modules/Nfc";
@@ -59,6 +60,9 @@ export default function LightTemplate() {
       </Route>
       <Route path="/modules/audio">
         <Audio />
+      </Route>
+      <Route path="/modules/background">
+        <Background />
       </Route>
       <Route path="/modules/audio/local-playback">
         <LocalPlayback />
