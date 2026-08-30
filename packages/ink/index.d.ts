@@ -19,6 +19,23 @@ export declare function state<T extends ReadonlyArray<Ink.ListItem>>(
   initial: T,
 ): ListSignal<T[number]>;
 
+export declare function sharedState(key: string, initial: boolean): Signal<boolean>;
+export declare function sharedState(key: string, initial: number): Signal<number>;
+export declare function sharedState(key: string, initial: string): Signal<string>;
+export declare function sharedState<T extends ReadonlyArray<Ink.ListItem>>(
+  key: string,
+  initial: T,
+): ListSignal<T[number]>;
+
+export declare function persistedState(key: string, initial: boolean): Signal<boolean>;
+export declare function persistedState(key: string, initial: number): Signal<number>;
+export declare function persistedState(key: string, initial: string): Signal<string>;
+export declare function persistedState<T extends ReadonlyArray<Ink.ListItem>>(
+  key: string,
+  initial: T,
+): ListSignal<T[number]>;
+export declare function back(): void;
+
 export declare function Screen(props: Ink.ScreenProps): Ink.Element;
 export declare function Stack(props: Ink.StackProps): Ink.Element;
 export declare function Text(props: Ink.TextProps): Ink.Element;

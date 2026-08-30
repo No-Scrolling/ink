@@ -65,6 +65,34 @@ export default function Settings() {
 
 Screen modules use one default export, take no arguments and return `Screen`. They may appear directly inside `Route` or `Tab`. Ink follows extensionless relative imports to `.tsx` files inside the application, expands every screen at compile time and keeps its state local to that screen instance. There is no runtime module loader or JavaScript cost.
 
+## Shared and persisted state
+
+State lifetime is selected where the value is declared:
+
+```tsx
+const expanded = state(false);
+const selectedItem = sharedState("selected-item", "");
+const invertColours = persistedState("settings.invert-colours", false);
+```
+
+`state` belongs to one screen instance. `sharedState` is app-wide until the process exits. `persistedState` is app-wide and survives relaunches and upgrades in Android's app-private storage. Shared and persisted values use a stable string key; declaring the same key in separate screens links both declarations to one value. Repeated declarations must use the same lifetime, type and initial value or `ink check` reports the conflict.
+
+Hydration finishes before Ink attaches its first surface, and saving is automatic. Apps do not need providers, effects, asynchronous loading or storage packages. Persisted state is intended for settings and small app metadata rather than images, media, caches or secrets. Changing a key or its value shape resets that key to its compiled initial value.
+
+Selection is composed from ordinary buttons. Add `back()` after the state update to return immediately, or omit it to keep the selector open:
+
+```tsx
+<Button
+  underline={temperatureUnit.value === "Celsius"}
+  onPress={() => {
+    temperatureUnit.set("Celsius");
+    back();
+  }}
+>
+  Celsius
+</Button>
+```
+
 ## Commands
 
 - `ink check` validates the application without producing build artefacts.
@@ -181,4 +209,4 @@ const query = state("");
 
 ## Status
 
-Ink remains a deliberately narrow prototype. Route parameters, Light SDK resources and persistence are not implemented yet. Those integrations will sit behind framework-owned adapters rather than expanding every component's surface.
+Ink remains a deliberately narrow prototype. Route parameters and Light SDK resources are not implemented yet. Those integrations will sit behind framework-owned adapters rather than expanding every component's surface.

@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use oxc::span::Span;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateId(pub usize);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SourceSpan {
     pub path: PathBuf,
     pub span: Span,
@@ -20,6 +20,25 @@ pub struct App {
 #[derive(Debug)]
 pub struct State {
     pub initial: StateValue,
+    pub shape: StateShape,
+    pub lifetime: StateLifetime,
+    pub source: SourceSpan,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StateLifetime {
+    Local,
+    Shared(String),
+    Persisted(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StateShape {
+    Int,
+    Bool,
+    String,
+    List(Box<StateShape>),
+    Object(BTreeMap<String, StateShape>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -166,7 +185,7 @@ pub struct Route {
     pub screen: Box<Node>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TextPart {
     Literal(String),
     State(StateId),
@@ -174,13 +193,24 @@ pub enum TextPart {
     Item(Vec<String>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Condition {
-    Bool { state: StateId, expected: bool },
-    ListEmpty { state: StateId, expected: bool },
+    Bool {
+        state: StateId,
+        expected: bool,
+    },
+    ListEmpty {
+        state: StateId,
+        expected: bool,
+    },
+    Equals {
+        state: StateId,
+        value: StateValue,
+        expected: bool,
+    },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Int(i64),
     Bool(bool),
@@ -191,11 +221,12 @@ pub enum Value {
     Object(Vec<(String, Value)>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Action {
     Increment { state: StateId, by: i64 },
     SetInt { state: StateId, value: i64 },
     SetBool { state: StateId, value: bool },
+    SetString { state: StateId, value: String },
     Toggle { state: StateId },
     SetList { state: StateId, value: Value },
     AppendList { state: StateId, value: Value },
@@ -203,4 +234,6 @@ pub enum Action {
     ReplaceListItem { state: StateId, value: Value },
     ClearList { state: StateId },
     Navigate { path: String, source: SourceSpan },
+    Back,
+    Sequence(Vec<Action>),
 }

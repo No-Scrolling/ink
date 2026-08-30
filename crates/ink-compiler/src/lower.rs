@@ -18,11 +18,12 @@ use crate::{
     diagnostic::CompileError,
     ir::{
         Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, Route, SourceSpan,
-        State, StateId, StateValue, Tab, TextAlignment, TextPart, Tone, Value,
+        State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment, TextPart, Tone,
+        Value,
     },
 };
 
-const INK_IMPORTS: [&str; 13] = [
+const INK_IMPORTS: [&str; 16] = [
     "Button",
     "Icon",
     "Image",
@@ -35,28 +36,27 @@ const INK_IMPORTS: [&str; 13] = [
     "Text",
     "TextInput",
     "Toggle",
+    "back",
+    "persistedState",
+    "sharedState",
     "state",
 ];
 
 #[derive(Clone, PartialEq, Eq)]
-enum StateKind {
-    Int,
-    Bool,
-    String,
-    List(Box<StateKind>),
-    Object(BTreeMap<String, StateKind>),
-}
-
-#[derive(Clone, PartialEq, Eq)]
 struct StateBinding {
     id: StateId,
-    kind: StateKind,
+    kind: StateShape,
 }
 
 #[derive(Clone, Copy)]
 struct ItemBinding<'a> {
     name: &'a str,
-    kind: &'a StateKind,
+    kind: &'a StateShape,
+}
+
+enum BooleanValue {
+    Literal(bool),
+    Dynamic(Condition),
 }
 
 pub enum ModuleKind {
@@ -267,7 +267,6 @@ fn lower_function(
                         declaration.span,
                     ));
                 }
-                require_import(imports, "state", declaration.span)?;
                 for declarator in &declaration.declarations {
                     let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
                         return Err(CompileError::new(
@@ -275,12 +274,13 @@ fn lower_function(
                             declarator.id.span(),
                         ));
                     };
-                    let (initial, kind) =
+                    let (initial, kind, lifetime, constructor) =
                         state_initialiser(declarator.init.as_ref(), declarator.span)?;
+                    require_import(imports, constructor, declarator.span)?;
                     let name = binding.name.as_str();
                     let binding = StateBinding {
                         id: StateId(states.len()),
-                        kind,
+                        kind: kind.clone(),
                     };
                     if state_names.insert(name, binding).is_some() {
                         return Err(CompileError::new(
@@ -288,7 +288,15 @@ fn lower_function(
                             declarator.span,
                         ));
                     }
-                    states.push(State { initial });
+                    states.push(State {
+                        initial,
+                        shape: kind,
+                        lifetime,
+                        source: SourceSpan {
+                            path: imports.source_path.clone(),
+                            span: declarator.span,
+                        },
+                    });
                 }
             }
             Statement::ReturnStatement(statement) if root.is_none() => {
@@ -355,26 +363,76 @@ fn lower_function(
 fn state_initialiser(
     initialiser: Option<&Expression<'_>>,
     span: Span,
-) -> Result<(StateValue, StateKind), CompileError> {
+) -> Result<(StateValue, StateShape, StateLifetime, &'static str), CompileError> {
     let Some(Expression::CallExpression(call)) = initialiser else {
         return Err(CompileError::new(
-            "state must be initialised with state(value)",
+            "state must be initialised with state(value), sharedState(key, value) or persistedState(key, value)",
             span,
         ));
     };
     let Expression::Identifier(callee) = &call.callee else {
         return Err(CompileError::new(
-            "expected state(value)",
+            "expected an Ink state constructor",
             call.callee.span(),
         ));
     };
-    if callee.name.as_str() != "state" || call.arguments.len() != 1 {
-        return Err(CompileError::new("expected state(value)", call.span));
-    }
-    let Some(value) = call.arguments[0].as_expression() else {
+    let constructor = callee.name.as_str();
+    let (value_index, lifetime, constructor) = match constructor {
+        "state" if call.arguments.len() == 1 => (0, StateLifetime::Local, "state"),
+        "sharedState" | "persistedState" if call.arguments.len() == 2 => {
+            let Some(Expression::StringLiteral(key)) = call.arguments[0].as_expression() else {
+                return Err(CompileError::new(
+                    format!("{constructor} key must be a string literal"),
+                    call.arguments[0].span(),
+                ));
+            };
+            let key_span = key.span;
+            let key = key.value.as_str();
+            if key.is_empty() || key.len() > 128 || key.chars().any(char::is_control) {
+                return Err(CompileError::new(
+                    "state keys must be 1–128 bytes and contain no control characters",
+                    key_span,
+                ));
+            }
+            let lifetime = if constructor == "sharedState" {
+                StateLifetime::Shared(key.to_owned())
+            } else {
+                StateLifetime::Persisted(key.to_owned())
+            };
+            (
+                1,
+                lifetime,
+                if constructor == "sharedState" {
+                    "sharedState"
+                } else {
+                    "persistedState"
+                },
+            )
+        }
+        "state" => return Err(CompileError::new("expected state(value)", call.span)),
+        "sharedState" => {
+            return Err(CompileError::new(
+                "expected sharedState(key, value)",
+                call.span,
+            ));
+        }
+        "persistedState" => {
+            return Err(CompileError::new(
+                "expected persistedState(key, value)",
+                call.span,
+            ));
+        }
+        _ => {
+            return Err(CompileError::new(
+                "expected an Ink state constructor",
+                call.span,
+            ));
+        }
+    };
+    let Some(value) = call.arguments[value_index].as_expression() else {
         return Err(CompileError::new(
             "state values cannot use spread syntax",
-            call.arguments[0].span(),
+            call.arguments[value_index].span(),
         ));
     };
     let value = literal_state_value(value)?;
@@ -405,16 +463,20 @@ fn state_initialiser(
                 "empty list state needs an explicit array type",
                 call.span,
             )
-            .with_help("state<{ name: string }[]>([])"));
+            .with_help(match &lifetime {
+                StateLifetime::Local => "state<{ name: string }[]>([])",
+                StateLifetime::Shared(_) => "sharedState<{ name: string }[]>(\"items\", [])",
+                StateLifetime::Persisted(_) => "persistedState<{ name: string }[]>(\"items\", [])",
+            }));
         }
     };
-    if matches!(&kind, StateKind::Object(_)) {
+    if matches!(&kind, StateShape::Object(_)) {
         return Err(CompileError::new(
             "state supports scalar values and lists",
             call.span,
         ));
     }
-    Ok((value, kind))
+    Ok((value, kind, lifetime, constructor))
 }
 
 fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileError> {
@@ -492,31 +554,31 @@ fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileErro
     }
 }
 
-fn state_kind(value: &StateValue) -> Option<StateKind> {
+fn state_kind(value: &StateValue) -> Option<StateShape> {
     match value {
-        StateValue::Int(_) => Some(StateKind::Int),
-        StateValue::Bool(_) => Some(StateKind::Bool),
-        StateValue::String(_) => Some(StateKind::String),
+        StateValue::Int(_) => Some(StateShape::Int),
+        StateValue::Bool(_) => Some(StateShape::Bool),
+        StateValue::String(_) => Some(StateShape::String),
         StateValue::List(values) => values
             .first()
             .and_then(state_kind)
-            .map(|kind| StateKind::List(Box::new(kind))),
+            .map(|kind| StateShape::List(Box::new(kind))),
         StateValue::Object(values) => {
             let fields = values
                 .iter()
                 .map(|(name, value)| Some((name.clone(), state_kind(value)?)))
                 .collect::<Option<_>>()?;
-            Some(StateKind::Object(fields))
+            Some(StateShape::Object(fields))
         }
     }
 }
 
-fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateKind, CompileError> {
+fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateShape, CompileError> {
     match kind {
-        TSType::TSNumberKeyword(_) => Ok(StateKind::Int),
-        TSType::TSBooleanKeyword(_) => Ok(StateKind::Bool),
-        TSType::TSStringKeyword(_) => Ok(StateKind::String),
-        TSType::TSArrayType(array) => Ok(StateKind::List(Box::new(state_kind_from_type(
+        TSType::TSNumberKeyword(_) => Ok(StateShape::Int),
+        TSType::TSBooleanKeyword(_) => Ok(StateShape::Bool),
+        TSType::TSStringKeyword(_) => Ok(StateShape::String),
+        TSType::TSArrayType(array) => Ok(StateShape::List(Box::new(state_kind_from_type(
             &array.element_type,
         )?))),
         TSType::TSParenthesizedType(parenthesised) => {
@@ -554,7 +616,7 @@ fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateKind, CompileError> {
                     ));
                 }
             }
-            Ok(StateKind::Object(fields))
+            Ok(StateShape::Object(fields))
         }
         _ => Err(CompileError::new(
             "state types use number, boolean, string, arrays and object literals",
@@ -717,7 +779,7 @@ fn lower_text_input(
         Some("done") => crate::ir::TextInputAction::Done,
         Some(_) => return invalid_value(element, "action", "search, return or done"),
     };
-    let state = state_attribute(element, "value", states, StateKind::String)?;
+    let state = state_attribute(element, "value", states, StateShape::String)?;
     text_change_attribute(element, "onChange", &state, states)?;
     reject_other_attributes(element, &["placeholder", "value", "onChange", "action"])?;
     if !element_children(element)?.is_empty() {
@@ -759,17 +821,25 @@ fn lower_button(
                 },
             })
         }
-        None => optional_action_attribute(element, "onPress", states, item)?,
+        None => optional_button_action_attribute(element, states, imports, item)?,
     };
     let icon = optional_icon_attribute(element, "icon")?;
-    let underline = boolean_attribute(element, "underline")?;
+    let underline = button_underline(element, states)?;
     reject_other_attributes(element, &["onPress", "href", "icon", "underline"])?;
     let label = lower_text_parts(element, states, item, "Button")?;
-    Ok(Node::Button {
+    let button = |label, action, underline| Node::Button {
         label,
-        icon,
+        icon: icon.clone(),
         underline,
         action,
+    };
+    Ok(match underline {
+        BooleanValue::Literal(underline) => button(label, action, underline),
+        BooleanValue::Dynamic(condition) => Node::Conditional {
+            condition,
+            consequent: Box::new(button(label.clone(), action.clone(), true)),
+            alternate: Some(Box::new(button(label, action, false))),
+        },
     })
 }
 
@@ -819,7 +889,7 @@ fn lower_toggle(
     states: &HashMap<&str, StateBinding>,
 ) -> Result<Node, CompileError> {
     let label = required_string_attribute(element, "label")?;
-    let state = state_attribute(element, "value", states, StateKind::Bool)?;
+    let state = state_attribute(element, "value", states, StateShape::Bool)?;
     let action = action_attribute(element, "onChange", states, None)?;
     reject_other_attributes(element, &["label", "value", "onChange"])?;
     if !element_children(element)?.is_empty() {
@@ -840,7 +910,7 @@ fn lower_tabs(
     states: &HashMap<&str, StateBinding>,
     imports: &Imports,
 ) -> Result<Node, CompileError> {
-    let state = state_attribute(element, "value", states, StateKind::Int)?;
+    let state = state_attribute(element, "value", states, StateShape::Int)?;
     reject_other_attributes(element, &["value"])?;
     require_import(imports, "Tab", element.span)?;
     let mut tabs = Vec::new();
@@ -1163,6 +1233,43 @@ fn condition(
             condition(&expression.argument, states).map(invert_condition)
         }
         Expression::BinaryExpression(expression) => {
+            let is_length = matches!(
+                unparenthesised(&expression.left),
+                Expression::StaticMemberExpression(member)
+                    if member.property.name.as_str() == "length"
+            );
+            if !is_length {
+                let binding = expression_state_value(&expression.left, states)?;
+                if !scalar_kind(&binding.kind) {
+                    return Err(CompileError::new(
+                        "state comparisons support numbers, booleans and strings",
+                        expression.span,
+                    ));
+                }
+                let value = literal_state_value(unparenthesised(&expression.right))?;
+                if state_kind(&value).as_ref() != Some(&binding.kind) {
+                    return Err(CompileError::new(
+                        "the comparison value must match the state type",
+                        expression.right.span(),
+                    ));
+                }
+                let expected = match expression.operator {
+                    BinaryOperator::Equality | BinaryOperator::StrictEquality => true,
+                    BinaryOperator::Inequality | BinaryOperator::StrictInequality => false,
+                    _ => {
+                        return Err(CompileError::new(
+                            "state comparisons use === or !==",
+                            expression.span,
+                        ));
+                    }
+                };
+                return Ok(Condition::Equals {
+                    state: binding.id,
+                    value,
+                    expected,
+                });
+            }
+
             let state = list_length_state(&expression.left, states)?;
             let Expression::NumericLiteral(value) = unparenthesised(&expression.right) else {
                 return Err(CompileError::new(
@@ -1192,7 +1299,7 @@ fn condition(
         }
         expression => {
             let binding = expression_state_value(expression, states)?;
-            if binding.kind != StateKind::Bool {
+            if binding.kind != StateShape::Bool {
                 return Err(CompileError::new(
                     "conditional state must be boolean",
                     expression.span(),
@@ -1206,7 +1313,7 @@ fn condition(
     }
 }
 
-const fn invert_condition(condition: Condition) -> Condition {
+fn invert_condition(condition: Condition) -> Condition {
     match condition {
         Condition::Bool { state, expected } => Condition::Bool {
             state,
@@ -1214,6 +1321,15 @@ const fn invert_condition(condition: Condition) -> Condition {
         },
         Condition::ListEmpty { state, expected } => Condition::ListEmpty {
             state,
+            expected: !expected,
+        },
+        Condition::Equals {
+            state,
+            value,
+            expected,
+        } => Condition::Equals {
+            state,
+            value,
             expected: !expected,
         },
     }
@@ -1233,7 +1349,7 @@ fn list_length_state(
         return Err(CompileError::new("expected list.value.length", length.span));
     }
     let binding = expression_state_value(&length.object, states)?;
-    if !matches!(binding.kind, StateKind::List(_)) {
+    if !matches!(binding.kind, StateShape::List(_)) {
         return Err(CompileError::new(
             "length requires list state",
             expression.span(),
@@ -1285,7 +1401,7 @@ fn lower_collection(
         ));
     }
     let binding = expression_state_value(&map.object, states)?;
-    let StateKind::List(item_kind) = &binding.kind else {
+    let StateShape::List(item_kind) = &binding.kind else {
         return Err(CompileError::new(
             "map requires list state",
             map.object.span(),
@@ -1370,17 +1486,91 @@ fn action_attribute(
     lower_action(&function.body, states, item)
 }
 
-fn optional_action_attribute(
+fn optional_button_action_attribute(
     element: &JSXElement<'_>,
-    name: &str,
     states: &HashMap<&str, StateBinding>,
+    imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Option<Action>, CompileError> {
-    if attribute(element, name).is_none() {
-        Ok(None)
-    } else {
-        action_attribute(element, name, states, item).map(Some)
+    let Some(attribute) = attribute(element, "onPress") else {
+        return Ok(None);
+    };
+    let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
+        return Err(CompileError::new(
+            "onPress must be an arrow function",
+            attribute.span,
+        ));
+    };
+    let JSXExpression::ArrowFunctionExpression(function) = &container.expression else {
+        return Err(CompileError::new(
+            "onPress must be an arrow function",
+            container.span,
+        ));
+    };
+    if function.r#async || function.params.rest.is_some() || !function.params.items.is_empty() {
+        return Err(CompileError::new(
+            "onPress must be a synchronous zero-argument arrow function",
+            function.span,
+        ));
     }
+
+    let actions = match &function.body {
+        ArrowFunctionBody::CallExpression(call) => {
+            vec![lower_button_call(call, states, imports, item)?]
+        }
+        ArrowFunctionBody::FunctionBody(body) => body
+            .statements
+            .iter()
+            .map(|statement| {
+                let Statement::ExpressionStatement(statement) = statement else {
+                    return Err(CompileError::new(
+                        "button actions contain state mutations and back()",
+                        statement.span(),
+                    ));
+                };
+                let Expression::CallExpression(call) = unparenthesised(&statement.expression)
+                else {
+                    return Err(CompileError::new(
+                        "button actions contain state mutations and back()",
+                        statement.span,
+                    ));
+                };
+                lower_button_call(call, states, imports, item)
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => {
+            return Err(CompileError::new(
+                "button actions contain state mutations and back()",
+                function.body.span(),
+            ));
+        }
+    };
+    match actions.as_slice() {
+        [] => Err(CompileError::new(
+            "button actions cannot be empty",
+            function.body.span(),
+        )),
+        [action] => Ok(Some(action.clone())),
+        _ => Ok(Some(Action::Sequence(actions))),
+    }
+}
+
+fn lower_button_call(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &Imports,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Action, CompileError> {
+    if let Expression::Identifier(callee) = &call.callee
+        && callee.name.as_str() == "back"
+    {
+        require_import(imports, "back", call.span)?;
+        if !call.arguments.is_empty() || call.type_arguments.is_some() {
+            return Err(CompileError::new("back() takes no arguments", call.span));
+        }
+        return Ok(Action::Back);
+    }
+    lower_state_action(call, states, item)
 }
 
 fn text_change_attribute(
@@ -1470,6 +1660,14 @@ fn lower_action(
             body.span(),
         ));
     };
+    lower_state_action(call, states, item)
+}
+
+fn lower_state_action(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Action, CompileError> {
     let Expression::StaticMemberExpression(callee) = &call.callee else {
         return Err(CompileError::new(
             "expected a state mutation",
@@ -1489,7 +1687,7 @@ fn lower_action(
         .ok_or_else(|| CompileError::new(format!("unknown state {name}"), state_object.span))?;
 
     let method = callee.property.name.as_str();
-    let StateKind::List(item_kind) = &binding.kind else {
+    let StateShape::List(item_kind) = &binding.kind else {
         if method != "set" || call.arguments.len() != 1 {
             return Err(CompileError::new("expected state.set(...)", call.span));
         }
@@ -1577,15 +1775,23 @@ fn lower_scalar_set(
     states: &HashMap<&str, StateBinding>,
 ) -> Result<Action, CompileError> {
     match &call.arguments[0] {
-        Argument::NumericLiteral(value) if binding.kind == StateKind::Int => Ok(Action::SetInt {
+        Argument::NumericLiteral(value) if binding.kind == StateShape::Int => Ok(Action::SetInt {
             state: binding.id,
             value: integer(value.value, value.span, "state value")?,
         }),
-        Argument::BooleanLiteral(value) if binding.kind == StateKind::Bool => Ok(Action::SetBool {
-            state: binding.id,
-            value: value.value,
-        }),
-        Argument::BinaryExpression(value) if binding.kind == StateKind::Int => {
+        Argument::BooleanLiteral(value) if binding.kind == StateShape::Bool => {
+            Ok(Action::SetBool {
+                state: binding.id,
+                value: value.value,
+            })
+        }
+        Argument::StringLiteral(value) if binding.kind == StateShape::String => {
+            Ok(Action::SetString {
+                state: binding.id,
+                value: value.value.to_string(),
+            })
+        }
+        Argument::BinaryExpression(value) if binding.kind == StateShape::Int => {
             let read_state = expression_state_value(&value.left, states)?;
             if read_state.id != binding.id {
                 return Err(CompileError::new(
@@ -1616,7 +1822,7 @@ fn lower_scalar_set(
             })
         }
         Argument::UnaryExpression(value)
-            if value.operator == UnaryOperator::LogicalNot && binding.kind == StateKind::Bool =>
+            if value.operator == UnaryOperator::LogicalNot && binding.kind == StateShape::Bool =>
         {
             let read_state = expression_state_value(&value.argument, states)?;
             if read_state.id != binding.id {
@@ -1636,7 +1842,7 @@ fn lower_scalar_set(
 
 fn require_current_item(
     expression: &Expression<'_>,
-    expected: &StateKind,
+    expected: &StateShape,
     item: Option<ItemBinding<'_>>,
 ) -> Result<(), CompileError> {
     let Some(item) = item else {
@@ -1656,7 +1862,7 @@ fn require_current_item(
 
 fn lower_value(
     expression: &Expression<'_>,
-    expected: &StateKind,
+    expected: &StateShape,
     states: &HashMap<&str, StateBinding>,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Value, CompileError> {
@@ -1689,14 +1895,14 @@ fn lower_value(
         return Ok(Value::State(binding.id));
     }
     match (expression, expected) {
-        (Expression::NumericLiteral(value), StateKind::Int) => {
+        (Expression::NumericLiteral(value), StateShape::Int) => {
             Ok(Value::Int(integer(value.value, value.span, "state value")?))
         }
-        (Expression::BooleanLiteral(value), StateKind::Bool) => Ok(Value::Bool(value.value)),
-        (Expression::StringLiteral(value), StateKind::String) => {
+        (Expression::BooleanLiteral(value), StateShape::Bool) => Ok(Value::Bool(value.value)),
+        (Expression::StringLiteral(value), StateShape::String) => {
             Ok(Value::String(value.value.to_string()))
         }
-        (Expression::ArrayExpression(array), StateKind::List(item_kind)) => {
+        (Expression::ArrayExpression(array), StateShape::List(item_kind)) => {
             let values = array
                 .elements
                 .iter()
@@ -1712,7 +1918,7 @@ fn lower_value(
                 .collect::<Result<_, _>>()?;
             Ok(Value::List(values))
         }
-        (Expression::ObjectExpression(object), StateKind::Object(fields)) => {
+        (Expression::ObjectExpression(object), StateShape::Object(fields)) => {
             let mut values = Vec::with_capacity(object.properties.len());
             let mut seen = HashSet::new();
             for property in &object.properties {
@@ -1766,7 +1972,7 @@ fn state_attribute<'a>(
     element: &JSXElement<'a>,
     name: &str,
     states: &HashMap<&str, StateBinding>,
-    expected: StateKind,
+    expected: StateShape,
 ) -> Result<StateBinding, CompileError> {
     let attribute = attribute(element, name).ok_or_else(|| {
         CompileError::new(
@@ -1960,6 +2166,34 @@ fn boolean_attribute(element: &JSXElement<'_>, name: &str) -> Result<bool, Compi
     }
 }
 
+fn button_underline(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<BooleanValue, CompileError> {
+    let Some(attribute) = attribute(element, "underline") else {
+        return Ok(BooleanValue::Literal(false));
+    };
+    match &attribute.value {
+        None => Ok(BooleanValue::Literal(true)),
+        Some(JSXAttributeValue::ExpressionContainer(container)) => {
+            if let JSXExpression::BooleanLiteral(value) = &container.expression {
+                return Ok(BooleanValue::Literal(value.value));
+            }
+            let Some(expression) = container.expression.as_expression() else {
+                return Err(CompileError::new(
+                    "underline needs a boolean value",
+                    container.span,
+                ));
+            };
+            condition(expression, states).map(BooleanValue::Dynamic)
+        }
+        _ => Err(CompileError::new(
+            "underline needs a boolean value",
+            attribute.span,
+        )),
+    }
+}
+
 fn text_alignment(element: &JSXElement<'_>) -> Result<TextAlignment, CompileError> {
     match optional_string_attribute(element, "align")?.as_deref() {
         None | Some("start") => Ok(TextAlignment::Start),
@@ -2086,9 +2320,9 @@ fn item_path(expression: &Expression<'_>, name: &str) -> Option<Vec<String>> {
     }
 }
 
-fn kind_at_path<'a>(mut kind: &'a StateKind, path: &[String]) -> Option<&'a StateKind> {
+fn kind_at_path<'a>(mut kind: &'a StateShape, path: &[String]) -> Option<&'a StateShape> {
     for field in path {
-        let StateKind::Object(fields) = kind else {
+        let StateShape::Object(fields) = kind else {
             return None;
         };
         kind = fields.get(field)?;
@@ -2096,8 +2330,11 @@ fn kind_at_path<'a>(mut kind: &'a StateKind, path: &[String]) -> Option<&'a Stat
     Some(kind)
 }
 
-const fn scalar_kind(kind: &StateKind) -> bool {
-    matches!(kind, StateKind::Int | StateKind::Bool | StateKind::String)
+const fn scalar_kind(kind: &StateShape) -> bool {
+    matches!(
+        kind,
+        StateShape::Int | StateShape::Bool | StateShape::String
+    )
 }
 
 fn reject_other_attributes(element: &JSXElement<'_>, allowed: &[&str]) -> Result<(), CompileError> {

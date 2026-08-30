@@ -10,8 +10,9 @@ use quote::{format_ident, quote};
 use crate::{
     icons,
     ir::{
-        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, StateValue,
-        TextAlignment, TextInputAction, TextPart, Tone, Value,
+        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, State,
+        StateLifetime, StateShape, StateValue, TextAlignment, TextInputAction, TextPart, Tone,
+        Value,
     },
 };
 
@@ -22,15 +23,23 @@ const TAB_ICON_SIZE: f32 = 52.0;
 const TOGGLE_ICON_SIZE: f32 = 9.8;
 
 pub fn generate(app: &App, root: &Path) -> Result<String> {
-    let states = app.states.iter().map(|state| state_value(&state.initial));
+    let states = app.states.iter().map(state_definition);
+    let uses_persistence = app
+        .states
+        .iter()
+        .any(|state| matches!(state.lifetime, StateLifetime::Persisted(_)));
     let mut emitter = Emitter::new(root);
     let root = emitter.node(&app.root)?;
     let declarations = emitter.declarations;
     let tokens = quote! {
+        #[allow(unused_imports)]
         use ink_core::{
             Action, Alignment, AppDefinition, Axis, Condition, Justification, Mask, Node, StateId,
-            StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone, Value,
+            StateDefinition, StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone,
+            Value,
         };
+
+        pub const USES_PERSISTENCE: bool = #uses_persistence;
 
         #[rustfmt::skip]
         pub fn app() -> ink_core::AppDefinition {
@@ -358,6 +367,55 @@ fn state_value(value: &StateValue) -> TokenStream {
     }
 }
 
+fn state_definition(state: &State) -> TokenStream {
+    let initial = state_value(&state.initial);
+    match &state.lifetime {
+        StateLifetime::Local => quote! { StateDefinition::local(#initial) },
+        StateLifetime::Shared(_) => quote! { StateDefinition::shared(#initial) },
+        StateLifetime::Persisted(key) => {
+            let shape = state_shape(&state.shape);
+            let schema = hash_bytes(state_shape_name(&state.shape).as_bytes());
+            quote! { StateDefinition::persisted(#initial, #key, #schema, #shape) }
+        }
+    }
+}
+
+fn state_shape(shape: &StateShape) -> TokenStream {
+    match shape {
+        StateShape::Int => quote! { ink_core::StateShape::Int },
+        StateShape::Bool => quote! { ink_core::StateShape::Bool },
+        StateShape::String => quote! { ink_core::StateShape::String },
+        StateShape::List(item) => {
+            let item = state_shape(item);
+            quote! { ink_core::StateShape::List(Box::new(#item)) }
+        }
+        StateShape::Object(fields) => {
+            let fields = fields.iter().map(|(name, shape)| {
+                let shape = state_shape(shape);
+                quote! { (#name.to_owned(), #shape) }
+            });
+            quote! { ink_core::StateShape::Object(vec![#(#fields),*]) }
+        }
+    }
+}
+
+fn state_shape_name(shape: &StateShape) -> String {
+    match shape {
+        StateShape::Int => "int".to_owned(),
+        StateShape::Bool => "bool".to_owned(),
+        StateShape::String => "string".to_owned(),
+        StateShape::List(item) => format!("list<{}>", state_shape_name(item)),
+        StateShape::Object(fields) => {
+            let fields = fields
+                .iter()
+                .map(|(name, shape)| format!("{name}:{}", state_shape_name(shape)))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("object{{{fields}}}")
+        }
+    }
+}
+
 fn text_part(part: &TextPart) -> TokenStream {
     match part {
         TextPart::Literal(value) => quote! { TextPart::literal(#value) },
@@ -388,6 +446,10 @@ fn action_tokens(action: &Action) -> TokenStream {
         Action::SetBool { state, value } => {
             let id = state.0;
             quote! { Action::SetBool { state: StateId::new(#id), value: #value } }
+        }
+        Action::SetString { state, value } => {
+            let id = state.0;
+            quote! { Action::SetString { state: StateId::new(#id), value: #value.to_owned() } }
         }
         Action::Toggle { state } => {
             let id = state.0;
@@ -424,6 +486,11 @@ fn action_tokens(action: &Action) -> TokenStream {
         Action::Navigate { path, .. } => {
             quote! { Action::Navigate { path: #path.to_owned() } }
         }
+        Action::Back => quote! { Action::Back },
+        Action::Sequence(actions) => {
+            let actions = actions.iter().map(action_tokens);
+            quote! { Action::Sequence(vec![#(#actions),*]) }
+        }
     }
 }
 
@@ -436,6 +503,21 @@ fn condition_tokens(condition: &Condition) -> TokenStream {
         Condition::ListEmpty { state, expected } => {
             let id = state.0;
             quote! { Condition::ListEmpty { state: StateId::new(#id), expected: #expected } }
+        }
+        Condition::Equals {
+            state,
+            value,
+            expected,
+        } => {
+            let id = state.0;
+            let value = state_value(value);
+            quote! {
+                Condition::Equals {
+                    state: StateId::new(#id),
+                    value: #value,
+                    expected: #expected,
+                }
+            }
         }
     }
 }

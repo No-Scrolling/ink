@@ -1,10 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, bail};
 use oxc::{allocator::Allocator, parser::Parser, semantic::SemanticBuilder, span::SourceType};
 
 use crate::{
-    ir::{Action, App, Condition, Node, Route, State, StateId, Tab, TextPart, Value},
+    ir::{
+        Action, App, Condition, Node, Route, State, StateId, StateLifetime, Tab, TextPart, Value,
+    },
     lower::{self, ModuleKind},
 };
 
@@ -15,8 +20,14 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
     let mut compiler = Compiler {
         project_root,
         stack: Vec::new(),
+        states: Vec::new(),
+        keyed_states: HashMap::new(),
     };
-    let app = compiler.module(&entry, ModuleKind::App)?;
+    let root = compiler.module(&entry, ModuleKind::App)?;
+    let app = App {
+        states: compiler.states,
+        root,
+    };
     lower::validate_navigation(&app.root).map_err(|error| anyhow::anyhow!(error.render()))?;
     Ok(app)
 }
@@ -24,10 +35,12 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
 struct Compiler<'a> {
     project_root: &'a Path,
     stack: Vec<PathBuf>,
+    states: Vec<State>,
+    keyed_states: HashMap<String, StateId>,
 }
 
 impl Compiler<'_> {
-    fn module(&mut self, path: &Path, kind: ModuleKind) -> Result<App> {
+    fn module(&mut self, path: &Path, kind: ModuleKind) -> Result<Node> {
         if let Some(start) = self.stack.iter().position(|active| active == path) {
             let mut cycle = self.stack[start..]
                 .iter()
@@ -43,7 +56,7 @@ impl Compiler<'_> {
         result
     }
 
-    fn lower_and_expand(&mut self, path: &Path, kind: ModuleKind) -> Result<App> {
+    fn lower_and_expand(&mut self, path: &Path, kind: ModuleKind) -> Result<Node> {
         let source = std::fs::read_to_string(path)
             .with_context(|| format!("could not read {}", path.display()))?;
         let source_type = SourceType::from_path(path)
@@ -74,23 +87,61 @@ impl Compiler<'_> {
 
         let app = lower::lower(&parsed.program, self.project_root, path, kind)
             .map_err(|error| anyhow::anyhow!(error.render(path, &source)))?;
-        self.expand(app)
+        let mapping = app
+            .states
+            .into_iter()
+            .map(|state| self.register_state(state))
+            .collect::<Result<Vec<_>>>()?;
+        let mut root = app.root;
+        remap_node(&mut root, &mapping);
+        self.expand_node(root)
     }
 
-    fn expand(&mut self, app: App) -> Result<App> {
-        let mut states = app.states;
-        let root = self.expand_node(app.root, &mut states)?;
-        Ok(App { states, root })
+    fn register_state(&mut self, state: State) -> Result<StateId> {
+        let Some(key) = state_key(&state.lifetime) else {
+            let id = StateId(self.states.len());
+            self.states.push(state);
+            return Ok(id);
+        };
+        if let Some(id) = self.keyed_states.get(key).copied() {
+            let existing = &self.states[id.0];
+            if existing.lifetime != state.lifetime {
+                bail!(
+                    "state key {key:?} is declared as both shared and persisted in {} and {}",
+                    display_path(self.project_root, &existing.source.path),
+                    display_path(self.project_root, &state.source.path),
+                );
+            }
+            if existing.shape != state.shape {
+                bail!(
+                    "state key {key:?} has a different type in {} and {}",
+                    display_path(self.project_root, &existing.source.path),
+                    display_path(self.project_root, &state.source.path),
+                );
+            }
+            if existing.initial != state.initial {
+                bail!(
+                    "state key {key:?} has a different initial value in {} and {}",
+                    display_path(self.project_root, &existing.source.path),
+                    display_path(self.project_root, &state.source.path),
+                );
+            }
+            return Ok(id);
+        }
+        let id = StateId(self.states.len());
+        self.keyed_states.insert(key.to_owned(), id);
+        self.states.push(state);
+        Ok(id)
     }
 
-    fn expand_node(&mut self, node: Node, states: &mut Vec<State>) -> Result<Node> {
+    fn expand_node(&mut self, node: Node) -> Result<Node> {
         Ok(match node {
             Node::Screen {
                 children,
                 title,
                 centered,
             } => Node::Screen {
-                children: self.expand_nodes(children, states)?,
+                children: self.expand_nodes(children)?,
                 title,
                 centered,
             },
@@ -101,7 +152,7 @@ impl Compiler<'_> {
                 align,
                 justify,
             } => Node::Stack {
-                children: self.expand_nodes(children, states)?,
+                children: self.expand_nodes(children)?,
                 axis,
                 gap,
                 align,
@@ -115,7 +166,7 @@ impl Compiler<'_> {
                         Ok(Tab {
                             icon: tab.icon,
                             action: tab.action,
-                            screen: Box::new(self.expand_node(*tab.screen, states)?),
+                            screen: Box::new(self.expand_node(*tab.screen)?),
                         })
                     })
                     .collect::<Result<_>>()?,
@@ -126,7 +177,7 @@ impl Compiler<'_> {
                     .map(|route| {
                         Ok(Route {
                             path: route.path,
-                            screen: Box::new(self.expand_node(*route.screen, states)?),
+                            screen: Box::new(self.expand_node(*route.screen)?),
                         })
                     })
                     .collect::<Result<_>>()?,
@@ -137,21 +188,16 @@ impl Compiler<'_> {
                 alternate,
             } => Node::Conditional {
                 condition,
-                consequent: Box::new(self.expand_node(*consequent, states)?),
+                consequent: Box::new(self.expand_node(*consequent)?),
                 alternate: alternate
-                    .map(|node| self.expand_node(*node, states).map(Box::new))
+                    .map(|node| self.expand_node(*node).map(Box::new))
                     .transpose()?,
             },
             Node::ForEach { state, template } => Node::ForEach {
                 state,
-                template: Box::new(self.expand_node(*template, states)?),
+                template: Box::new(self.expand_node(*template)?),
             },
-            Node::ScreenModule { path } => {
-                let mut screen = self.module(&path, ModuleKind::Screen)?;
-                rebase_node(&mut screen.root, states.len());
-                states.extend(screen.states);
-                screen.root
-            }
+            Node::ScreenModule { path } => self.module(&path, ModuleKind::Screen)?,
             node @ (Node::Text { .. }
             | Node::TextInput { .. }
             | Node::Button { .. }
@@ -161,45 +207,62 @@ impl Compiler<'_> {
         })
     }
 
-    fn expand_nodes(&mut self, nodes: Vec<Node>, states: &mut Vec<State>) -> Result<Vec<Node>> {
+    fn expand_nodes(&mut self, nodes: Vec<Node>) -> Result<Vec<Node>> {
         nodes
             .into_iter()
-            .map(|node| self.expand_node(node, states))
+            .map(|node| self.expand_node(node))
             .collect()
     }
 }
 
-fn rebase_node(node: &mut Node, offset: usize) {
+fn state_key(lifetime: &StateLifetime) -> Option<&str> {
+    match lifetime {
+        StateLifetime::Local => None,
+        StateLifetime::Shared(key) | StateLifetime::Persisted(key) => Some(key),
+    }
+}
+
+fn remap_node(node: &mut Node, mapping: &[StateId]) {
     match node {
         Node::Screen { children, .. } | Node::Stack { children, .. } => {
             for child in children {
-                rebase_node(child, offset);
+                remap_node(child, mapping);
             }
         }
         Node::Text { parts, .. } => {
             for part in parts {
                 match part {
-                    TextPart::State(state) | TextPart::ListLength(state) => rebase(state, offset),
+                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
         }
-        Node::TextInput { state, .. } | Node::Toggle { state, .. } => rebase(state, offset),
-        Node::Button { action, .. } => {
+        Node::TextInput { state, .. } => remap(state, mapping),
+        Node::Toggle { state, action, .. } => {
+            remap(state, mapping);
+            remap_action(action, mapping);
+        }
+        Node::Button { label, action, .. } => {
+            for part in label {
+                match part {
+                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
+                    TextPart::Literal(_) | TextPart::Item(_) => {}
+                }
+            }
             if let Some(action) = action {
-                rebase_action(action, offset);
+                remap_action(action, mapping);
             }
         }
         Node::Tabs { state, tabs } => {
-            rebase(state, offset);
+            remap(state, mapping);
             for tab in tabs {
-                rebase_action(&mut tab.action, offset);
-                rebase_node(&mut tab.screen, offset);
+                remap_action(&mut tab.action, mapping);
+                remap_node(&mut tab.screen, mapping);
             }
         }
         Node::Navigator { routes } => {
             for route in routes {
-                rebase_node(&mut route.screen, offset);
+                remap_node(&mut route.screen, mapping);
             }
         }
         Node::Conditional {
@@ -208,61 +271,69 @@ fn rebase_node(node: &mut Node, offset: usize) {
             alternate,
         } => {
             match condition {
-                Condition::Bool { state, .. } | Condition::ListEmpty { state, .. } => {
-                    rebase(state, offset);
+                Condition::Bool { state, .. }
+                | Condition::ListEmpty { state, .. }
+                | Condition::Equals { state, .. } => {
+                    remap(state, mapping);
                 }
             }
-            rebase_node(consequent, offset);
+            remap_node(consequent, mapping);
             if let Some(alternate) = alternate {
-                rebase_node(alternate, offset);
+                remap_node(alternate, mapping);
             }
         }
         Node::ForEach { state, template } => {
-            rebase(state, offset);
-            rebase_node(template, offset);
+            remap(state, mapping);
+            remap_node(template, mapping);
         }
         Node::Icon { .. } | Node::Image { .. } => {}
-        Node::ScreenModule { .. } => unreachable!("nested screen modules are expanded first"),
+        Node::ScreenModule { .. } => {}
     }
 }
 
-fn rebase_action(action: &mut Action, offset: usize) {
+fn remap_action(action: &mut Action, mapping: &[StateId]) {
     match action {
         Action::Increment { state, .. }
         | Action::SetInt { state, .. }
         | Action::SetBool { state, .. }
+        | Action::SetString { state, .. }
         | Action::Toggle { state }
         | Action::ClearList { state }
-        | Action::RemoveListItem { state } => rebase(state, offset),
+        | Action::RemoveListItem { state } => remap(state, mapping),
         Action::SetList { state, value }
         | Action::AppendList { state, value }
         | Action::ReplaceListItem { state, value } => {
-            rebase(state, offset);
-            rebase_value(value, offset);
+            remap(state, mapping);
+            remap_value(value, mapping);
         }
-        Action::Navigate { .. } => {}
+        Action::Sequence(actions) => {
+            for action in actions {
+                remap_action(action, mapping);
+            }
+        }
+        Action::Navigate { .. } | Action::Back => {}
     }
 }
 
-fn rebase_value(value: &mut Value, offset: usize) {
+fn remap_value(value: &mut Value, mapping: &[StateId]) {
     match value {
-        Value::State(state) => rebase(state, offset),
+        Value::State(state) => remap(state, mapping),
         Value::List(values) => {
             for value in values {
-                rebase_value(value, offset);
+                remap_value(value, mapping);
             }
         }
         Value::Object(fields) => {
             for (_, value) in fields {
-                rebase_value(value, offset);
+                remap_value(value, mapping);
             }
         }
         Value::Int(_) | Value::Bool(_) | Value::String(_) | Value::Item(_) => {}
     }
 }
 
-fn rebase(state: &mut StateId, offset: usize) {
-    state.0 += offset;
+fn remap(state: &mut StateId, mapping: &[StateId]) {
+    *state = mapping[state.0];
 }
 
 fn display_path(root: &Path, path: &Path) -> String {

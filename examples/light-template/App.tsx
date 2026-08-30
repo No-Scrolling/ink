@@ -6,7 +6,7 @@ import Settings from "./screens/Settings";
 import Customise from "./screens/settings/Customise";
 import CustomiseInterface from "./screens/settings/CustomiseInterface";
 import DynamicUI from "./screens/settings/DynamicUI";
-import OptionExample from "./screens/settings/OptionExample";
+import TemperatureUnit from "./screens/settings/TemperatureUnit";
 import TextInputExample from "./screens/settings/TextInputExample";
 
 export default function LightTemplate() {
@@ -33,8 +33,8 @@ export default function LightTemplate() {
       <Route path="/settings/customise-interface">
         <CustomiseInterface />
       </Route>
-      <Route path="/settings/option-example">
-        <OptionExample />
+      <Route path="/settings/temperature-unit">
+        <TemperatureUnit />
       </Route>
       <Route path="/settings/text-input">
         <TextInputExample />

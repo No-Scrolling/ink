@@ -30,11 +30,11 @@ This is the app-author interface. It contains compile-time TypeScript declaratio
 
 ### `crates/ink-compiler`
 
-The compiler module hides TSX parsing, the local screen-module graph, restricted-language validation, typed lowering, Rust generation, diagnostics and app branding. `App.tsx` is the composition root; relative `.tsx` modules are zero-argument screens expanded at compile time, with state IDs rebased into the linked application. Its interface is one build input, a set of generated native artefacts and the native capabilities used by that app. Oxc is an implementation detail behind this seam.
+The compiler module hides TSX parsing, the local screen-module graph, restricted-language validation, typed lowering, Rust generation, diagnostics and app branding. `App.tsx` is the composition root; relative `.tsx` modules are zero-argument screens expanded at compile time. Local state receives a linked application ID, while matching shared and persisted keys link declarations in separate screens to one slot. Its interface is one build input, a set of generated native artefacts and the native capabilities used by that app. Oxc is an implementation detail behind this seam.
 
 ### `crates/ink-core`
 
-The core module owns app state, text focus and editing, route history, logical layout, clipping, scrolling, hit regions and input dispatch. `Screen` centralises the LP3 header, insets, type rhythm and overflow behaviour, `Tabs` owns bottom navigation, and `Navigator` owns a compact stack over compile-time routes. Header titles are centred between equal action slots, independent of the content insets below. Generated applications depend on this small construction interface rather than renderer or Android types.
+The core module owns app state, persisted-state encoding and hydration, text focus and editing, route history, logical layout, clipping, scrolling, hit regions and input dispatch. `Screen` centralises the LP3 header, insets, type rhythm and overflow behaviour, `Tabs` owns bottom navigation, and `Navigator` owns a compact stack over compile-time routes. Header titles are centred between equal action slots, independent of the content insets below. Generated applications depend on this small construction interface rather than renderer or Android types.
 
 ### `crates/ink-renderer-wgpu`
 
@@ -42,7 +42,7 @@ The renderer module consumes a clipped display list and owns the Vulkan surface,
 
 ### `platform/android`
 
-Android is an adapter. It supplies a surface, lifecycle, pointer events, text edits and system-back requests through a coarse JNI seam. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. The compiler detects `TextInput` and Gradle includes Ink's keyboard source set and resources only for those apps. The adapter builds its `Typeface` from the same static Public Sans bytes used by the renderer, exposed as a direct buffer rather than duplicated as an Android font resource. Rust still owns the text value and focus state.
+Android is an adapter. It supplies a surface, lifecycle, pointer events, text edits, system-back requests and app-private persistence through a coarse JNI seam. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. The compiler detects `TextInput` and Gradle includes Ink's keyboard source set and resources only for those apps. The adapter builds its `Typeface` from the same static Public Sans bytes used by the renderer, exposed as a direct buffer rather than duplicated as an Android font resource. Rust still owns the text value, focus state and persistence format.
 
 ### `examples`
 

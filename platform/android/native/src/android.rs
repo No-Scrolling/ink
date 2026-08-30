@@ -1,8 +1,10 @@
 use std::ffi::{CString, c_char, c_int};
+use std::io::Write;
+use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
-use ink_core::{Engine, PUBLIC_SANS, TextEdit, TextInputAction};
+use ink_core::{Engine, Hydration, PUBLIC_SANS, TextEdit, TextInputAction};
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
 use jni::objects::{JByteBuffer, JClass, JObject, JString};
@@ -23,6 +25,7 @@ unsafe extern "C" {
 
 struct AndroidEngine {
     engine: Engine,
+    state_path: PathBuf,
     surface: Option<AttachedSurface>,
 }
 
@@ -46,9 +49,33 @@ impl wgpu::rwh::HasDisplayHandle for AndroidWindow {
 }
 
 impl AndroidEngine {
-    fn new() -> Self {
+    fn new(state_path: PathBuf) -> Self {
+        let (engine, hydration) = if !generated_app::USES_PERSISTENCE {
+            (Engine::new(generated_app::app()), Hydration::Empty)
+        } else {
+            match std::fs::read(&state_path) {
+                Ok(bytes) => Engine::hydrate(generated_app::app(), &bytes),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    (Engine::new(generated_app::app()), Hydration::Empty)
+                }
+                Err(error) => {
+                    android_log(
+                        ANDROID_LOG_WARN,
+                        &format!("could not read persisted state: {error}"),
+                    );
+                    (Engine::new(generated_app::app()), Hydration::Empty)
+                }
+            }
+        };
+        if hydration == Hydration::Invalid {
+            android_log(
+                ANDROID_LOG_WARN,
+                "persisted state was invalid; using application defaults",
+            );
+        }
         Self {
-            engine: Engine::new(generated_app::app()),
+            engine,
+            state_path,
             surface: None,
         }
     }
@@ -181,11 +208,37 @@ impl AndroidEngine {
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    state_path: JString<'_>,
+) -> jlong {
+    let state_path = env
+        .with_env(|env| state_path.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    android_log(ANDROID_LOG_INFO, "created Ink engine");
+    Box::into_raw(Box::new(Mutex::new(AndroidEngine::new(PathBuf::from(
+        state_path,
+    ))))) as jlong
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeUsesPersistence(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
-) -> jlong {
-    android_log(ANDROID_LOG_INFO, "created Ink engine");
-    Box::into_raw(Box::new(Mutex::new(AndroidEngine::new()))) as jlong
+) -> jboolean {
+    generated_app::USES_PERSISTENCE as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePersist(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) {
+    let Some(engine) = engine(handle) else {
+        return;
+    };
+    persist(engine);
 }
 
 #[unsafe(no_mangle)]
@@ -349,7 +402,47 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDestroy(
         return;
     };
     unsafe {
-        drop(Box::from_raw(pointer.as_ptr()));
+        let engine = Box::from_raw(pointer.as_ptr());
+        persist(&engine);
+        drop(engine);
+    }
+}
+
+fn persist(engine: &Mutex<AndroidEngine>) {
+    if !generated_app::USES_PERSISTENCE {
+        return;
+    }
+    let (path, revision, bytes) = {
+        let Ok(engine) = engine.lock() else {
+            return;
+        };
+        let snapshot = match engine.engine.persisted_snapshot() {
+            Ok(Some(snapshot)) => snapshot,
+            Ok(None) => return,
+            Err(error) => {
+                android_log(ANDROID_LOG_WARN, &error.to_string());
+                return;
+            }
+        };
+        (engine.state_path.clone(), snapshot.0, snapshot.1)
+    };
+    let temporary = path.with_extension("tmp");
+    let result = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&temporary)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, &path)
+    })();
+    match result {
+        Ok(()) => {
+            if let Ok(mut engine) = engine.lock() {
+                engine.engine.persistence_saved(revision);
+            }
+        }
+        Err(error) => android_log(
+            ANDROID_LOG_WARN,
+            &format!("could not save persisted state: {error}"),
+        ),
     }
 }
 

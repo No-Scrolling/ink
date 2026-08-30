@@ -3,6 +3,11 @@ use std::fmt;
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use unicode_segmentation::UnicodeSegmentation;
 
+mod persistence;
+
+pub use persistence::PersistenceTooLarge;
+use persistence::{decode_persisted_state, encode_persisted_state};
+
 pub const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
 pub const APPLE_EMOJI_ATLAS: ImageAsset = ImageAsset::new(
     0x6170_706c_655f_656d,
@@ -15,6 +20,7 @@ const DEFAULT_TEXT_SIZE: f32 = 30.0;
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
 const TEXT_INPUT_HEIGHT: f32 = 38.0;
 const TEXT_INPUT_BOTTOM_PADDING: f32 = 6.0;
+const CONTROL_LINE_HEIGHT: f32 = 1.0;
 const DEFAULT_ICON_SIZE: f32 = 28.0;
 const BUTTON_HEIGHT: f32 = 40.0;
 const BUTTON_ICON_SIZE: f32 = 30.0;
@@ -67,6 +73,38 @@ pub enum StateValue {
     Object(Vec<(String, StateValue)>),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StateShape {
+    Int,
+    Bool,
+    String,
+    List(Box<StateShape>),
+    Object(Vec<(String, StateShape)>),
+}
+
+impl StateShape {
+    fn accepts(&self, value: &StateValue) -> bool {
+        match (self, value) {
+            (Self::Int, StateValue::Int(_))
+            | (Self::Bool, StateValue::Bool(_))
+            | (Self::String, StateValue::String(_)) => true,
+            (Self::List(item), StateValue::List(values)) => {
+                values.iter().all(|value| item.accepts(value))
+            }
+            (Self::Object(fields), StateValue::Object(values)) => {
+                fields.len() == values.len()
+                    && fields.iter().all(|(name, shape)| {
+                        values
+                            .iter()
+                            .find(|(value_name, _)| value_name == name)
+                            .is_some_and(|(_, value)| shape.accepts(value))
+                    })
+            }
+            _ => false,
+        }
+    }
+}
+
 impl fmt::Display for StateValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -77,6 +115,56 @@ impl fmt::Display for StateValue {
             Self::Object(_) => formatter.write_str("object"),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StateDefinition {
+    initial: StateValue,
+    persisted: Option<PersistedState>,
+}
+
+impl StateDefinition {
+    pub fn local(initial: StateValue) -> Self {
+        Self {
+            initial,
+            persisted: None,
+        }
+    }
+
+    pub fn shared(initial: StateValue) -> Self {
+        Self::local(initial)
+    }
+
+    pub fn persisted(
+        initial: StateValue,
+        key: impl Into<String>,
+        schema: u64,
+        shape: StateShape,
+    ) -> Self {
+        Self {
+            initial,
+            persisted: Some(PersistedState {
+                key: key.into(),
+                schema,
+                shape,
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PersistedState {
+    key: String,
+    schema: u64,
+    shape: StateShape,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Hydration {
+    #[default]
+    Empty,
+    Restored,
+    Invalid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,6 +196,10 @@ pub enum Action {
     SetBool {
         state: StateId,
         value: bool,
+    },
+    SetString {
+        state: StateId,
+        value: String,
     },
     Toggle {
         state: StateId,
@@ -147,6 +239,28 @@ pub enum Action {
         path: String,
     },
     Back,
+    Sequence(Vec<Action>),
+}
+
+fn action_state(action: &Action) -> Option<StateId> {
+    match action {
+        Action::Increment { state, .. }
+        | Action::SetInt { state, .. }
+        | Action::SetBool { state, .. }
+        | Action::SetString { state, .. }
+        | Action::Toggle { state }
+        | Action::SetList { state, .. }
+        | Action::AppendList { state, .. }
+        | Action::RemoveCurrentListItem { state }
+        | Action::RemoveListItem { state, .. }
+        | Action::ReplaceCurrentListItem { state, .. }
+        | Action::ReplaceListItem { state, .. }
+        | Action::ClearList { state } => Some(*state),
+        Action::FocusTextInput { .. }
+        | Action::Navigate { .. }
+        | Action::Back
+        | Action::Sequence(_) => None,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -171,10 +285,21 @@ impl TextPart {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Condition {
-    Bool { state: StateId, expected: bool },
-    ListEmpty { state: StateId, expected: bool },
+    Bool {
+        state: StateId,
+        expected: bool,
+    },
+    ListEmpty {
+        state: StateId,
+        expected: bool,
+    },
+    Equals {
+        state: StateId,
+        value: StateValue,
+        expected: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -515,16 +640,13 @@ impl Route {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppDefinition {
-    initial_state: Vec<StateValue>,
+    states: Vec<StateDefinition>,
     root: Node,
 }
 
 impl AppDefinition {
-    pub fn new(initial_state: Vec<StateValue>, root: Node) -> Self {
-        Self {
-            initial_state,
-            root,
-        }
+    pub fn new(states: Vec<StateDefinition>, root: Node) -> Self {
+        Self { states, root }
     }
 }
 
@@ -642,6 +764,8 @@ struct MaterialisedItem<'a> {
 pub struct Engine {
     definition: AppDefinition,
     state: Vec<StateValue>,
+    persistence_revision: u64,
+    persistence_dirty: bool,
     viewport: Viewport,
     scene: Scene,
     hit_regions: Vec<HitRegion>,
@@ -665,7 +789,39 @@ struct Viewport {
 
 impl Engine {
     pub fn new(definition: AppDefinition) -> Self {
-        let state = definition.initial_state.clone();
+        Self::from_state(definition, None).0
+    }
+
+    pub fn hydrate(definition: AppDefinition, bytes: &[u8]) -> (Self, Hydration) {
+        Self::from_state(definition, Some(bytes))
+    }
+
+    fn from_state(definition: AppDefinition, bytes: Option<&[u8]>) -> (Self, Hydration) {
+        let mut state = definition
+            .states
+            .iter()
+            .map(|state| state.initial.clone())
+            .collect::<Vec<_>>();
+        let hydration = match bytes {
+            Some(bytes) if !bytes.is_empty() => match decode_persisted_state(bytes) {
+                Some(values) => {
+                    for (index, definition) in definition.states.iter().enumerate() {
+                        let Some(persisted) = &definition.persisted else {
+                            continue;
+                        };
+                        if let Some((schema, value)) = values.get(&persisted.key)
+                            && *schema == persisted.schema
+                            && persisted.shape.accepts(value)
+                        {
+                            state[index] = value.clone();
+                        }
+                    }
+                    Hydration::Restored
+                }
+                None => Hydration::Invalid,
+            },
+            _ => Hydration::Empty,
+        };
         let navigation = match &definition.root.kind {
             NodeKind::Navigator { routes, .. } => {
                 let root = routes
@@ -676,21 +832,51 @@ impl Engine {
             }
             _ => Vec::new(),
         };
-        Self {
-            definition,
-            state,
-            viewport: Viewport::default(),
-            scene: Scene::default(),
-            hit_regions: Vec::new(),
-            clip: Rect::default(),
-            scroll_offset: 0.0,
-            scroll_max: 0.0,
-            pointer: None,
-            focused_input: None,
-            focused_input_action: TextInputAction::default(),
-            navigation,
-            back_icon: None,
-            font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
+        (
+            Self {
+                definition,
+                state,
+                persistence_revision: 0,
+                persistence_dirty: false,
+                viewport: Viewport::default(),
+                scene: Scene::default(),
+                hit_regions: Vec::new(),
+                clip: Rect::default(),
+                scroll_offset: 0.0,
+                scroll_max: 0.0,
+                pointer: None,
+                focused_input: None,
+                focused_input_action: TextInputAction::default(),
+                navigation,
+                back_icon: None,
+                font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
+            },
+            hydration,
+        )
+    }
+
+    pub fn persisted_snapshot(&self) -> Result<Option<(u64, Vec<u8>)>, PersistenceTooLarge> {
+        if !self.persistence_dirty {
+            return Ok(None);
+        }
+        let revision = self.persistence_revision;
+        let values =
+            self.definition
+                .states
+                .iter()
+                .zip(&self.state)
+                .filter_map(|(definition, value)| {
+                    definition
+                        .persisted
+                        .as_ref()
+                        .map(|persisted| (persisted, value))
+                });
+        Ok(Some((revision, encode_persisted_state(values)?)))
+    }
+
+    pub fn persistence_saved(&mut self, revision: u64) {
+        if self.persistence_revision == revision {
+            self.persistence_dirty = false;
         }
     }
 
@@ -792,12 +978,14 @@ impl Engine {
         let Some(state) = self.focused_input else {
             return false;
         };
+        let mut mutated = false;
         let changed = match edit {
             TextEdit::Insert(text) if !text.chars().any(char::is_control) => {
                 let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
                     return false;
                 };
                 value.push_str(&text);
+                mutated = true;
                 true
             }
             TextEdit::Backspace => {
@@ -808,6 +996,7 @@ impl Engine {
                     return false;
                 };
                 value.truncate(last.0);
+                mutated = true;
                 true
             }
             TextEdit::Submit | TextEdit::Dismiss => {
@@ -817,6 +1006,9 @@ impl Engine {
             TextEdit::Insert(_) => false,
         };
         if changed {
+            if mutated {
+                self.mark_persisted(state);
+            }
             self.rebuild_scene();
         }
         changed
@@ -827,6 +1019,7 @@ impl Engine {
     }
 
     fn apply(&mut self, action: Action) -> bool {
+        let mutated_state = action_state(&action);
         match action {
             Action::Increment { state, by } => {
                 let Some(StateValue::Int(value)) = self.state.get_mut(state.0) else {
@@ -845,6 +1038,15 @@ impl Engine {
                 let Some(StateValue::Bool(current)) = self.state.get_mut(state.0) else {
                     return false;
                 };
+                *current = value;
+            }
+            Action::SetString { state, value } => {
+                let Some(StateValue::String(current)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                if *current == value {
+                    return false;
+                }
                 *current = value;
             }
             Action::Toggle { state } => {
@@ -939,8 +1141,30 @@ impl Engine {
                 self.focused_input = None;
             }
             Action::Back => return self.pop_route(),
+            Action::Sequence(actions) => {
+                let mut changed = false;
+                for action in actions {
+                    changed |= self.apply(action);
+                }
+                return changed;
+            }
+        }
+        if let Some(state) = mutated_state {
+            self.mark_persisted(state);
         }
         true
+    }
+
+    fn mark_persisted(&mut self, state: StateId) {
+        if self
+            .definition
+            .states
+            .get(state.0)
+            .is_some_and(|state| state.persisted.is_some())
+        {
+            self.persistence_revision = self.persistence_revision.wrapping_add(1);
+            self.persistence_dirty = true;
+        }
     }
 
     fn evaluate_value(&self, value: &Value) -> Option<StateValue> {
@@ -1288,6 +1512,16 @@ impl Engine {
                     Condition::ListEmpty { state, expected } => {
                         matches!(self.state.get(state.0), Some(StateValue::List(value)) if value.is_empty() == *expected)
                     }
+                    Condition::Equals {
+                        state,
+                        value,
+                        expected,
+                    } => {
+                        self.state
+                            .get(state.0)
+                            .is_some_and(|current| current == value)
+                            == *expected
+                    }
                 };
                 return if enabled {
                     self.materialise(consequent, item)
@@ -1363,6 +1597,12 @@ impl Engine {
                 index: item.expect("list action has a mapped item").index,
                 value: self.materialise_value(value, item),
             },
+            Action::Sequence(actions) => Action::Sequence(
+                actions
+                    .iter()
+                    .map(|action| self.materialise_action(action, item))
+                    .collect(),
+            ),
             action => action.clone(),
         }
     }
@@ -1682,12 +1922,13 @@ impl Engine {
             align: TextAlign::Start,
         });
         if underline {
+            let underline_height = self.control_line_height();
             self.scene.quads.push(Quad {
                 rect: Rect {
                     x: text_x,
-                    y: rect.y + rect.height - self.scaled(2.0),
+                    y: (rect.y + rect.height).round() - underline_height,
                     width: text_width.min(text_rect.width),
-                    height: self.scaled(1.0),
+                    height: underline_height,
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
@@ -1741,11 +1982,11 @@ impl Engine {
                 colour: Colour::WHITE,
             });
         }
-        let underline_height = self.scaled(1.0);
+        let underline_height = self.control_line_height();
         self.scene.quads.push(Quad {
             rect: Rect {
                 x: rect.x,
-                y: rect.y + rect.height - underline_height,
+                y: (rect.y + rect.height).round() - underline_height,
                 width: rect.width,
                 height: underline_height,
             },
@@ -1979,6 +2220,10 @@ impl Engine {
 
     fn scaled_font(&self, value: f32) -> f32 {
         self.scaled(value) * PUBLIC_SANS_RASTER_SCALE
+    }
+
+    fn control_line_height(&self) -> f32 {
+        self.scaled(CONTROL_LINE_HEIGHT).ceil().max(1.0)
     }
 
     fn push_hit_region(&mut self, rect: Rect, action: Action) {

@@ -7,6 +7,8 @@ import android.graphics.Typeface
 import android.graphics.fonts.Font
 import android.graphics.fonts.FontFamily
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.Surface
@@ -22,7 +24,9 @@ import android.widget.OverScroller
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import java.io.File
 import java.nio.ByteBuffer
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 class MainActivity : Activity(), SurfaceHolder.Callback {
@@ -35,6 +39,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
+    private val usesPersistence = nativeUsesPersistence()
+    private val persistenceHandler = Handler(Looper.getMainLooper())
+    private val persistenceExecutor by lazy(LazyThreadSafetyMode.NONE) {
+        Executors.newSingleThreadExecutor()
+    }
+    private val persistState = Runnable(::persistAsync)
     private val backCallback = OnBackInvokedCallback {
         handleBack()
     }
@@ -65,7 +75,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 
-        engineHandle = nativeCreate()
+        engineHandle = nativeCreate(File(noBackupFilesDir, "ink-state-v1").absolutePath)
         inkView = InkSurfaceView().apply {
             holder.setFormat(PixelFormat.RGBA_8888)
             holder.addCallback(this@MainActivity)
@@ -129,6 +139,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
+        if (usesPersistence) {
+            persistNow()
+            persistenceExecutor.shutdown()
+        }
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         detachSurface()
         if (engineHandle != 0L) {
@@ -136,6 +150,37 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             engineHandle = 0L
         }
         super.onDestroy()
+    }
+
+    override fun onPause() {
+        persistNow()
+        super.onPause()
+    }
+
+    private fun schedulePersistence() {
+        if (!usesPersistence) {
+            return
+        }
+        persistenceHandler.removeCallbacks(persistState)
+        persistenceHandler.postDelayed(persistState, PERSISTENCE_DELAY_MS)
+    }
+
+    private fun persistNow() {
+        if (!usesPersistence) {
+            return
+        }
+        persistenceHandler.removeCallbacks(persistState)
+        if (engineHandle != 0L) {
+            val handle = engineHandle
+            persistenceExecutor.submit { nativePersist(handle) }.get()
+        }
+    }
+
+    private fun persistAsync() {
+        if (usesPersistence && engineHandle != 0L) {
+            val handle = engineHandle
+            persistenceExecutor.execute { nativePersist(handle) }
+        }
     }
 
     private fun detachSurface() {
@@ -164,7 +209,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             TextEdit.Submit -> TEXT_INPUT_SUBMIT to null
             TextEdit.Dismiss -> TEXT_INPUT_DISMISS to null
         }
-        nativeTextInput(engineHandle, action, value)
+        if (nativeTextInput(engineHandle, action, value)) {
+            schedulePersistence()
+        }
         syncTextInput()
     }
 
@@ -233,7 +280,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             }
             if (engineHandle != 0L && surfaceAttached) {
-                nativePointer(engineHandle, event.actionMasked, event.x, event.y)
+                if (nativePointer(engineHandle, event.actionMasked, event.x, event.y)) {
+                    schedulePersistence()
+                }
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
                     syncTextInput()
                 }
@@ -285,13 +334,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_BACKSPACE = 1
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
+        private const val PERSISTENCE_DELAY_MS = 250L
 
         init {
             System.loadLibrary("ink_android")
         }
 
         @JvmStatic
-        private external fun nativeCreate(): Long
+        private external fun nativeCreate(statePath: String): Long
+
+        @JvmStatic
+        private external fun nativeUsesPersistence(): Boolean
+
+        @JvmStatic
+        private external fun nativePersist(handle: Long)
 
         @JvmStatic
         private external fun nativePublicSans(): ByteBuffer
