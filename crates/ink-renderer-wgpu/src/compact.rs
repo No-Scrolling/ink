@@ -501,23 +501,31 @@ impl Renderer {
         };
         surface.configure(&device, &config);
 
-        let shader = unsafe {
-            device.create_shader_module_passthrough(wgpu::ShaderModuleDescriptorPassthrough {
-                label: Some("Ink SPIR-V shader"),
-                entry_points: Cow::Borrowed(&[
-                    shader_entry_point("quad_vertex"),
-                    shader_entry_point("quad_fragment"),
-                    shader_entry_point("text_vertex"),
-                    shader_entry_point("text_fragment"),
-                    shader_entry_point("image_fragment"),
-                ]),
-                spirv: Some(wgpu::util::make_spirv_raw(include_bytes!(concat!(
-                    env!("OUT_DIR"),
-                    "/ink.spv"
-                )))),
-                ..Default::default()
-            })
-        };
+        let quad_vertex_shader = spirv_shader(
+            &device,
+            "quad_vertex",
+            include_bytes!(concat!(env!("OUT_DIR"), "/quad_vertex.spv")),
+        );
+        let quad_fragment_shader = spirv_shader(
+            &device,
+            "quad_fragment",
+            include_bytes!(concat!(env!("OUT_DIR"), "/quad_fragment.spv")),
+        );
+        let text_vertex_shader = spirv_shader(
+            &device,
+            "text_vertex",
+            include_bytes!(concat!(env!("OUT_DIR"), "/text_vertex.spv")),
+        );
+        let text_fragment_shader = spirv_shader(
+            &device,
+            "text_fragment",
+            include_bytes!(concat!(env!("OUT_DIR"), "/text_fragment.spv")),
+        );
+        let image_fragment_shader = spirv_shader(
+            &device,
+            "image_fragment",
+            include_bytes!(concat!(env!("OUT_DIR"), "/image_fragment.spv")),
+        );
         let glyph_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Ink glyph bind group layout"),
@@ -549,7 +557,7 @@ impl Renderer {
             label: Some("Ink quad pipeline"),
             layout: Some(&quad_layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module: &quad_vertex_shader,
                 entry_point: Some("quad_vertex"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
@@ -573,7 +581,7 @@ impl Renderer {
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module: &quad_fragment_shader,
                 entry_point: Some("quad_fragment"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(colour_target(format))],
@@ -590,7 +598,7 @@ impl Renderer {
             label: Some("Ink text pipeline"),
             layout: Some(&text_layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module: &text_vertex_shader,
                 entry_point: Some("text_vertex"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
@@ -619,7 +627,7 @@ impl Renderer {
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module: &text_fragment_shader,
                 entry_point: Some("text_fragment"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(colour_target(format))],
@@ -658,7 +666,7 @@ impl Renderer {
             label: Some("Ink image pipeline"),
             layout: Some(&image_layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module: &text_vertex_shader,
                 entry_point: Some("text_vertex"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
@@ -687,7 +695,7 @@ impl Renderer {
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module: &image_fragment_shader,
                 entry_point: Some("image_fragment"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(colour_target(format))],
@@ -999,6 +1007,21 @@ const fn shader_entry_point(name: &'static str) -> wgpu::PassthroughShaderEntryP
     wgpu::PassthroughShaderEntryPoint {
         name: Cow::Borrowed(name),
         workgroup_size: (0, 0, 0),
+    }
+}
+
+fn spirv_shader(
+    device: &wgpu::Device,
+    entry_point: &'static str,
+    spirv: &'static [u8],
+) -> wgpu::ShaderModule {
+    unsafe {
+        device.create_shader_module_passthrough(wgpu::ShaderModuleDescriptorPassthrough {
+            label: Some(entry_point),
+            entry_points: Cow::Owned(vec![shader_entry_point(entry_point)]),
+            spirv: Some(wgpu::util::make_spirv_raw(spirv)),
+            ..Default::default()
+        })
     }
 }
 

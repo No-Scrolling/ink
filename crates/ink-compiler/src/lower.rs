@@ -17,10 +17,10 @@ use oxc::{
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, AndroidPermission, App, Axis, Collection, Condition, Extension,
-        ImageFit, ImageSource, Justification, NativeOperation, Node, PayloadPart, Resource,
-        ResourceField, ResourceId, Route, SourceSpan, State, StateId, StateLifetime, StateShape,
-        StateValue, Tab, TextAlignment, TextPart, Tone, Value,
+        Action, Alignment, AndroidPermission, App, Axis, Collection, Condition, Controller,
+        ControllerId, Extension, ImageFit, ImageSource, Justification, NativeOperation, Node,
+        PayloadPart, Resource, ResourceField, ResourceId, Route, SourceSpan, State, StateId,
+        StateLifetime, StateShape, StateValue, Tab, TextAlignment, TextPart, Tone, Value,
     },
     resolver::ModuleResolver,
 };
@@ -69,10 +69,31 @@ struct ResourceInitialiser {
     android_permission: Option<AndroidPermission>,
 }
 
+struct ControllerBinding {
+    id: ControllerId,
+    kind: AudioControllerKind,
+    shape: StateShape,
+}
+
+struct ControllerValueBinding {
+    controller: ControllerId,
+    path: Vec<String>,
+    kind: StateShape,
+}
+
+struct ControllerInitialiser {
+    definition: Controller,
+    kind: AudioControllerKind,
+    initial: StateValue,
+    shape: StateShape,
+}
+
 #[derive(Default)]
 struct Bindings {
     states: HashMap<String, StateBinding>,
     resources: HashMap<String, ResourceBinding>,
+    controllers: HashMap<String, ControllerBinding>,
+    source_path: PathBuf,
 }
 
 impl Bindings {
@@ -86,6 +107,19 @@ enum ExtensionFunction {
     LightSdkVersion,
     LightSdkPermission,
     Json,
+    MicrophonePermission,
+    LevelMeter,
+    PitchDetector,
+    AudioPlayer,
+    AudioRecorder,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AudioControllerKind {
+    Level,
+    Pitch,
+    Player,
+    Recorder,
 }
 
 #[derive(Clone, Copy)]
@@ -204,6 +238,13 @@ fn validate_imports(
                             ExtensionFunction::LightSdkPermission
                         }
                         (Extension::Network, "json") => ExtensionFunction::Json,
+                        (Extension::Audio, "microphonePermission") => {
+                            ExtensionFunction::MicrophonePermission
+                        }
+                        (Extension::Audio, "levelMeter") => ExtensionFunction::LevelMeter,
+                        (Extension::Audio, "pitchDetector") => ExtensionFunction::PitchDetector,
+                        (Extension::Audio, "audioPlayer") => ExtensionFunction::AudioPlayer,
+                        (Extension::Audio, "audioRecorder") => ExtensionFunction::AudioRecorder,
                         _ => {
                             return Err(CompileError::new(
                                 format!("{imported} is not exported by this Ink extension"),
@@ -326,8 +367,12 @@ fn lower_function(
         .ok_or_else(|| CompileError::new("the app function needs a body", function.span))?;
     let mut states = Vec::new();
     let mut resources = Vec::new();
+    let mut controllers = Vec::new();
     let mut android_permissions = BTreeSet::new();
-    let mut state_names = Bindings::default();
+    let mut state_names = Bindings {
+        source_path: imports.source_path.clone(),
+        ..Bindings::default()
+    };
     let mut declared_names = HashSet::new();
     let mut root = None;
 
@@ -353,6 +398,40 @@ fn lower_function(
                             format!("{name} is declared twice"),
                             declarator.span,
                         ));
+                    }
+                    if let Some(mut controller) =
+                        controller_initialiser(declarator.init.as_ref(), imports)?
+                    {
+                        let state = StateId(states.len());
+                        let id = ControllerId(controllers.len());
+                        controller.definition.state = state;
+                        if matches!(
+                            controller.kind,
+                            AudioControllerKind::Level
+                                | AudioControllerKind::Pitch
+                                | AudioControllerKind::Recorder
+                        ) {
+                            android_permissions.insert(AndroidPermission::Microphone);
+                        }
+                        state_names.controllers.insert(
+                            name.to_owned(),
+                            ControllerBinding {
+                                id,
+                                kind: controller.kind,
+                                shape: controller.shape.clone(),
+                            },
+                        );
+                        states.push(State {
+                            initial: controller.initial,
+                            shape: controller.shape,
+                            lifetime: StateLifetime::Local,
+                            source: SourceSpan {
+                                path: imports.source_path.clone(),
+                                span: declarator.span,
+                            },
+                        });
+                        controllers.push(controller.definition);
+                        continue;
                     }
                     if let Some(resource) =
                         resource_initialiser(declarator.init.as_ref(), imports, &state_names)?
@@ -450,6 +529,7 @@ fn lower_function(
         ModuleKind::Screen => CompileError::new("a screen module must return <Screen>", body.span),
     })?;
     let scoped_resources = (0..resources.len()).map(ResourceId).collect::<Vec<_>>();
+    let scoped_controllers = (0..controllers.len()).map(ControllerId).collect::<Vec<_>>();
     let application_resources = match kind {
         ModuleKind::App => scoped_resources,
         ModuleKind::Screen => {
@@ -465,6 +545,8 @@ fn lower_function(
                         states,
                         resources,
                         application_resources: Vec::new(),
+                        controllers,
+                        application_controllers: Vec::new(),
                         root,
                     });
                 }
@@ -477,12 +559,31 @@ fn lower_function(
             Vec::new()
         }
     };
+    let application_controllers = match kind {
+        ModuleKind::App => scoped_controllers,
+        ModuleKind::Screen => {
+            let Node::Screen {
+                controllers: screen_controllers,
+                ..
+            } = &mut root
+            else {
+                return Err(CompileError::new(
+                    "a screen with native controllers must directly return <Screen>",
+                    body.span,
+                ));
+            };
+            *screen_controllers = scoped_controllers;
+            Vec::new()
+        }
+    };
     Ok(App {
         extensions: imports.extensions.clone(),
         android_permissions,
         states,
         resources,
         application_resources,
+        controllers,
+        application_controllers,
         root,
     })
 }
@@ -505,6 +606,12 @@ fn resource_initialiser(
     else {
         return Ok(None);
     };
+    if matches!(
+        function,
+        ExtensionFunction::LevelMeter | ExtensionFunction::PitchDetector
+    ) {
+        return Ok(None);
+    }
     if function != ExtensionFunction::Json && call.type_arguments.is_some() {
         return Err(CompileError::new(
             "Light SDK resources do not take type arguments",
@@ -562,8 +669,338 @@ fn resource_initialiser(
             }
         }
         ExtensionFunction::Json => network_json_resource(call, imports, states)?,
+        ExtensionFunction::MicrophonePermission => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "microphonePermission() takes no arguments",
+                    call.span,
+                ));
+            }
+            ResourceInitialiser {
+                definition: Resource {
+                    module: "audio".to_owned(),
+                    operation: "permission-status".to_owned(),
+                    payload: vec![PayloadPart::Literal(String::new())],
+                    shape: StateShape::String,
+                    timeout_ms: 10_000,
+                },
+                request: Some(NativeOperation {
+                    module: "audio".to_owned(),
+                    operation: "request-permission".to_owned(),
+                    payload: vec![PayloadPart::Literal(String::new())],
+                    timeout_ms: 10_000,
+                }),
+                android_permission: Some(AndroidPermission::Microphone),
+            }
+        }
+        ExtensionFunction::LevelMeter
+        | ExtensionFunction::PitchDetector
+        | ExtensionFunction::AudioPlayer
+        | ExtensionFunction::AudioRecorder => unreachable!(),
     };
     Ok(Some(resource))
+}
+
+fn controller_initialiser(
+    initialiser: Option<&Expression<'_>>,
+    imports: &Imports,
+) -> Result<Option<ControllerInitialiser>, CompileError> {
+    let Some(Expression::CallExpression(call)) = initialiser else {
+        return Ok(None);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(None);
+    };
+    let Some(function) = imports
+        .extension_functions
+        .get(callee.name.as_str())
+        .copied()
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        function,
+        ExtensionFunction::LevelMeter
+            | ExtensionFunction::PitchDetector
+            | ExtensionFunction::AudioPlayer
+            | ExtensionFunction::AudioRecorder
+    ) {
+        return Ok(None);
+    }
+    if call.type_arguments.is_some() {
+        return Err(CompileError::new(
+            "audio controllers do not take type arguments",
+            call.span,
+        ));
+    }
+
+    let (kind, config, shape, initial) = match function {
+        ExtensionFunction::LevelMeter => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "levelMeter() takes no arguments",
+                    call.span,
+                ));
+            }
+            let shape = object_shape([
+                ("status", StateShape::String),
+                ("rms", StateShape::Number),
+                ("peak", StateShape::Number),
+                ("error", StateShape::String),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("idle".to_owned())),
+                ("rms", StateValue::Number(0.0)),
+                ("peak", StateValue::Number(0.0)),
+                ("error", StateValue::String(String::new())),
+            ]);
+            (AudioControllerKind::Level, "{}".to_owned(), shape, initial)
+        }
+        ExtensionFunction::PitchDetector => {
+            let reference_hz = pitch_reference(call)?;
+            let shape = object_shape([
+                ("status", StateShape::String),
+                ("frequencyHz", StateShape::Number),
+                ("note", StateShape::String),
+                ("octave", StateShape::Number),
+                ("cents", StateShape::Number),
+                ("confidence", StateShape::Number),
+                ("error", StateShape::String),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("idle".to_owned())),
+                ("frequencyHz", StateValue::Number(0.0)),
+                ("note", StateValue::String(String::new())),
+                ("octave", StateValue::Number(0.0)),
+                ("cents", StateValue::Number(0.0)),
+                ("confidence", StateValue::Number(0.0)),
+                ("error", StateValue::String(String::new())),
+            ]);
+            (
+                AudioControllerKind::Pitch,
+                format!("{{\"referenceHz\":{reference_hz}}}"),
+                shape,
+                initial,
+            )
+        }
+        ExtensionFunction::AudioPlayer => {
+            let (usage, playback) = player_options(call)?;
+            let shape = object_shape([
+                ("status", StateShape::String),
+                ("id", StateShape::String),
+                ("src", StateShape::String),
+                ("title", StateShape::String),
+                ("artist", StateShape::String),
+                ("album", StateShape::String),
+                ("artwork", StateShape::String),
+                ("index", StateShape::Number),
+                ("positionMs", StateShape::Number),
+                ("durationMs", StateShape::Number),
+                ("bufferedMs", StateShape::Number),
+                ("speed", StateShape::Number),
+                ("errorKind", StateShape::String),
+                ("errorMessage", StateShape::String),
+                ("errorRetryable", StateShape::Bool),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("idle".to_owned())),
+                ("id", StateValue::String(String::new())),
+                ("src", StateValue::String(String::new())),
+                ("title", StateValue::String(String::new())),
+                ("artist", StateValue::String(String::new())),
+                ("album", StateValue::String(String::new())),
+                ("artwork", StateValue::String(String::new())),
+                ("index", StateValue::Number(-1.0)),
+                ("positionMs", StateValue::Number(0.0)),
+                ("durationMs", StateValue::Number(0.0)),
+                ("bufferedMs", StateValue::Number(0.0)),
+                ("speed", StateValue::Number(1.0)),
+                ("errorKind", StateValue::String(String::new())),
+                ("errorMessage", StateValue::String(String::new())),
+                ("errorRetryable", StateValue::Bool(false)),
+            ]);
+            (
+                AudioControllerKind::Player,
+                format!("{{\"usage\":\"{usage}\",\"playback\":\"{playback}\"}}"),
+                shape,
+                initial,
+            )
+        }
+        ExtensionFunction::AudioRecorder => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "audioRecorder() takes no arguments",
+                    call.span,
+                ));
+            }
+            let shape = object_shape([
+                ("status", StateShape::String),
+                ("durationMs", StateShape::Number),
+                ("id", StateShape::String),
+                ("src", StateShape::String),
+                ("recordingDurationMs", StateShape::Number),
+                ("errorKind", StateShape::String),
+                ("errorMessage", StateShape::String),
+                ("errorRetryable", StateShape::Bool),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("idle".to_owned())),
+                ("durationMs", StateValue::Number(0.0)),
+                ("id", StateValue::String(String::new())),
+                ("src", StateValue::String(String::new())),
+                ("recordingDurationMs", StateValue::Number(0.0)),
+                ("errorKind", StateValue::String(String::new())),
+                ("errorMessage", StateValue::String(String::new())),
+                ("errorRetryable", StateValue::Bool(false)),
+            ]);
+            (
+                AudioControllerKind::Recorder,
+                "{}".to_owned(),
+                shape,
+                initial,
+            )
+        }
+        _ => unreachable!(),
+    };
+    Ok(Some(ControllerInitialiser {
+        definition: Controller {
+            state: StateId(0),
+            module: "audio".to_owned(),
+            kind: match kind {
+                AudioControllerKind::Level => "level",
+                AudioControllerKind::Pitch => "pitch",
+                AudioControllerKind::Player => "player",
+                AudioControllerKind::Recorder => "recorder",
+            }
+            .to_owned(),
+            config,
+        },
+        kind,
+        initial,
+        shape,
+    }))
+}
+
+fn player_options(
+    call: &oxc::ast::ast::CallExpression<'_>,
+) -> Result<(&'static str, &'static str), CompileError> {
+    match call.arguments.as_slice() {
+        [] => Ok(("music", "attached")),
+        [Argument::ObjectExpression(options)] => {
+            let mut usage = "music";
+            let mut playback = "attached";
+            let mut seen = HashSet::new();
+            for property in &options.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return Err(CompileError::new(
+                        "audio player options cannot use spreads",
+                        property.span(),
+                    ));
+                };
+                let name = property_name(&property.key)?;
+                if !seen.insert(name.clone()) {
+                    return Err(CompileError::new(
+                        format!("audio player option {name:?} is declared twice"),
+                        property.key.span(),
+                    ));
+                }
+                let Expression::StringLiteral(value) = &property.value else {
+                    return Err(CompileError::new(
+                        "audio player options must be string literals",
+                        property.value.span(),
+                    ));
+                };
+                match (name.as_str(), value.value.as_str()) {
+                    ("usage", "music") => usage = "music",
+                    ("usage", "speech") => usage = "speech",
+                    ("playback", "attached") => playback = "attached",
+                    ("playback", "detached") => playback = "detached",
+                    ("usage", _) => {
+                        return Err(CompileError::new(
+                            "audio player usage must be \"music\" or \"speech\"",
+                            value.span,
+                        ));
+                    }
+                    ("playback", _) => {
+                        return Err(CompileError::new(
+                            "audio playback must be \"attached\" or \"detached\"",
+                            value.span,
+                        ));
+                    }
+                    _ => {
+                        return Err(CompileError::new(
+                            format!("unknown audio player option {name:?}"),
+                            property.key.span(),
+                        ));
+                    }
+                }
+            }
+            Ok((usage, playback))
+        }
+        _ => Err(CompileError::new(
+            "audioPlayer() accepts an optional { usage, playback } object",
+            call.span,
+        )),
+    }
+}
+
+fn pitch_reference(call: &oxc::ast::ast::CallExpression<'_>) -> Result<f64, CompileError> {
+    let value = match call.arguments.as_slice() {
+        [] => 440.0,
+        [Argument::ObjectExpression(options)] => {
+            let [ObjectPropertyKind::ObjectProperty(property)] = options.properties.as_slice()
+            else {
+                return Err(CompileError::new(
+                    "pitchDetector() accepts only { referenceHz }",
+                    options.span,
+                ));
+            };
+            if property_name(&property.key)? != "referenceHz" {
+                return Err(CompileError::new(
+                    "pitchDetector() accepts only referenceHz",
+                    property.key.span(),
+                ));
+            }
+            let Expression::NumericLiteral(value) = &property.value else {
+                return Err(CompileError::new(
+                    "referenceHz must be a number literal",
+                    property.value.span(),
+                ));
+            };
+            value.value
+        }
+        _ => {
+            return Err(CompileError::new(
+                "pitchDetector() accepts an optional { referenceHz } object",
+                call.span,
+            ));
+        }
+    };
+    if !(400.0..=480.0).contains(&value) {
+        return Err(CompileError::new(
+            "referenceHz must be between 400 and 480",
+            call.span,
+        ));
+    }
+    Ok(value)
+}
+
+fn object_shape<const N: usize>(fields: [(&str, StateShape); N]) -> StateShape {
+    StateShape::Object(
+        fields
+            .into_iter()
+            .map(|(name, shape)| (name.to_owned(), shape))
+            .collect(),
+    )
+}
+
+fn object_value<const N: usize>(fields: [(&str, StateValue); N]) -> StateValue {
+    StateValue::Object(
+        fields
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), value))
+            .collect(),
+    )
 }
 
 fn network_json_resource(
@@ -1129,6 +1566,7 @@ fn lower_screen(
         title,
         centered,
         resources: Vec::new(),
+        controllers: Vec::new(),
     })
 }
 
@@ -1764,6 +2202,37 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
                     if member.property.name.as_str() == "length"
             );
             if !is_length {
+                if let Some(binding) = expression_controller_value(&expression.left, states)? {
+                    if !scalar_kind(&binding.kind) {
+                        return Err(CompileError::new(
+                            "controller comparisons support numbers, booleans and strings",
+                            expression.span,
+                        ));
+                    }
+                    let value = literal_state_value(unparenthesised(&expression.right))?;
+                    if state_kind(&value).as_ref() != Some(&binding.kind) {
+                        return Err(CompileError::new(
+                            "the comparison value must match the controller field type",
+                            expression.right.span(),
+                        ));
+                    }
+                    let expected = match expression.operator {
+                        BinaryOperator::Equality | BinaryOperator::StrictEquality => true,
+                        BinaryOperator::Inequality | BinaryOperator::StrictInequality => false,
+                        _ => {
+                            return Err(CompileError::new(
+                                "controller comparisons use === or !==",
+                                expression.span,
+                            ));
+                        }
+                    };
+                    return Ok(Condition::ControllerEquals {
+                        controller: binding.controller,
+                        path: binding.path,
+                        value,
+                        expected,
+                    });
+                }
                 if let Some(binding) = expression_resource_value(&expression.left, states)? {
                     if !scalar_kind(&binding.kind) {
                         return Err(CompileError::new(
@@ -1855,6 +2324,20 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
             Ok(Condition::ListEmpty { state, expected })
         }
         expression => {
+            if let Some(binding) = expression_controller_value(expression, states)? {
+                if binding.kind != StateShape::Bool {
+                    return Err(CompileError::new(
+                        "conditional controller field must be boolean",
+                        expression.span(),
+                    ));
+                }
+                return Ok(Condition::ControllerEquals {
+                    controller: binding.controller,
+                    path: binding.path,
+                    value: StateValue::Bool(true),
+                    expected: true,
+                });
+            }
             if let Some(binding) = expression_resource_value(expression, states)? {
                 if binding.kind != StateShape::Bool {
                     return Err(CompileError::new(
@@ -1911,6 +2394,17 @@ fn invert_condition(condition: Condition) -> Condition {
         } => Condition::ResourceEquals {
             resource,
             field,
+            value,
+            expected: !expected,
+        },
+        Condition::ControllerEquals {
+            controller,
+            path,
+            value,
+            expected,
+        } => Condition::ControllerEquals {
+            controller,
+            path,
             value,
             expected: !expected,
         },
@@ -2279,6 +2773,20 @@ fn lower_state_action(
     };
     let name = state_object.name.as_str();
     let method = callee.property.name.as_str();
+    if let Some(binding) = states.controllers.get(name) {
+        if call.type_arguments.is_some() {
+            return Err(CompileError::new(
+                "audio controller actions do not take type arguments",
+                call.span,
+            ));
+        }
+        let payload = lower_audio_controller_action(binding.kind, method, call, states, item)?;
+        return Ok(Action::Controller {
+            controller: binding.id,
+            operation: method.to_owned(),
+            payload,
+        });
+    }
     if let Some(binding) = states.resources.get(name) {
         if !call.arguments.is_empty() || call.type_arguments.is_some() {
             return Err(CompileError::new(
@@ -2303,7 +2811,7 @@ fn lower_state_action(
     }
     let binding = states.get(name).cloned().ok_or_else(|| {
         CompileError::new(
-            format!("unknown state or resource {name}"),
+            format!("unknown state, resource or controller {name}"),
             state_object.span,
         )
     })?;
@@ -2387,6 +2895,288 @@ fn lower_state_action(
             call.span,
         )),
     }
+}
+
+fn lower_audio_controller_action(
+    kind: AudioControllerKind,
+    method: &str,
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Vec<PayloadPart>, CompileError> {
+    match kind {
+        AudioControllerKind::Level | AudioControllerKind::Pitch => {
+            if !matches!(method, "start" | "stop") || !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "level and pitch controllers support start() and stop()",
+                    call.span,
+                ));
+            }
+            Ok(vec![PayloadPart::Literal(String::new())])
+        }
+        AudioControllerKind::Recorder => {
+            if !matches!(method, "start" | "stop" | "cancel" | "delete")
+                || !call.arguments.is_empty()
+            {
+                return Err(CompileError::new(
+                    "audioRecorder supports start(), stop(), cancel() and delete()",
+                    call.span,
+                ));
+            }
+            Ok(vec![PayloadPart::Literal("{}".to_owned())])
+        }
+        AudioControllerKind::Player => player_action_payload(method, call, states, item),
+    }
+}
+
+fn player_action_payload(
+    method: &str,
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Vec<PayloadPart>, CompileError> {
+    if method == "play"
+        && call.arguments.len() == 1
+        && let Some(expression) = call.arguments[0].as_expression()
+    {
+        if let Expression::Identifier(value) = expression
+            && let Some(item) = item.filter(|item| item.name == value.name.as_str())
+        {
+            require_audio_item_shape(item.kind, expression.span())?;
+            return Ok(vec![
+                PayloadPart::Literal("{\"item\":".to_owned()),
+                PayloadPart::Item(Vec::new()),
+                PayloadPart::Literal("}".to_owned()),
+            ]);
+        }
+        if matches!(expression, Expression::StaticMemberExpression(_)) {
+            let binding = expression_state_value(expression, states)?;
+            require_audio_item_shape(&binding.kind, expression.span())?;
+            return Ok(vec![
+                PayloadPart::Literal("{\"item\":".to_owned()),
+                PayloadPart::State(binding.id),
+                PayloadPart::Literal("}".to_owned()),
+            ]);
+        }
+    }
+    if method == "setQueue" && matches!(call.arguments.len(), 1 | 2) {
+        let Some(expression) = call.arguments[0].as_expression() else {
+            return Err(CompileError::new(
+                "audio queues cannot use spreads",
+                call.arguments[0].span(),
+            ));
+        };
+        if matches!(expression, Expression::StaticMemberExpression(_)) {
+            let binding = expression_state_value(expression, states)?;
+            let StateShape::List(item_shape) = &binding.kind else {
+                return Err(CompileError::new(
+                    "setQueue() requires an audio item list",
+                    expression.span(),
+                ));
+            };
+            require_audio_item_shape(item_shape, expression.span())?;
+            let start_index = match call.arguments.get(1) {
+                None => 0,
+                Some(Argument::NumericLiteral(index)) => {
+                    let index = integer(index.value, index.span, "startIndex")?;
+                    if index < 0 {
+                        return Err(CompileError::new(
+                            "startIndex cannot be negative",
+                            call.arguments[1].span(),
+                        ));
+                    }
+                    index
+                }
+                Some(argument) => {
+                    return Err(CompileError::new(
+                        "startIndex must be a number literal",
+                        argument.span(),
+                    ));
+                }
+            };
+            return Ok(vec![
+                PayloadPart::Literal("{\"items\":".to_owned()),
+                PayloadPart::State(binding.id),
+                PayloadPart::Literal(format!(",\"startIndex\":{start_index}}}")),
+            ]);
+        }
+    }
+    let payload = match method {
+        "play" => match call.arguments.as_slice() {
+            [] => serde_json::json!({}),
+            [Argument::ObjectExpression(item)] => {
+                serde_json::json!({ "item": audio_item(item, states)? })
+            }
+            _ => {
+                return Err(CompileError::new(
+                    "play() accepts one audio item",
+                    call.span,
+                ));
+            }
+        },
+        "setQueue" => {
+            let (items, start_index) = match call.arguments.as_slice() {
+                [Argument::ArrayExpression(items)] => (items, 0),
+                [
+                    Argument::ArrayExpression(items),
+                    Argument::NumericLiteral(index),
+                ] => (items, integer(index.value, index.span, "startIndex")?),
+                _ => {
+                    return Err(CompileError::new(
+                        "setQueue() accepts an audio item array and optional start index",
+                        call.span,
+                    ));
+                }
+            };
+            let items = items
+                .elements
+                .iter()
+                .map(|element| {
+                    let Some(Expression::ObjectExpression(item)) = element.as_expression() else {
+                        return Err(CompileError::new(
+                            "audio queues contain item object literals",
+                            element.span(),
+                        ));
+                    };
+                    audio_item(item, states)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if start_index < 0 || start_index as usize >= items.len() {
+                return Err(CompileError::new(
+                    "startIndex must reference an audio item",
+                    call.span,
+                ));
+            }
+            serde_json::json!({ "items": items, "startIndex": start_index })
+        }
+        "seekTo" | "setSpeed" => {
+            let [Argument::NumericLiteral(value)] = call.arguments.as_slice() else {
+                return Err(CompileError::new(
+                    format!("{method}() takes one number literal"),
+                    call.span,
+                ));
+            };
+            if !value.value.is_finite() {
+                return Err(CompileError::new("audio values must be finite", value.span));
+            }
+            if method == "setSpeed" && !(0.25..=4.0).contains(&value.value) {
+                return Err(CompileError::new(
+                    "playback speed must be between 0.25 and 4",
+                    value.span,
+                ));
+            }
+            serde_json::json!({ "value": value.value })
+        }
+        "playRecording" | "pause" | "toggle" | "stop" | "skipBack" | "skipForward" | "previous"
+        | "next" => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    format!("{method}() takes no arguments"),
+                    call.span,
+                ));
+            }
+            serde_json::json!({})
+        }
+        _ => {
+            return Err(CompileError::new(
+                format!("unknown audio player action {method}()"),
+                call.span,
+            ));
+        }
+    };
+    Ok(vec![PayloadPart::Literal(payload.to_string())])
+}
+
+fn require_audio_item_shape(shape: &StateShape, span: Span) -> Result<(), CompileError> {
+    let StateShape::Object(fields) = shape else {
+        return Err(CompileError::new("audio items must be objects", span));
+    };
+    if fields.get("src") != Some(&StateShape::String)
+        || fields.get("title") != Some(&StateShape::String)
+    {
+        return Err(CompileError::new(
+            "audio items require string src and title fields",
+            span,
+        ));
+    }
+    for optional in ["id", "artist", "album", "artwork"] {
+        if fields
+            .get(optional)
+            .is_some_and(|shape| shape != &StateShape::String)
+        {
+            return Err(CompileError::new(
+                format!("audio item field {optional} must be a string"),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn audio_item(
+    item: &oxc::ast::ast::ObjectExpression<'_>,
+    states: &Bindings,
+) -> Result<serde_json::Value, CompileError> {
+    let mut values = serde_json::Map::new();
+    for property in &item.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "audio items cannot use spread properties",
+                property.span(),
+            ));
+        };
+        let name = property_name(&property.key)?;
+        if !matches!(
+            name.as_str(),
+            "id" | "src" | "title" | "artist" | "album" | "artwork"
+        ) {
+            return Err(CompileError::new(
+                format!("unknown audio item property {name:?}"),
+                property.key.span(),
+            ));
+        }
+        if values.contains_key(&name) {
+            return Err(CompileError::new(
+                format!("audio item property {name:?} is declared twice"),
+                property.key.span(),
+            ));
+        }
+        let Expression::StringLiteral(value) = &property.value else {
+            return Err(CompileError::new(
+                "audio item values must be string literals",
+                property.value.span(),
+            ));
+        };
+        let mut value = value.value.to_string();
+        if name == "src" && value.starts_with("./") {
+            let source = states
+                .source_path
+                .parent()
+                .expect("a source file has a parent")
+                .join(&value);
+            let source = source.canonicalize().map_err(|_| {
+                CompileError::new(
+                    format!("could not find audio asset {value:?}"),
+                    property.value.span(),
+                )
+            })?;
+            if !source.is_file() {
+                return Err(CompileError::new(
+                    format!("audio asset {value:?} is not a file"),
+                    property.value.span(),
+                ));
+            }
+            value = format!("ink-file://{}", source.display());
+        }
+        values.insert(name, serde_json::Value::String(value));
+    }
+    if !values.contains_key("src") || !values.contains_key("title") {
+        return Err(CompileError::new(
+            "audio items require src and title",
+            item.span,
+        ));
+    }
+    Ok(serde_json::Value::Object(values))
 }
 
 fn lower_scalar_set(
@@ -2900,6 +3690,15 @@ fn expression_text_part(
     if let Ok(state) = list_length_state(expression, states) {
         return Ok(TextPart::ListLength(state));
     }
+    if let Some(binding) = expression_controller_value(expression, states)? {
+        if !scalar_kind(&binding.kind) {
+            return Err(CompileError::new(
+                "Text can only display scalar controller fields",
+                expression.span(),
+            ));
+        }
+        return Ok(TextPart::Controller(binding.controller, binding.path));
+    }
     if let Some(binding) = expression_resource_value(expression, states)? {
         if !scalar_kind(&binding.kind) {
             return Err(CompileError::new(
@@ -2935,6 +3734,31 @@ fn expression_text_part(
         ));
     }
     Ok(TextPart::State(binding.id))
+}
+
+fn expression_controller_value(
+    expression: &Expression<'_>,
+    states: &Bindings,
+) -> Result<Option<ControllerValueBinding>, CompileError> {
+    let Some((name, path)) = member_path(expression) else {
+        return Ok(None);
+    };
+    let Some(controller) = states.controllers.get(name) else {
+        return Ok(None);
+    };
+    if path.is_empty() {
+        return Err(CompileError::new(
+            "use a field from the audio controller",
+            expression.span(),
+        ));
+    }
+    let kind = kind_at_path(&controller.shape, &path)
+        .ok_or_else(|| CompileError::new("unknown audio controller field", expression.span()))?;
+    Ok(Some(ControllerValueBinding {
+        controller: controller.id,
+        path,
+        kind: kind.clone(),
+    }))
 }
 
 fn expression_resource_value(

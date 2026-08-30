@@ -140,12 +140,18 @@ fn develop_once(
 ) -> Result<DevOutcome> {
     let artifact = match baseline {
         Some(baseline) => {
-            match android::build_watched(project, android::Profile::Debug, verbose, baseline)? {
+            match android::build_watched(
+                project,
+                android::Profile::Debug,
+                verbose,
+                baseline,
+                device,
+            )? {
                 android::BuildOutcome::Complete(artifact) => artifact,
                 android::BuildOutcome::Changed => return Ok(DevOutcome::Changed),
             }
         }
-        None => android::build(project, android::Profile::Debug, verbose)?,
+        None => android::build_for_device(project, device, android::Profile::Debug, verbose)?,
     };
     if let Some(baseline) = baseline
         && watch::changed(project.root(), baseline)?

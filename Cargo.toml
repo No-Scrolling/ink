@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/ink-audio",
   "crates/ink-cli",
   "crates/ink-compiler",
   "crates/ink-core",

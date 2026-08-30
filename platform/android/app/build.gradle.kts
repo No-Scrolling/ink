@@ -15,15 +15,36 @@ val inkVersionCode = providers.gradleProperty("inkVersionCode").orElse("1")
 val inkSigning = providers.gradleProperty("inkSigning").orElse("development")
 val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
 val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
+val inkAndroidAssets = providers.gradleProperty("inkAndroidAssets")
 val inkUsesLightSdk = providers.gradleProperty("inkUsesLightSdk").orElse("false")
 val inkUsesNetwork = providers.gradleProperty("inkUsesNetwork").orElse("false")
+val inkUsesAudio = providers.gradleProperty("inkUsesAudio").orElse("false")
+val inkUsesAudioPlayback = providers.gradleProperty("inkUsesAudioPlayback").orElse("false")
+val inkUsesDetachedAudio = providers.gradleProperty("inkUsesDetachedAudio").orElse("false")
 val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission").orElse("false")
+val inkUsesMicrophonePermission = providers.gradleProperty("inkUsesMicrophonePermission").orElse("false")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 val inkLightSdkVersion = "0.1.1"
 val inkPermissionManifest = when {
+    inkUsesDetachedAudio.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() &&
+        inkUsesMicrophonePermission.get().toBoolean() ->
+        "src/detachedCameraAudioPermission/AndroidManifest.xml"
+    inkUsesDetachedAudio.get().toBoolean() && inkUsesMicrophonePermission.get().toBoolean() ->
+        "src/detachedAudioPermission/AndroidManifest.xml"
+    inkUsesDetachedAudio.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() ->
+        "src/detachedCameraPermission/AndroidManifest.xml"
+    inkUsesDetachedAudio.get().toBoolean() -> "src/detachedPermission/AndroidManifest.xml"
+    inkUsesNetwork.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() &&
+        inkUsesMicrophonePermission.get().toBoolean() ->
+        "src/networkCameraAudioPermission/AndroidManifest.xml"
+    inkUsesNetwork.get().toBoolean() && inkUsesMicrophonePermission.get().toBoolean() ->
+        "src/networkAudioPermission/AndroidManifest.xml"
+    inkUsesCameraPermission.get().toBoolean() && inkUsesMicrophonePermission.get().toBoolean() ->
+        "src/cameraAudioPermission/AndroidManifest.xml"
     inkUsesNetwork.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() ->
         "src/networkCameraPermission/AndroidManifest.xml"
+    inkUsesMicrophonePermission.get().toBoolean() -> "src/audioPermission/AndroidManifest.xml"
     inkUsesNetwork.get().toBoolean() -> "src/network/AndroidManifest.xml"
     inkUsesCameraPermission.get().toBoolean() -> "src/cameraPermission/AndroidManifest.xml"
     else -> null
@@ -50,6 +71,7 @@ android {
         manifestPlaceholders["inkLightSdkMarkerAction"] = inkLightSdkMarkerAction
         manifestPlaceholders["inkLightSdkVersion"] = inkLightSdkVersion
         manifestPlaceholders["inkLightServerPackage"] = inkLightServerPackage.get()
+        manifestPlaceholders["inkDetachedAudioEnabled"] = inkUsesDetachedAudio.get()
         buildConfigField(
             "String",
             "INK_LIGHT_SERVER_PACKAGE",
@@ -78,6 +100,7 @@ android {
 
     sourceSets {
         getByName("main").res.srcDir(inkAndroidResources)
+        getByName("main").assets.srcDir(inkAndroidAssets)
         if (inkPermissionManifest != null) {
             getByName("debug").manifest.srcFile(inkPermissionManifest)
             getByName("release").manifest.srcFile(inkPermissionManifest)
@@ -87,6 +110,27 @@ android {
                 "src/textInput/kotlin"
             } else {
                 "src/noTextInput/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesAudio.get().toBoolean()) {
+                "src/audio/kotlin"
+            } else {
+                "src/noAudio/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesAudioPlayback.get().toBoolean()) {
+                "src/audioPlayback/kotlin"
+            } else {
+                "src/noAudioPlayback/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesDetachedAudio.get().toBoolean()) {
+                "src/audioDetached/kotlin"
+            } else {
+                "src/noAudioDetached/kotlin"
             },
         )
         getByName("main").java.srcDir(
@@ -170,6 +214,9 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
         if (inkUsesNetwork.get().toBoolean()) {
             addAll(listOf("--features", "network"))
         }
+        if (inkUsesAudio.get().toBoolean()) {
+            addAll(listOf("--features", "audio"))
+        }
     })
     environment("INK_APP_RS", inkGeneratedSource.get())
 }
@@ -196,6 +243,9 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
         if (inkUsesNetwork.get().toBoolean()) {
             addAll(listOf("--features", "network"))
         }
+        if (inkUsesAudio.get().toBoolean()) {
+            addAll(listOf("--features", "audio"))
+        }
     })
     environment("INK_APP_RS", inkGeneratedSource.get())
 }
@@ -209,4 +259,10 @@ tasks.configureEach {
 
 dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
+    if (inkUsesAudioPlayback.get().toBoolean()) {
+        implementation("androidx.media3:media3-exoplayer:1.10.1")
+    }
+    if (inkUsesDetachedAudio.get().toBoolean()) {
+        implementation("androidx.media3:media3-session:1.10.1")
+    }
 }

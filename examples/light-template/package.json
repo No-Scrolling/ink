@@ -6,6 +6,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ink/audio": "file:../../packages/audio",
     "@ink/light-sdk": "file:../../packages/light-sdk",
     "@ink/network": "file:../../packages/network",
     "ink": "file:../../packages/ink"

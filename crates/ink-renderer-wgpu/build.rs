@@ -12,12 +12,25 @@ fn main() {
     .validate(&module)
     .expect("failed to validate Ink shader");
     let mut options = naga::back::spv::Options::default();
-    options
-        .flags
-        .remove(naga::back::spv::WriterFlags::ADJUST_COORDINATE_SPACE);
-    let words = naga::back::spv::write_vec(&module, &info, &options, None)
-        .expect("failed to compile Ink shader to SPIR-V");
-    let bytes: Vec<_> = words.into_iter().flat_map(u32::to_le_bytes).collect();
+    options.flags.remove(
+        naga::back::spv::WriterFlags::ADJUST_COORDINATE_SPACE | naga::back::spv::WriterFlags::DEBUG,
+    );
     let output = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is unavailable"));
-    fs::write(output.join("ink.spv"), bytes).expect("failed to write Ink SPIR-V");
+    for (entry_point, shader_stage) in [
+        ("quad_vertex", naga::ShaderStage::Vertex),
+        ("quad_fragment", naga::ShaderStage::Fragment),
+        ("text_vertex", naga::ShaderStage::Vertex),
+        ("text_fragment", naga::ShaderStage::Fragment),
+        ("image_fragment", naga::ShaderStage::Fragment),
+    ] {
+        let pipeline = naga::back::spv::PipelineOptions {
+            shader_stage,
+            entry_point: entry_point.to_owned(),
+        };
+        let words = naga::back::spv::write_vec(&module, &info, &options, Some(&pipeline))
+            .expect("failed to compile Ink shader to SPIR-V");
+        let bytes: Vec<_> = words.into_iter().flat_map(u32::to_le_bytes).collect();
+        fs::write(output.join(format!("{entry_point}.spv")), bytes)
+            .expect("failed to write Ink SPIR-V");
+    }
 }

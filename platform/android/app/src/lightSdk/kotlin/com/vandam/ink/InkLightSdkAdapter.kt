@@ -73,7 +73,8 @@ private class InkLightSdkAdapter(
     ) {
         val valid = when (operation) {
             VERSION_OPERATION -> payload.isEmpty()
-            PERMISSION_STATUS_OPERATION, REQUEST_PERMISSION_OPERATION -> payload == CAMERA
+            PERMISSION_STATUS_OPERATION, REQUEST_PERMISSION_OPERATION ->
+                payload == CAMERA || payload == MICROPHONE
             else -> false
         }
         if (!valid) {
@@ -229,6 +230,7 @@ private class InkLightSdkAdapter(
 
     private fun androidPermission(permission: String): String = when (permission) {
         CAMERA -> android.Manifest.permission.CAMERA
+        MICROPHONE -> android.Manifest.permission.RECORD_AUDIO
         else -> error("Unsupported permission: $permission")
     }
 
@@ -256,7 +258,7 @@ private class InkLightSdkAdapter(
     }
 
     private fun refreshServerState() {
-        if (!ensureToken()) {
+        if (authenticate() != null) {
             return
         }
 
@@ -283,29 +285,28 @@ private class InkLightSdkAdapter(
         }
     }
 
-    private fun ensureToken(): Boolean {
+    private fun authenticate(): Response.Error? {
         if (token != DEFAULT_TOKEN) {
-            return true
+            return null
         }
         return when (val response = request(GET_TOKEN, UNIT_JSON)) {
             is Response.Success -> {
                 token = JSONObject(response.data).getString("token")
-                true
+                null
             }
             is Response.Error -> {
                 Log.w(TAG, "Could not authenticate with Light SDK: ${response.message}")
-                false
+                response
             }
         }
     }
 
     private fun authenticatedRequest(method: String, payload: String): Response {
+        authenticate()?.let { return it }
         var response = request(method, payload)
         if (response is Response.Error && response.code == INVALID_TOKEN) {
             token = DEFAULT_TOKEN
-            if (ensureToken()) {
-                response = request(method, payload)
-            }
+            response = authenticate() ?: request(method, payload)
         }
         return response
     }
@@ -379,5 +380,6 @@ private class InkLightSdkAdapter(
         const val PERMISSION_STATUS_OPERATION = "permission-status"
         const val REQUEST_PERMISSION_OPERATION = "request-permission"
         const val CAMERA = "camera"
+        const val MICROPHONE = "microphone"
     }
 }

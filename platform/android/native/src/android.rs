@@ -6,18 +6,20 @@ use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::ptr::NonNull;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 
 #[cfg(feature = "network")]
 use ink_core::ImageFit;
 use ink_core::{
-    Engine, Hydration, NativeRequestKind, PUBLIC_SANS, ResourceError, ResourceErrorKind,
-    StateValue, TextEdit, TextInputAction,
+    ControllerId, Engine, Hydration, NativeRequestKind, PUBLIC_SANS, ResourceError,
+    ResourceErrorKind, StateValue, TextEdit, TextInputAction,
 };
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
 #[cfg(feature = "network")]
 use jni::objects::JByteArray;
+#[cfg(feature = "audio")]
+use jni::objects::JShortArray;
 use jni::objects::{JByteBuffer, JClass, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use ndk::native_window::NativeWindow;
@@ -28,6 +30,7 @@ const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_WARN: c_int = 5;
 const ANDROID_LOG_ERROR: c_int = 6;
 const LOG_TAG: &[u8] = b"Ink\0";
+static PANIC_HOOK: Once = Once::new();
 #[cfg(feature = "network")]
 const IMAGE_DECODER_SUCCESS: c_int = 0;
 #[cfg(feature = "network")]
@@ -67,6 +70,8 @@ struct AndroidEngine {
     engine: Engine,
     state_path: PathBuf,
     surface: Option<AttachedSurface>,
+    #[cfg(feature = "audio")]
+    audio: crate::audio::AudioRuntime,
 }
 
 struct AttachedSurface {
@@ -117,6 +122,8 @@ impl AndroidEngine {
             engine,
             state_path,
             surface: None,
+            #[cfg(feature = "audio")]
+            audio: crate::audio::AudioRuntime::default(),
         }
     }
 
@@ -133,6 +140,7 @@ impl AndroidEngine {
         let window = Arc::new(window);
         let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
         descriptor.backends = wgpu::Backends::VULKAN;
+        descriptor.flags = wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL;
         let instance = wgpu::Instance::new(descriptor);
         let wgpu_surface = match instance.create_surface(AndroidWindow(window.clone())) {
             Ok(surface) => surface,
@@ -241,6 +249,15 @@ impl AndroidEngine {
         true
     }
 
+    #[cfg(feature = "audio")]
+    fn process_audio(&mut self, samples: &[i16], sample_rate: u32) -> bool {
+        let changed = self.audio.process(&mut self.engine, samples, sample_rate);
+        if changed {
+            self.render();
+        }
+        changed
+    }
+
     #[cfg(feature = "network")]
     fn complete_native_json(&mut self, request_id: u64, bytes: &[u8]) -> bool {
         if !self.engine.complete_native_json(request_id, bytes) {
@@ -307,6 +324,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
     _class: JClass<'_>,
     state_path: JString<'_>,
 ) -> jlong {
+    PANIC_HOOK.call_once(|| {
+        std::panic::set_hook(Box::new(|panic| {
+            android_log(ANDROID_LOG_ERROR, &format!("native panic: {panic}"));
+        }));
+    });
     let state_path = env
         .with_env(|env| state_path.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
@@ -529,6 +551,24 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestKind(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestController(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+) -> jlong {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|engine| {
+            engine
+                .engine
+                .native_request(request_id as u64)
+                .and_then(|request| request.controller())
+        })
+        .map_or(-1, |controller| controller.index() as jlong)
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestTimeoutMs(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -676,6 +716,110 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAction(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| engine.engine.complete_native_action(request_id as u64))
+        as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeUpdateController(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    controller: jlong,
+    value: JString<'_>,
+) -> jboolean {
+    let value = env
+        .with_env(|env| value.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| {
+            let changed = engine
+                .engine
+                .update_controller_json(ControllerId::new(controller as usize), value.as_bytes());
+            if changed {
+                engine.render();
+            }
+            changed
+        }) as jboolean
+}
+
+#[cfg(feature = "audio")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioActivate(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    controller: jlong,
+    kind: JString<'_>,
+    config: JString<'_>,
+) -> jboolean {
+    let kind = env
+        .with_env(|env| kind.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    let config = env
+        .with_env(|env| config.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| {
+            engine
+                .audio
+                .activate(ControllerId::new(controller as usize), &kind, &config)
+        }) as jboolean
+}
+
+#[cfg(feature = "audio")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioDeactivate(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    controller: jlong,
+) {
+    if let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) {
+        engine
+            .audio
+            .deactivate(ControllerId::new(controller as usize));
+    }
+}
+
+#[cfg(feature = "audio")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSetEnabled(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    controller: jlong,
+    enabled: jboolean,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| {
+            engine
+                .audio
+                .set_enabled(ControllerId::new(controller as usize), enabled)
+        }) as jboolean
+}
+
+#[cfg(feature = "audio")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSamples(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    samples: JShortArray<'_>,
+    sample_rate: jint,
+) -> jboolean {
+    let samples = env
+        .with_env(|env| {
+            let mut output = vec![0_i16; samples.len(env)?];
+            samples.get_region(env, 0, &mut output)?;
+            Ok::<_, jni::errors::Error>(output)
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.process_audio(&samples, sample_rate as u32))
         as jboolean
 }
 

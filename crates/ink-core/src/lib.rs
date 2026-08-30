@@ -82,6 +82,19 @@ impl ResourceId {
     }
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ControllerId(usize);
+
+impl ControllerId {
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum StateValue {
     Number(f64),
@@ -135,6 +148,23 @@ impl fmt::Display for StateValue {
     }
 }
 
+fn shape_from_value(value: &StateValue) -> StateShape {
+    match value {
+        StateValue::Number(_) => StateShape::Number,
+        StateValue::Bool(_) => StateShape::Bool,
+        StateValue::String(_) => StateShape::String,
+        StateValue::List(values) => StateShape::List(Box::new(
+            values.first().map_or(StateShape::String, shape_from_value),
+        )),
+        StateValue::Object(fields) => StateShape::Object(
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), shape_from_value(value)))
+                .collect(),
+        ),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct StateDefinition {
     initial: StateValue,
@@ -153,6 +183,7 @@ pub struct NativeOperation {
 pub enum PayloadPart {
     Literal(String),
     State(StateId),
+    Item(Vec<String>),
 }
 
 impl NativeOperation {
@@ -187,7 +218,7 @@ impl NativeOperation {
     fn dependencies(&self) -> impl Iterator<Item = StateId> + '_ {
         self.payload.iter().filter_map(|part| match part {
             PayloadPart::State(state) => Some(*state),
-            PayloadPart::Literal(_) => None,
+            PayloadPart::Literal(_) | PayloadPart::Item(_) => None,
         })
     }
 
@@ -199,6 +230,7 @@ impl NativeOperation {
                 PayloadPart::State(id) => {
                     output.push_str(&json_value(state.get(id.0)?)?);
                 }
+                PayloadPart::Item(_) => return None,
             }
         }
         Some(output)
@@ -209,6 +241,30 @@ impl NativeOperation {
 pub struct ResourceDefinition {
     shape: StateShape,
     read: NativeOperation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ControllerDefinition {
+    state: StateId,
+    module: String,
+    kind: String,
+    config: String,
+}
+
+impl ControllerDefinition {
+    pub fn new(
+        state: StateId,
+        module: impl Into<String>,
+        kind: impl Into<String>,
+        config: impl Into<String>,
+    ) -> Self {
+        Self {
+            state,
+            module: module.into(),
+            kind: kind.into(),
+            config: config.into(),
+        }
+    }
 }
 
 impl ResourceDefinition {
@@ -291,6 +347,7 @@ pub struct NativeRequest {
     kind: NativeRequestKind,
     operation: Option<NativeOperation>,
     payload: String,
+    controller: Option<ControllerId>,
 }
 
 impl NativeRequest {
@@ -316,6 +373,10 @@ impl NativeRequest {
 
     pub fn payload(&self) -> &str {
         &self.payload
+    }
+
+    pub const fn controller(&self) -> Option<ControllerId> {
+        self.controller
     }
 
     pub fn timeout_ms(&self) -> u64 {
@@ -436,6 +497,11 @@ pub enum Action {
     ReloadResource {
         resource: ResourceId,
     },
+    Controller {
+        controller: ControllerId,
+        operation: String,
+        payload: Vec<PayloadPart>,
+    },
     Native {
         operation: NativeOperation,
     },
@@ -468,6 +534,7 @@ fn action_state(action: &Action) -> Option<StateId> {
         | Action::Navigate { .. }
         | Action::Back
         | Action::ReloadResource { .. }
+        | Action::Controller { .. }
         | Action::Native { .. }
         | Action::Sequence(_) => None,
     }
@@ -478,6 +545,7 @@ pub enum TextPart {
     Literal(String),
     State(StateId),
     Resource(ResourceId, ResourceField),
+    Controller(ControllerId, Vec<String>),
     ListLength(StateId),
     Item(Vec<String>),
 }
@@ -493,6 +561,10 @@ impl TextPart {
 
     pub fn resource(resource: ResourceId, field: ResourceField) -> Self {
         Self::Resource(resource, field)
+    }
+
+    pub fn controller(controller: ControllerId, path: Vec<String>) -> Self {
+        Self::Controller(controller, path)
     }
 
     pub const fn list_length(state: StateId) -> Self {
@@ -518,6 +590,12 @@ pub enum Condition {
     ResourceEquals {
         resource: ResourceId,
         field: ResourceField,
+        value: StateValue,
+        expected: bool,
+    },
+    ControllerEquals {
+        controller: ControllerId,
+        path: Vec<String>,
         value: StateValue,
         expected: bool,
     },
@@ -660,6 +738,7 @@ enum NodeKind {
         title: Option<String>,
         centred: bool,
         resources: Vec<ResourceId>,
+        controllers: Vec<ControllerId>,
     },
     Stack {
         children: Vec<Node>,
@@ -740,6 +819,7 @@ impl Node {
         title: Option<String>,
         centred: bool,
         resources: Vec<ResourceId>,
+        controllers: Vec<ControllerId>,
     ) -> Self {
         Self {
             kind: NodeKind::Screen {
@@ -747,6 +827,7 @@ impl Node {
                 title,
                 centred,
                 resources,
+                controllers,
             },
         }
     }
@@ -936,6 +1017,8 @@ pub struct AppDefinition {
     states: Vec<StateDefinition>,
     resources: Vec<ResourceDefinition>,
     application_resources: Vec<ResourceId>,
+    controllers: Vec<ControllerDefinition>,
+    application_controllers: Vec<ControllerId>,
     root: Node,
 }
 
@@ -944,12 +1027,16 @@ impl AppDefinition {
         states: Vec<StateDefinition>,
         resources: Vec<ResourceDefinition>,
         application_resources: Vec<ResourceId>,
+        controllers: Vec<ControllerDefinition>,
+        application_controllers: Vec<ControllerId>,
         root: Node,
     ) -> Self {
         Self {
             states,
             resources,
             application_resources,
+            controllers,
+            application_controllers,
             root,
         }
     }
@@ -1104,6 +1191,7 @@ pub struct Engine {
     state: Vec<StateValue>,
     resources: Vec<ResourceState>,
     active_resources: BTreeSet<ResourceId>,
+    active_controllers: BTreeSet<ControllerId>,
     persistence_revision: u64,
     persistence_dirty: bool,
     viewport: Viewport,
@@ -1185,6 +1273,7 @@ impl Engine {
             state,
             resources,
             active_resources: BTreeSet::new(),
+            active_controllers: BTreeSet::new(),
             persistence_revision: 0,
             persistence_dirty: false,
             viewport: Viewport::default(),
@@ -1286,6 +1375,48 @@ impl Engine {
         self.complete_native(request_id, result)
     }
 
+    pub fn update_controller_json(&mut self, controller: ControllerId, bytes: &[u8]) -> bool {
+        if !self.active_controllers.contains(&controller) {
+            return false;
+        }
+        let Some(definition) = self.definition.controllers.get(controller.0) else {
+            return false;
+        };
+        let Some(current) = self.state.get(definition.state.0) else {
+            return false;
+        };
+        let shape = shape_from_value(current);
+        let Ok(json) = serde_json::from_slice(bytes) else {
+            return false;
+        };
+        let Ok(value) = state_from_json(&shape, &json, "$controller") else {
+            return false;
+        };
+        self.update_controller(controller, value)
+    }
+
+    pub fn update_controller(&mut self, controller: ControllerId, value: StateValue) -> bool {
+        if !self.active_controllers.contains(&controller) {
+            return false;
+        }
+        let Some(definition) = self.definition.controllers.get(controller.0) else {
+            return false;
+        };
+        let Some(current) = self.state.get(definition.state.0) else {
+            return false;
+        };
+        let shape = shape_from_value(current);
+        if !shape.accepts(&value) {
+            return false;
+        }
+        if self.state[definition.state.0] == value {
+            return false;
+        }
+        self.state[definition.state.0] = value;
+        self.rebuild_scene();
+        true
+    }
+
     pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit)> {
         let pending = self.in_flight_requests.get(&request_id)?;
         let RequestOwner::Image(key) = &pending.owner else {
@@ -1366,6 +1497,36 @@ impl Engine {
             kind: NativeRequestKind::Action,
             operation: Some(operation),
             payload,
+            controller: None,
+        };
+        self.queued_requests
+            .push_back(QueuedRequest::Start(PendingRequest {
+                request,
+                owner: RequestOwner::Action,
+            }));
+        true
+    }
+
+    fn queue_controller(
+        &mut self,
+        controller: ControllerId,
+        operation: impl Into<String>,
+        payload: Vec<PayloadPart>,
+    ) -> bool {
+        let Some(definition) = self.definition.controllers.get(controller.0) else {
+            return false;
+        };
+        let operation =
+            NativeOperation::templated(definition.module.clone(), operation, payload, 10_000);
+        let Some(payload) = operation.materialise(&self.state) else {
+            return false;
+        };
+        let request = NativeRequest {
+            id: self.next_request_id(),
+            kind: NativeRequestKind::Action,
+            operation: Some(operation),
+            payload,
+            controller: Some(controller),
         };
         self.queued_requests
             .push_back(QueuedRequest::Start(PendingRequest {
@@ -1396,6 +1557,7 @@ impl Engine {
                     kind: NativeRequestKind::Cancel,
                     operation: None,
                     payload: String::new(),
+                    controller: None,
                 }));
         }
     }
@@ -1438,6 +1600,7 @@ impl Engine {
                     kind: NativeRequestKind::ResourceRead,
                     operation: Some(definition.read),
                     payload,
+                    controller: None,
                 },
                 owner: RequestOwner::Resource(resource),
             }));
@@ -1458,6 +1621,7 @@ impl Engine {
             kind: NativeRequestKind::Image,
             operation: Some(NativeOperation::new("network", "image", "", 20_000)),
             payload,
+            controller: None,
         };
         self.remote_images
             .insert(key.clone(), RemoteImageState::Loading { request_id });
@@ -1773,6 +1937,13 @@ impl Engine {
             Action::ReloadResource { resource } => {
                 return self.queue_resource(resource);
             }
+            Action::Controller {
+                controller,
+                operation,
+                payload,
+            } => {
+                return self.queue_controller(controller, operation, payload);
+            }
             Action::Native { operation } => {
                 return self.queue_native_action(operation);
             }
@@ -1892,11 +2063,11 @@ impl Engine {
                     .navigation
                     .last()
                     .expect("navigator history is never empty");
-                &routes[route].screen
+                routes[route].screen.clone()
             }
-            _ => &self.definition.root,
+            _ => self.definition.root.clone(),
         };
-        self.collect_active_resources(root, &mut active);
+        self.collect_active_resources(&root, &mut active);
 
         let inactive = self
             .active_resources
@@ -1915,6 +2086,46 @@ impl Engine {
             if matches!(self.resources[resource.0], ResourceState::Inactive) {
                 self.queue_resource(resource);
             }
+        }
+        self.sync_active_controllers(&root);
+    }
+
+    fn sync_active_controllers(&mut self, root: &Node) {
+        let mut active = self
+            .definition
+            .application_controllers
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        self.collect_active_controllers(root, &mut active);
+
+        let inactive = self
+            .active_controllers
+            .difference(&active)
+            .copied()
+            .collect::<Vec<_>>();
+        for controller in inactive {
+            self.queue_controller(
+                controller,
+                "deactivate",
+                vec![PayloadPart::Literal(String::new())],
+            );
+        }
+        let newly_active = active
+            .difference(&self.active_controllers)
+            .copied()
+            .collect::<Vec<_>>();
+        self.active_controllers = active;
+        for controller in newly_active {
+            let Some(definition) = self.definition.controllers.get(controller.0) else {
+                continue;
+            };
+            let payload = format!(
+                "{{\"kind\":{},\"config\":{}}}",
+                serde_json::to_string(&definition.kind).expect("a Rust string is valid JSON"),
+                definition.config,
+            );
+            self.queue_controller(controller, "activate", vec![PayloadPart::Literal(payload)]);
         }
     }
 
@@ -1979,6 +2190,67 @@ impl Engine {
         }
     }
 
+    fn collect_active_controllers(&self, node: &Node, active: &mut BTreeSet<ControllerId>) {
+        match &node.kind {
+            NodeKind::Screen {
+                children,
+                controllers,
+                ..
+            } => {
+                active.extend(controllers.iter().copied());
+                for child in children {
+                    self.collect_active_controllers(child, active);
+                }
+            }
+            NodeKind::Stack { children, .. } => {
+                for child in children {
+                    self.collect_active_controllers(child, active);
+                }
+            }
+            NodeKind::Tabs { state, tabs } => {
+                let active_tab = match self.state.get(state.0) {
+                    Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
+                        *value as usize
+                    }
+                    _ => 0,
+                };
+                if let Some(tab) = tabs.get(active_tab) {
+                    self.collect_active_controllers(&tab.screen, active);
+                }
+            }
+            NodeKind::Navigator { routes, .. } => {
+                let route = *self.navigation.last().unwrap_or(&0);
+                if let Some(route) = routes.get(route) {
+                    self.collect_active_controllers(&route.screen, active);
+                }
+            }
+            NodeKind::Conditional {
+                condition,
+                consequent,
+                alternate,
+            } => {
+                let branch = if self.condition_enabled(condition) {
+                    Some(consequent.as_ref())
+                } else {
+                    alternate.as_deref()
+                };
+                if let Some(branch) = branch {
+                    self.collect_active_controllers(branch, active);
+                }
+            }
+            NodeKind::ForEach { template, .. } => {
+                self.collect_active_controllers(template, active);
+            }
+            NodeKind::Text { .. }
+            | NodeKind::TextInput { .. }
+            | NodeKind::Button { .. }
+            | NodeKind::SelectorButton { .. }
+            | NodeKind::Icon { .. }
+            | NodeKind::Image { .. }
+            | NodeKind::Toggle { .. } => {}
+        }
+    }
+
     fn condition_enabled(&self, condition: &Condition) -> bool {
         match condition {
             Condition::Bool { state, expected } => {
@@ -2003,7 +2275,26 @@ impl Engine {
                 value,
                 expected,
             } => (self.resource_field_value(*resource, field).as_ref() == Some(value)) == *expected,
+            Condition::ControllerEquals {
+                controller,
+                path,
+                value,
+                expected,
+            } => {
+                (self.controller_field_value(*controller, path).as_ref() == Some(value))
+                    == *expected
+            }
         }
+    }
+
+    fn controller_field_value(
+        &self,
+        controller: ControllerId,
+        path: &[String],
+    ) -> Option<StateValue> {
+        let definition = self.definition.controllers.get(controller.0)?;
+        let value = self.state.get(definition.state.0)?;
+        item_at_path(value, path).cloned()
     }
 
     fn resource_field_value(
@@ -2262,8 +2553,9 @@ impl Engine {
                 align,
             } => {
                 let font_size = self.scaled_font(font_size.unwrap_or(DEFAULT_TEXT_SIZE));
+                let text = self.resolve_text(parts);
                 self.scene.text.push(TextRun {
-                    text: self.resolve_text(parts),
+                    text: self.ellipsize(&text, font_size, rect.width),
                     rect,
                     clip: self.clip,
                     font_size,
@@ -2321,11 +2613,13 @@ impl Engine {
                 title,
                 centred,
                 resources,
+                controllers,
             } => Node::screen(
                 self.materialise_children(children, item),
                 title.clone(),
                 *centred,
                 resources.clone(),
+                controllers.clone(),
             ),
             NodeKind::Stack {
                 children,
@@ -2505,6 +2799,23 @@ impl Engine {
                 index: item.expect("list action has a mapped item").index,
                 value: self.materialise_value(value, item),
             },
+            Action::Controller {
+                controller,
+                operation,
+                payload,
+            } => Action::Controller {
+                controller: *controller,
+                operation: operation.clone(),
+                payload: self.materialise_payload(payload, item),
+            },
+            Action::Native { operation } => Action::Native {
+                operation: NativeOperation::templated(
+                    operation.module.clone(),
+                    operation.operation.clone(),
+                    self.materialise_payload(&operation.payload, item),
+                    operation.timeout_ms,
+                ),
+            },
             Action::Sequence(actions) => Action::Sequence(
                 actions
                     .iter()
@@ -2513,6 +2824,27 @@ impl Engine {
             ),
             action => action.clone(),
         }
+    }
+
+    fn materialise_payload(
+        &self,
+        payload: &[PayloadPart],
+        item: Option<MaterialisedItem<'_>>,
+    ) -> Vec<PayloadPart> {
+        payload
+            .iter()
+            .map(|part| match part {
+                PayloadPart::Item(path) => {
+                    let value = item
+                        .and_then(|item| item_at_path(item.value, path))
+                        .expect("compiled list-item payload path is valid");
+                    PayloadPart::Literal(
+                        json_value(value).expect("list-item payload is valid JSON"),
+                    )
+                }
+                part => part.clone(),
+            })
+            .collect()
     }
 
     fn materialise_value(&self, value: &Value, item: Option<MaterialisedItem<'_>>) -> Value {
@@ -3132,6 +3464,11 @@ impl Engine {
                 }
                 TextPart::Resource(resource, field) => {
                     if let Some(value) = self.resource_field_value(*resource, field) {
+                        text.push_str(&value.to_string());
+                    }
+                }
+                TextPart::Controller(controller, path) => {
+                    if let Some(value) = self.controller_field_value(*controller, path) {
                         text.push_str(&value.to_string());
                     }
                 }

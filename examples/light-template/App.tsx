@@ -2,13 +2,20 @@ import "@ink/light-sdk";
 import { Navigator, Route, Tab, Tabs, state } from "ink";
 import Confirm from "./screens/Confirm";
 import Home from "./screens/Home";
+import Modules from "./screens/Modules";
 import Search from "./screens/Search";
 import Settings from "./screens/Settings";
+import Audio from "./screens/modules/Audio";
+import LightSdk from "./screens/modules/LightSdk";
+import Network from "./screens/modules/Network";
+import LocalPlayback from "./screens/modules/audio/LocalPlayback";
+import Microphone from "./screens/modules/audio/Microphone";
+import Recording from "./screens/modules/audio/Recording";
+import RemotePlayback from "./screens/modules/audio/RemotePlayback";
+import RemoteImage from "./screens/modules/network/RemoteImage";
 import Customise from "./screens/settings/Customise";
 import CustomiseInterface from "./screens/settings/CustomiseInterface";
 import DynamicUI from "./screens/settings/DynamicUI";
-import LightSdk from "./screens/settings/LightSdk";
-import RemoteImage from "./screens/settings/RemoteImage";
 import TemperatureUnit from "./screens/settings/TemperatureUnit";
 import TextInputExample from "./screens/settings/TextInputExample";
 
@@ -25,7 +32,10 @@ export default function LightTemplate() {
           <Tab icon="search" onPress={() => tab.set(1)}>
             <Search />
           </Tab>
-          <Tab icon="settings" onPress={() => tab.set(2)}>
+          <Tab icon="widgets" onPress={() => tab.set(2)}>
+            <Modules />
+          </Tab>
+          <Tab icon="settings" onPress={() => tab.set(3)}>
             <Settings />
           </Tab>
         </Tabs>
@@ -45,10 +55,28 @@ export default function LightTemplate() {
       <Route path="/settings/dynamic-ui">
         <DynamicUI />
       </Route>
-      <Route path="/settings/light-sdk">
+      <Route path="/modules/audio">
+        <Audio />
+      </Route>
+      <Route path="/modules/audio/local-playback">
+        <LocalPlayback />
+      </Route>
+      <Route path="/modules/audio/remote-playback">
+        <RemotePlayback />
+      </Route>
+      <Route path="/modules/audio/recording">
+        <Recording />
+      </Route>
+      <Route path="/modules/audio/microphone">
+        <Microphone />
+      </Route>
+      <Route path="/modules/light-sdk">
         <LightSdk />
       </Route>
-      <Route path="/settings/remote-image">
+      <Route path="/modules/network">
+        <Network />
+      </Route>
+      <Route path="/modules/network/remote-image">
         <RemoteImage />
       </Route>
       <Route path="/confirm">

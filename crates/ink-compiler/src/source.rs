@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap},
+    hash::{DefaultHasher, Hash, Hasher},
     path::{Path, PathBuf},
 };
 
@@ -8,8 +9,9 @@ use oxc::{allocator::Allocator, parser::Parser, semantic::SemanticBuilder, span:
 
 use crate::{
     ir::{
-        Action, App, Collection, Condition, ImageSource, Node, PayloadPart, Resource, ResourceId,
-        Route, State, StateId, StateLifetime, Tab, TextPart, Value,
+        Action, App, Collection, Condition, Controller, ControllerId, ImageSource, Node,
+        PayloadPart, Resource, ResourceId, Route, State, StateId, StateLifetime, Tab, TextPart,
+        Value,
     },
     lower::{self, ModuleKind},
     resolver::ModuleResolver,
@@ -27,20 +29,213 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
         states: Vec::new(),
         resources: Vec::new(),
         application_resources: Vec::new(),
+        controllers: Vec::new(),
+        application_controllers: Vec::new(),
         keyed_states: HashMap::new(),
         resolver: ModuleResolver::new(project_root),
     };
     let root = compiler.module(&entry, ModuleKind::App)?;
-    let app = App {
+    let mut app = App {
         extensions: compiler.extensions,
         android_permissions: compiler.android_permissions,
         states: compiler.states,
         resources: compiler.resources,
         application_resources: compiler.application_resources,
+        controllers: compiler.controllers,
+        application_controllers: compiler.application_controllers,
         root,
     };
     lower::validate_navigation(&app.root).map_err(|error| anyhow::anyhow!(error.render()))?;
+    validate_audio(&app)?;
+    bundle_audio_assets(project_root, &mut app.root)?;
     Ok(app)
+}
+
+fn validate_audio(app: &App) -> Result<()> {
+    for (kind, name) in [("player", "audio player"), ("recorder", "audio recorder")] {
+        let application = app
+            .application_controllers
+            .iter()
+            .filter(|controller| app.controllers[controller.0].kind == kind)
+            .count();
+        if application + max_active_controllers(&app.root, &app.controllers, kind) > 1 {
+            bail!("an Ink screen can activate only one {name}");
+        }
+    }
+    Ok(())
+}
+
+fn max_active_controllers(node: &Node, controllers: &[crate::ir::Controller], kind: &str) -> usize {
+    match node {
+        Node::Screen {
+            children,
+            controllers: screen_controllers,
+            ..
+        } => {
+            screen_controllers
+                .iter()
+                .filter(|controller| controllers[controller.0].kind == kind)
+                .count()
+                + children
+                    .iter()
+                    .map(|child| max_active_controllers(child, controllers, kind))
+                    .sum::<usize>()
+        }
+        Node::Stack { children, .. } => children
+            .iter()
+            .map(|child| max_active_controllers(child, controllers, kind))
+            .sum(),
+        Node::Tabs { tabs, .. } => tabs
+            .iter()
+            .map(|tab| max_active_controllers(&tab.screen, controllers, kind))
+            .max()
+            .unwrap_or_default(),
+        Node::Navigator { routes } => routes
+            .iter()
+            .map(|route| max_active_controllers(&route.screen, controllers, kind))
+            .max()
+            .unwrap_or_default(),
+        Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => max_active_controllers(consequent, controllers, kind).max(
+            alternate
+                .as_deref()
+                .map(|node| max_active_controllers(node, controllers, kind))
+                .unwrap_or_default(),
+        ),
+        Node::ForEach { template, .. } => max_active_controllers(template, controllers, kind),
+        Node::Text { .. }
+        | Node::TextInput { .. }
+        | Node::Button { .. }
+        | Node::SelectorButton { .. }
+        | Node::Icon { .. }
+        | Node::Image { .. }
+        | Node::Toggle { .. }
+        | Node::ScreenModule { .. } => 0,
+    }
+}
+
+fn bundle_audio_assets(project_root: &Path, root: &mut Node) -> Result<()> {
+    let directory = project_root.join(".ink/android/assets/ink");
+    if directory.exists() {
+        std::fs::remove_dir_all(&directory)
+            .with_context(|| format!("could not clean {}", directory.display()))?;
+    }
+    bundle_node_assets(root, &directory)
+}
+
+fn bundle_node_assets(node: &mut Node, directory: &Path) -> Result<()> {
+    match node {
+        Node::Screen { children, .. } | Node::Stack { children, .. } => {
+            for child in children {
+                bundle_node_assets(child, directory)?;
+            }
+        }
+        Node::Button { action, .. } | Node::SelectorButton { action, .. } => {
+            if let Some(action) = action {
+                bundle_action_assets(action, directory)?;
+            }
+        }
+        Node::Toggle { action, .. } => bundle_action_assets(action, directory)?,
+        Node::Tabs { tabs, .. } => {
+            for tab in tabs {
+                bundle_action_assets(&mut tab.action, directory)?;
+                bundle_node_assets(&mut tab.screen, directory)?;
+            }
+        }
+        Node::Navigator { routes } => {
+            for route in routes {
+                bundle_node_assets(&mut route.screen, directory)?;
+            }
+        }
+        Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            bundle_node_assets(consequent, directory)?;
+            if let Some(alternate) = alternate {
+                bundle_node_assets(alternate, directory)?;
+            }
+        }
+        Node::ForEach { template, .. } => bundle_node_assets(template, directory)?,
+        Node::Text { .. }
+        | Node::TextInput { .. }
+        | Node::Icon { .. }
+        | Node::Image { .. }
+        | Node::ScreenModule { .. } => {}
+    }
+    Ok(())
+}
+
+fn bundle_action_assets(action: &mut Action, directory: &Path) -> Result<()> {
+    match action {
+        Action::Controller { payload, .. }
+        | Action::Native {
+            operation: crate::ir::NativeOperation { payload, .. },
+        } => bundle_payload_assets(payload, directory)?,
+        Action::Sequence(actions) => {
+            for action in actions {
+                bundle_action_assets(action, directory)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn bundle_payload_assets(payload: &mut [PayloadPart], directory: &Path) -> Result<()> {
+    let [PayloadPart::Literal(payload)] = payload else {
+        return Ok(());
+    };
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return Ok(());
+    };
+    if rewrite_audio_assets(&mut value, directory)? {
+        *payload = value.to_string();
+    }
+    Ok(())
+}
+
+fn rewrite_audio_assets(value: &mut serde_json::Value, directory: &Path) -> Result<bool> {
+    match value {
+        serde_json::Value::String(value) => {
+            let Some(path) = value.strip_prefix("ink-file://") else {
+                return Ok(false);
+            };
+            let source = Path::new(path);
+            let extension = source
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("audio");
+            let mut hasher = DefaultHasher::new();
+            source.hash(&mut hasher);
+            let name = format!("{:016x}.{extension}", hasher.finish());
+            std::fs::create_dir_all(directory)
+                .with_context(|| format!("could not create {}", directory.display()))?;
+            std::fs::copy(source, directory.join(&name))
+                .with_context(|| format!("could not bundle audio asset {}", source.display()))?;
+            *value = format!("asset:///ink/{name}");
+            Ok(true)
+        }
+        serde_json::Value::Array(values) => {
+            let mut changed = false;
+            for value in values {
+                changed |= rewrite_audio_assets(value, directory)?;
+            }
+            Ok(changed)
+        }
+        serde_json::Value::Object(fields) => {
+            let mut changed = false;
+            for value in fields.values_mut() {
+                changed |= rewrite_audio_assets(value, directory)?;
+            }
+            Ok(changed)
+        }
+        _ => Ok(false),
+    }
 }
 
 struct Compiler<'a> {
@@ -51,6 +246,8 @@ struct Compiler<'a> {
     states: Vec<State>,
     resources: Vec<Resource>,
     application_resources: Vec<ResourceId>,
+    controllers: Vec<Controller>,
+    application_controllers: Vec<ControllerId>,
     keyed_states: HashMap<String, StateId>,
     resolver: ModuleResolver,
 }
@@ -124,15 +321,30 @@ impl Compiler<'_> {
                 id
             })
             .collect::<Vec<_>>();
+        let controller_mapping = app
+            .controllers
+            .into_iter()
+            .map(|mut controller| {
+                remap(&mut controller.state, &mapping);
+                let id = ControllerId(self.controllers.len());
+                self.controllers.push(controller);
+                id
+            })
+            .collect::<Vec<_>>();
         if matches!(kind, ModuleKind::App) {
             self.application_resources = app
                 .application_resources
                 .into_iter()
                 .map(|resource| resource_mapping[resource.0])
                 .collect();
+            self.application_controllers = app
+                .application_controllers
+                .into_iter()
+                .map(|controller| controller_mapping[controller.0])
+                .collect();
         }
         let mut root = app.root;
-        remap_node(&mut root, &mapping, &resource_mapping);
+        remap_node(&mut root, &mapping, &resource_mapping, &controller_mapping);
         self.expand_node(root)
     }
 
@@ -180,11 +392,13 @@ impl Compiler<'_> {
                 title,
                 centered,
                 resources,
+                controllers,
             } => Node::Screen {
                 children: self.expand_nodes(children)?,
                 title,
                 centered,
                 resources,
+                controllers,
             },
             Node::Stack {
                 children,
@@ -267,23 +481,32 @@ fn state_key(lifetime: &StateLifetime) -> Option<&str> {
     }
 }
 
-fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[ResourceId]) {
+fn remap_node(
+    node: &mut Node,
+    mapping: &[StateId],
+    resource_mapping: &[ResourceId],
+    controller_mapping: &[ControllerId],
+) {
     match node {
         Node::Screen {
             children,
             resources,
+            controllers,
             ..
         } => {
             for resource in resources {
                 remap_resource(resource, resource_mapping);
             }
+            for controller in controllers {
+                remap_controller(controller, controller_mapping);
+            }
             for child in children {
-                remap_node(child, mapping, resource_mapping);
+                remap_node(child, mapping, resource_mapping, controller_mapping);
             }
         }
         Node::Stack { children, .. } => {
             for child in children {
-                remap_node(child, mapping, resource_mapping);
+                remap_node(child, mapping, resource_mapping, controller_mapping);
             }
         }
         Node::Text { parts, .. } => {
@@ -293,6 +516,9 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
                     TextPart::Resource(resource, _) => {
                         remap_resource(resource, resource_mapping);
                     }
+                    TextPart::Controller(controller, _) => {
+                        remap_controller(controller, controller_mapping);
+                    }
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
@@ -300,7 +526,7 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
         Node::TextInput { state, .. } => remap(state, mapping),
         Node::Toggle { state, action, .. } => {
             remap(state, mapping);
-            remap_action(action, mapping, resource_mapping);
+            remap_action(action, mapping, resource_mapping, controller_mapping);
         }
         Node::Button { label, action, .. } => {
             for part in label {
@@ -309,11 +535,14 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
                     TextPart::Resource(resource, _) => {
                         remap_resource(resource, resource_mapping);
                     }
+                    TextPart::Controller(controller, _) => {
+                        remap_controller(controller, controller_mapping);
+                    }
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
             if let Some(action) = action {
-                remap_action(action, mapping, resource_mapping);
+                remap_action(action, mapping, resource_mapping, controller_mapping);
             }
         }
         Node::SelectorButton { value, action, .. } => {
@@ -323,23 +552,41 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
                     TextPart::Resource(resource, _) => {
                         remap_resource(resource, resource_mapping);
                     }
+                    TextPart::Controller(controller, _) => {
+                        remap_controller(controller, controller_mapping);
+                    }
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
             if let Some(action) = action {
-                remap_action(action, mapping, resource_mapping);
+                remap_action(action, mapping, resource_mapping, controller_mapping);
             }
         }
         Node::Tabs { state, tabs } => {
             remap(state, mapping);
             for tab in tabs {
-                remap_action(&mut tab.action, mapping, resource_mapping);
-                remap_node(&mut tab.screen, mapping, resource_mapping);
+                remap_action(
+                    &mut tab.action,
+                    mapping,
+                    resource_mapping,
+                    controller_mapping,
+                );
+                remap_node(
+                    &mut tab.screen,
+                    mapping,
+                    resource_mapping,
+                    controller_mapping,
+                );
             }
         }
         Node::Navigator { routes } => {
             for route in routes {
-                remap_node(&mut route.screen, mapping, resource_mapping);
+                remap_node(
+                    &mut route.screen,
+                    mapping,
+                    resource_mapping,
+                    controller_mapping,
+                );
             }
         }
         Node::Conditional {
@@ -356,10 +603,13 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
                 Condition::ResourceEquals { resource, .. } => {
                     remap_resource(resource, resource_mapping);
                 }
+                Condition::ControllerEquals { controller, .. } => {
+                    remap_controller(controller, controller_mapping);
+                }
             }
-            remap_node(consequent, mapping, resource_mapping);
+            remap_node(consequent, mapping, resource_mapping, controller_mapping);
             if let Some(alternate) = alternate {
-                remap_node(alternate, mapping, resource_mapping);
+                remap_node(alternate, mapping, resource_mapping, controller_mapping);
             }
         }
         Node::ForEach {
@@ -370,7 +620,7 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
                 Collection::State(state) => remap(state, mapping),
                 Collection::Resource(resource, _) => remap_resource(resource, resource_mapping),
             }
-            remap_node(template, mapping, resource_mapping);
+            remap_node(template, mapping, resource_mapping, controller_mapping);
         }
         Node::Image {
             source: ImageSource::Remote(parts),
@@ -380,6 +630,9 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
                 match part {
                     TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
                     TextPart::Resource(resource, _) => remap_resource(resource, resource_mapping),
+                    TextPart::Controller(controller, _) => {
+                        remap_controller(controller, controller_mapping);
+                    }
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
@@ -389,7 +642,12 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
     }
 }
 
-fn remap_action(action: &mut Action, mapping: &[StateId], resource_mapping: &[ResourceId]) {
+fn remap_action(
+    action: &mut Action,
+    mapping: &[StateId],
+    resource_mapping: &[ResourceId],
+    controller_mapping: &[ControllerId],
+) {
     match action {
         Action::Increment { state, .. }
         | Action::SetNumber { state, .. }
@@ -406,12 +664,24 @@ fn remap_action(action: &mut Action, mapping: &[StateId], resource_mapping: &[Re
         }
         Action::Sequence(actions) => {
             for action in actions {
-                remap_action(action, mapping, resource_mapping);
+                remap_action(action, mapping, resource_mapping, controller_mapping);
             }
         }
         Action::ReloadResource { resource } => remap_resource(resource, resource_mapping),
         Action::Native { operation } => {
             for part in &mut operation.payload {
+                if let PayloadPart::State(state) = part {
+                    remap(state, mapping);
+                }
+            }
+        }
+        Action::Controller {
+            controller,
+            payload,
+            ..
+        } => {
+            remap_controller(controller, controller_mapping);
+            for part in payload {
                 if let PayloadPart::State(state) = part {
                     remap(state, mapping);
                 }
@@ -423,6 +693,10 @@ fn remap_action(action: &mut Action, mapping: &[StateId], resource_mapping: &[Re
 
 fn remap_resource(resource: &mut ResourceId, mapping: &[ResourceId]) {
     *resource = mapping[resource.0];
+}
+
+fn remap_controller(controller: &mut ControllerId, mapping: &[ControllerId]) {
+    *controller = mapping[controller.0];
 }
 
 fn remap_value(value: &mut Value, mapping: &[StateId]) {

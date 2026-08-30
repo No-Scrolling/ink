@@ -11,6 +11,9 @@ pub struct StateId(pub usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResourceId(pub usize);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ControllerId(pub usize);
+
 #[derive(Clone, Debug)]
 pub struct SourceSpan {
     pub path: PathBuf,
@@ -24,6 +27,8 @@ pub struct App {
     pub states: Vec<State>,
     pub resources: Vec<Resource>,
     pub application_resources: Vec<ResourceId>,
+    pub controllers: Vec<Controller>,
+    pub application_controllers: Vec<ControllerId>,
     pub root: Node,
 }
 
@@ -31,11 +36,13 @@ pub struct App {
 pub enum Extension {
     LightSdk,
     Network,
+    Audio,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AndroidPermission {
     Camera,
+    Microphone,
 }
 
 #[derive(Debug)]
@@ -55,6 +62,14 @@ pub struct Resource {
     pub timeout_ms: u64,
 }
 
+#[derive(Clone, Debug)]
+pub struct Controller {
+    pub state: StateId,
+    pub module: String,
+    pub kind: String,
+    pub config: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct NativeOperation {
     pub module: String,
@@ -67,6 +82,7 @@ pub struct NativeOperation {
 pub enum PayloadPart {
     Literal(String),
     State(StateId),
+    Item(Vec<String>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,6 +181,7 @@ pub enum Node {
         title: Option<String>,
         centered: bool,
         resources: Vec<ResourceId>,
+        controllers: Vec<ControllerId>,
     },
     Stack {
         children: Vec<Node>,
@@ -251,6 +268,7 @@ pub enum TextPart {
     Literal(String),
     State(StateId),
     Resource(ResourceId, ResourceField),
+    Controller(ControllerId, Vec<String>),
     ListLength(StateId),
     Item(Vec<String>),
 }
@@ -288,6 +306,12 @@ pub enum Condition {
         value: StateValue,
         expected: bool,
     },
+    ControllerEquals {
+        controller: ControllerId,
+        path: Vec<String>,
+        value: StateValue,
+        expected: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -303,19 +327,58 @@ pub enum Value {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Increment { state: StateId, by: f64 },
-    SetNumber { state: StateId, value: f64 },
-    SetBool { state: StateId, value: bool },
-    SetString { state: StateId, value: String },
-    Toggle { state: StateId },
-    SetList { state: StateId, value: Value },
-    AppendList { state: StateId, value: Value },
-    RemoveListItem { state: StateId },
-    ReplaceListItem { state: StateId, value: Value },
-    ClearList { state: StateId },
-    ReloadResource { resource: ResourceId },
-    Native { operation: NativeOperation },
-    Navigate { path: String, source: SourceSpan },
+    Increment {
+        state: StateId,
+        by: f64,
+    },
+    SetNumber {
+        state: StateId,
+        value: f64,
+    },
+    SetBool {
+        state: StateId,
+        value: bool,
+    },
+    SetString {
+        state: StateId,
+        value: String,
+    },
+    Toggle {
+        state: StateId,
+    },
+    SetList {
+        state: StateId,
+        value: Value,
+    },
+    AppendList {
+        state: StateId,
+        value: Value,
+    },
+    RemoveListItem {
+        state: StateId,
+    },
+    ReplaceListItem {
+        state: StateId,
+        value: Value,
+    },
+    ClearList {
+        state: StateId,
+    },
+    ReloadResource {
+        resource: ResourceId,
+    },
+    Controller {
+        controller: ControllerId,
+        operation: String,
+        payload: Vec<PayloadPart>,
+    },
+    Native {
+        operation: NativeOperation,
+    },
+    Navigate {
+        path: String,
+        source: SourceSpan,
+    },
     Back,
     Sequence(Vec<Action>),
 }

@@ -19,6 +19,10 @@ pub struct AppFeatures {
     pub network: bool,
     pub text_input: bool,
     pub camera_permission: bool,
+    pub audio: bool,
+    pub audio_playback: bool,
+    pub audio_detached: bool,
+    pub microphone_permission: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -85,6 +89,10 @@ impl Project {
     pub fn android_resources_path(&self) -> &Path {
         &self.config.android_resources
     }
+
+    pub fn android_assets_path(&self) -> PathBuf {
+        self.root().join(".ink/android/assets")
+    }
 }
 
 pub fn check(project: &Project) -> Result<()> {
@@ -110,15 +118,29 @@ struct GeneratedApp {
 
 fn generate(project: &Project) -> Result<GeneratedApp> {
     let app = source::compile(project.root(), &project.config.source)?;
+    let audio_playback = app
+        .controllers
+        .iter()
+        .any(|controller| controller.kind == "player");
+    let audio_detached = app.controllers.iter().any(|controller| {
+        controller.kind == "player" && controller.config.contains("\"playback\":\"detached\"")
+    });
     Ok(GeneratedApp {
         features: AppFeatures {
             light_sdk: app.extensions.contains(&ir::Extension::LightSdk),
             network: app.extensions.contains(&ir::Extension::Network)
-                || uses_remote_image(&app.root),
+                || uses_remote_image(&app.root)
+                || audio_playback,
             text_input: uses_text_input(&app.root),
             camera_permission: app
                 .android_permissions
                 .contains(&ir::AndroidPermission::Camera),
+            audio: app.extensions.contains(&ir::Extension::Audio),
+            audio_playback,
+            audio_detached,
+            microphone_permission: app
+                .android_permissions
+                .contains(&ir::AndroidPermission::Microphone),
         },
         source: codegen::generate(&app, project.root())?,
     })

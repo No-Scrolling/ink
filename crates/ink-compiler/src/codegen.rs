@@ -10,9 +10,10 @@ use quote::{format_ident, quote};
 use crate::{
     icons,
     ir::{
-        Action, Alignment, App, Axis, Collection, Condition, ImageFit, ImageSource, Justification,
-        NativeOperation, Node, PayloadPart, Resource, ResourceField, State, StateLifetime,
-        StateShape, StateValue, TextAlignment, TextInputAction, TextPart, Tone, Value,
+        Action, Alignment, App, Axis, Collection, Condition, Controller, ImageFit, ImageSource,
+        Justification, NativeOperation, Node, PayloadPart, Resource, ResourceField, State,
+        StateLifetime, StateShape, StateValue, TextAlignment, TextInputAction, TextPart, Tone,
+        Value,
     },
 };
 
@@ -29,6 +30,11 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
         let id = resource.0;
         quote! { ResourceId::new(#id) }
     });
+    let controllers = app.controllers.iter().map(controller_definition);
+    let application_controllers = app.application_controllers.iter().map(|controller| {
+        let id = controller.0;
+        quote! { ControllerId::new(#id) }
+    });
     let uses_persistence = app
         .states
         .iter()
@@ -39,10 +45,10 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
     let tokens = quote! {
         #[allow(unused_imports)]
         use ink_core::{
-            Action, Alignment, AppDefinition, Axis, Condition, Justification, Mask, Node, StateId,
-            Collection, ImageSource, NativeOperation, PayloadPart, ResourceDefinition,
-            ResourceField, ResourceId, StateDefinition, StateValue, Route, Tab, TextAlign,
-            TextInputAction, TextPart, Tone, Value,
+            Action, Alignment, AppDefinition, Axis, Condition, ControllerDefinition, ControllerId,
+            Justification, Mask, Node, StateId, Collection, ImageSource, NativeOperation,
+            PayloadPart, ResourceDefinition, ResourceField, ResourceId, StateDefinition,
+            StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone, Value,
         };
 
         pub const USES_PERSISTENCE: bool = #uses_persistence;
@@ -54,6 +60,8 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
                 vec![#(#states),*],
                 vec![#(#resources),*],
                 vec![#(#application_resources),*],
+                vec![#(#controllers),*],
+                vec![#(#application_controllers),*],
                 #root,
             )
         }
@@ -92,6 +100,7 @@ impl<'a> Emitter<'a> {
                 title,
                 centered,
                 resources,
+                controllers,
             } => {
                 let children = self.children(children)?;
                 let title = option_string(title.as_deref());
@@ -99,8 +108,18 @@ impl<'a> Emitter<'a> {
                     let id = resource.0;
                     quote! { ResourceId::new(#id) }
                 });
+                let controllers = controllers.iter().map(|controller| {
+                    let id = controller.0;
+                    quote! { ControllerId::new(#id) }
+                });
                 quote! {
-                    Node::screen(vec![#(#children),*], #title, #centered, vec![#(#resources),*])
+                    Node::screen(
+                        vec![#(#children),*],
+                        #title,
+                        #centered,
+                        vec![#(#resources),*],
+                        vec![#(#controllers),*],
+                    )
                 }
             }
             Node::Stack {
@@ -458,6 +477,16 @@ fn resource_definition(resource: &Resource) -> TokenStream {
     }
 }
 
+fn controller_definition(controller: &Controller) -> TokenStream {
+    let state = controller.state.0;
+    let module = &controller.module;
+    let kind = &controller.kind;
+    let config = &controller.config;
+    quote! {
+        ControllerDefinition::new(StateId::new(#state), #module, #kind, #config)
+    }
+}
+
 fn state_shape(shape: &StateShape) -> TokenStream {
     match shape {
         StateShape::Number => quote! { ink_core::StateShape::Number },
@@ -505,6 +534,12 @@ fn text_part(part: &TextPart) -> TokenStream {
             let id = resource.0;
             let field = resource_field_tokens(field);
             quote! { TextPart::resource(ResourceId::new(#id), #field) }
+        }
+        TextPart::Controller(controller, path) => {
+            let id = controller.0;
+            quote! {
+                TextPart::controller(ControllerId::new(#id), vec![#(#path.to_owned()),*])
+            }
         }
         TextPart::ListLength(state) => {
             let id = state.0;
@@ -570,6 +605,21 @@ fn action_tokens(action: &Action) -> TokenStream {
             let id = resource.0;
             quote! { Action::ReloadResource { resource: ResourceId::new(#id) } }
         }
+        Action::Controller {
+            controller,
+            operation,
+            payload,
+        } => {
+            let id = controller.0;
+            let payload = payload.iter().map(payload_part);
+            quote! {
+                Action::Controller {
+                    controller: ControllerId::new(#id),
+                    operation: #operation.to_owned(),
+                    payload: vec![#(#payload),*],
+                }
+            }
+        }
         Action::Native { operation } => {
             let operation = native_operation_tokens(operation);
             quote! { Action::Native { operation: #operation } }
@@ -600,6 +650,7 @@ fn payload_part(part: &PayloadPart) -> TokenStream {
             let id = state.0;
             quote! { PayloadPart::State(StateId::new(#id)) }
         }
+        PayloadPart::Item(path) => quote! { PayloadPart::Item(vec![#(#path.to_owned()),*]) },
     }
 }
 
@@ -641,6 +692,23 @@ fn condition_tokens(condition: &Condition) -> TokenStream {
                 Condition::ResourceEquals {
                     resource: ResourceId::new(#id),
                     field: #field,
+                    value: #value,
+                    expected: #expected,
+                }
+            }
+        }
+        Condition::ControllerEquals {
+            controller,
+            path,
+            value,
+            expected,
+        } => {
+            let id = controller.0;
+            let value = state_value(value);
+            quote! {
+                Condition::ControllerEquals {
+                    controller: ControllerId::new(#id),
+                    path: vec![#(#path.to_owned()),*],
                     value: #value,
                     expected: #expected,
                 }

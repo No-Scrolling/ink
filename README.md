@@ -46,6 +46,7 @@ export default function Counter() {
 - Momentum scrolling
 - Lightweight text input and keyboard
 - Local and remote images, plus generated app icons
+- Audio playback, recording and microphone analysis
 - Multi-file apps and installed UI packages
 - Android development, signing and device tooling through the `ink` CLI
 
@@ -54,7 +55,7 @@ export default function Counter() {
 - `ink` — UI, layout, navigation, state and persistence
 - `@ink/light-sdk` — LightOS integration
 - `@ink/network` — typed HTTPS JSON resources
-- `@ink/audio` — Playback and recording (planned)
+- `@ink/audio` — Playback, recording and microphone analysis
 - `@ink/location` — Device location (planned)
 - `@ink/camera` — Camera and code scanning (planned)
 - `@ink/nfc` — NFC reading (planned)
@@ -119,12 +120,26 @@ The compiler adds the Android permission only when the application uses that res
 - [ ] Open dialler
 - [ ] Set ringtone
 
-Ink currently targets Light SDK `0.1.1`. Physical Light Phone III builds connect to `com.lightos`. To use the official emulator:
+Ink currently targets Light SDK `0.1.1`. Physical Light Phone III builds connect to `com.lightos`; `ink dev` selects the official SDK service automatically when its target is an Android emulator.
 
-```toml
-[light]
-server = "com.thelightphone.sdk.emulator"
+## Audio
+
+`@ink/audio` provides screen-scoped players, recorders, level meters and pitch detection:
+
+```tsx
+import { audioPlayer } from "@ink/audio";
+
+const player = audioPlayer({ usage: "music", playback: "detached" });
+
+<Button onPress={() => player.play({
+  src: "./assets/song.mp3",
+  title: "Song",
+})}>
+  Play
+</Button>
 ```
+
+Bundled assets and HTTPS sources use the same player. Detached playback continues through an Android media session after the screen or application leaves the foreground. Apps that do not import `@ink/audio` carry none of its native implementation.
 
 ## Development
 
@@ -154,3 +169,4 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Installed UI packages](docs/adr/0002-installed-source-packages.md)
 - [Light SDK adapter](docs/adr/0003-light-sdk-adapter.md)
 - [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
+- [Audio](docs/audio.md)

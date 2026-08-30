@@ -575,12 +575,21 @@ dependencies = [
 name = "ink-android"
 version = "0.1.0"
 dependencies = [
+ "ink-audio",
  "ink-core",
  "ink-renderer-wgpu",
  "jni",
  "ndk",
  "pollster",
+ "serde_json",
  "wgpu",
+]
+
+[[package]]
+name = "ink-audio"
+version = "0.1.0"
+dependencies = [
+ "ink-core",
 ]
 
 [[package]]

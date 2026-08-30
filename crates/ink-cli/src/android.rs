@@ -88,6 +88,14 @@ impl Device {
         }
     }
 
+    fn light_server<'a>(&self, configured: &'a str) -> &'a str {
+        if self.serial.starts_with("emulator-") && configured == "com.lightos" {
+            "com.thelightphone.sdk.emulator"
+        } else {
+            configured
+        }
+    }
+
     fn matches(&self, query: &str) -> bool {
         if self.serial.eq_ignore_ascii_case(query) {
             return true;
@@ -102,8 +110,31 @@ impl Device {
 }
 
 pub fn build(project: &Project, profile: Profile, verbose: bool) -> Result<BuildArtifact> {
+    build_with_light_server(project, profile, verbose, project.light_server())
+}
+
+pub fn build_for_device(
+    project: &Project,
+    device: &Device,
+    profile: Profile,
+    verbose: bool,
+) -> Result<BuildArtifact> {
+    build_with_light_server(
+        project,
+        profile,
+        verbose,
+        device.light_server(project.light_server()),
+    )
+}
+
+fn build_with_light_server(
+    project: &Project,
+    profile: Profile,
+    verbose: bool,
+    light_server: &str,
+) -> Result<BuildArtifact> {
     let features = compile(project)?;
-    let mut gradle = gradle_command(project, profile, features)?;
+    let mut gradle = gradle_command(project, profile, features, light_server)?;
     let message = format!("Building {} APK", profile.label());
     let duration = process::run(&mut gradle, &message, verbose)?;
     build_artifact(profile, duration, verbose)
@@ -114,9 +145,15 @@ pub fn build_watched(
     profile: Profile,
     verbose: bool,
     baseline: &watch::Snapshot,
+    device: &Device,
 ) -> Result<BuildOutcome> {
     let features = compile(project)?;
-    let mut gradle = gradle_command(project, profile, features)?;
+    let mut gradle = gradle_command(
+        project,
+        profile,
+        features,
+        device.light_server(project.light_server()),
+    )?;
     if watch::changed(project.root(), baseline)? {
         return Ok(BuildOutcome::Changed);
     }
@@ -132,7 +169,12 @@ pub fn build_watched(
     )?))
 }
 
-fn gradle_command(project: &Project, profile: Profile, features: AppFeatures) -> Result<Command> {
+fn gradle_command(
+    project: &Project,
+    profile: Profile,
+    features: AppFeatures,
+    light_server: &str,
+) -> Result<Command> {
     let release_signing = if profile == Profile::Release {
         let signing = project.release_signing().context(
             "release signing is not configured; add [signing] with keystore and key_alias to ink.toml",
@@ -167,14 +209,24 @@ fn gradle_command(project: &Project, profile: Profile, features: AppFeatures) ->
         .arg(format!("-PinkVersionCode={}", project.version_code()))
         .arg(format!("-PinkUsesLightSdk={}", features.light_sdk))
         .arg(format!("-PinkUsesNetwork={}", features.network))
+        .arg(format!("-PinkUsesAudio={}", features.audio))
+        .arg(format!(
+            "-PinkUsesAudioPlayback={}",
+            features.audio_playback
+        ))
+        .arg(format!(
+            "-PinkUsesDetachedAudio={}",
+            features.audio_detached
+        ))
         .arg(format!(
             "-PinkUsesCameraPermission={}",
             features.camera_permission
         ))
         .arg(format!(
-            "-PinkLightServerPackage={}",
-            project.light_server()
+            "-PinkUsesMicrophonePermission={}",
+            features.microphone_permission
         ))
+        .arg(format!("-PinkLightServerPackage={light_server}"))
         .arg(format!("-PinkUsesTextInput={}", features.text_input))
         .arg(format!(
             "-PinkGeneratedSource={}",
@@ -183,6 +235,10 @@ fn gradle_command(project: &Project, profile: Profile, features: AppFeatures) ->
         .arg(format!(
             "-PinkAndroidResources={}",
             project.android_resources_path().display()
+        ))
+        .arg(format!(
+            "-PinkAndroidAssets={}",
+            project.android_assets_path().display()
         ));
 
     if let Some(signing) = release_signing {

@@ -11,10 +11,13 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [features]
+audio = ["dep:ink-audio", "dep:serde_json"]
 network = []
 
 [dependencies]
 ink-core = { path = "../../../crates/ink-core" }
+ink-audio = { path = "../../../crates/ink-audio", optional = true }
+serde_json = { workspace = true, optional = true }
 ink-renderer-wgpu = { path = "../../../crates/ink-renderer-wgpu" }
 pollster.workspace = true
 wgpu.workspace = true

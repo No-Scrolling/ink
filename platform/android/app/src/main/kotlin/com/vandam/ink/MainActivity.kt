@@ -38,6 +38,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var inkView: InkSurfaceView
     private lateinit var lightSdkAdapter: LightSdkAdapter
     private lateinit var networkAdapter: NetworkAdapter
+    private lateinit var audioAdapter: AudioAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
@@ -99,6 +100,34 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
         lightSdkAdapter = createLightSdkAdapter(this, textInputAdapter::setHapticsEnabled)
         networkAdapter = createNetworkAdapter(this)
+        audioAdapter = createAudioAdapter(
+            this,
+            { samples, sampleRate ->
+                runOnUiThread {
+                    if (engineHandle != 0L) {
+                        nativeAudioSamples(engineHandle, samples, sampleRate)
+                    }
+                }
+            },
+            { controller, value ->
+                if (engineHandle != 0L) {
+                    nativeUpdateController(engineHandle, controller, value)
+                }
+            },
+            { controller, kind, config ->
+                engineHandle != 0L &&
+                    nativeAudioActivate(engineHandle, controller, kind, config)
+            },
+            { controller ->
+                if (engineHandle != 0L) {
+                    nativeAudioDeactivate(engineHandle, controller)
+                }
+            },
+            { controller, enabled ->
+                engineHandle != 0L &&
+                    nativeAudioSetEnabled(engineHandle, controller, enabled)
+            },
+        )
         lightSdkAdapter.start()
         drainNativeRequests()
         setContentView(
@@ -129,6 +158,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             drainNativeRequests()
         }
         resumedOnce = true
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (engineHandle != 0L && nativeResume(engineHandle)) {
+            drainNativeRequests()
+        }
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -166,6 +206,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         lightSdkAdapter.stop()
         networkAdapter.stop()
+        audioAdapter.stop()
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
         detachSurface()
@@ -178,6 +219,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onPause() {
         persistNow()
+        audioAdapter.pause()
         super.onPause()
     }
 
@@ -257,14 +299,21 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
                 lightSdkAdapter.cancel(requestId)
                 networkAdapter.cancel(requestId)
+                audioAdapter.cancel(requestId)
                 continue
             }
             val module = nativeRequestModule(engineHandle, requestId)
             val operation = nativeRequestOperation(engineHandle, requestId)
             val payload = nativeRequestPayload(engineHandle, requestId)
+            val controller = nativeRequestController(engineHandle, requestId)
+            val lightAudioPermission = module == AUDIO_MODULE &&
+                controller < 0L &&
+                (operation == PERMISSION_STATUS_OPERATION ||
+                    operation == REQUEST_PERMISSION_OPERATION)
             val adapter = when (module) {
                 LIGHT_SDK_MODULE -> lightSdkAdapter
                 NETWORK_MODULE -> networkAdapter
+                AUDIO_MODULE -> if (lightAudioPermission) lightSdkAdapter else audioAdapter
                 else -> null
             }
             if (adapter == null) {
@@ -296,8 +345,25 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 timeout,
                 nativeRequestTimeoutMs(engineHandle, requestId),
             )
-            adapter.execute(requestId, operation, payload) { result ->
+            val execute = { result: NativeResult ->
                 runOnUiThread { completeNativeRequest(requestId, kind, result) }
+            }
+            if (lightAudioPermission) {
+                lightSdkAdapter.execute(requestId, operation, MICROPHONE_PERMISSION) { result ->
+                    if (result is NativeResult.Failure &&
+                        result.kind == NativeErrorKind.UNAVAILABLE
+                    ) {
+                        runOnUiThread {
+                            audioAdapter.execute(requestId, operation, payload, execute)
+                        }
+                    } else {
+                        execute(result)
+                    }
+                }
+            } else if (controller >= 0L && adapter === audioAdapter) {
+                audioAdapter.executeController(controller, operation, payload, execute)
+            } else {
+                adapter.execute(requestId, operation, payload, execute)
             }
         }
     }
@@ -456,6 +522,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val PERSISTENCE_DELAY_MS = 250L
         private const val LIGHT_SDK_MODULE = "light-sdk"
         private const val NETWORK_MODULE = "network"
+        private const val AUDIO_MODULE = "audio"
+        private const val PERMISSION_STATUS_OPERATION = "permission-status"
+        private const val REQUEST_PERMISSION_OPERATION = "request-permission"
+        private const val MICROPHONE_PERMISSION = "microphone"
         private const val NATIVE_REQUEST_RESOURCE = 0
         private const val NATIVE_REQUEST_CANCEL = 2
         private const val NATIVE_REQUEST_IMAGE = 3
@@ -520,6 +590,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeRequestKind(handle: Long, requestId: Long): Int
 
         @JvmStatic
+        private external fun nativeRequestController(handle: Long, requestId: Long): Long
+
+        @JvmStatic
         private external fun nativeRequestTimeoutMs(handle: Long, requestId: Long): Long
 
         @JvmStatic
@@ -563,6 +636,38 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeCompleteAction(handle: Long, requestId: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeUpdateController(
+            handle: Long,
+            controller: Long,
+            value: String,
+        ): Boolean
+
+        @JvmStatic
+        private external fun nativeAudioActivate(
+            handle: Long,
+            controller: Long,
+            kind: String,
+            config: String,
+        ): Boolean
+
+        @JvmStatic
+        private external fun nativeAudioDeactivate(handle: Long, controller: Long)
+
+        @JvmStatic
+        private external fun nativeAudioSetEnabled(
+            handle: Long,
+            controller: Long,
+            enabled: Boolean,
+        ): Boolean
+
+        @JvmStatic
+        private external fun nativeAudioSamples(
+            handle: Long,
+            samples: ShortArray,
+            sampleRate: Int,
+        ): Boolean
 
         @JvmStatic
         private external fun nativeDetachSurface(handle: Long)
