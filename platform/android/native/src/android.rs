@@ -713,6 +713,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
         3 => ResourceErrorKind::Protocol,
         5 => ResourceErrorKind::PermissionBlocked,
         6 => ResourceErrorKind::LocationDisabled,
+        7 => ResourceErrorKind::NfcDisabled,
         _ => ResourceErrorKind::Unexpected,
     };
     engine(handle)

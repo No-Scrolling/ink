@@ -11,6 +11,7 @@ const LIGHT_SDK_VERSION: &str = "0.1.1";
 const NETWORK_PACKAGE: &str = "@ink/network";
 const AUDIO_PACKAGE: &str = "@ink/audio";
 const LOCATION_PACKAGE: &str = "@ink/location";
+const NFC_PACKAGE: &str = "@ink/nfc";
 
 pub struct ModuleResolver {
     project_root: PathBuf,
@@ -177,6 +178,14 @@ impl ModuleResolver {
             (LOCATION_PACKAGE, "location") => Err(CompileError::new(
                 format!(
                     "@ink/location targets Ink location API {}, but this Ink version supports 1",
+                    ink.sdk_version
+                ),
+                span,
+            )),
+            (NFC_PACKAGE, "nfc") if ink.sdk_version == "1" => Ok(Extension::Nfc),
+            (NFC_PACKAGE, "nfc") => Err(CompileError::new(
+                format!(
+                    "@ink/nfc targets Ink NFC API {}, but this Ink version supports 1",
                     ink.sdk_version
                 ),
                 span,

@@ -1,0 +1,15 @@
+{
+  "name": "@ink/nfc",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "ink": "./ink.ts"
+    }
+  },
+  "ink": {
+    "extension": "nfc",
+    "sdkVersion": "1"
+  }
+}

@@ -4,6 +4,7 @@ type ResourceErrorKind =
   | "permission-denied"
   | "permission-blocked"
   | "location-disabled"
+  | "nfc-disabled"
   | "timeout"
   | "protocol"
   | "unexpected";

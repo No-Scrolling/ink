@@ -24,6 +24,7 @@ val inkUsesDetachedAudio = providers.gradleProperty("inkUsesDetachedAudio").orEl
 val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission").orElse("false")
 val inkUsesMicrophonePermission = providers.gradleProperty("inkUsesMicrophonePermission").orElse("false")
 val inkUsesLocation = providers.gradleProperty("inkUsesLocation").orElse("false")
+val inkUsesNfc = providers.gradleProperty("inkUsesNfc").orElse("false")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 val inkLightSdkVersion = "0.1.1"
@@ -46,10 +47,14 @@ val inkPermissions = buildList {
         add("android.permission.ACCESS_COARSE_LOCATION")
         add("android.permission.ACCESS_FINE_LOCATION")
     }
+    if (inkUsesNfc.get().toBoolean()) {
+        add("android.permission.NFC")
+    }
 }
 val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
 val generateInkPermissionManifest by tasks.registering {
     inputs.property("permissions", inkPermissions.joinToString())
+    inputs.property("nfc", inkUsesNfc)
     outputs.file(inkPermissionManifest)
     doLast {
         val output = inkPermissionManifest.get().asFile
@@ -59,6 +64,11 @@ val generateInkPermissionManifest by tasks.registering {
             appendLine("<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">")
             inkPermissions.forEach { permission ->
                 appendLine("    <uses-permission android:name=\"$permission\" />")
+            }
+            if (inkUsesNfc.get().toBoolean()) {
+                appendLine(
+                    "    <uses-feature android:name=\"android.hardware.nfc\" android:required=\"false\" />",
+                )
             }
             appendLine("</manifest>")
         })
@@ -165,6 +175,13 @@ android {
                 "src/location/kotlin"
             } else {
                 "src/noLocation/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesNfc.get().toBoolean()) {
+                "src/nfc/kotlin"
+            } else {
+                "src/noNfc/kotlin"
             },
         )
         if (inkUsesTextInput.get().toBoolean()) {

@@ -114,6 +114,7 @@ enum ExtensionFunction {
     AudioRecorder,
     LocationPermission,
     CurrentLocation,
+    NfcTag,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -253,6 +254,7 @@ fn validate_imports(
                         (Extension::Location, "currentLocation") => {
                             ExtensionFunction::CurrentLocation
                         }
+                        (Extension::Nfc, "nfcTag") => ExtensionFunction::NfcTag,
                         _ => {
                             return Err(CompileError::new(
                                 format!("{imported} is not exported by this Ink extension"),
@@ -641,6 +643,7 @@ fn resource_initialiser(
                     payload: vec![PayloadPart::Literal(String::new())],
                     shape: StateShape::String,
                     timeout_ms: 10_000,
+                    reload_on_resume: true,
                 },
                 request: None,
                 android_permission: None,
@@ -666,6 +669,7 @@ fn resource_initialiser(
                     payload: vec![PayloadPart::Literal("camera".to_owned())],
                     shape: StateShape::String,
                     timeout_ms: 10_000,
+                    reload_on_resume: true,
                 },
                 request: Some(NativeOperation {
                     module: "light-sdk".to_owned(),
@@ -691,6 +695,7 @@ fn resource_initialiser(
                     payload: vec![PayloadPart::Literal(String::new())],
                     shape: StateShape::String,
                     timeout_ms: 10_000,
+                    reload_on_resume: true,
                 },
                 request: Some(NativeOperation {
                     module: "audio".to_owned(),
@@ -710,6 +715,7 @@ fn resource_initialiser(
                     payload: vec![PayloadPart::Literal(format!("location-{accuracy}"))],
                     shape: StateShape::String,
                     timeout_ms: 10_000,
+                    reload_on_resume: true,
                 },
                 request: Some(NativeOperation {
                     module: "light-sdk".to_owned(),
@@ -721,6 +727,7 @@ fn resource_initialiser(
             }
         }
         ExtensionFunction::CurrentLocation => current_location_resource(call)?,
+        ExtensionFunction::NfcTag => nfc_tag_resource(call)?,
         ExtensionFunction::LevelMeter
         | ExtensionFunction::PitchDetector
         | ExtensionFunction::AudioPlayer
@@ -858,9 +865,96 @@ fn current_location_resource(
                 ("timestamp", StateShape::Number),
             ]),
             timeout_ms,
+            reload_on_resume: true,
         },
         request: None,
         android_permission: Some(AndroidPermission::Location),
+    })
+}
+
+fn nfc_tag_resource(
+    call: &oxc::ast::ast::CallExpression<'_>,
+) -> Result<ResourceInitialiser, CompileError> {
+    let mut timeout_ms = 30_000_u64;
+    match call.arguments.as_slice() {
+        [] => {}
+        [Argument::ObjectExpression(options)] => {
+            let mut seen = HashSet::new();
+            for property in &options.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return Err(CompileError::new(
+                        "NFC options cannot use spreads",
+                        property.span(),
+                    ));
+                };
+                let name = property_name(&property.key)?;
+                if !seen.insert(name.clone()) {
+                    return Err(CompileError::new(
+                        format!("NFC option {name:?} is declared twice"),
+                        property.span,
+                    ));
+                }
+                match name.as_str() {
+                    "timeoutMs" => {
+                        let Expression::NumericLiteral(value) = &property.value else {
+                            return Err(CompileError::new(
+                                "timeoutMs must be a number literal",
+                                property.value.span(),
+                            ));
+                        };
+                        timeout_ms = integer(value.value, value.span, "timeoutMs")?
+                            .try_into()
+                            .ok()
+                            .filter(|value: &u64| (1_000..=120_000).contains(value))
+                            .ok_or_else(|| {
+                                CompileError::new(
+                                    "timeoutMs must be between 1000 and 120000",
+                                    value.span,
+                                )
+                            })?;
+                    }
+                    _ => {
+                        return Err(CompileError::new(
+                            format!("unknown NFC option {name:?}"),
+                            property.key.span(),
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {
+            return Err(CompileError::new(
+                "nfcTag() accepts an optional { timeoutMs } object",
+                call.span,
+            ));
+        }
+    }
+
+    let record_shape = object_shape([
+        ("kind", StateShape::String),
+        ("value", StateShape::String),
+        ("languageTag", StateShape::String),
+        ("mimeType", StateShape::String),
+        ("payloadBase64", StateShape::String),
+    ]);
+    Ok(ResourceInitialiser {
+        definition: Resource {
+            module: "nfc".to_owned(),
+            operation: "read".to_owned(),
+            payload: vec![PayloadPart::Literal(String::new())],
+            shape: object_shape([
+                ("serialNumber", StateShape::String),
+                ("hasText", StateShape::Bool),
+                ("text", StateShape::String),
+                ("hasUri", StateShape::Bool),
+                ("uri", StateShape::String),
+                ("records", StateShape::List(Box::new(record_shape))),
+            ]),
+            timeout_ms,
+            reload_on_resume: false,
+        },
+        request: None,
+        android_permission: Some(AndroidPermission::Nfc),
     })
 }
 
@@ -1289,6 +1383,7 @@ fn network_json_resource(
             payload,
             shape,
             timeout_ms,
+            reload_on_resume: true,
         },
         request: None,
         android_permission: None,
@@ -3993,6 +4088,7 @@ fn validate_resource_comparison(
                 "permission-denied",
                 "permission-blocked",
                 "location-disabled",
+                "nfc-disabled",
                 "timeout",
                 "protocol",
                 "unexpected",

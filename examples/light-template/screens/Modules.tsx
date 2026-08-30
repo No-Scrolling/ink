@@ -6,6 +6,7 @@ export default function Modules() {
       <Button href="/modules/audio">Audio</Button>
       <Button href="/modules/light-sdk">Light SDK</Button>
       <Button href="/modules/location">Location</Button>
+      <Button href="/modules/nfc">NFC</Button>
       <Button href="/modules/network">Network</Button>
     </Screen>
   );

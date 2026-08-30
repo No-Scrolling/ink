@@ -34,4 +34,5 @@ internal enum class NativeErrorKind(val code: Int) {
     UNEXPECTED(4),
     PERMISSION_BLOCKED(5),
     LOCATION_DISABLED(6),
+    NFC_DISABLED(7),
 }

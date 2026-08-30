@@ -468,11 +468,13 @@ fn resource_definition(resource: &Resource) -> TokenStream {
     let operation = &resource.operation;
     let payload = resource.payload.iter().map(payload_part);
     let timeout_ms = resource.timeout_ms;
+    let reload_on_resume = resource.reload_on_resume;
     let shape = state_shape(&resource.shape);
     quote! {
         ResourceDefinition::new(
             #shape,
             NativeOperation::templated(#module, #operation, vec![#(#payload),*], #timeout_ms),
+            #reload_on_resume,
         )
     }
 }

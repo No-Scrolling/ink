@@ -241,6 +241,7 @@ impl NativeOperation {
 pub struct ResourceDefinition {
     shape: StateShape,
     read: NativeOperation,
+    reload_on_resume: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -268,8 +269,12 @@ impl ControllerDefinition {
 }
 
 impl ResourceDefinition {
-    pub const fn new(shape: StateShape, read: NativeOperation) -> Self {
-        Self { shape, read }
+    pub const fn new(shape: StateShape, read: NativeOperation, reload_on_resume: bool) -> Self {
+        Self {
+            shape,
+            read,
+            reload_on_resume,
+        }
     }
 }
 
@@ -279,6 +284,7 @@ pub enum ResourceErrorKind {
     PermissionDenied,
     PermissionBlocked,
     LocationDisabled,
+    NfcDisabled,
     Timeout,
     Protocol,
     Unexpected,
@@ -291,6 +297,7 @@ impl ResourceErrorKind {
             Self::PermissionDenied => "permission-denied",
             Self::PermissionBlocked => "permission-blocked",
             Self::LocationDisabled => "location-disabled",
+            Self::NfcDisabled => "nfc-disabled",
             Self::Timeout => "timeout",
             Self::Protocol => "protocol",
             Self::Unexpected => "unexpected",
@@ -1769,7 +1776,15 @@ impl Engine {
     }
 
     pub fn resume(&mut self) -> bool {
-        let resources = self.active_resources.iter().copied().collect::<Vec<_>>();
+        let resources = self
+            .active_resources
+            .iter()
+            .copied()
+            .filter(|resource| {
+                self.definition.resources[resource.0].reload_on_resume
+                    || matches!(self.resources[resource.0], ResourceState::Loading { .. })
+            })
+            .collect::<Vec<_>>();
         if resources.is_empty() {
             return false;
         }

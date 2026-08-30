@@ -9,6 +9,7 @@
     "@ink/audio": "file:../../packages/audio",
     "@ink/light-sdk": "file:../../packages/light-sdk",
     "@ink/location": "file:../../packages/location",
+    "@ink/nfc": "file:../../packages/nfc",
     "@ink/network": "file:../../packages/network",
     "ink": "file:../../packages/ink"
   },

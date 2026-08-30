@@ -24,6 +24,7 @@ pub struct AppFeatures {
     pub audio_detached: bool,
     pub microphone_permission: bool,
     pub location: bool,
+    pub nfc: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -144,6 +145,7 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
                 .android_permissions
                 .contains(&ir::AndroidPermission::Microphone),
             location: app.extensions.contains(&ir::Extension::Location),
+            nfc: app.extensions.contains(&ir::Extension::Nfc),
         },
         source: codegen::generate(&app, project.root())?,
     })

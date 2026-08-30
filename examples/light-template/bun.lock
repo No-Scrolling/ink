@@ -9,6 +9,7 @@
         "@ink/light-sdk": "file:../../packages/light-sdk",
         "@ink/location": "file:../../packages/location",
         "@ink/network": "file:../../packages/network",
+        "@ink/nfc": "file:../../packages/nfc",
         "ink": "file:../../packages/ink",
       },
       "devDependencies": {
@@ -24,6 +25,8 @@
     "@ink/location": ["@ink/location@file:../../packages/location", {}],
 
     "@ink/network": ["@ink/network@file:../../packages/network", {}],
+
+    "@ink/nfc": ["@ink/nfc@file:../../packages/nfc", {}],
 
     "@typescript/typescript-aix-ppc64": ["@typescript/typescript-aix-ppc64@7.0.2", "", { "os": "aix", "cpu": "ppc64" }, "sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ=="],
 

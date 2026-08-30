@@ -48,6 +48,7 @@ export default function Counter() {
 - Local and remote images, plus generated app icons
 - Audio playback, recording and microphone analysis
 - Foreground device location through LightOS permissions
+- Screen-scoped NFC tag and NDEF reading
 - Multi-file apps and installed UI packages
 - Android development, signing and device tooling through the `ink` CLI
 
@@ -59,7 +60,7 @@ export default function Counter() {
 - `@ink/audio` — Playback, recording and microphone analysis
 - `@ink/location` — Foreground device location
 - `@ink/camera` — Camera and code scanning (planned)
-- `@ink/nfc` — NFC reading (planned)
+- `@ink/nfc` — NFC tag and NDEF reading
 - `@ink/notifications` — Local notifications (planned)
 - `@ink/background` — Scheduled background work (planned)
 
@@ -157,6 +158,20 @@ const location = currentLocation({ accuracy: "precise" });
 
 Recent fixes return immediately; stale fixes trigger a cancellable GPS/network request. Apps that do not import the module carry none of its native implementation.
 
+## NFC
+
+`@ink/nfc` reads one NFC tag while its screen is active:
+
+```tsx
+import { nfcTag } from "@ink/nfc";
+
+const tag = nfcTag({ timeoutMs: 30_000 });
+
+<Button onPress={() => tag.reload()}>Read another tag</Button>
+```
+
+The result includes the tag serial number and normalised text, URI and binary NDEF records. A tag without NDEF data still succeeds with an empty record list. Apps that do not import the module carry neither its native adapter nor NFC manifest declarations.
+
 ## Development
 
 Check the local toolchain and run the counter example:
@@ -187,3 +202,4 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
 - [Audio](docs/audio.md)
 - [Location](docs/location.md)
+- [NFC](docs/nfc.md)

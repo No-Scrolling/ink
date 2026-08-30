@@ -38,6 +38,7 @@ pub enum Extension {
     Network,
     Audio,
     Location,
+    Nfc,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -45,6 +46,7 @@ pub enum AndroidPermission {
     Camera,
     Microphone,
     Location,
+    Nfc,
 }
 
 #[derive(Debug)]
@@ -62,6 +64,7 @@ pub struct Resource {
     pub payload: Vec<PayloadPart>,
     pub shape: StateShape,
     pub timeout_ms: u64,
+    pub reload_on_resume: bool,
 }
 
 #[derive(Clone, Debug)]
