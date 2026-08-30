@@ -1,9 +1,9 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./assets/images/title-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="./assets/images/title-light.png">
-  <img src="./assets/images/title-light.png" alt="Ink" width="360">
+  <img src="./assets/images/title-light.png" alt="Ink" width="48">
 </picture>
-
+<br><br>
 <p>An experimental TypeScript framework for small, native Light Phone III apps.</p>
 
 Ink compiles a restricted TypeScript and TSX dialect ahead of time into Rust. Apps use a native Vulkan renderer and do not include a JavaScript runtime.
