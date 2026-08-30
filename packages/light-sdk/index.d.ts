@@ -1,3 +1,4 @@
+// TODO: Import these from "ink" once local file packages resolve sibling types correctly.
 export type ResourceErrorKind =
   | "unavailable"
   | "permission-denied"
