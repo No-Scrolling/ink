@@ -40,6 +40,7 @@ pub enum Extension {
     Location,
     Nfc,
     Background,
+    Notifications,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -48,6 +49,7 @@ pub enum AndroidPermission {
     Microphone,
     Location,
     Nfc,
+    Notifications,
 }
 
 #[derive(Debug)]

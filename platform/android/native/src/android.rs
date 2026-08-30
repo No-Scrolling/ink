@@ -220,6 +220,14 @@ impl AndroidEngine {
         true
     }
 
+    fn navigate(&mut self, path: &str) -> bool {
+        if !self.engine.navigate(path) {
+            return false;
+        }
+        self.render();
+        true
+    }
+
     fn resume(&mut self) -> bool {
         if !self.engine.resume() {
             return false;
@@ -457,6 +465,22 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| engine.back()) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNavigate(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    path: JString<'_>,
+) -> jboolean {
+    let Some(engine) = engine(handle) else {
+        return false as jboolean;
+    };
+    let path = env
+        .with_env(|env| path.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine.lock().expect("engine lock poisoned").navigate(&path) as jboolean
 }
 
 #[unsafe(no_mangle)]

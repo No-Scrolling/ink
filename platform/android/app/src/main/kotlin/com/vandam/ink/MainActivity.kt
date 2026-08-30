@@ -44,6 +44,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var nfcAdapter: NfcAdapter
     private lateinit var backgroundAdapter: BackgroundAdapter
     private lateinit var textInputAdapter: TextInputAdapter
+    private lateinit var notificationsAdapter: NotificationsAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
     private var resumedOnce = false
@@ -135,6 +136,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     nativeAudioSetEnabled(engineHandle, controller, enabled)
             },
         )
+        notificationsAdapter = createNotificationsAdapter(this) { controller, value ->
+            if (engineHandle != 0L) {
+                nativeUpdateController(engineHandle, controller, value)
+            }
+        }
         lightSdkAdapter.start()
         backgroundAdapter.reconcile()
         drainNativeRequests()
@@ -150,6 +156,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             backCallback,
         )
         enterFullscreen()
+        handleNotificationIntent(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -168,6 +181,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         resumedOnce = true
         nfcAdapter.resume()
+        notificationsAdapter.refreshEvents()
     }
 
     override fun onRequestPermissionsResult(
@@ -317,6 +331,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 locationAdapter.cancel(requestId)
                 nfcAdapter.cancel(requestId)
                 backgroundAdapter.cancel(requestId)
+                notificationsAdapter.cancel(requestId)
                 continue
             }
             val module = nativeRequestModule(engineHandle, requestId)
@@ -334,6 +349,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 LOCATION_MODULE -> locationAdapter
                 NFC_MODULE -> nfcAdapter
                 BACKGROUND_MODULE -> backgroundAdapter
+                NOTIFICATIONS_MODULE -> notificationsAdapter
                 else -> null
             }
             if (adapter == null) {
@@ -382,6 +398,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             } else if (controller >= 0L && adapter === audioAdapter) {
                 audioAdapter.executeController(controller, operation, payload, execute)
+            } else if (controller >= 0L && adapter === notificationsAdapter) {
+                notificationsAdapter.executeController(controller, operation, payload, execute)
             } else if (adapter === locationAdapter) {
                 locationAdapter.execute(requestId, operation, payload) { result ->
                     val permission = if (
@@ -421,6 +439,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 adapter.execute(requestId, operation, payload, execute)
             }
         }
+    }
+
+    private fun handleNotificationIntent(intent: android.content.Intent?) {
+        notificationsAdapter.refreshEvents()
+        val href = intent?.getStringExtra(EXTRA_NOTIFICATION_HREF).orEmpty()
+        if (href.isNotEmpty() && engineHandle != 0L) {
+            if (nativeNavigate(engineHandle, href)) {
+                inkView.stopScrolling()
+            }
+        }
+        intent?.removeExtra(EXTRA_NOTIFICATION_HREF)
     }
 
     private fun completeNativeRequest(requestId: Long, kind: Int, result: NativeResult) {
@@ -591,6 +620,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val LOCATION_MODULE = "location"
         private const val NFC_MODULE = "nfc"
         private const val BACKGROUND_MODULE = "background"
+        private const val NOTIFICATIONS_MODULE = "notifications"
         private const val PERMISSION_STATUS_OPERATION = "permission-status"
         private const val REQUEST_PERMISSION_OPERATION = "request-permission"
         private const val MICROPHONE_PERMISSION = "microphone"
@@ -645,6 +675,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeBack(handle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeNavigate(handle: Long, path: String): Boolean
 
         @JvmStatic
         private external fun nativeResume(handle: Long): Boolean

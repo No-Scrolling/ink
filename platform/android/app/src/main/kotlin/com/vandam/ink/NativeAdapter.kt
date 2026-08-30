@@ -36,3 +36,16 @@ internal enum class NativeErrorKind(val code: Int) {
     LOCATION_DISABLED(6),
     NFC_DISABLED(7),
 }
+
+internal interface NotificationsAdapter : NativeAdapter {
+    fun executeController(
+        controller: Long,
+        operation: String,
+        payload: String,
+        complete: NativeResultHandler,
+    )
+
+    fun refreshEvents()
+}
+
+internal const val EXTRA_NOTIFICATION_HREF = "com.vandam.ink.notification.HREF"

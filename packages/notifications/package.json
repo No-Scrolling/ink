@@ -1,0 +1,15 @@
+{
+  "name": "@ink/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "ink": "./ink.ts"
+    }
+  },
+  "ink": {
+    "extension": "notifications",
+    "sdkVersion": "1"
+  }
+}

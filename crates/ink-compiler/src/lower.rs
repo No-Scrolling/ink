@@ -73,7 +73,7 @@ struct ResourceInitialiser {
 
 struct ControllerBinding {
     id: ControllerId,
-    kind: AudioControllerKind,
+    kind: NativeControllerKind,
     shape: StateShape,
 }
 
@@ -85,7 +85,7 @@ struct ControllerValueBinding {
 
 struct ControllerInitialiser {
     definition: Controller,
-    kind: AudioControllerKind,
+    kind: NativeControllerKind,
     initial: StateValue,
     shape: StateShape,
 }
@@ -118,14 +118,19 @@ enum ExtensionFunction {
     CurrentLocation,
     NfcTag,
     PeriodicJson,
+    NotificationPermission,
+    LocalNotifications,
+    NotificationTap,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum AudioControllerKind {
+enum NativeControllerKind {
     Level,
     Pitch,
     Player,
     Recorder,
+    Notifications,
+    NotificationTap,
 }
 
 #[derive(Clone, Copy)]
@@ -259,6 +264,15 @@ fn validate_imports(
                         }
                         (Extension::Nfc, "nfcTag") => ExtensionFunction::NfcTag,
                         (Extension::Background, "periodicJson") => ExtensionFunction::PeriodicJson,
+                        (Extension::Notifications, "notificationPermission") => {
+                            ExtensionFunction::NotificationPermission
+                        }
+                        (Extension::Notifications, "localNotifications") => {
+                            ExtensionFunction::LocalNotifications
+                        }
+                        (Extension::Notifications, "notificationTap") => {
+                            ExtensionFunction::NotificationTap
+                        }
                         _ => {
                             return Err(CompileError::new(
                                 format!("{imported} is not exported by this Ink extension"),
@@ -421,9 +435,9 @@ fn lower_function(
                         controller.definition.state = state;
                         if matches!(
                             controller.kind,
-                            AudioControllerKind::Level
-                                | AudioControllerKind::Pitch
-                                | AudioControllerKind::Recorder
+                            NativeControllerKind::Level
+                                | NativeControllerKind::Pitch
+                                | NativeControllerKind::Recorder
                         ) {
                             android_permissions.insert(AndroidPermission::Microphone);
                         }
@@ -544,7 +558,14 @@ fn lower_function(
         ModuleKind::Screen => CompileError::new("a screen module must return <Screen>", body.span),
     })?;
     let scoped_resources = (0..resources.len()).map(ResourceId).collect::<Vec<_>>();
-    let scoped_controllers = (0..controllers.len()).map(ControllerId).collect::<Vec<_>>();
+    let scoped_controllers = (0..controllers.len())
+        .map(ControllerId)
+        .filter(|controller| controllers[controller.0].kind != "notification-tap")
+        .collect::<Vec<_>>();
+    let event_controllers = (0..controllers.len())
+        .map(ControllerId)
+        .filter(|controller| controllers[controller.0].kind == "notification-tap")
+        .collect::<Vec<_>>();
     let application_resources = match kind {
         ModuleKind::App => scoped_resources,
         ModuleKind::Screen => {
@@ -575,7 +596,10 @@ fn lower_function(
         }
     };
     let application_controllers = match kind {
-        ModuleKind::App => scoped_controllers,
+        ModuleKind::App => scoped_controllers
+            .into_iter()
+            .chain(event_controllers)
+            .collect(),
         ModuleKind::Screen => {
             let Node::Screen {
                 controllers: screen_controllers,
@@ -588,7 +612,7 @@ fn lower_function(
                 ));
             };
             *screen_controllers = scoped_controllers;
-            Vec::new()
+            event_controllers
         }
     };
     Ok(App {
@@ -623,7 +647,10 @@ fn resource_initialiser(
     };
     if matches!(
         function,
-        ExtensionFunction::LevelMeter | ExtensionFunction::PitchDetector
+        ExtensionFunction::LevelMeter
+            | ExtensionFunction::PitchDetector
+            | ExtensionFunction::LocalNotifications
+            | ExtensionFunction::NotificationTap
     ) {
         return Ok(None);
     }
@@ -742,10 +769,38 @@ fn resource_initialiser(
         }
         ExtensionFunction::CurrentLocation => current_location_resource(call)?,
         ExtensionFunction::NfcTag => nfc_tag_resource(call)?,
+        ExtensionFunction::NotificationPermission => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "notificationPermission() takes no arguments",
+                    call.span,
+                ));
+            }
+            ResourceInitialiser {
+                definition: Resource {
+                    module: "notifications".to_owned(),
+                    operation: "permission-status".to_owned(),
+                    payload: vec![PayloadPart::Literal(String::new())],
+                    shape: StateShape::String,
+                    timeout_ms: 10_000,
+                    reload_on_resume: true,
+                    protocol: ResourceProtocol::Async,
+                },
+                request: Some(NativeOperation {
+                    module: "notifications".to_owned(),
+                    operation: "request-permission".to_owned(),
+                    payload: vec![PayloadPart::Literal(String::new())],
+                    timeout_ms: 10_000,
+                }),
+                android_permission: Some(AndroidPermission::Notifications),
+            }
+        }
         ExtensionFunction::LevelMeter
         | ExtensionFunction::PitchDetector
         | ExtensionFunction::AudioPlayer
-        | ExtensionFunction::AudioRecorder => unreachable!(),
+        | ExtensionFunction::AudioRecorder
+        | ExtensionFunction::LocalNotifications
+        | ExtensionFunction::NotificationTap => unreachable!(),
     };
     Ok(Some(resource))
 }
@@ -997,12 +1052,14 @@ fn controller_initialiser(
             | ExtensionFunction::PitchDetector
             | ExtensionFunction::AudioPlayer
             | ExtensionFunction::AudioRecorder
+            | ExtensionFunction::LocalNotifications
+            | ExtensionFunction::NotificationTap
     ) {
         return Ok(None);
     }
     if call.type_arguments.is_some() {
         return Err(CompileError::new(
-            "audio controllers do not take type arguments",
+            "native controllers do not take type arguments",
             call.span,
         ));
     }
@@ -1027,7 +1084,7 @@ fn controller_initialiser(
                 ("peak", StateValue::Number(0.0)),
                 ("error", StateValue::String(String::new())),
             ]);
-            (AudioControllerKind::Level, "{}".to_owned(), shape, initial)
+            (NativeControllerKind::Level, "{}".to_owned(), shape, initial)
         }
         ExtensionFunction::PitchDetector => {
             let reference_hz = pitch_reference(call)?;
@@ -1050,7 +1107,7 @@ fn controller_initialiser(
                 ("error", StateValue::String(String::new())),
             ]);
             (
-                AudioControllerKind::Pitch,
+                NativeControllerKind::Pitch,
                 format!("{{\"referenceHz\":{reference_hz}}}"),
                 shape,
                 initial,
@@ -1093,7 +1150,7 @@ fn controller_initialiser(
                 ("errorRetryable", StateValue::Bool(false)),
             ]);
             (
-                AudioControllerKind::Player,
+                NativeControllerKind::Player,
                 format!("{{\"usage\":\"{usage}\",\"playback\":\"{playback}\"}}"),
                 shape,
                 initial,
@@ -1127,7 +1184,68 @@ fn controller_initialiser(
                 ("errorRetryable", StateValue::Bool(false)),
             ]);
             (
-                AudioControllerKind::Recorder,
+                NativeControllerKind::Recorder,
+                "{}".to_owned(),
+                shape,
+                initial,
+            )
+        }
+        ExtensionFunction::LocalNotifications => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "localNotifications() takes no arguments",
+                    call.span,
+                ));
+            }
+            let shape = object_shape([
+                ("status", StateShape::String),
+                ("operation", StateShape::String),
+                ("id", StateShape::String),
+                ("errorKind", StateShape::String),
+                ("errorMessage", StateShape::String),
+                ("errorRetryable", StateShape::Bool),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("idle".to_owned())),
+                ("operation", StateValue::String(String::new())),
+                ("id", StateValue::String(String::new())),
+                ("errorKind", StateValue::String(String::new())),
+                ("errorMessage", StateValue::String(String::new())),
+                ("errorRetryable", StateValue::Bool(false)),
+            ]);
+            (
+                NativeControllerKind::Notifications,
+                "{}".to_owned(),
+                shape,
+                initial,
+            )
+        }
+        ExtensionFunction::NotificationTap => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "notificationTap() takes no arguments",
+                    call.span,
+                ));
+            }
+            let shape = object_shape([
+                ("status", StateShape::String),
+                (
+                    "value",
+                    object_shape([("id", StateShape::String), ("data", StateShape::String)]),
+                ),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("empty".to_owned())),
+                (
+                    "value",
+                    object_value([
+                        ("id", StateValue::String(String::new())),
+                        ("data", StateValue::String(String::new())),
+                    ]),
+                ),
+            ]);
+            (
+                NativeControllerKind::NotificationTap,
                 "{}".to_owned(),
                 shape,
                 initial,
@@ -1138,12 +1256,22 @@ fn controller_initialiser(
     Ok(Some(ControllerInitialiser {
         definition: Controller {
             state: StateId(0),
-            module: "audio".to_owned(),
+            module: if matches!(
+                kind,
+                NativeControllerKind::Notifications | NativeControllerKind::NotificationTap
+            ) {
+                "notifications"
+            } else {
+                "audio"
+            }
+            .to_owned(),
             kind: match kind {
-                AudioControllerKind::Level => "level",
-                AudioControllerKind::Pitch => "pitch",
-                AudioControllerKind::Player => "player",
-                AudioControllerKind::Recorder => "recorder",
+                NativeControllerKind::Level => "level",
+                NativeControllerKind::Pitch => "pitch",
+                NativeControllerKind::Player => "player",
+                NativeControllerKind::Recorder => "recorder",
+                NativeControllerKind::Notifications => "local-notifications",
+                NativeControllerKind::NotificationTap => "notification-tap",
             }
             .to_owned(),
             config,
@@ -3296,11 +3424,11 @@ fn lower_state_action(
     if let Some(binding) = states.controllers.get(name) {
         if call.type_arguments.is_some() {
             return Err(CompileError::new(
-                "audio controller actions do not take type arguments",
+                "native controller actions do not take type arguments",
                 call.span,
             ));
         }
-        let payload = lower_audio_controller_action(binding.kind, method, call, states, item)?;
+        let payload = lower_controller_action(binding.kind, method, call, states, item)?;
         return Ok(Action::Controller {
             controller: binding.id,
             operation: method.to_owned(),
@@ -3423,15 +3551,15 @@ fn lower_state_action(
     }
 }
 
-fn lower_audio_controller_action(
-    kind: AudioControllerKind,
+fn lower_controller_action(
+    kind: NativeControllerKind,
     method: &str,
     call: &oxc::ast::ast::CallExpression<'_>,
     states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Vec<PayloadPart>, CompileError> {
     match kind {
-        AudioControllerKind::Level | AudioControllerKind::Pitch => {
+        NativeControllerKind::Level | NativeControllerKind::Pitch => {
             if !matches!(method, "start" | "stop") || !call.arguments.is_empty() {
                 return Err(CompileError::new(
                     "level and pitch controllers support start() and stop()",
@@ -3440,7 +3568,7 @@ fn lower_audio_controller_action(
             }
             Ok(vec![PayloadPart::Literal(String::new())])
         }
-        AudioControllerKind::Recorder => {
+        NativeControllerKind::Recorder => {
             if !matches!(method, "start" | "stop" | "cancel" | "delete")
                 || !call.arguments.is_empty()
             {
@@ -3451,8 +3579,195 @@ fn lower_audio_controller_action(
             }
             Ok(vec![PayloadPart::Literal("{}".to_owned())])
         }
-        AudioControllerKind::Player => player_action_payload(method, call, states, item),
+        NativeControllerKind::Player => player_action_payload(method, call, states, item),
+        NativeControllerKind::Notifications => {
+            notification_action_payload(method, call, states, item)
+        }
+        NativeControllerKind::NotificationTap => {
+            if method != "consume" || !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "notificationTap supports consume()",
+                    call.span,
+                ));
+            }
+            Ok(vec![PayloadPart::Literal("{}".to_owned())])
+        }
     }
+}
+
+fn notification_action_payload(
+    method: &str,
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Vec<PayloadPart>, CompileError> {
+    if method == "cancel" {
+        let [argument] = call.arguments.as_slice() else {
+            return Err(CompileError::new(
+                "cancel() takes one notification ID",
+                call.span,
+            ));
+        };
+        let expression = argument.as_expression().ok_or_else(|| {
+            CompileError::new("notification IDs cannot use spread syntax", argument.span())
+        })?;
+        let mut payload = vec![PayloadPart::Literal("{\"id\":".to_owned())];
+        payload.push(notification_string_part(
+            expression,
+            states,
+            item,
+            "notification ID",
+        )?);
+        payload.push(PayloadPart::Literal("}".to_owned()));
+        return Ok(payload);
+    }
+    if method != "schedule" {
+        return Err(CompileError::new(
+            "localNotifications supports schedule() and cancel()",
+            call.span,
+        ));
+    }
+    let [Argument::ObjectExpression(notification)] = call.arguments.as_slice() else {
+        return Err(CompileError::new(
+            "schedule() takes one notification object",
+            call.span,
+        ));
+    };
+    let allowed = [
+        "id",
+        "title",
+        "body",
+        "href",
+        "data",
+        "delayMs",
+        "triggerAtMs",
+    ];
+    let mut values = BTreeMap::new();
+    for property in &notification.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "notifications cannot use spread properties",
+                property.span(),
+            ));
+        };
+        let name = property_name(&property.key)?;
+        if !allowed.contains(&name.as_str()) {
+            return Err(CompileError::new(
+                format!("unknown notification property {name:?}"),
+                property.key.span(),
+            ));
+        }
+        if values.insert(name.clone(), &property.value).is_some() {
+            return Err(CompileError::new(
+                format!("notification property {name:?} is declared twice"),
+                property.key.span(),
+            ));
+        }
+    }
+    for required in ["id", "title", "body"] {
+        if !values.contains_key(required) {
+            return Err(CompileError::new(
+                format!("notifications require {required}"),
+                notification.span,
+            ));
+        }
+    }
+    if values.contains_key("delayMs") == values.contains_key("triggerAtMs") {
+        return Err(CompileError::new(
+            "notifications require exactly one of delayMs or triggerAtMs",
+            notification.span,
+        ));
+    }
+    let mut payload = vec![PayloadPart::Literal("{".to_owned())];
+    let mut first = true;
+    for name in allowed {
+        let Some(expression) = values.get(name) else {
+            continue;
+        };
+        let comma = if first { "" } else { "," };
+        first = false;
+        payload.push(PayloadPart::Literal(format!(
+            "{comma}{}:",
+            serde_json::to_string(name).expect("a field name is valid JSON"),
+        )));
+        payload.push(if matches!(name, "delayMs" | "triggerAtMs") {
+            notification_number_part(expression, states)?
+        } else {
+            notification_string_part(expression, states, item, name)?
+        });
+    }
+    payload.push(PayloadPart::Literal("}".to_owned()));
+    Ok(payload)
+}
+
+fn notification_string_part(
+    expression: &Expression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+    label: &str,
+) -> Result<PayloadPart, CompileError> {
+    if let Expression::StringLiteral(value) = expression {
+        let text = value.value.as_str();
+        if label == "id" || label == "notification ID" {
+            let mut characters = text.chars();
+            if text.len() > 64
+                || !characters
+                    .next()
+                    .is_some_and(|value| value.is_ascii_alphanumeric())
+                || !characters.all(|value| value.is_ascii_alphanumeric() || "._-".contains(value))
+            {
+                return Err(CompileError::new(
+                    "notification IDs must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}",
+                    value.span,
+                ));
+            }
+        }
+        return Ok(PayloadPart::Literal(
+            serde_json::to_string(text).expect("a source string is valid JSON"),
+        ));
+    }
+    if let Some(item) = item
+        && let Some(path) = item_path(expression, item.name)
+    {
+        if kind_at_path(item.kind, &path) != Some(&StateShape::String) {
+            return Err(CompileError::new(
+                format!("{label} must be a string"),
+                expression.span(),
+            ));
+        }
+        return Ok(PayloadPart::Item(path));
+    }
+    let binding = expression_state_value(expression, states)?;
+    if binding.kind != StateShape::String {
+        return Err(CompileError::new(
+            format!("{label} must be a string"),
+            expression.span(),
+        ));
+    }
+    Ok(PayloadPart::State(binding.id))
+}
+
+fn notification_number_part(
+    expression: &Expression<'_>,
+    states: &Bindings,
+) -> Result<PayloadPart, CompileError> {
+    if let Expression::NumericLiteral(value) = expression {
+        if !value.value.is_finite() || value.value < 0.0 {
+            return Err(CompileError::new(
+                "notification times must be non-negative finite numbers",
+                value.span,
+            ));
+        }
+        return Ok(PayloadPart::Literal(value.value.to_string()));
+    }
+    let binding = expression_state_value(expression, states)?;
+    if binding.kind != StateShape::Number {
+        return Err(CompileError::new(
+            "notification times must be numbers",
+            expression.span(),
+        ));
+    }
+    Ok(PayloadPart::State(binding.id))
 }
 
 fn player_action_payload(

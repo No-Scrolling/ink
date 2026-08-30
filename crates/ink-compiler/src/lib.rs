@@ -26,6 +26,8 @@ pub struct AppFeatures {
     pub location: bool,
     pub nfc: bool,
     pub background: bool,
+    pub notifications: bool,
+    pub notification_permission: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -149,6 +151,10 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
             location: app.extensions.contains(&ir::Extension::Location),
             nfc: app.extensions.contains(&ir::Extension::Nfc),
             background: app.extensions.contains(&ir::Extension::Background),
+            notifications: app.extensions.contains(&ir::Extension::Notifications),
+            notification_permission: app
+                .android_permissions
+                .contains(&ir::AndroidPermission::Notifications),
         },
         source: codegen::generate(&app, project.root())?,
     })

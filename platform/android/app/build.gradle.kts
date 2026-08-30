@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.Exec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("com.android.application")
@@ -26,9 +27,25 @@ val inkUsesMicrophonePermission = providers.gradleProperty("inkUsesMicrophonePer
 val inkUsesLocation = providers.gradleProperty("inkUsesLocation").orElse("false")
 val inkUsesNfc = providers.gradleProperty("inkUsesNfc").orElse("false")
 val inkUsesBackground = providers.gradleProperty("inkUsesBackground").orElse("false")
+val inkUsesNotifications = providers.gradleProperty("inkUsesNotifications").orElse("false")
+val inkUsesNotificationPermission = providers.gradleProperty("inkUsesNotificationPermission").orElse("false")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 val inkLightSdkVersion = "0.1.1"
+val inkConditionalSources = providers.provider {
+    listOf(
+        inkUsesTextInput.get(),
+        inkUsesAudio.get(),
+        inkUsesAudioPlayback.get(),
+        inkUsesDetachedAudio.get(),
+        inkUsesNetwork.get(),
+        inkUsesLightSdk.get(),
+        inkUsesLocation.get(),
+        inkUsesNfc.get(),
+        inkUsesBackground.get(),
+        inkUsesNotifications.get(),
+    ).joinToString(",")
+}
 val inkPermissions = buildList {
     if (
         inkUsesNetwork.get().toBoolean() ||
@@ -55,7 +72,10 @@ val inkPermissions = buildList {
     if (inkUsesNfc.get().toBoolean()) {
         add("android.permission.NFC")
     }
-    if (inkUsesBackground.get().toBoolean()) {
+    if (inkUsesNotificationPermission.get().toBoolean()) {
+        add("android.permission.POST_NOTIFICATIONS")
+    }
+    if (inkUsesBackground.get().toBoolean() || inkUsesNotifications.get().toBoolean()) {
         add("android.permission.RECEIVE_BOOT_COMPLETED")
     }
 }
@@ -63,6 +83,8 @@ val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidMan
 val generateInkPermissionManifest by tasks.registering {
     inputs.property("permissions", inkPermissions.joinToString())
     inputs.property("nfc", inkUsesNfc)
+    inputs.property("background", inkUsesBackground)
+    inputs.property("notifications", inkUsesNotifications)
     outputs.file(inkPermissionManifest)
     doLast {
         val output = inkPermissionManifest.get().asFile
@@ -78,12 +100,26 @@ val generateInkPermissionManifest by tasks.registering {
                     "    <uses-feature android:name=\"android.hardware.nfc\" android:required=\"false\" />",
                 )
             }
-            if (inkUsesBackground.get().toBoolean()) {
+            if (inkUsesBackground.get().toBoolean() || inkUsesNotifications.get().toBoolean()) {
                 appendLine("    <application>")
+            }
+            if (inkUsesBackground.get().toBoolean()) {
                 appendLine("        <service")
                 appendLine("            android:name=\".InkBackgroundJobService\"")
                 appendLine("            android:exported=\"true\"")
                 appendLine("            android:permission=\"android.permission.BIND_JOB_SERVICE\" />")
+            }
+            if (inkUsesNotifications.get().toBoolean()) {
+                appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationAlarmReceiver\" android:exported=\"false\" />")
+                appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationTapReceiver\" android:exported=\"false\" />")
+                appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationDismissReceiver\" android:exported=\"false\" />")
+                appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationBootReceiver\" android:exported=\"true\">")
+                appendLine("            <intent-filter>")
+                appendLine("                <action android:name=\"android.intent.action.BOOT_COMPLETED\" />")
+                appendLine("            </intent-filter>")
+                appendLine("        </receiver>")
+            }
+            if (inkUsesBackground.get().toBoolean() || inkUsesNotifications.get().toBoolean()) {
                 appendLine("    </application>")
             }
             appendLine("</manifest>")
@@ -149,6 +185,13 @@ android {
                 "src/textInput/kotlin"
             } else {
                 "src/noTextInput/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesNotifications.get().toBoolean()) {
+                "src/notifications/kotlin"
+            } else {
+                "src/noNotifications/kotlin"
             },
         )
         getByName("main").java.srcDir(
@@ -250,6 +293,20 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    inputs.property("inkConditionalSources", inkConditionalSources)
+    val marker = layout.buildDirectory.file("ink-source-features/$name.txt")
+    doFirst {
+        val file = marker.get().asFile
+        val fingerprint = inkConditionalSources.get()
+        if (!file.isFile || file.readText() != fingerprint) {
+            project.delete(destinationDirectory)
+        }
+        file.parentFile.mkdirs()
+        file.writeText(fingerprint)
     }
 }
 

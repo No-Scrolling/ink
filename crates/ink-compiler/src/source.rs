@@ -48,6 +48,7 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
     lower::validate_navigation(&app.root).map_err(|error| anyhow::anyhow!(error.render()))?;
     validate_audio(&app)?;
     validate_background(&app)?;
+    validate_notifications(&app)?;
     bundle_audio_assets(project_root, &mut app.root)?;
     Ok(app)
 }
@@ -111,6 +112,19 @@ fn validate_audio(app: &App) -> Result<()> {
         if application + max_active_controllers(&app.root, &app.controllers, kind) > 1 {
             bail!("an Ink screen can activate only one {name}");
         }
+    }
+    Ok(())
+}
+
+fn validate_notifications(app: &App) -> Result<()> {
+    if app
+        .application_controllers
+        .iter()
+        .filter(|controller| app.controllers[controller.0].kind == "notification-tap")
+        .count()
+        > 1
+    {
+        bail!("an Ink application can declare notificationTap() only once");
     }
     Ok(())
 }
@@ -392,6 +406,12 @@ impl Compiler<'_> {
                 .into_iter()
                 .map(|controller| controller_mapping[controller.0])
                 .collect();
+        } else {
+            self.application_controllers.extend(
+                app.application_controllers
+                    .into_iter()
+                    .map(|controller| controller_mapping[controller.0]),
+            );
         }
         let mut root = app.root;
         remap_node(&mut root, &mapping, &resource_mapping, &controller_mapping);

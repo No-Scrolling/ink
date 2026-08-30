@@ -1854,6 +1854,16 @@ impl Engine {
         true
     }
 
+    pub fn navigate(&mut self, path: &str) -> bool {
+        if !self.apply(Action::Navigate {
+            path: path.to_owned(),
+        }) {
+            return false;
+        }
+        self.rebuild_scene();
+        true
+    }
+
     pub fn resume(&mut self) -> bool {
         let resources = self
             .active_resources

@@ -49,6 +49,7 @@ export default function Counter() {
 - Audio playback, recording and microphone analysis
 - Foreground device location through LightOS permissions
 - Screen-scoped NFC tag and NDEF reading
+- Durable local notifications and route-aware notification taps
 - Multi-file apps and installed UI packages
 - Android development, signing and device tooling through the `ink` CLI
 
@@ -57,6 +58,7 @@ export default function Counter() {
 - `ink` — UI, layout, navigation, state and persistence
 - `@ink/light-sdk` — LightOS integration
 - `@ink/network` — typed HTTPS JSON resources
+- `@ink/notifications` — local reminders, permission and durable tap events
 - `@ink/audio` — Playback, recording and microphone analysis
 - `@ink/location` — Foreground device location
 - `@ink/camera` — Camera and code scanning (planned)
@@ -200,6 +202,7 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Installed UI packages](docs/adr/0002-installed-source-packages.md)
 - [Light SDK adapter](docs/adr/0003-light-sdk-adapter.md)
 - [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
+- [Notifications](docs/notifications.md)
 - [Audio](docs/audio.md)
 - [Location](docs/location.md)
 - [NFC](docs/nfc.md)
