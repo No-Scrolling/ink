@@ -16,6 +16,7 @@ val inkSigning = providers.gradleProperty("inkSigning").orElse("development")
 val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
 val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
 val inkUsesLightSdk = providers.gradleProperty("inkUsesLightSdk").orElse("false")
+val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission").orElse("false")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 val inkLightSdkVersion = "0.1.1"
@@ -69,6 +70,10 @@ android {
 
     sourceSets {
         getByName("main").res.srcDir(inkAndroidResources)
+        if (inkUsesCameraPermission.get().toBoolean()) {
+            getByName("debug").manifest.srcFile("src/cameraPermission/AndroidManifest.xml")
+            getByName("release").manifest.srcFile("src/cameraPermission/AndroidManifest.xml")
+        }
         getByName("main").java.srcDir(
             if (inkUsesTextInput.get().toBoolean()) {
                 "src/textInput/kotlin"

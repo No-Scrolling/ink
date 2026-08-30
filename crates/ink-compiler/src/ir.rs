@@ -8,6 +8,9 @@ use oxc::span::Span;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateId(pub usize);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResourceId(pub usize);
+
 #[derive(Clone, Debug)]
 pub struct SourceSpan {
     pub path: PathBuf,
@@ -17,7 +20,10 @@ pub struct SourceSpan {
 #[derive(Debug)]
 pub struct App {
     pub extensions: BTreeSet<Extension>,
+    pub android_permissions: BTreeSet<AndroidPermission>,
     pub states: Vec<State>,
+    pub resources: Vec<Resource>,
+    pub application_resources: Vec<ResourceId>,
     pub root: Node,
 }
 
@@ -26,12 +32,43 @@ pub enum Extension {
     LightSdk,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AndroidPermission {
+    Camera,
+}
+
 #[derive(Debug)]
 pub struct State {
     pub initial: StateValue,
     pub shape: StateShape,
     pub lifetime: StateLifetime,
     pub source: SourceSpan,
+}
+
+#[derive(Clone, Debug)]
+pub struct Resource {
+    pub module: String,
+    pub operation: String,
+    pub payload: String,
+    pub shape: StateShape,
+    pub timeout_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeOperation {
+    pub module: String,
+    pub operation: String,
+    pub payload: String,
+    pub timeout_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResourceField {
+    Status,
+    Value(Vec<String>),
+    ErrorKind,
+    ErrorMessage,
+    ErrorRetryable,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,6 +157,7 @@ pub enum Node {
         children: Vec<Node>,
         title: Option<String>,
         centered: bool,
+        resources: Vec<ResourceId>,
     },
     Stack {
         children: Vec<Node>,
@@ -203,6 +241,7 @@ pub struct Route {
 pub enum TextPart {
     Literal(String),
     State(StateId),
+    Resource(ResourceId, ResourceField),
     ListLength(StateId),
     Item(Vec<String>),
 }
@@ -219,6 +258,12 @@ pub enum Condition {
     },
     Equals {
         state: StateId,
+        value: StateValue,
+        expected: bool,
+    },
+    ResourceEquals {
+        resource: ResourceId,
+        field: ResourceField,
         value: StateValue,
         expected: bool,
     },
@@ -247,6 +292,8 @@ pub enum Action {
     RemoveListItem { state: StateId },
     ReplaceListItem { state: StateId, value: Value },
     ClearList { state: StateId },
+    ReloadResource { resource: ResourceId },
+    Native { operation: NativeOperation },
     Navigate { path: String, source: SourceSpan },
     Back,
     Sequence(Vec<Action>),

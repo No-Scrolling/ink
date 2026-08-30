@@ -10,9 +10,9 @@ use quote::{format_ident, quote};
 use crate::{
     icons,
     ir::{
-        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, State,
-        StateLifetime, StateShape, StateValue, TextAlignment, TextInputAction, TextPart, Tone,
-        Value,
+        Action, Alignment, App, Axis, Condition, ImageFit, Justification, NativeOperation, Node,
+        Resource, ResourceField, State, StateLifetime, StateShape, StateValue, TextAlignment,
+        TextInputAction, TextPart, Tone, Value,
     },
 };
 
@@ -24,6 +24,11 @@ const TOGGLE_ICON_SIZE: f32 = 9.8;
 
 pub fn generate(app: &App, root: &Path) -> Result<String> {
     let states = app.states.iter().map(state_definition);
+    let resources = app.resources.iter().map(resource_definition);
+    let application_resources = app.application_resources.iter().map(|resource| {
+        let id = resource.0;
+        quote! { ResourceId::new(#id) }
+    });
     let uses_persistence = app
         .states
         .iter()
@@ -35,8 +40,8 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
         #[allow(unused_imports)]
         use ink_core::{
             Action, Alignment, AppDefinition, Axis, Condition, Justification, Mask, Node, StateId,
-            StateDefinition, StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone,
-            Value,
+            NativeOperation, ResourceDefinition, ResourceField, ResourceId, StateDefinition,
+            StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone, Value,
         };
 
         pub const USES_PERSISTENCE: bool = #uses_persistence;
@@ -44,7 +49,12 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
         #[rustfmt::skip]
         pub fn app() -> ink_core::AppDefinition {
             #(#declarations)*
-            AppDefinition::new(vec![#(#states),*], #root)
+            AppDefinition::new(
+                vec![#(#states),*],
+                vec![#(#resources),*],
+                vec![#(#application_resources),*],
+                #root,
+            )
         }
     };
     let syntax = syn::parse2::<syn::File>(tokens).context("Ink generated invalid Rust")?;
@@ -80,10 +90,17 @@ impl<'a> Emitter<'a> {
                 children,
                 title,
                 centered,
+                resources,
             } => {
                 let children = self.children(children)?;
                 let title = option_string(title.as_deref());
-                quote! { Node::screen(vec![#(#children),*], #title, #centered) }
+                let resources = resources.iter().map(|resource| {
+                    let id = resource.0;
+                    quote! { ResourceId::new(#id) }
+                });
+                quote! {
+                    Node::screen(vec![#(#children),*], #title, #centered, vec![#(#resources),*])
+                }
             }
             Node::Stack {
                 children,
@@ -395,6 +412,20 @@ fn state_definition(state: &State) -> TokenStream {
     }
 }
 
+fn resource_definition(resource: &Resource) -> TokenStream {
+    let module = &resource.module;
+    let operation = &resource.operation;
+    let payload = &resource.payload;
+    let timeout_ms = resource.timeout_ms;
+    let shape = state_shape(&resource.shape);
+    quote! {
+        ResourceDefinition::new(
+            #shape,
+            NativeOperation::new(#module, #operation, #payload, #timeout_ms),
+        )
+    }
+}
+
 fn state_shape(shape: &StateShape) -> TokenStream {
     match shape {
         StateShape::Int => quote! { ink_core::StateShape::Int },
@@ -437,6 +468,11 @@ fn text_part(part: &TextPart) -> TokenStream {
         TextPart::State(state) => {
             let id = state.0;
             quote! { TextPart::state(StateId::new(#id)) }
+        }
+        TextPart::Resource(resource, field) => {
+            let id = resource.0;
+            let field = resource_field_tokens(field);
+            quote! { TextPart::resource(ResourceId::new(#id), #field) }
         }
         TextPart::ListLength(state) => {
             let id = state.0;
@@ -498,6 +534,14 @@ fn action_tokens(action: &Action) -> TokenStream {
             let id = state.0;
             quote! { Action::ClearList { state: StateId::new(#id) } }
         }
+        Action::ReloadResource { resource } => {
+            let id = resource.0;
+            quote! { Action::ReloadResource { resource: ResourceId::new(#id) } }
+        }
+        Action::Native { operation } => {
+            let operation = native_operation_tokens(operation);
+            quote! { Action::Native { operation: #operation } }
+        }
         Action::Navigate { path, .. } => {
             quote! { Action::Navigate { path: #path.to_owned() } }
         }
@@ -507,6 +551,14 @@ fn action_tokens(action: &Action) -> TokenStream {
             quote! { Action::Sequence(vec![#(#actions),*]) }
         }
     }
+}
+
+fn native_operation_tokens(operation: &NativeOperation) -> TokenStream {
+    let module = &operation.module;
+    let name = &operation.operation;
+    let payload = &operation.payload;
+    let timeout_ms = operation.timeout_ms;
+    quote! { NativeOperation::new(#module, #name, #payload, #timeout_ms) }
 }
 
 fn condition_tokens(condition: &Condition) -> TokenStream {
@@ -534,6 +586,36 @@ fn condition_tokens(condition: &Condition) -> TokenStream {
                 }
             }
         }
+        Condition::ResourceEquals {
+            resource,
+            field,
+            value,
+            expected,
+        } => {
+            let id = resource.0;
+            let field = resource_field_tokens(field);
+            let value = state_value(value);
+            quote! {
+                Condition::ResourceEquals {
+                    resource: ResourceId::new(#id),
+                    field: #field,
+                    value: #value,
+                    expected: #expected,
+                }
+            }
+        }
+    }
+}
+
+fn resource_field_tokens(field: &ResourceField) -> TokenStream {
+    match field {
+        ResourceField::Status => quote! { ResourceField::Status },
+        ResourceField::Value(path) => {
+            quote! { ResourceField::Value(vec![#(#path.to_owned()),*]) }
+        }
+        ResourceField::ErrorKind => quote! { ResourceField::ErrorKind },
+        ResourceField::ErrorMessage => quote! { ResourceField::ErrorMessage },
+        ResourceField::ErrorRetryable => quote! { ResourceField::ErrorRetryable },
     }
 }
 

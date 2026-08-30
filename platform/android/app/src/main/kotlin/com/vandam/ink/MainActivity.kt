@@ -40,8 +40,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
+    private var resumedOnce = false
     private val usesPersistence = nativeUsesPersistence()
     private val persistenceHandler = Handler(Looper.getMainLooper())
+    private val nativeRequestHandler = Handler(Looper.getMainLooper())
+    private val nativeTimeouts = mutableMapOf<Long, Runnable>()
     private val persistenceExecutor by lazy(LazyThreadSafetyMode.NONE) {
         Executors.newSingleThreadExecutor()
     }
@@ -62,6 +65,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         if (engineHandle == 0L || !nativeBack(engineHandle)) {
             finish()
+        } else {
+            drainNativeRequests()
         }
     }
 
@@ -93,6 +98,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
         lightSdkAdapter = createLightSdkAdapter(this, textInputAdapter::setHapticsEnabled)
         lightSdkAdapter.start()
+        drainNativeRequests()
         setContentView(
             root,
             ViewGroup.LayoutParams(
@@ -117,6 +123,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     override fun onResume() {
         super.onResume()
         lightSdkAdapter.refresh()
+        if (resumedOnce && engineHandle != 0L && nativeResume(engineHandle)) {
+            drainNativeRequests()
+        }
+        resumedOnce = true
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -153,6 +163,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         lightSdkAdapter.stop()
+        nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
+        nativeTimeouts.clear()
         detachSurface()
         if (engineHandle != 0L) {
             nativeDestroy(engineHandle)
@@ -231,6 +243,82 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         )
     }
 
+    private fun drainNativeRequests() {
+        while (engineHandle != 0L) {
+            val requestId = nativeNextRequest(engineHandle)
+            if (requestId == 0L) {
+                return
+            }
+            val kind = nativeRequestKind(engineHandle, requestId)
+            if (kind == NATIVE_REQUEST_CANCEL) {
+                nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
+                lightSdkAdapter.cancel(requestId)
+                continue
+            }
+            val module = nativeRequestModule(engineHandle, requestId)
+            val operation = nativeRequestOperation(engineHandle, requestId)
+            val payload = nativeRequestPayload(engineHandle, requestId)
+            if (module != LIGHT_SDK_MODULE) {
+                completeNativeRequest(
+                    requestId,
+                    kind,
+                    NativeResult.Failure(
+                        NativeErrorKind.PROTOCOL,
+                        "Unknown native module: $module",
+                        false,
+                    ),
+                )
+                continue
+            }
+            val timeout = Runnable {
+                lightSdkAdapter.cancel(requestId)
+                completeNativeRequest(
+                    requestId,
+                    kind,
+                    NativeResult.Failure(
+                        NativeErrorKind.TIMEOUT,
+                        "Native request timed out",
+                        true,
+                    ),
+                )
+            }
+            nativeTimeouts[requestId] = timeout
+            nativeRequestHandler.postDelayed(
+                timeout,
+                nativeRequestTimeoutMs(engineHandle, requestId),
+            )
+            lightSdkAdapter.execute(requestId, operation, payload) { result ->
+                runOnUiThread { completeNativeRequest(requestId, kind, result) }
+            }
+        }
+    }
+
+    private fun completeNativeRequest(requestId: Long, kind: Int, result: NativeResult) {
+        if (engineHandle == 0L) {
+            return
+        }
+        nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
+        when (result) {
+            is NativeResult.Success -> if (kind == NATIVE_REQUEST_RESOURCE) {
+                nativeCompleteString(engineHandle, requestId, result.value)
+            } else {
+                nativeCompleteAction(engineHandle, requestId)
+            }
+            is NativeResult.Failure -> if (kind == NATIVE_REQUEST_RESOURCE) {
+                nativeFailRequest(
+                    engineHandle,
+                    requestId,
+                    result.kind.code,
+                    result.message,
+                    result.retryable,
+                )
+            } else {
+                nativeCompleteAction(engineHandle, requestId)
+            }
+        }
+        drainNativeRequests()
+    }
+
     private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
         private val choreographer = Choreographer.getInstance()
         private val minimumFlingVelocity =
@@ -293,6 +381,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 if (changed) {
                     schedulePersistence()
                 }
+                drainNativeRequests()
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
                     if (changed) {
                         lightSdkAdapter.performHaptic(this)
@@ -348,6 +437,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
         private const val PERSISTENCE_DELAY_MS = 250L
+        private const val LIGHT_SDK_MODULE = "light-sdk"
+        private const val NATIVE_REQUEST_RESOURCE = 0
+        private const val NATIVE_REQUEST_CANCEL = 2
 
         init {
             System.loadLibrary("ink_android")
@@ -391,6 +483,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeBack(handle: Long): Boolean
 
         @JvmStatic
+        private external fun nativeResume(handle: Long): Boolean
+
+        @JvmStatic
         private external fun nativeTextInputActive(handle: Long): Boolean
 
         @JvmStatic
@@ -398,6 +493,43 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeTextInput(handle: Long, action: Int, value: String?): Boolean
+
+        @JvmStatic
+        private external fun nativeNextRequest(handle: Long): Long
+
+        @JvmStatic
+        private external fun nativeRequestKind(handle: Long, requestId: Long): Int
+
+        @JvmStatic
+        private external fun nativeRequestTimeoutMs(handle: Long, requestId: Long): Long
+
+        @JvmStatic
+        private external fun nativeRequestModule(handle: Long, requestId: Long): String
+
+        @JvmStatic
+        private external fun nativeRequestOperation(handle: Long, requestId: Long): String
+
+        @JvmStatic
+        private external fun nativeRequestPayload(handle: Long, requestId: Long): String
+
+        @JvmStatic
+        private external fun nativeCompleteString(
+            handle: Long,
+            requestId: Long,
+            value: String,
+        ): Boolean
+
+        @JvmStatic
+        private external fun nativeFailRequest(
+            handle: Long,
+            requestId: Long,
+            kind: Int,
+            message: String,
+            retryable: Boolean,
+        ): Boolean
+
+        @JvmStatic
+        private external fun nativeCompleteAction(handle: Long, requestId: Long): Boolean
 
         @JvmStatic
         private external fun nativeDetachSurface(handle: Long)

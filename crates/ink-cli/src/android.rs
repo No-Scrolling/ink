@@ -167,6 +167,10 @@ fn gradle_command(project: &Project, profile: Profile, features: AppFeatures) ->
         .arg(format!("-PinkVersionCode={}", project.version_code()))
         .arg(format!("-PinkUsesLightSdk={}", features.light_sdk))
         .arg(format!(
+            "-PinkUsesCameraPermission={}",
+            features.camera_permission
+        ))
+        .arg(format!(
             "-PinkLightServerPackage={}",
             project.light_server()
         ))

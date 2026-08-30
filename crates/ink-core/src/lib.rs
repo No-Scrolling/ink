@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    collections::{BTreeSet, HashMap, VecDeque},
+    fmt,
+};
 
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use unicode_segmentation::UnicodeSegmentation;
@@ -58,10 +61,19 @@ const LP3_REFERENCE_WIDTH: f32 = 1080.0;
 const LP3_REFERENCE_SCALE: f32 = 2.55;
 const PUBLIC_SANS_RASTER_SCALE: f32 = 7.0 / 6.0;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct StateId(usize);
 
 impl StateId {
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ResourceId(usize);
+
+impl ResourceId {
     pub const fn new(index: usize) -> Self {
         Self(index)
     }
@@ -124,6 +136,150 @@ impl fmt::Display for StateValue {
 pub struct StateDefinition {
     initial: StateValue,
     persisted: Option<PersistedState>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeOperation {
+    module: String,
+    operation: String,
+    payload: String,
+    timeout_ms: u64,
+}
+
+impl NativeOperation {
+    pub fn new(
+        module: impl Into<String>,
+        operation: impl Into<String>,
+        payload: impl Into<String>,
+        timeout_ms: u64,
+    ) -> Self {
+        Self {
+            module: module.into(),
+            operation: operation.into(),
+            payload: payload.into(),
+            timeout_ms,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResourceDefinition {
+    shape: StateShape,
+    read: NativeOperation,
+}
+
+impl ResourceDefinition {
+    pub const fn new(shape: StateShape, read: NativeOperation) -> Self {
+        Self { shape, read }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceErrorKind {
+    Unavailable,
+    PermissionDenied,
+    Timeout,
+    Protocol,
+    Unexpected,
+}
+
+impl ResourceErrorKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::PermissionDenied => "permission-denied",
+            Self::Timeout => "timeout",
+            Self::Protocol => "protocol",
+            Self::Unexpected => "unexpected",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResourceError {
+    kind: ResourceErrorKind,
+    message: String,
+    retryable: bool,
+}
+
+impl ResourceError {
+    pub fn new(kind: ResourceErrorKind, message: impl Into<String>, retryable: bool) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+            retryable,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ResourceState {
+    Inactive,
+    Loading {
+        previous: Option<StateValue>,
+    },
+    Ready(StateValue),
+    Failed {
+        error: ResourceError,
+        previous: Option<StateValue>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResourceField {
+    Status,
+    Value(Vec<String>),
+    ErrorKind,
+    ErrorMessage,
+    ErrorRetryable,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeRequestKind {
+    ResourceRead,
+    Action,
+    Cancel,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeRequest {
+    id: u64,
+    kind: NativeRequestKind,
+    operation: Option<NativeOperation>,
+}
+
+impl NativeRequest {
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub const fn kind(&self) -> NativeRequestKind {
+        self.kind
+    }
+
+    pub fn module(&self) -> &str {
+        self.operation
+            .as_ref()
+            .map_or("", |operation| &operation.module)
+    }
+
+    pub fn operation(&self) -> &str {
+        self.operation
+            .as_ref()
+            .map_or("", |operation| &operation.operation)
+    }
+
+    pub fn payload(&self) -> &str {
+        self.operation
+            .as_ref()
+            .map_or("", |operation| &operation.payload)
+    }
+
+    pub fn timeout_ms(&self) -> u64 {
+        self.operation
+            .as_ref()
+            .map_or(0, |operation| operation.timeout_ms)
+    }
 }
 
 impl StateDefinition {
@@ -234,6 +390,12 @@ pub enum Action {
     ClearList {
         state: StateId,
     },
+    ReloadResource {
+        resource: ResourceId,
+    },
+    Native {
+        operation: NativeOperation,
+    },
     FocusTextInput {
         state: StateId,
         action: TextInputAction,
@@ -262,6 +424,8 @@ fn action_state(action: &Action) -> Option<StateId> {
         Action::FocusTextInput { .. }
         | Action::Navigate { .. }
         | Action::Back
+        | Action::ReloadResource { .. }
+        | Action::Native { .. }
         | Action::Sequence(_) => None,
     }
 }
@@ -270,6 +434,7 @@ fn action_state(action: &Action) -> Option<StateId> {
 pub enum TextPart {
     Literal(String),
     State(StateId),
+    Resource(ResourceId, ResourceField),
     ListLength(StateId),
     Item(Vec<String>),
 }
@@ -281,6 +446,10 @@ impl TextPart {
 
     pub const fn state(state: StateId) -> Self {
         Self::State(state)
+    }
+
+    pub fn resource(resource: ResourceId, field: ResourceField) -> Self {
+        Self::Resource(resource, field)
     }
 
     pub const fn list_length(state: StateId) -> Self {
@@ -300,6 +469,12 @@ pub enum Condition {
     },
     Equals {
         state: StateId,
+        value: StateValue,
+        expected: bool,
+    },
+    ResourceEquals {
+        resource: ResourceId,
+        field: ResourceField,
         value: StateValue,
         expected: bool,
     },
@@ -412,6 +587,7 @@ enum NodeKind {
         children: Vec<Node>,
         title: Option<String>,
         centred: bool,
+        resources: Vec<ResourceId>,
     },
     Stack {
         children: Vec<Node>,
@@ -479,12 +655,18 @@ enum NodeKind {
 }
 
 impl Node {
-    pub fn screen(children: Vec<Self>, title: Option<String>, centred: bool) -> Self {
+    pub fn screen(
+        children: Vec<Self>,
+        title: Option<String>,
+        centred: bool,
+        resources: Vec<ResourceId>,
+    ) -> Self {
         Self {
             kind: NodeKind::Screen {
                 children,
                 title,
                 centred,
+                resources,
             },
         }
     }
@@ -663,12 +845,24 @@ impl Route {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppDefinition {
     states: Vec<StateDefinition>,
+    resources: Vec<ResourceDefinition>,
+    application_resources: Vec<ResourceId>,
     root: Node,
 }
 
 impl AppDefinition {
-    pub fn new(states: Vec<StateDefinition>, root: Node) -> Self {
-        Self { states, root }
+    pub fn new(
+        states: Vec<StateDefinition>,
+        resources: Vec<ResourceDefinition>,
+        application_resources: Vec<ResourceId>,
+        root: Node,
+    ) -> Self {
+        Self {
+            states,
+            resources,
+            application_resources,
+            root,
+        }
     }
 }
 
@@ -783,9 +977,28 @@ struct MaterialisedItem<'a> {
     index: usize,
 }
 
+#[derive(Clone)]
+struct PendingRequest {
+    request: NativeRequest,
+    owner: RequestOwner,
+}
+
+#[derive(Clone, Copy)]
+enum RequestOwner {
+    Resource(ResourceId),
+    Action,
+}
+
+enum QueuedRequest {
+    Start(PendingRequest),
+    Cancel(NativeRequest),
+}
+
 pub struct Engine {
     definition: AppDefinition,
     state: Vec<StateValue>,
+    resources: Vec<ResourceState>,
+    active_resources: BTreeSet<ResourceId>,
     persistence_revision: u64,
     persistence_dirty: bool,
     viewport: Viewport,
@@ -798,6 +1011,11 @@ pub struct Engine {
     focused_input: Option<StateId>,
     focused_input_action: TextInputAction,
     navigation: Vec<usize>,
+    queued_requests: VecDeque<QueuedRequest>,
+    in_flight_requests: HashMap<u64, PendingRequest>,
+    resource_requests: HashMap<ResourceId, u64>,
+    last_native_request: Option<NativeRequest>,
+    next_request_id: u64,
     back_icon: Option<Mask>,
     font: FontRef<'static>,
 }
@@ -854,27 +1072,173 @@ impl Engine {
             }
             _ => Vec::new(),
         };
-        (
-            Self {
-                definition,
-                state,
-                persistence_revision: 0,
-                persistence_dirty: false,
-                viewport: Viewport::default(),
-                scene: Scene::default(),
-                hit_regions: Vec::new(),
-                clip: Rect::default(),
-                scroll_offset: 0.0,
-                scroll_max: 0.0,
-                pointer: None,
-                focused_input: None,
-                focused_input_action: TextInputAction::default(),
-                navigation,
-                back_icon: None,
-                font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
+        let resources = vec![ResourceState::Inactive; definition.resources.len()];
+        let mut engine = Self {
+            definition,
+            state,
+            resources,
+            active_resources: BTreeSet::new(),
+            persistence_revision: 0,
+            persistence_dirty: false,
+            viewport: Viewport::default(),
+            scene: Scene::default(),
+            hit_regions: Vec::new(),
+            clip: Rect::default(),
+            scroll_offset: 0.0,
+            scroll_max: 0.0,
+            pointer: None,
+            focused_input: None,
+            focused_input_action: TextInputAction::default(),
+            navigation,
+            queued_requests: VecDeque::new(),
+            in_flight_requests: HashMap::new(),
+            resource_requests: HashMap::new(),
+            last_native_request: None,
+            next_request_id: 1,
+            back_icon: None,
+            font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
+        };
+        engine.sync_active_resources();
+        (engine, hydration)
+    }
+
+    pub fn take_native_request(&mut self) -> Option<NativeRequest> {
+        let request = match self.queued_requests.pop_front()? {
+            QueuedRequest::Start(pending) => {
+                let request = pending.request.clone();
+                self.in_flight_requests.insert(request.id, pending);
+                request
+            }
+            QueuedRequest::Cancel(request) => request,
+        };
+        self.last_native_request = Some(request.clone());
+        Some(request)
+    }
+
+    pub fn native_request(&self, id: u64) -> Option<&NativeRequest> {
+        self.last_native_request
+            .as_ref()
+            .filter(|request| request.id == id)
+    }
+
+    pub fn complete_native(
+        &mut self,
+        request_id: u64,
+        result: Result<StateValue, ResourceError>,
+    ) -> bool {
+        let Some(pending) = self.in_flight_requests.remove(&request_id) else {
+            return false;
+        };
+        let RequestOwner::Resource(resource) = pending.owner else {
+            return false;
+        };
+        if self.resource_requests.remove(&resource) != Some(request_id) {
+            return false;
+        }
+        let definition = &self.definition.resources[resource.0];
+        let previous = match &self.resources[resource.0] {
+            ResourceState::Loading { previous } => previous.clone(),
+            _ => None,
+        };
+        self.resources[resource.0] = match result {
+            Ok(value) if definition.shape.accepts(&value) => ResourceState::Ready(value),
+            Ok(_) => ResourceState::Failed {
+                error: ResourceError::new(
+                    ResourceErrorKind::Protocol,
+                    "native resource returned the wrong value type",
+                    false,
+                ),
+                previous,
             },
-            hydration,
-        )
+            Err(error) => ResourceState::Failed { error, previous },
+        };
+        self.rebuild_scene();
+        true
+    }
+
+    pub fn complete_native_action(&mut self, request_id: u64) -> bool {
+        let Some(pending) = self.in_flight_requests.remove(&request_id) else {
+            return false;
+        };
+        matches!(pending.owner, RequestOwner::Action)
+    }
+
+    fn queue_native_action(&mut self, operation: NativeOperation) -> bool {
+        let request = NativeRequest {
+            id: self.next_request_id(),
+            kind: NativeRequestKind::Action,
+            operation: Some(operation),
+        };
+        self.queued_requests
+            .push_back(QueuedRequest::Start(PendingRequest {
+                request,
+                owner: RequestOwner::Action,
+            }));
+        true
+    }
+
+    fn next_request_id(&mut self) -> u64 {
+        let id = self.next_request_id;
+        self.next_request_id = self.next_request_id.wrapping_add(1).max(1);
+        id
+    }
+
+    fn cancel_request(&mut self, request_id: u64) {
+        let queued = self.queued_requests.iter().position(|request| {
+            matches!(request, QueuedRequest::Start(pending) if pending.request.id == request_id)
+        });
+        if let Some(index) = queued {
+            self.queued_requests.remove(index);
+            return;
+        }
+        if self.in_flight_requests.remove(&request_id).is_some() {
+            self.queued_requests
+                .push_back(QueuedRequest::Cancel(NativeRequest {
+                    id: request_id,
+                    kind: NativeRequestKind::Cancel,
+                    operation: None,
+                }));
+        }
+    }
+
+    fn cancel_resource(&mut self, resource: ResourceId) {
+        if let Some(request) = self.resource_requests.remove(&resource) {
+            self.cancel_request(request);
+        }
+        if let ResourceState::Loading { previous } = &self.resources[resource.0] {
+            self.resources[resource.0] = previous
+                .clone()
+                .map_or(ResourceState::Inactive, ResourceState::Ready);
+        }
+    }
+
+    fn queue_resource(&mut self, resource: ResourceId) -> bool {
+        let Some(definition) = self.definition.resources.get(resource.0).cloned() else {
+            return false;
+        };
+        if let Some(request) = self.resource_requests.remove(&resource) {
+            self.cancel_request(request);
+        }
+        let previous = match &self.resources[resource.0] {
+            ResourceState::Ready(value) => Some(value.clone()),
+            ResourceState::Loading { previous } | ResourceState::Failed { previous, .. } => {
+                previous.clone()
+            }
+            ResourceState::Inactive => None,
+        };
+        self.resources[resource.0] = ResourceState::Loading { previous };
+        let request_id = self.next_request_id();
+        self.resource_requests.insert(resource, request_id);
+        self.queued_requests
+            .push_back(QueuedRequest::Start(PendingRequest {
+                request: NativeRequest {
+                    id: request_id,
+                    kind: NativeRequestKind::ResourceRead,
+                    operation: Some(definition.read),
+                },
+                owner: RequestOwner::Resource(resource),
+            }));
+        true
     }
 
     pub fn persisted_snapshot(&self) -> Result<Option<(u64, Vec<u8>)>, PersistenceTooLarge> {
@@ -983,6 +1347,18 @@ impl Engine {
     pub fn back(&mut self) -> bool {
         if !self.pop_route() {
             return false;
+        }
+        self.rebuild_scene();
+        true
+    }
+
+    pub fn resume(&mut self) -> bool {
+        let resources = self.active_resources.iter().copied().collect::<Vec<_>>();
+        if resources.is_empty() {
+            return false;
+        }
+        for resource in resources {
+            self.queue_resource(resource);
         }
         self.rebuild_scene();
         true
@@ -1147,6 +1523,12 @@ impl Engine {
                 self.focused_input = Some(state);
                 self.focused_input_action = action;
             }
+            Action::ReloadResource { resource } => {
+                return self.queue_resource(resource);
+            }
+            Action::Native { operation } => {
+                return self.queue_native_action(operation);
+            }
             Action::Navigate { path } => {
                 let NodeKind::Navigator { routes, .. } = &self.definition.root.kind else {
                     return false;
@@ -1229,7 +1611,175 @@ impl Engine {
         true
     }
 
+    fn sync_active_resources(&mut self) {
+        let mut active = self
+            .definition
+            .application_resources
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let root = match &self.definition.root.kind {
+            NodeKind::Navigator { routes, .. } => {
+                let route = *self
+                    .navigation
+                    .last()
+                    .expect("navigator history is never empty");
+                &routes[route].screen
+            }
+            _ => &self.definition.root,
+        };
+        self.collect_active_resources(root, &mut active);
+
+        let inactive = self
+            .active_resources
+            .difference(&active)
+            .copied()
+            .collect::<Vec<_>>();
+        for resource in inactive {
+            self.cancel_resource(resource);
+        }
+        let newly_active = active
+            .difference(&self.active_resources)
+            .copied()
+            .collect::<Vec<_>>();
+        self.active_resources = active;
+        for resource in newly_active {
+            if matches!(self.resources[resource.0], ResourceState::Inactive) {
+                self.queue_resource(resource);
+            }
+        }
+    }
+
+    fn collect_active_resources(&self, node: &Node, active: &mut BTreeSet<ResourceId>) {
+        match &node.kind {
+            NodeKind::Screen {
+                children,
+                resources,
+                ..
+            } => {
+                active.extend(resources.iter().copied());
+                for child in children {
+                    self.collect_active_resources(child, active);
+                }
+            }
+            NodeKind::Stack { children, .. } => {
+                for child in children {
+                    self.collect_active_resources(child, active);
+                }
+            }
+            NodeKind::Tabs { state, tabs } => {
+                let active_tab = match self.state.get(state.0) {
+                    Some(StateValue::Int(value)) => usize::try_from(*value).unwrap_or_default(),
+                    _ => 0,
+                };
+                if let Some(tab) = tabs.get(active_tab) {
+                    self.collect_active_resources(&tab.screen, active);
+                }
+            }
+            NodeKind::Navigator { routes, .. } => {
+                let route = *self.navigation.last().unwrap_or(&0);
+                if let Some(route) = routes.get(route) {
+                    self.collect_active_resources(&route.screen, active);
+                }
+            }
+            NodeKind::Conditional {
+                condition,
+                consequent,
+                alternate,
+            } => {
+                let branch = if self.condition_enabled(condition) {
+                    Some(consequent.as_ref())
+                } else {
+                    alternate.as_deref()
+                };
+                if let Some(branch) = branch {
+                    self.collect_active_resources(branch, active);
+                }
+            }
+            NodeKind::ForEach { template, .. } => {
+                self.collect_active_resources(template, active);
+            }
+            NodeKind::Text { .. }
+            | NodeKind::TextInput { .. }
+            | NodeKind::Button { .. }
+            | NodeKind::SelectorButton { .. }
+            | NodeKind::Icon { .. }
+            | NodeKind::Image { .. }
+            | NodeKind::Toggle { .. } => {}
+        }
+    }
+
+    fn condition_enabled(&self, condition: &Condition) -> bool {
+        match condition {
+            Condition::Bool { state, expected } => {
+                matches!(self.state.get(state.0), Some(StateValue::Bool(value)) if value == expected)
+            }
+            Condition::ListEmpty { state, expected } => {
+                matches!(self.state.get(state.0), Some(StateValue::List(value)) if value.is_empty() == *expected)
+            }
+            Condition::Equals {
+                state,
+                value,
+                expected,
+            } => {
+                self.state
+                    .get(state.0)
+                    .is_some_and(|current| current == value)
+                    == *expected
+            }
+            Condition::ResourceEquals {
+                resource,
+                field,
+                value,
+                expected,
+            } => (self.resource_field_value(*resource, field).as_ref() == Some(value)) == *expected,
+        }
+    }
+
+    fn resource_field_value(
+        &self,
+        resource: ResourceId,
+        field: &ResourceField,
+    ) -> Option<StateValue> {
+        let state = self.resources.get(resource.0)?;
+        match field {
+            ResourceField::Status => Some(StateValue::String(
+                match state {
+                    ResourceState::Inactive | ResourceState::Loading { .. } => "loading",
+                    ResourceState::Ready(_) => "ready",
+                    ResourceState::Failed { .. } => "error",
+                }
+                .to_owned(),
+            )),
+            ResourceField::Value(path) => {
+                let ResourceState::Ready(value) = state else {
+                    return None;
+                };
+                item_at_path(value, path).cloned()
+            }
+            ResourceField::ErrorKind => {
+                let ResourceState::Failed { error, .. } = state else {
+                    return None;
+                };
+                Some(StateValue::String(error.kind.as_str().to_owned()))
+            }
+            ResourceField::ErrorMessage => {
+                let ResourceState::Failed { error, .. } = state else {
+                    return None;
+                };
+                Some(StateValue::String(error.message.clone()))
+            }
+            ResourceField::ErrorRetryable => {
+                let ResourceState::Failed { error, .. } = state else {
+                    return None;
+                };
+                Some(StateValue::Bool(error.retryable))
+            }
+        }
+    }
+
     fn rebuild_scene(&mut self) {
+        self.sync_active_resources();
         self.scene = Scene {
             width: self.viewport.width,
             height: self.viewport.height,
@@ -1396,6 +1946,7 @@ impl Engine {
                 children,
                 title,
                 centred,
+                ..
             } => self.layout_screen(
                 children,
                 title.as_deref(),
@@ -1481,10 +2032,12 @@ impl Engine {
                 children,
                 title,
                 centred,
+                resources,
             } => Node::screen(
                 self.materialise_children(children, item),
                 title.clone(),
                 *centred,
+                resources.clone(),
             ),
             NodeKind::Stack {
                 children,
@@ -1554,24 +2107,7 @@ impl Engine {
                 consequent,
                 alternate,
             } => {
-                let enabled = match condition {
-                    Condition::Bool { state, expected } => {
-                        matches!(self.state.get(state.0), Some(StateValue::Bool(value)) if value == expected)
-                    }
-                    Condition::ListEmpty { state, expected } => {
-                        matches!(self.state.get(state.0), Some(StateValue::List(value)) if value.is_empty() == *expected)
-                    }
-                    Condition::Equals {
-                        state,
-                        value,
-                        expected,
-                    } => {
-                        self.state
-                            .get(state.0)
-                            .is_some_and(|current| current == value)
-                            == *expected
-                    }
-                };
+                let enabled = self.condition_enabled(condition);
                 return if enabled {
                     self.materialise(consequent, item)
                 } else {
@@ -2245,6 +2781,11 @@ impl Engine {
                 TextPart::Literal(value) => text.push_str(value),
                 TextPart::State(state) => {
                     if let Some(value) = self.state.get(state.0) {
+                        text.push_str(&value.to_string());
+                    }
+                }
+                TextPart::Resource(resource, field) => {
+                    if let Some(value) = self.resource_field_value(*resource, field) {
                         text.push_str(&value.to_string());
                     }
                 }

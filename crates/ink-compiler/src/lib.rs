@@ -17,6 +17,7 @@ use config::ResolvedConfig;
 pub struct AppFeatures {
     pub light_sdk: bool,
     pub text_input: bool,
+    pub camera_permission: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -112,6 +113,9 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
         features: AppFeatures {
             light_sdk: app.extensions.contains(&ir::Extension::LightSdk),
             text_input: uses_text_input(&app.root),
+            camera_permission: app
+                .android_permissions
+                .contains(&ir::AndroidPermission::Camera),
         },
         source: codegen::generate(&app, project.root())?,
     })

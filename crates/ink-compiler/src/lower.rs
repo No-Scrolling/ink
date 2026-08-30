@@ -17,7 +17,8 @@ use oxc::{
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, App, Axis, Condition, Extension, ImageFit, Justification, Node, Route,
+        Action, Alignment, AndroidPermission, App, Axis, Condition, Extension, ImageFit,
+        Justification, NativeOperation, Node, Resource, ResourceField, ResourceId, Route,
         SourceSpan, State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment,
         TextPart, Tone, Value,
     },
@@ -50,6 +51,42 @@ struct StateBinding {
     kind: StateShape,
 }
 
+struct ResourceBinding {
+    id: ResourceId,
+    shape: StateShape,
+    request: Option<NativeOperation>,
+}
+
+struct ResourceValueBinding {
+    resource: ResourceId,
+    field: ResourceField,
+    kind: StateShape,
+}
+
+struct ResourceInitialiser {
+    definition: Resource,
+    request: Option<NativeOperation>,
+    android_permission: Option<AndroidPermission>,
+}
+
+#[derive(Default)]
+struct Bindings {
+    states: HashMap<String, StateBinding>,
+    resources: HashMap<String, ResourceBinding>,
+}
+
+impl Bindings {
+    fn get(&self, name: &str) -> Option<&StateBinding> {
+        self.states.get(name)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ExtensionFunction {
+    LightSdkVersion,
+    LightSdkPermission,
+}
+
 #[derive(Clone, Copy)]
 struct ItemBinding<'a> {
     name: &'a str,
@@ -61,6 +98,7 @@ enum BooleanValue {
     Dynamic(Condition),
 }
 
+#[derive(Clone, Copy)]
 pub enum ModuleKind {
     App,
     Screen,
@@ -68,6 +106,7 @@ pub enum ModuleKind {
 
 struct Imports {
     extensions: BTreeSet<Extension>,
+    extension_functions: HashMap<String, ExtensionFunction>,
     ink: HashSet<String>,
     screens: HashMap<String, PathBuf>,
     source_path: PathBuf,
@@ -91,6 +130,7 @@ fn validate_imports(
 ) -> Result<Imports, CompileError> {
     let allowed = HashSet::from(INK_IMPORTS);
     let mut extensions = BTreeSet::new();
+    let mut extension_functions = HashMap::new();
     let mut ink = HashSet::new();
     let mut screens = HashMap::new();
 
@@ -105,26 +145,65 @@ fn validate_imports(
         };
 
         if source != "ink" {
-            let [ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier)] =
+            if let [ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier)] =
                 specifiers.as_slice()
-            else {
-                return Err(CompileError::new(
-                    "screen modules use one default import",
-                    declaration.span,
-                )
-                .with_help("import Settings from \"./screens/Settings\""));
-            };
-            let local = specifier.local.name.as_str();
-            if ink.contains(local) || screens.contains_key(local) {
-                return Err(CompileError::new(
-                    format!("{local} is imported twice"),
-                    specifier.span,
-                ));
+            {
+                let local = specifier.local.name.as_str();
+                if ink.contains(local) || screens.contains_key(local) {
+                    return Err(CompileError::new(
+                        format!("{local} is imported twice"),
+                        specifier.span,
+                    ));
+                }
+                screens.insert(
+                    local.to_owned(),
+                    resolver.screen(source_path, source, declaration.source.span)?,
+                );
+            } else {
+                let extension = resolver.extension(source_path, source, declaration.source.span)?;
+                extensions.insert(extension);
+                for specifier in specifiers {
+                    let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                        return Err(CompileError::new(
+                            "Ink extensions use named imports",
+                            specifier.span(),
+                        ));
+                    };
+                    let imported = specifier.imported.name();
+                    if imported.as_str() != specifier.local.name.as_str() {
+                        return Err(CompileError::new(
+                            "aliased Ink extension imports are not supported yet",
+                            specifier.span,
+                        ));
+                    }
+                    let function = match (extension, imported.as_str()) {
+                        (Extension::LightSdk, "lightSdkVersion") => {
+                            ExtensionFunction::LightSdkVersion
+                        }
+                        (Extension::LightSdk, "lightSdkPermission") => {
+                            ExtensionFunction::LightSdkPermission
+                        }
+                        _ => {
+                            return Err(CompileError::new(
+                                format!("{imported} is not exported by this Ink extension"),
+                                specifier.span,
+                            ));
+                        }
+                    };
+                    let local = specifier.local.name.to_string();
+                    if ink.contains(&local)
+                        || screens.contains_key(&local)
+                        || extension_functions
+                            .insert(local.clone(), function)
+                            .is_some()
+                    {
+                        return Err(CompileError::new(
+                            format!("{local} is imported twice"),
+                            specifier.span,
+                        ));
+                    }
+                }
             }
-            screens.insert(
-                local.to_owned(),
-                resolver.screen(source_path, source, declaration.source.span)?,
-            );
             continue;
         }
 
@@ -162,6 +241,7 @@ fn validate_imports(
 
     Ok(Imports {
         extensions,
+        extension_functions,
         ink,
         screens,
         source_path: source_path.to_owned(),
@@ -223,7 +303,10 @@ fn lower_function(
         .as_ref()
         .ok_or_else(|| CompileError::new("the app function needs a body", function.span))?;
     let mut states = Vec::new();
-    let mut state_names = HashMap::new();
+    let mut resources = Vec::new();
+    let mut android_permissions = BTreeSet::new();
+    let mut state_names = Bindings::default();
+    let mut declared_names = HashSet::new();
     let mut root = None;
 
     for statement in &body.statements {
@@ -242,20 +325,38 @@ fn lower_function(
                             declarator.id.span(),
                         ));
                     };
+                    let name = binding.name.as_str();
+                    if !declared_names.insert(name) {
+                        return Err(CompileError::new(
+                            format!("{name} is declared twice"),
+                            declarator.span,
+                        ));
+                    }
+                    if let Some(resource) = resource_initialiser(declarator.init.as_ref(), imports)?
+                    {
+                        let id = ResourceId(resources.len());
+                        if let Some(permission) = resource.android_permission {
+                            android_permissions.insert(permission);
+                        }
+                        state_names.resources.insert(
+                            name.to_owned(),
+                            ResourceBinding {
+                                id,
+                                shape: resource.definition.shape.clone(),
+                                request: resource.request,
+                            },
+                        );
+                        resources.push(resource.definition);
+                        continue;
+                    }
                     let (initial, kind, lifetime, constructor) =
                         state_initialiser(declarator.init.as_ref(), declarator.span)?;
                     require_import(imports, constructor, declarator.span)?;
-                    let name = binding.name.as_str();
                     let binding = StateBinding {
                         id: StateId(states.len()),
                         kind: kind.clone(),
                     };
-                    if state_names.insert(name, binding).is_some() {
-                        return Err(CompileError::new(
-                            format!("state {name} is declared twice"),
-                            declarator.span,
-                        ));
-                    }
+                    state_names.states.insert(name.to_owned(), binding);
                     states.push(State {
                         initial,
                         shape: kind,
@@ -318,18 +419,126 @@ fn lower_function(
         }
     }
 
-    let root = root.ok_or_else(|| match kind {
+    let mut root = root.ok_or_else(|| match kind {
         ModuleKind::App => CompileError::new(
             "the app function must return <Screen>, <Tabs> or <Navigator>",
             body.span,
         ),
         ModuleKind::Screen => CompileError::new("a screen module must return <Screen>", body.span),
     })?;
+    let scoped_resources = (0..resources.len()).map(ResourceId).collect::<Vec<_>>();
+    let application_resources = match kind {
+        ModuleKind::App => scoped_resources,
+        ModuleKind::Screen => {
+            let Node::Screen {
+                resources: screen_resources,
+                ..
+            } = &mut root
+            else {
+                if resources.is_empty() {
+                    return Ok(App {
+                        extensions: imports.extensions.clone(),
+                        android_permissions,
+                        states,
+                        resources,
+                        application_resources: Vec::new(),
+                        root,
+                    });
+                }
+                return Err(CompileError::new(
+                    "a screen with resources must directly return <Screen>",
+                    body.span,
+                ));
+            };
+            *screen_resources = scoped_resources;
+            Vec::new()
+        }
+    };
     Ok(App {
         extensions: imports.extensions.clone(),
+        android_permissions,
         states,
+        resources,
+        application_resources,
         root,
     })
+}
+
+fn resource_initialiser(
+    initialiser: Option<&Expression<'_>>,
+    imports: &Imports,
+) -> Result<Option<ResourceInitialiser>, CompileError> {
+    let Some(Expression::CallExpression(call)) = initialiser else {
+        return Ok(None);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(None);
+    };
+    let Some(function) = imports
+        .extension_functions
+        .get(callee.name.as_str())
+        .copied()
+    else {
+        return Ok(None);
+    };
+    if call.type_arguments.is_some() {
+        return Err(CompileError::new(
+            "Light SDK resources do not take type arguments",
+            call.span,
+        ));
+    }
+    let resource = match function {
+        ExtensionFunction::LightSdkVersion => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "lightSdkVersion() takes no arguments",
+                    call.span,
+                ));
+            }
+            ResourceInitialiser {
+                definition: Resource {
+                    module: "light-sdk".to_owned(),
+                    operation: "version".to_owned(),
+                    payload: String::new(),
+                    shape: StateShape::String,
+                    timeout_ms: 10_000,
+                },
+                request: None,
+                android_permission: None,
+            }
+        }
+        ExtensionFunction::LightSdkPermission => {
+            let [Argument::StringLiteral(permission)] = call.arguments.as_slice() else {
+                return Err(CompileError::new(
+                    "lightSdkPermission() takes one permission name",
+                    call.span,
+                ));
+            };
+            if permission.value.as_str() != "camera" {
+                return Err(CompileError::new(
+                    "lightSdkPermission() currently supports camera",
+                    permission.span,
+                ));
+            }
+            ResourceInitialiser {
+                definition: Resource {
+                    module: "light-sdk".to_owned(),
+                    operation: "permission-status".to_owned(),
+                    payload: "camera".to_owned(),
+                    shape: StateShape::String,
+                    timeout_ms: 10_000,
+                },
+                request: Some(NativeOperation {
+                    module: "light-sdk".to_owned(),
+                    operation: "request-permission".to_owned(),
+                    payload: "camera".to_owned(),
+                    timeout_ms: 10_000,
+                }),
+                android_permission: Some(AndroidPermission::Camera),
+            }
+        }
+    };
+    Ok(Some(resource))
 }
 
 fn state_initialiser(
@@ -610,7 +819,7 @@ fn property_name(key: &PropertyKey<'_>) -> Result<String, CompileError> {
 
 fn lower_node(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -658,7 +867,7 @@ fn lower_node(
 
 fn lower_content_node(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -674,7 +883,7 @@ fn lower_content_node(
 
 fn lower_screen(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -685,12 +894,13 @@ fn lower_screen(
         children: lower_element_children(element, states, imports, item, "Screen")?,
         title,
         centered,
+        resources: Vec::new(),
     })
 }
 
 fn lower_stack(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -728,7 +938,7 @@ fn lower_stack(
 
 fn lower_text(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let font_size = optional_number_attribute(element, "size")?;
@@ -741,10 +951,7 @@ fn lower_text(
     })
 }
 
-fn lower_text_input(
-    element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
-) -> Result<Node, CompileError> {
+fn lower_text_input(element: &JSXElement<'_>, states: &Bindings) -> Result<Node, CompileError> {
     let placeholder = required_string_attribute(element, "placeholder")?;
     let action = match optional_string_attribute(element, "action")?.as_deref() {
         None | Some("search") => crate::ir::TextInputAction::Search,
@@ -770,7 +977,7 @@ fn lower_text_input(
 
 fn lower_button(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -797,7 +1004,7 @@ fn lower_button(
 
 fn lower_selector_button(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -814,7 +1021,7 @@ fn lower_selector_button(
 fn press_action(
     element: &JSXElement<'_>,
     component: &str,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Option<Action>, CompileError> {
@@ -883,10 +1090,7 @@ fn lower_image(element: &JSXElement<'_>) -> Result<Node, CompileError> {
     })
 }
 
-fn lower_toggle(
-    element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
-) -> Result<Node, CompileError> {
+fn lower_toggle(element: &JSXElement<'_>, states: &Bindings) -> Result<Node, CompileError> {
     let label = required_string_attribute(element, "label")?;
     let state = state_attribute(element, "value", states, StateShape::Bool)?;
     let action = action_attribute(element, "onChange", states, None)?;
@@ -906,7 +1110,7 @@ fn lower_toggle(
 
 fn lower_tabs(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
 ) -> Result<Node, CompileError> {
     let state = state_attribute(element, "value", states, StateShape::Int)?;
@@ -936,7 +1140,7 @@ fn lower_tabs(
 
 fn lower_navigator(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
 ) -> Result<Node, CompileError> {
     require_import(imports, "Navigator", element.span)?;
@@ -1005,7 +1209,7 @@ fn lower_navigator(
 
 fn lower_tab(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
 ) -> Result<Tab, CompileError> {
     expect_element(element, "Tab")?;
@@ -1146,7 +1350,7 @@ fn validate_route_path(path: &str, span: Span) -> Result<(), CompileError> {
 
 fn lower_element_children(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
     parent: &str,
@@ -1174,7 +1378,7 @@ fn lower_element_children(
 
 fn lower_dynamic_child(
     expression: &Expression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -1226,10 +1430,7 @@ fn lower_dynamic_child(
     }
 }
 
-fn condition(
-    expression: &Expression<'_>,
-    states: &HashMap<&str, StateBinding>,
-) -> Result<Condition, CompileError> {
+fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition, CompileError> {
     match unparenthesised(expression) {
         Expression::UnaryExpression(expression)
             if expression.operator == UnaryOperator::LogicalNot =>
@@ -1243,6 +1444,38 @@ fn condition(
                     if member.property.name.as_str() == "length"
             );
             if !is_length {
+                if let Some(binding) = expression_resource_value(&expression.left, states)? {
+                    if !scalar_kind(&binding.kind) {
+                        return Err(CompileError::new(
+                            "resource comparisons support numbers, booleans and strings",
+                            expression.span,
+                        ));
+                    }
+                    let value = literal_state_value(unparenthesised(&expression.right))?;
+                    if state_kind(&value).as_ref() != Some(&binding.kind) {
+                        return Err(CompileError::new(
+                            "the comparison value must match the resource field type",
+                            expression.right.span(),
+                        ));
+                    }
+                    validate_resource_comparison(&binding.field, &value, expression.right.span())?;
+                    let expected = match expression.operator {
+                        BinaryOperator::Equality | BinaryOperator::StrictEquality => true,
+                        BinaryOperator::Inequality | BinaryOperator::StrictInequality => false,
+                        _ => {
+                            return Err(CompileError::new(
+                                "resource comparisons use === or !==",
+                                expression.span,
+                            ));
+                        }
+                    };
+                    return Ok(Condition::ResourceEquals {
+                        resource: binding.resource,
+                        field: binding.field,
+                        value,
+                        expected,
+                    });
+                }
                 let binding = expression_state_value(&expression.left, states)?;
                 if !scalar_kind(&binding.kind) {
                     return Err(CompileError::new(
@@ -1302,6 +1535,20 @@ fn condition(
             Ok(Condition::ListEmpty { state, expected })
         }
         expression => {
+            if let Some(binding) = expression_resource_value(expression, states)? {
+                if binding.kind != StateShape::Bool {
+                    return Err(CompileError::new(
+                        "conditional resource field must be boolean",
+                        expression.span(),
+                    ));
+                }
+                return Ok(Condition::ResourceEquals {
+                    resource: binding.resource,
+                    field: binding.field,
+                    value: StateValue::Bool(true),
+                    expected: true,
+                });
+            }
             let binding = expression_state_value(expression, states)?;
             if binding.kind != StateShape::Bool {
                 return Err(CompileError::new(
@@ -1336,12 +1583,23 @@ fn invert_condition(condition: Condition) -> Condition {
             value,
             expected: !expected,
         },
+        Condition::ResourceEquals {
+            resource,
+            field,
+            value,
+            expected,
+        } => Condition::ResourceEquals {
+            resource,
+            field,
+            value,
+            expected: !expected,
+        },
     }
 }
 
 fn list_length_state(
     expression: &Expression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
 ) -> Result<StateId, CompileError> {
     let Expression::StaticMemberExpression(length) = unparenthesised(expression) else {
         return Err(CompileError::new(
@@ -1364,13 +1622,16 @@ fn list_length_state(
 
 fn dynamic_branch(
     expression: &Expression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Option<Node>, CompileError> {
     match unparenthesised(expression) {
         Expression::JSXElement(element) => {
             lower_content_node(element, states, imports, item).map(Some)
+        }
+        Expression::LogicalExpression(_) | Expression::ConditionalExpression(_) => {
+            lower_dynamic_child(expression, states, imports, item).map(Some)
         }
         Expression::NullLiteral(_) => Ok(None),
         expression => Err(CompileError::new(
@@ -1382,7 +1643,7 @@ fn dynamic_branch(
 
 fn lower_collection(
     call: &oxc::ast::ast::CallExpression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     current_item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
@@ -1457,7 +1718,7 @@ fn lower_collection(
 fn action_attribute(
     element: &JSXElement<'_>,
     name: &str,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Action, CompileError> {
     let attribute = attribute(element, name).ok_or_else(|| {
@@ -1492,7 +1753,7 @@ fn action_attribute(
 
 fn optional_button_action_attribute(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Option<Action>, CompileError> {
@@ -1561,7 +1822,7 @@ fn optional_button_action_attribute(
 
 fn lower_button_call(
     call: &oxc::ast::ast::CallExpression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Action, CompileError> {
@@ -1581,7 +1842,7 @@ fn text_change_attribute(
     element: &JSXElement<'_>,
     name: &str,
     state: &StateBinding,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
 ) -> Result<(), CompileError> {
     let attribute = attribute(element, name).ok_or_else(|| {
         CompileError::new(
@@ -1655,7 +1916,7 @@ fn text_change_attribute(
 
 fn lower_action(
     body: &ArrowFunctionBody<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Action, CompileError> {
     let ArrowFunctionBody::CallExpression(call) = body else {
@@ -1669,7 +1930,7 @@ fn lower_action(
 
 fn lower_state_action(
     call: &oxc::ast::ast::CallExpression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Action, CompileError> {
     let Expression::StaticMemberExpression(callee) = &call.callee else {
@@ -1685,12 +1946,35 @@ fn lower_state_action(
         ));
     };
     let name = state_object.name.as_str();
-    let binding = states
-        .get(name)
-        .cloned()
-        .ok_or_else(|| CompileError::new(format!("unknown state {name}"), state_object.span))?;
-
     let method = callee.property.name.as_str();
+    if let Some(binding) = states.resources.get(name) {
+        if !call.arguments.is_empty() || call.type_arguments.is_some() {
+            return Err(CompileError::new(
+                "resource actions take no arguments",
+                call.span,
+            ));
+        }
+        return match method {
+            "reload" => Ok(Action::ReloadResource {
+                resource: binding.id,
+            }),
+            "request" => binding
+                .request
+                .clone()
+                .map(|operation| Action::Native { operation })
+                .ok_or_else(|| CompileError::new("this resource cannot request access", call.span)),
+            _ => Err(CompileError::new(
+                format!("unknown resource action {name}.{method}()"),
+                call.span,
+            )),
+        };
+    }
+    let binding = states.get(name).cloned().ok_or_else(|| {
+        CompileError::new(
+            format!("unknown state or resource {name}"),
+            state_object.span,
+        )
+    })?;
     let StateShape::List(item_kind) = &binding.kind else {
         if method != "set" || call.arguments.len() != 1 {
             return Err(CompileError::new("expected state.set(...)", call.span));
@@ -1776,7 +2060,7 @@ fn lower_state_action(
 fn lower_scalar_set(
     call: &oxc::ast::ast::CallExpression<'_>,
     binding: &StateBinding,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
 ) -> Result<Action, CompileError> {
     match &call.arguments[0] {
         Argument::NumericLiteral(value) if binding.kind == StateShape::Int => Ok(Action::SetInt {
@@ -1867,7 +2151,7 @@ fn require_current_item(
 fn lower_value(
     expression: &Expression<'_>,
     expected: &StateShape,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Value, CompileError> {
     let expression = unparenthesised(expression);
@@ -1975,7 +2259,7 @@ fn lower_value(
 fn state_attribute<'a>(
     element: &JSXElement<'a>,
     name: &str,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     expected: StateShape,
 ) -> Result<StateBinding, CompileError> {
     let attribute = attribute(element, name).ok_or_else(|| {
@@ -2005,7 +2289,7 @@ fn state_attribute<'a>(
 
 fn state_value(
     expression: &JSXExpression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
 ) -> Result<StateBinding, CompileError> {
     let JSXExpression::StaticMemberExpression(member) = expression else {
         return Err(CompileError::new(
@@ -2018,7 +2302,7 @@ fn state_value(
 
 fn expression_state_value(
     expression: &Expression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
 ) -> Result<StateBinding, CompileError> {
     let Expression::StaticMemberExpression(member) = unparenthesised(expression) else {
         return Err(CompileError::new("expected state.value", expression.span()));
@@ -2028,7 +2312,7 @@ fn expression_state_value(
 
 fn member_state_value(
     member: &oxc::ast::ast::StaticMemberExpression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
 ) -> Result<StateBinding, CompileError> {
     let Expression::Identifier(object) = &member.object else {
         return Err(CompileError::new(
@@ -2036,13 +2320,13 @@ fn member_state_value(
             member.object.span(),
         ));
     };
-    if member.property.name.as_str() != "value" {
-        return Err(CompileError::new("expected state.value", member.span));
-    }
-    states.get(object.name.as_str()).cloned().ok_or_else(|| {
+    let name = object.name.as_str();
+    let property = member.property.name.as_str();
+    let binding = (property == "value").then(|| states.get(name)).flatten();
+    binding.cloned().ok_or_else(|| {
         CompileError::new(
-            format!("unknown state {}", object.name.as_str()),
-            object.span,
+            format!("unknown state value {name}.{property}"),
+            member.span,
         )
     })
 }
@@ -2172,7 +2456,7 @@ fn boolean_attribute(element: &JSXElement<'_>, name: &str) -> Result<bool, Compi
 
 fn button_underline(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
 ) -> Result<BooleanValue, CompileError> {
     let Some(attribute) = attribute(element, "underline") else {
         return Ok(BooleanValue::Literal(false));
@@ -2230,7 +2514,7 @@ fn invalid_value<T>(
 
 fn lower_text_parts(
     element: &JSXElement<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     item: Option<ItemBinding<'_>>,
     parent: &str,
 ) -> Result<Vec<TextPart>, CompileError> {
@@ -2278,11 +2562,20 @@ fn lower_text_parts(
 
 fn expression_text_part(
     expression: &Expression<'_>,
-    states: &HashMap<&str, StateBinding>,
+    states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<TextPart, CompileError> {
     if let Ok(state) = list_length_state(expression, states) {
         return Ok(TextPart::ListLength(state));
+    }
+    if let Some(binding) = expression_resource_value(expression, states)? {
+        if !scalar_kind(&binding.kind) {
+            return Err(CompileError::new(
+                "Text can only display scalar resource fields",
+                expression.span(),
+            ));
+        }
+        return Ok(TextPart::Resource(binding.resource, binding.field));
     }
     if let Some(item) = item
         && let Some(path) = item_path(expression, item.name)
@@ -2310,6 +2603,89 @@ fn expression_text_part(
         ));
     }
     Ok(TextPart::State(binding.id))
+}
+
+fn expression_resource_value(
+    expression: &Expression<'_>,
+    states: &Bindings,
+) -> Result<Option<ResourceValueBinding>, CompileError> {
+    let Some((name, path)) = member_path(expression) else {
+        return Ok(None);
+    };
+    let Some(resource) = states.resources.get(name) else {
+        return Ok(None);
+    };
+    let (field, kind) = match path.as_slice() {
+        [field] if field == "status" => (ResourceField::Status, StateShape::String),
+        [field, property] if field == "error" && property == "kind" => {
+            (ResourceField::ErrorKind, StateShape::String)
+        }
+        [field, property] if field == "error" && property == "message" => {
+            (ResourceField::ErrorMessage, StateShape::String)
+        }
+        [field, property] if field == "error" && property == "retryable" => {
+            (ResourceField::ErrorRetryable, StateShape::Bool)
+        }
+        [field, path @ ..] if field == "value" => {
+            let kind = kind_at_path(&resource.shape, path).ok_or_else(|| {
+                CompileError::new("unknown resource value field", expression.span())
+            })?;
+            (ResourceField::Value(path.to_vec()), kind.clone())
+        }
+        _ => {
+            return Err(CompileError::new(
+                "resource fields are status, value, or error details",
+                expression.span(),
+            ));
+        }
+    };
+    Ok(Some(ResourceValueBinding {
+        resource: resource.id,
+        field,
+        kind,
+    }))
+}
+
+fn member_path<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, Vec<String>)> {
+    match unparenthesised(expression) {
+        Expression::Identifier(identifier) => Some((identifier.name.as_str(), Vec::new())),
+        Expression::StaticMemberExpression(member) => {
+            let (name, mut path) = member_path(&member.object)?;
+            path.push(member.property.name.to_string());
+            Some((name, path))
+        }
+        _ => None,
+    }
+}
+
+fn validate_resource_comparison(
+    field: &ResourceField,
+    value: &StateValue,
+    span: Span,
+) -> Result<(), CompileError> {
+    let StateValue::String(value) = value else {
+        return Ok(());
+    };
+    let allowed = match field {
+        ResourceField::Status => Some(&["loading", "ready", "error"][..]),
+        ResourceField::ErrorKind => Some(
+            &[
+                "unavailable",
+                "permission-denied",
+                "timeout",
+                "protocol",
+                "unexpected",
+            ][..],
+        ),
+        _ => None,
+    };
+    if allowed.is_some_and(|allowed| !allowed.contains(&value.as_str())) {
+        return Err(CompileError::new(
+            "unknown resource status or error kind",
+            span,
+        ));
+    }
+    Ok(())
 }
 
 fn item_path(expression: &Expression<'_>, name: &str) -> Option<Vec<String>> {

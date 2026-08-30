@@ -40,6 +40,7 @@ export default function Counter() {
 - Public Sans and Material Symbols
 - Tabs and stack navigation
 - Shared and persisted state
+- Async resources and native actions
 - Conditional and repeated UI
 - Momentum scrolling
 - Lightweight text input and keyboard
@@ -67,13 +68,49 @@ Enable LightOS integration with one import:
 import "@ink/light-sdk";
 ```
 
+Native values are lazy, screen-scoped resources with typed loading, ready and error states:
+
+```tsx
+import { lightSdkVersion } from "@ink/light-sdk";
+import { Button, Screen, Text } from "ink";
+
+export default function Info() {
+  const version = lightSdkVersion();
+
+  return (
+    <Screen title="Light SDK">
+      {version.status === "loading" ? (
+        <Text>Connecting...</Text>
+      ) : version.status === "ready" ? (
+        <Text>{version.value}</Text>
+      ) : (
+        <Text>{version.error.message}</Text>
+      )}
+      <Button onPress={() => version.reload()}>Refresh</Button>
+    </Screen>
+  );
+}
+```
+
+Permissions pair a screen-scoped resource with a native LightOS action:
+
+```tsx
+import { lightSdkPermission } from "@ink/light-sdk";
+
+const camera = lightSdkPermission("camera");
+
+<Button onPress={() => camera.request()}>Request Camera</Button>
+```
+
+The compiler adds the Android permission only when the application uses that resource. LightOS owns the permission prompt, and Ink refreshes the active resource when the application resumes.
+
 - [x] Tool discovery
 - [x] Service authentication
 - [x] SDK version checking
 - [x] Haptic preferences
 - [ ] Keyboard preferences
-- [ ] Permission status
-- [ ] Permission requests
+- [x] Permission status
+- [x] Permission requests
 - [ ] Device key forwarding
 - [ ] Shared files
 - [ ] Push registration
@@ -115,3 +152,4 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Persistence and shared state](docs/adr/0001-persistence-and-shared-state.md)
 - [Installed UI packages](docs/adr/0002-installed-source-packages.md)
 - [Light SDK adapter](docs/adr/0003-light-sdk-adapter.md)
+- [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)

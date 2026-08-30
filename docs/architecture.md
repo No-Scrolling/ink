@@ -34,7 +34,7 @@ The compiler module hides package resolution, TSX parsing, the screen-module gra
 
 ### `crates/ink-core`
 
-The core module owns app state, persisted-state encoding and hydration, text focus and editing, route history, logical layout, clipping, scrolling, hit regions and input dispatch. `Screen` centralises the LP3 header, insets, type rhythm and overflow behaviour, `Tabs` owns bottom navigation, and `Navigator` owns a compact stack over compile-time routes. Header titles are centred between equal action slots, independent of the content insets below. Generated applications depend on this small construction interface rather than renderer or Android types.
+The core module owns app state, persisted-state encoding and hydration, typed async resource state, screen-scoped resource activation, cancellation, single-flight request ordering, text focus and editing, route history, logical layout, clipping, scrolling, hit regions and input dispatch. Resource reads, one-shot native actions and cancellation are distinct request kinds. `Screen` centralises the LP3 header, insets, type rhythm and overflow behaviour, `Tabs` owns bottom navigation, and `Navigator` owns a compact stack over compile-time routes. Header titles are centred between equal action slots, independent of the content insets below. Generated applications depend on this small construction interface rather than renderer or Android types.
 
 ### `crates/ink-renderer-wgpu`
 
@@ -42,7 +42,7 @@ The renderer module consumes a clipped display list and owns the Vulkan surface,
 
 ### `platform/android`
 
-Android is an adapter. It supplies a surface, lifecycle, pointer events, text edits, system-back requests and app-private persistence through a coarse JNI seam. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. The compiler detects `TextInput` and the `@ink/light-sdk` extension independently; Gradle includes only the required keyboard and Light SDK source sets. The keyboard builds its `Typeface` from the same static Public Sans bytes used by the renderer, exposed as a direct buffer rather than duplicated as an Android font resource. The Light SDK adapter owns service discovery, Binder authentication, protocol version checks and preference translation without pulling Compose into the app. Rust still owns the text value, focus state and persistence format.
+Android is an adapter. It supplies a surface, lifecycle, pointer events, text edits, system-back requests, app-private persistence and native request execution through a coarse JNI seam. It enforces operation timeouts and forwards cancellations into native adapters. Native work completes on Android's UI thread; Rust validates tagged results, rejects stale completions and rebuilds the scene. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. The compiler detects `TextInput`, permissions and the `@ink/light-sdk` extension independently; Gradle includes only the required keyboard, manifest permissions and Light SDK source sets. The keyboard builds its `Typeface` from the same static Public Sans bytes used by the renderer, exposed as a direct buffer rather than duplicated as an Android font resource. The Light SDK adapter owns service discovery, Binder authentication, cancellation, permission activity hand-off, protocol version checks and preference translation without pulling Compose into the app. Rust still owns resource state, text values, focus state and persistence.
 
 ### `examples`
 
@@ -55,7 +55,7 @@ The counter is the smallest interactive example, exercising one state value and 
 - Public Sans Regular is the default and only bundled font in v0.
 - Text is full-opacity, scalar left-to-right with kerning in v0. The supported 24 emoji use compact colour atlases and grapheme-safe editing; complex shaping, wrapping, general font fallback, bold and italic remain future capabilities.
 - Material Symbols are rasterised by the compiler. General interface icons use the outlined variant at weight 300 and bottom navigation icons use the filled variant at weight 400; only referenced glyph masks enter generated application code.
-- Images are local compile-time PNG assets in v0; remote and Light SDK resources need further resource adapters.
+- Images are local compile-time PNG assets in v0; remote images need the planned network and image resource adapters.
 - No JavaScript runtime or arbitrary JavaScript packages. Installed Ink source packages are compiled under the same restricted language as application screens.
 - No idle animation loop; redraw only after invalidation or while native scrolling is active.
 - Blank black Android splash and first frame.

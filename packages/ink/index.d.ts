@@ -12,6 +12,30 @@ export interface ListSignal<T> {
   clear(): void;
 }
 
+export type ResourceErrorKind =
+  | "unavailable"
+  | "permission-denied"
+  | "timeout"
+  | "protocol"
+  | "unexpected";
+
+export interface ResourceError {
+  readonly kind: ResourceErrorKind;
+  readonly message: string;
+  readonly retryable: boolean;
+}
+
+interface ReloadableResource {
+  reload(): void;
+}
+
+export type AsyncResource<T, E = ResourceError> = ReloadableResource &
+  (
+    | { readonly status: "loading" }
+    | { readonly status: "ready"; readonly value: T }
+    | { readonly status: "error"; readonly error: E }
+  );
+
 export declare function state(initial: boolean): Signal<boolean>;
 export declare function state(initial: number): Signal<number>;
 export declare function state(initial: string): Signal<string>;

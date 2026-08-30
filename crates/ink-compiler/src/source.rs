@@ -8,7 +8,8 @@ use oxc::{allocator::Allocator, parser::Parser, semantic::SemanticBuilder, span:
 
 use crate::{
     ir::{
-        Action, App, Condition, Node, Route, State, StateId, StateLifetime, Tab, TextPart, Value,
+        Action, App, Condition, Node, Resource, ResourceId, Route, State, StateId, StateLifetime,
+        Tab, TextPart, Value,
     },
     lower::{self, ModuleKind},
     resolver::ModuleResolver,
@@ -22,14 +23,20 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
         project_root,
         stack: Vec::new(),
         extensions: BTreeSet::new(),
+        android_permissions: BTreeSet::new(),
         states: Vec::new(),
+        resources: Vec::new(),
+        application_resources: Vec::new(),
         keyed_states: HashMap::new(),
         resolver: ModuleResolver::new(project_root),
     };
     let root = compiler.module(&entry, ModuleKind::App)?;
     let app = App {
         extensions: compiler.extensions,
+        android_permissions: compiler.android_permissions,
         states: compiler.states,
+        resources: compiler.resources,
+        application_resources: compiler.application_resources,
         root,
     };
     lower::validate_navigation(&app.root).map_err(|error| anyhow::anyhow!(error.render()))?;
@@ -40,7 +47,10 @@ struct Compiler<'a> {
     project_root: &'a Path,
     stack: Vec<PathBuf>,
     extensions: BTreeSet<crate::ir::Extension>,
+    android_permissions: BTreeSet<crate::ir::AndroidPermission>,
     states: Vec<State>,
+    resources: Vec<Resource>,
+    application_resources: Vec<ResourceId>,
     keyed_states: HashMap<String, StateId>,
     resolver: ModuleResolver,
 }
@@ -94,13 +104,30 @@ impl Compiler<'_> {
         let app = lower::lower(&parsed.program, path, kind, &self.resolver)
             .map_err(|error| anyhow::anyhow!(error.render(path, &source)))?;
         self.extensions.extend(app.extensions);
+        self.android_permissions.extend(app.android_permissions);
         let mapping = app
             .states
             .into_iter()
             .map(|state| self.register_state(state))
             .collect::<Result<Vec<_>>>()?;
+        let resource_mapping = app
+            .resources
+            .into_iter()
+            .map(|resource| {
+                let id = ResourceId(self.resources.len());
+                self.resources.push(resource);
+                id
+            })
+            .collect::<Vec<_>>();
+        if matches!(kind, ModuleKind::App) {
+            self.application_resources = app
+                .application_resources
+                .into_iter()
+                .map(|resource| resource_mapping[resource.0])
+                .collect();
+        }
         let mut root = app.root;
-        remap_node(&mut root, &mapping);
+        remap_node(&mut root, &mapping, &resource_mapping);
         self.expand_node(root)
     }
 
@@ -147,10 +174,12 @@ impl Compiler<'_> {
                 children,
                 title,
                 centered,
+                resources,
             } => Node::Screen {
                 children: self.expand_nodes(children)?,
                 title,
                 centered,
+                resources,
             },
             Node::Stack {
                 children,
@@ -230,17 +259,32 @@ fn state_key(lifetime: &StateLifetime) -> Option<&str> {
     }
 }
 
-fn remap_node(node: &mut Node, mapping: &[StateId]) {
+fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[ResourceId]) {
     match node {
-        Node::Screen { children, .. } | Node::Stack { children, .. } => {
+        Node::Screen {
+            children,
+            resources,
+            ..
+        } => {
+            for resource in resources {
+                remap_resource(resource, resource_mapping);
+            }
             for child in children {
-                remap_node(child, mapping);
+                remap_node(child, mapping, resource_mapping);
+            }
+        }
+        Node::Stack { children, .. } => {
+            for child in children {
+                remap_node(child, mapping, resource_mapping);
             }
         }
         Node::Text { parts, .. } => {
             for part in parts {
                 match part {
                     TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
+                    TextPart::Resource(resource, _) => {
+                        remap_resource(resource, resource_mapping);
+                    }
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
@@ -248,40 +292,46 @@ fn remap_node(node: &mut Node, mapping: &[StateId]) {
         Node::TextInput { state, .. } => remap(state, mapping),
         Node::Toggle { state, action, .. } => {
             remap(state, mapping);
-            remap_action(action, mapping);
+            remap_action(action, mapping, resource_mapping);
         }
         Node::Button { label, action, .. } => {
             for part in label {
                 match part {
                     TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
+                    TextPart::Resource(resource, _) => {
+                        remap_resource(resource, resource_mapping);
+                    }
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
             if let Some(action) = action {
-                remap_action(action, mapping);
+                remap_action(action, mapping, resource_mapping);
             }
         }
         Node::SelectorButton { value, action, .. } => {
             for part in value {
                 match part {
                     TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
+                    TextPart::Resource(resource, _) => {
+                        remap_resource(resource, resource_mapping);
+                    }
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
             if let Some(action) = action {
-                remap_action(action, mapping);
+                remap_action(action, mapping, resource_mapping);
             }
         }
         Node::Tabs { state, tabs } => {
             remap(state, mapping);
             for tab in tabs {
-                remap_action(&mut tab.action, mapping);
-                remap_node(&mut tab.screen, mapping);
+                remap_action(&mut tab.action, mapping, resource_mapping);
+                remap_node(&mut tab.screen, mapping, resource_mapping);
             }
         }
         Node::Navigator { routes } => {
             for route in routes {
-                remap_node(&mut route.screen, mapping);
+                remap_node(&mut route.screen, mapping, resource_mapping);
             }
         }
         Node::Conditional {
@@ -295,22 +345,25 @@ fn remap_node(node: &mut Node, mapping: &[StateId]) {
                 | Condition::Equals { state, .. } => {
                     remap(state, mapping);
                 }
+                Condition::ResourceEquals { resource, .. } => {
+                    remap_resource(resource, resource_mapping);
+                }
             }
-            remap_node(consequent, mapping);
+            remap_node(consequent, mapping, resource_mapping);
             if let Some(alternate) = alternate {
-                remap_node(alternate, mapping);
+                remap_node(alternate, mapping, resource_mapping);
             }
         }
         Node::ForEach { state, template } => {
             remap(state, mapping);
-            remap_node(template, mapping);
+            remap_node(template, mapping, resource_mapping);
         }
         Node::Icon { .. } | Node::Image { .. } => {}
         Node::ScreenModule { .. } => {}
     }
 }
 
-fn remap_action(action: &mut Action, mapping: &[StateId]) {
+fn remap_action(action: &mut Action, mapping: &[StateId], resource_mapping: &[ResourceId]) {
     match action {
         Action::Increment { state, .. }
         | Action::SetInt { state, .. }
@@ -327,11 +380,17 @@ fn remap_action(action: &mut Action, mapping: &[StateId]) {
         }
         Action::Sequence(actions) => {
             for action in actions {
-                remap_action(action, mapping);
+                remap_action(action, mapping, resource_mapping);
             }
         }
+        Action::ReloadResource { resource } => remap_resource(resource, resource_mapping),
+        Action::Native { .. } => {}
         Action::Navigate { .. } | Action::Back => {}
     }
+}
+
+fn remap_resource(resource: &mut ResourceId, mapping: &[ResourceId]) {
+    *resource = mapping[resource.0];
 }
 
 fn remap_value(value: &mut Value, mapping: &[StateId]) {

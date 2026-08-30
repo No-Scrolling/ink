@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
-use ink_core::{Engine, Hydration, PUBLIC_SANS, TextEdit, TextInputAction};
+use ink_core::{
+    Engine, Hydration, NativeRequestKind, PUBLIC_SANS, ResourceError, ResourceErrorKind,
+    StateValue, TextEdit, TextInputAction,
+};
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
 use jni::objects::{JByteBuffer, JClass, JObject, JString};
@@ -173,8 +176,28 @@ impl AndroidEngine {
         true
     }
 
+    fn resume(&mut self) -> bool {
+        if !self.engine.resume() {
+            return false;
+        }
+        self.render();
+        true
+    }
+
     fn edit_text(&mut self, edit: TextEdit) -> bool {
         if !self.engine.edit_text(edit) {
+            return false;
+        }
+        self.render();
+        true
+    }
+
+    fn complete_native(
+        &mut self,
+        request_id: u64,
+        result: Result<StateValue, ResourceError>,
+    ) -> bool {
+        if !self.engine.complete_native(request_id, result) {
             return false;
         }
         self.render();
@@ -325,6 +348,17 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResume(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.resume()) as jboolean
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputActive(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -375,6 +409,149 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| engine.edit_text(edit)) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jlong {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|mut engine| engine.engine.take_native_request())
+        .map_or(0, |request| request.id() as jlong)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestModule<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    request_id: jlong,
+) -> JString<'local> {
+    native_request_string(&mut env, handle, request_id, |request| request.module())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestKind(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+) -> jint {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|engine| {
+            engine
+                .engine
+                .native_request(request_id as u64)
+                .map(|request| match request.kind() {
+                    NativeRequestKind::ResourceRead => 0,
+                    NativeRequestKind::Action => 1,
+                    NativeRequestKind::Cancel => 2,
+                })
+        })
+        .unwrap_or(-1)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestTimeoutMs(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+) -> jlong {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|engine| {
+            engine
+                .engine
+                .native_request(request_id as u64)
+                .map(|request| request.timeout_ms() as jlong)
+        })
+        .unwrap_or_default()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestOperation<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    request_id: jlong,
+) -> JString<'local> {
+    native_request_string(&mut env, handle, request_id, |request| request.operation())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestPayload<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    request_id: jlong,
+) -> JString<'local> {
+    native_request_string(&mut env, handle, request_id, |request| request.payload())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteString(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+    value: JString<'_>,
+) -> jboolean {
+    let value = env
+        .with_env(|env| value.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| {
+            engine.complete_native(request_id as u64, Ok(StateValue::String(value)))
+        }) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+    kind: jint,
+    message: JString<'_>,
+    retryable: jboolean,
+) -> jboolean {
+    let message = env
+        .with_env(|env| message.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    let kind = match kind {
+        0 => ResourceErrorKind::Unavailable,
+        1 => ResourceErrorKind::PermissionDenied,
+        2 => ResourceErrorKind::Timeout,
+        3 => ResourceErrorKind::Protocol,
+        _ => ResourceErrorKind::Unexpected,
+    };
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| {
+            engine.complete_native(
+                request_id as u64,
+                Err(ResourceError::new(kind, message, retryable)),
+            )
+        }) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAction(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.engine.complete_native_action(request_id as u64))
+        as jboolean
 }
 
 #[unsafe(no_mangle)]
@@ -449,6 +626,26 @@ fn persist(engine: &Mutex<AndroidEngine>) {
 fn engine(handle: jlong) -> Option<&'static Mutex<AndroidEngine>> {
     let pointer = NonNull::new(handle as *mut Mutex<AndroidEngine>)?;
     Some(unsafe { pointer.as_ref() })
+}
+
+fn native_request_string<'local>(
+    env: &mut EnvUnowned<'local>,
+    handle: jlong,
+    request_id: jlong,
+    field: for<'a> fn(&'a ink_core::NativeRequest) -> &'a str,
+) -> JString<'local> {
+    let value = engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|engine| {
+            engine
+                .engine
+                .native_request(request_id as u64)
+                .map(field)
+                .map(str::to_owned)
+        })
+        .unwrap_or_default();
+    env.with_env(|env| env.new_string(value))
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
 fn dimension(value: jint) -> u32 {
