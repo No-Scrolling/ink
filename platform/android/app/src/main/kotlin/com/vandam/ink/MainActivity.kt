@@ -28,6 +28,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class MainActivity : Activity(), SurfaceHolder.Callback {
     internal val publicSansTypeface: Typeface by lazy(LazyThreadSafetyMode.NONE) {
@@ -488,8 +489,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         private fun startFling(velocityY: Int) {
-            lastFlingY = 0
-            scroller.fling(0, 0, 0, velocityY, 0, 0, Int.MIN_VALUE, Int.MAX_VALUE)
+            val startY = nativeScrollOffset(engineHandle).roundToInt()
+            lastFlingY = startY
+            scroller.fling(
+                0,
+                startY,
+                0,
+                velocityY,
+                0,
+                0,
+                0,
+                nativeScrollMaximum(engineHandle).roundToInt(),
+            )
             postFlingFrame()
         }
 
@@ -567,6 +578,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeScrollBy(handle: Long, delta: Float): Boolean
+
+        @JvmStatic
+        private external fun nativeScrollOffset(handle: Long): Float
+
+        @JvmStatic
+        private external fun nativeScrollMaximum(handle: Long): Float
 
         @JvmStatic
         private external fun nativeBack(handle: Long): Boolean

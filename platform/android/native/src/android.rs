@@ -429,6 +429,28 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollBy(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollOffset(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jfloat {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .map_or(0.0, |engine| engine.engine.scroll_offset())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollMaximum(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jfloat {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .map_or(0.0, |engine| engine.engine.scroll_max())
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,

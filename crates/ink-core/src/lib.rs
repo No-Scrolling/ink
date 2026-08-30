@@ -1829,6 +1829,14 @@ impl Engine {
         &self.scene
     }
 
+    pub const fn scroll_offset(&self) -> f32 {
+        self.scroll_offset
+    }
+
+    pub const fn scroll_max(&self) -> f32 {
+        self.scroll_max
+    }
+
     fn apply(&mut self, action: Action) -> bool {
         let mutated_state = action_state(&action);
         match action {
