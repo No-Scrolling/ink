@@ -15,6 +15,8 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.OverScroller
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import kotlin.math.abs
 
@@ -22,6 +24,21 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var inkView: InkSurfaceView
     private var engineHandle = 0L
     private var surfaceAttached = false
+    private val backCallback = OnBackInvokedCallback {
+        handleBack()
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        handleBack()
+    }
+
+    private fun handleBack() {
+        inkView.stopScrolling()
+        if (engineHandle == 0L || !nativeBack(engineHandle)) {
+            finish()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setOnExitAnimationListener { splashScreenView ->
@@ -46,6 +63,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
+        )
+        onBackInvokedDispatcher.registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            backCallback,
         )
         enterFullscreen()
     }
@@ -85,6 +106,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
+        onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         detachSurface()
         if (engineHandle != 0L) {
             nativeDestroy(engineHandle)
@@ -240,6 +262,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeScrollBy(handle: Long, delta: Float): Boolean
+
+        @JvmStatic
+        private external fun nativeBack(handle: Long): Boolean
 
         @JvmStatic
         private external fun nativeDetachSurface(handle: Long)

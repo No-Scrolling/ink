@@ -1,3 +1,5 @@
+use oxc::span::Span;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StateId(pub usize);
 
@@ -113,12 +115,21 @@ pub enum Node {
         state: StateId,
         tabs: Vec<Tab>,
     },
+    Navigator {
+        routes: Vec<Route>,
+    },
 }
 
 #[derive(Debug)]
 pub struct Tab {
     pub icon: String,
     pub action: Action,
+    pub screen: Box<Node>,
+}
+
+#[derive(Debug)]
+pub struct Route {
+    pub path: String,
     pub screen: Box<Node>,
 }
 
@@ -134,4 +145,5 @@ pub enum Action {
     SetInt { state: StateId, value: i64 },
     SetBool { state: StateId, value: bool },
     Toggle { state: StateId },
+    Navigate { path: String, span: Span },
 }

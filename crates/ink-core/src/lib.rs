@@ -18,6 +18,11 @@ const CONTENT_TOP: f32 = 14.0;
 const CONTENT_GAP: f32 = 47.0;
 const HEADER_HEIGHT: f32 = 42.0;
 const HEADER_TEXT_SIZE: f32 = 20.0;
+const HEADER_HORIZONTAL_INSET: f32 = 22.0;
+const HEADER_BUTTON_SIZE: f32 = 32.0;
+const HEADER_BACK_ICON_SIZE: f32 = 28.0;
+const HEADER_BACK_OFFSET_X: f32 = -7.0;
+const HEADER_BACK_OFFSET_Y: f32 = 11.0;
 const NAV_HEIGHT: f32 = 70.0;
 const NAV_ICON_SIZE: f32 = 48.0;
 const NAV_VERTICAL_INSET: f32 = 10.0;
@@ -66,6 +71,8 @@ pub enum Action {
     SetInt { state: StateId, value: i64 },
     SetBool { state: StateId, value: bool },
     Toggle { state: StateId },
+    Navigate { path: String },
+    Back,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -224,6 +231,10 @@ enum NodeKind {
         state: StateId,
         tabs: Vec<Tab>,
     },
+    Navigator {
+        routes: Vec<Route>,
+        back: Mask,
+    },
 }
 
 impl Node {
@@ -329,6 +340,12 @@ impl Node {
             kind: NodeKind::Tabs { state, tabs },
         }
     }
+
+    pub fn navigator(routes: Vec<Route>, back: Mask) -> Self {
+        Self {
+            kind: NodeKind::Navigator { routes, back },
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -343,6 +360,21 @@ impl Tab {
         Self {
             icon,
             action,
+            screen,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Route {
+    path: String,
+    screen: Node,
+}
+
+impl Route {
+    pub fn new(path: impl Into<String>, screen: Node) -> Self {
+        Self {
+            path: path.into(),
             screen,
         }
     }
@@ -478,6 +510,8 @@ pub struct Engine {
     scroll_offset: f32,
     scroll_max: f32,
     pointer: Option<Pointer>,
+    navigation: Vec<usize>,
+    back_icon: Option<Mask>,
     font: FontRef<'static>,
 }
 
@@ -491,6 +525,16 @@ struct Viewport {
 impl Engine {
     pub fn new(definition: AppDefinition) -> Self {
         let state = definition.initial_state.clone();
+        let navigation = match &definition.root.kind {
+            NodeKind::Navigator { routes, .. } => {
+                let root = routes
+                    .iter()
+                    .position(|route| route.path == "/")
+                    .expect("navigator has a root route");
+                vec![root]
+            }
+            _ => Vec::new(),
+        };
         Self {
             definition,
             state,
@@ -501,6 +545,8 @@ impl Engine {
             scroll_offset: 0.0,
             scroll_max: 0.0,
             pointer: None,
+            navigation,
+            back_icon: None,
             font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
         }
     }
@@ -580,6 +626,14 @@ impl Engine {
         self.set_scroll_offset((self.scroll_offset + delta).clamp(0.0, self.scroll_max))
     }
 
+    pub fn back(&mut self) -> bool {
+        if !self.pop_route() {
+            return false;
+        }
+        self.rebuild_scene();
+        true
+    }
+
     pub fn scene(&self) -> &Scene {
         &self.scene
     }
@@ -611,7 +665,32 @@ impl Engine {
                 };
                 *value = !*value;
             }
+            Action::Navigate { path } => {
+                let NodeKind::Navigator { routes, .. } = &self.definition.root.kind else {
+                    return false;
+                };
+                let Some(route) = routes.iter().position(|route| route.path == path) else {
+                    return false;
+                };
+                if self.navigation.last() == Some(&route) {
+                    return false;
+                }
+                self.navigation.push(route);
+                self.scroll_offset = 0.0;
+                self.pointer = None;
+            }
+            Action::Back => return self.pop_route(),
         }
+        true
+    }
+
+    fn pop_route(&mut self) -> bool {
+        if self.navigation.len() <= 1 {
+            return false;
+        }
+        self.navigation.pop();
+        self.scroll_offset = 0.0;
+        self.pointer = None;
         true
     }
 
@@ -640,7 +719,21 @@ impl Engine {
             return;
         }
 
-        let root = self.definition.root.clone();
+        let (root, back_icon) = match &self.definition.root.kind {
+            NodeKind::Navigator { routes, back } => {
+                let route = *self
+                    .navigation
+                    .last()
+                    .expect("navigator history is never empty");
+                (routes[route].screen.clone(), Some(*back))
+            }
+            _ => (self.definition.root.clone(), None),
+        };
+        self.back_icon = if self.navigation.len() > 1 {
+            back_icon
+        } else {
+            None
+        };
         self.clip = Rect {
             x: 0.0,
             y: 0.0,
@@ -660,10 +753,12 @@ impl Engine {
 
     fn measure(&self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
-            NodeKind::Screen { .. } | NodeKind::Tabs { .. } => MeasuredSize {
-                width: available.width,
-                height: available.height,
-            },
+            NodeKind::Screen { .. } | NodeKind::Tabs { .. } | NodeKind::Navigator { .. } => {
+                MeasuredSize {
+                    width: available.width,
+                    height: available.height,
+                }
+            }
             NodeKind::Stack {
                 children,
                 axis,
@@ -810,19 +905,43 @@ impl Engine {
                 on,
             } => self.layout_toggle(label, *state, action, *off, *on, rect),
             NodeKind::Tabs { state, tabs } => self.layout_tabs(*state, tabs, rect),
+            NodeKind::Navigator { .. } => unreachable!("navigator is resolved before layout"),
         }
     }
 
     fn layout_screen(&mut self, children: &[Node], title: Option<&str>, centred: bool, rect: Rect) {
-        let header_height = title.map_or(0.0, |_| self.scaled(HEADER_HEIGHT));
+        let has_header = title.is_some() || self.back_icon.is_some();
+        let header_height = if has_header {
+            self.scaled(HEADER_HEIGHT)
+        } else {
+            0.0
+        };
+        let header_inset = self.scaled(HEADER_HORIZONTAL_INSET);
+        let header_button_size = self.scaled(HEADER_BUTTON_SIZE);
+        if self.back_icon.is_some() {
+            self.push_hit_region(
+                Rect {
+                    x: rect.x + header_inset,
+                    y: rect.y + (header_height - header_button_size) / 2.0,
+                    width: header_button_size,
+                    height: header_button_size,
+                },
+                Action::Back,
+            );
+        }
         if let Some(title) = title {
-            let inset = self.scaled(22.0);
+            let title_inset = header_inset
+                + if self.back_icon.is_some() {
+                    header_button_size
+                } else {
+                    0.0
+                };
             self.scene.text.push(TextRun {
                 text: title.to_owned(),
                 rect: Rect {
-                    x: rect.x + inset,
+                    x: rect.x + title_inset,
                     y: rect.y + self.scaled(7.0),
-                    width: (rect.width - inset * 2.0).max(0.0),
+                    width: (rect.width - title_inset * 2.0).max(0.0),
                     height: self.scaled(32.0),
                 },
                 clip: self.clip,
@@ -901,6 +1020,21 @@ impl Engine {
                     height: thumb_height,
                 },
                 clip,
+                colour: Colour::WHITE,
+            });
+        }
+
+        if let Some(back) = self.back_icon {
+            let icon_size = self.scaled(HEADER_BACK_ICON_SIZE);
+            self.scene.masks.push(MaskRun {
+                mask: back,
+                rect: Rect {
+                    x: rect.x + header_inset + self.scaled(HEADER_BACK_OFFSET_X),
+                    y: rect.y + self.scaled(HEADER_BACK_OFFSET_Y),
+                    width: icon_size,
+                    height: icon_size,
+                },
+                clip: self.clip,
                 colour: Colour::WHITE,
             });
         }

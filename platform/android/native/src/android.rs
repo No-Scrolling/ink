@@ -138,6 +138,14 @@ impl AndroidEngine {
         true
     }
 
+    fn back(&mut self) -> bool {
+        if !self.engine.back() {
+            return false;
+        }
+        self.render();
+        true
+    }
+
     fn render(&mut self) {
         let Some(surface) = &mut self.surface else {
             return;
@@ -231,6 +239,17 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollBy(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| engine.scroll_by(delta)) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.back()) as jboolean
 }
 
 #[unsafe(no_mangle)]

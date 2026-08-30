@@ -80,9 +80,25 @@ Style values are authored directly in Ink's LP3 logical units. At the LP3's 1080
 - `Image` embeds a local PNG at compile time with `cover` or `contain` fitting.
 - `Toggle` provides the established LP3 line-and-circle setting control.
 - `Tabs` and `Tab` own the fixed bottom navigation bar and screen switching.
+- `Navigator` and `Route` declare a compile-time checked screen graph. Buttons navigate with `href`; nested screens receive an automatic back control and Android back uses the same history.
+
+```tsx
+<Navigator>
+  <Route path="/">
+    <Screen title="Settings">
+      <Button href="/settings/interface">Interface</Button>
+    </Screen>
+  </Route>
+  <Route path="/settings/interface">
+    <Screen title="Interface">
+      <Text>Display settings</Text>
+    </Screen>
+  </Route>
+</Navigator>
+```
 
 `examples/counter` is the smallest interactive example: one screen, one state value and one action. `examples/light-template` mirrors the three top-level template pages for visual comparisons with the React Native and Light SDK components.
 
 ## Status
 
-Ink remains a deliberately narrow prototype. Editable text, Light SDK resources, Light Keyboard, nested screen navigation and persistence are not implemented yet. Those integrations will sit behind framework-owned adapters rather than expanding every component's surface.
+Ink remains a deliberately narrow prototype. Editable text, route parameters, Light SDK resources, Light Keyboard and persistence are not implemented yet. Those integrations will sit behind framework-owned adapters rather than expanding every component's surface.

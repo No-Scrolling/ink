@@ -13,15 +13,17 @@ use oxc::{
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, App, Axis, ImageFit, Justification, Node, State, StateId, StateValue,
-        Tab, TextAlignment, TextPart, Tone,
+        Action, Alignment, App, Axis, ImageFit, Justification, Node, Route, State, StateId,
+        StateValue, Tab, TextAlignment, TextPart, Tone,
     },
 };
 
-const INK_IMPORTS: [&str; 11] = [
+const INK_IMPORTS: [&str; 13] = [
     "Button",
     "Icon",
     "Image",
+    "Navigator",
+    "Route",
     "Screen",
     "Stack",
     "Tab",
@@ -187,23 +189,31 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
             Statement::ReturnStatement(statement) if root.is_none() => {
                 let Some(argument) = &statement.argument else {
                     return Err(CompileError::new(
-                        "the app function must return <Screen> or <Tabs>",
+                        "the app function must return <Screen>, <Tabs> or <Navigator>",
                         statement.span,
                     ));
                 };
                 let Expression::JSXElement(element) = unparenthesised(argument) else {
                     return Err(CompileError::new(
-                        "the app function must return <Screen> or <Tabs>",
+                        "the app function must return <Screen>, <Tabs> or <Navigator>",
                         argument.span(),
                     ));
                 };
-                let node = lower_node(element, &state_names, imports)?;
-                if !matches!(node, Node::Screen { .. } | Node::Tabs { .. }) {
+                let node = if element_name(&element.opening_element.name)? == "Navigator" {
+                    lower_navigator(element, &state_names, imports)?
+                } else {
+                    lower_node(element, &state_names, imports)?
+                };
+                if !matches!(
+                    node,
+                    Node::Screen { .. } | Node::Tabs { .. } | Node::Navigator { .. }
+                ) {
                     return Err(CompileError::new(
-                        "the app root must be <Screen> or <Tabs>",
+                        "the app root must be <Screen>, <Tabs> or <Navigator>",
                         element.span,
                     ));
                 }
+                validate_navigation(&node)?;
                 root = Some(node);
             }
             _ => {
@@ -216,7 +226,10 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
     }
 
     let root = root.ok_or_else(|| {
-        CompileError::new("the app function must return <Screen> or <Tabs>", body.span)
+        CompileError::new(
+            "the app function must return <Screen>, <Tabs> or <Navigator>",
+            body.span,
+        )
     })?;
     Ok(App { states, root })
 }
@@ -271,6 +284,14 @@ fn lower_node(
         "Image" => lower_image(element),
         "Toggle" => lower_toggle(element, states),
         "Tabs" => lower_tabs(element, states, imports),
+        "Navigator" => Err(CompileError::new(
+            "<Navigator> may only be the app root",
+            element.span,
+        )),
+        "Route" => Err(CompileError::new(
+            "<Route> may only appear directly inside <Navigator>",
+            element.span,
+        )),
         "Tab" => Err(CompileError::new(
             "<Tab> may only appear directly inside <Tabs>",
             element.span,
@@ -401,10 +422,25 @@ fn lower_button(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
 ) -> Result<Node, CompileError> {
-    let action = optional_action_attribute(element, "onPress", states)?;
+    let href = optional_string_attribute(element, "href")?;
+    if href.is_some() && attribute(element, "onPress").is_some() {
+        return Err(CompileError::new(
+            "Button accepts either href or onPress, not both",
+            element.opening_element.span,
+        ));
+    }
+    let action = match href {
+        Some(path) => {
+            let span = attribute(element, "href")
+                .map_or(element.opening_element.span, |attribute| attribute.span);
+            validate_route_path(&path, span)?;
+            Some(Action::Navigate { path, span })
+        }
+        None => optional_action_attribute(element, "onPress", states)?,
+    };
     let icon = optional_icon_attribute(element, "icon")?;
     let underline = boolean_attribute(element, "underline")?;
-    reject_other_attributes(element, &["onPress", "icon", "underline"])?;
+    reject_other_attributes(element, &["onPress", "href", "icon", "underline"])?;
     let label = literal_children(element, "Button labels must be literal text")?;
     Ok(Node::Button {
         label,
@@ -506,6 +542,72 @@ fn lower_tabs(
     })
 }
 
+fn lower_navigator(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+) -> Result<Node, CompileError> {
+    require_import(imports, "Navigator", element.span)?;
+    reject_other_attributes(element, &[])?;
+    require_import(imports, "Route", element.span)?;
+    let mut paths = HashSet::new();
+    let mut routes = Vec::new();
+
+    for child in element_children(element)? {
+        let JSXChild::Element(child) = child else {
+            return Err(CompileError::new(
+                "Navigator children must be <Route> elements",
+                child.span(),
+            ));
+        };
+        expect_element(child, "Route")?;
+        let path = required_string_attribute(child, "path")?;
+        let span =
+            attribute(child, "path").map_or(child.opening_element.span, |attribute| attribute.span);
+        validate_route_path(&path, span)?;
+        if !paths.insert(path.clone()) {
+            return Err(CompileError::new(
+                format!("route {path:?} is declared twice"),
+                span,
+            ));
+        }
+        reject_other_attributes(child, &["path"])?;
+
+        let children = element_children(child)?;
+        if children.len() != 1 {
+            return Err(CompileError::new(
+                "Route must contain exactly one Screen or Tabs",
+                child.span,
+            ));
+        }
+        let JSXChild::Element(screen) = children[0] else {
+            return Err(CompileError::new(
+                "Route must contain exactly one Screen or Tabs",
+                children[0].span(),
+            ));
+        };
+        let screen = lower_node(screen, states, imports)?;
+        if !matches!(screen, Node::Screen { .. } | Node::Tabs { .. }) {
+            return Err(CompileError::new(
+                "Route must contain exactly one Screen or Tabs",
+                children[0].span(),
+            ));
+        }
+        routes.push(Route {
+            path,
+            screen: Box::new(screen),
+        });
+    }
+
+    if !paths.contains("/") {
+        return Err(CompileError::new(
+            "Navigator requires a root <Route path=\"/\">",
+            element.span,
+        ));
+    }
+    Ok(Node::Navigator { routes })
+}
+
 fn lower_tab(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
@@ -535,6 +637,77 @@ fn lower_tab(
         action,
         screen: Box::new(lower_screen(screen, states, imports)?),
     })
+}
+
+fn validate_navigation(root: &Node) -> Result<(), CompileError> {
+    let routes = match root {
+        Node::Navigator { routes } => Some(
+            routes
+                .iter()
+                .map(|route| route.path.as_str())
+                .collect::<HashSet<_>>(),
+        ),
+        _ => None,
+    };
+    validate_navigation_node(root, routes.as_ref())
+}
+
+fn validate_navigation_node(
+    node: &Node,
+    routes: Option<&HashSet<&str>>,
+) -> Result<(), CompileError> {
+    match node {
+        Node::Screen { children, .. } | Node::Stack { children, .. } => {
+            for child in children {
+                validate_navigation_node(child, routes)?;
+            }
+        }
+        Node::Button {
+            action: Some(Action::Navigate { path, span }),
+            ..
+        } => {
+            let Some(routes) = routes else {
+                return Err(CompileError::new("Button href requires a Navigator", *span));
+            };
+            if !routes.contains(path.as_str()) {
+                return Err(CompileError::new(
+                    format!("no route matches {path:?}"),
+                    *span,
+                ));
+            }
+        }
+        Node::Tabs { tabs, .. } => {
+            for tab in tabs {
+                validate_navigation_node(&tab.screen, routes)?;
+            }
+        }
+        Node::Navigator { routes: children } => {
+            for route in children {
+                validate_navigation_node(&route.screen, routes)?;
+            }
+        }
+        Node::Text { .. }
+        | Node::TextInput { .. }
+        | Node::Button { .. }
+        | Node::Icon { .. }
+        | Node::Image { .. }
+        | Node::Toggle { .. } => {}
+    }
+    Ok(())
+}
+
+fn validate_route_path(path: &str, span: Span) -> Result<(), CompileError> {
+    if !path.starts_with('/')
+        || path.contains("//")
+        || path.contains(['?', '#'])
+        || (path.len() > 1 && path.ends_with('/'))
+    {
+        return Err(CompileError::new(
+            "route paths start with / and do not use trailing slashes, queries or fragments",
+            span,
+        ));
+    }
+    Ok(())
 }
 
 fn lower_element_children(

@@ -16,6 +16,8 @@ export declare function Image(props: Ink.ImageProps): Ink.Element;
 export declare function Toggle(props: Ink.ToggleProps): Ink.Element;
 export declare function Tabs(props: Ink.TabsProps): Ink.Element;
 export declare function Tab(props: Ink.TabProps): Ink.Element;
+export declare function Navigator(props: Ink.NavigatorProps): Ink.Element;
+export declare function Route(props: Ink.RouteProps): Ink.Element;
 
 export namespace Ink {
   interface Element {}
@@ -51,12 +53,14 @@ export namespace Ink {
     placeholder: string;
   }
 
-  interface ButtonProps {
+  type ButtonProps = {
     children: string;
-    onPress?: () => void;
     icon?: string;
     underline?: boolean;
-  }
+  } & (
+    | { href: string; onPress?: never }
+    | { href?: never; onPress?: () => void }
+  );
 
   interface IconProps {
     name: string;
@@ -87,6 +91,15 @@ export namespace Ink {
     icon: string;
     onPress: () => void;
   }
+
+  interface NavigatorProps {
+    children: Element | ReadonlyArray<Element>;
+  }
+
+  interface RouteProps {
+    children: Element;
+    path: string;
+  }
 }
 
 export namespace JSX {
@@ -107,5 +120,7 @@ export namespace JSX {
     Toggle: Ink.ToggleProps;
     Tabs: Ink.TabsProps;
     Tab: Ink.TabProps;
+    Navigator: Ink.NavigatorProps;
+    Route: Ink.RouteProps;
   }
 }

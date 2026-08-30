@@ -22,5 +22,7 @@ export namespace JSX {
     Toggle: Ink.ToggleProps;
     Tabs: Ink.TabsProps;
     Tab: Ink.TabProps;
+    Navigator: Ink.NavigatorProps;
+    Route: Ink.RouteProps;
   }
 }

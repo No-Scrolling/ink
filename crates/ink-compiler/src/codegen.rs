@@ -17,6 +17,7 @@ use crate::{
 
 const DEFAULT_ICON_SIZE: f32 = 28.0;
 const BUTTON_ICON_SIZE: f32 = 30.0;
+const HEADER_BACK_ICON_SIZE: f32 = 28.0;
 const TAB_ICON_SIZE: f32 = 48.0;
 const TOGGLE_ICON_SIZE: f32 = 9.8;
 
@@ -28,7 +29,7 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
     let tokens = quote! {
         use ink_core::{
             Action, Alignment, AppDefinition, Axis, Justification, Mask, Node, StateId, StateValue,
-            Tab, TextAlign, TextPart, Tone,
+            Route, Tab, TextAlign, TextPart, Tone,
         };
 
         #[rustfmt::skip]
@@ -168,6 +169,16 @@ impl<'a> Emitter<'a> {
                 let state = state.0;
                 quote! { Node::tabs(StateId::new(#state), vec![#(#generated_tabs),*]) }
             }
+            Node::Navigator { routes } => {
+                let mut generated_routes = Vec::with_capacity(routes.len());
+                for route in routes {
+                    let path = &route.path;
+                    let screen = self.node(&route.screen)?;
+                    generated_routes.push(quote! { Route::new(#path, #screen) });
+                }
+                let back = self.mask("arrow_back_ios", HEADER_BACK_ICON_SIZE)?;
+                quote! { Node::navigator(vec![#(#generated_routes),*], #back) }
+            }
         };
 
         let name = format_ident!("node_{}", self.next_node);
@@ -300,6 +311,9 @@ fn action_tokens(action: &Action) -> TokenStream {
         Action::Toggle { state } => {
             let id = state.0;
             quote! { Action::Toggle { state: StateId::new(#id) } }
+        }
+        Action::Navigate { path, .. } => {
+            quote! { Action::Navigate { path: #path.to_owned() } }
         }
     }
 }

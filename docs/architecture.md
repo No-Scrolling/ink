@@ -34,7 +34,7 @@ The compiler module hides TSX parsing, restricted-language validation, typed low
 
 ### `crates/ink-core`
 
-The core module owns app state, logical layout, clipping, scrolling, hit regions and input dispatch. `Screen` centralises the LP3 header, insets, type rhythm and overflow behaviour, while `Tabs` owns bottom navigation. Header titles are centred against the full viewport with equal side insets, independent of the content insets below. Generated applications depend on this small construction interface rather than renderer or Android types.
+The core module owns app state, route history, logical layout, clipping, scrolling, hit regions and input dispatch. `Screen` centralises the LP3 header, insets, type rhythm and overflow behaviour, `Tabs` owns bottom navigation, and `Navigator` owns a compact stack over compile-time routes. Header titles are centred between equal action slots, independent of the content insets below. Generated applications depend on this small construction interface rather than renderer or Android types.
 
 ### `crates/ink-renderer-wgpu`
 
@@ -42,11 +42,11 @@ The renderer module consumes a clipped display list and owns the Vulkan surface,
 
 ### `platform/android`
 
-Android is an adapter. It supplies a surface, lifecycle and pointer events through a coarse JNI seam. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. It does not own a parallel view hierarchy or application state. The root remains suitable for a future Light Keyboard overlay.
+Android is an adapter. It supplies a surface, lifecycle, pointer events and system-back requests through a coarse JNI seam. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. It does not own a parallel view hierarchy, route history or application state. The root remains suitable for a future Light Keyboard overlay.
 
 ### `examples`
 
-The counter is the smallest interactive example, exercising one state value and one action on a single screen. The light-template example mirrors the template's three top-level pages for deterministic visual comparisons while exercising framework-owned screen density, automatic scrolling and tabs. Their public files are `App.tsx` and metadata-only `ink.toml`; generated Rust and Android resources stay in each example's ignored `.ink/` directory.
+The counter is the smallest interactive example, exercising one state value and one action on a single screen. The light-template example mirrors the template's top-level tabs and nested settings pages for deterministic visual comparisons while exercising framework-owned screen density, automatic scrolling, tabs and navigation. Their public files are `App.tsx` and metadata-only `ink.toml`; generated Rust and Android resources stay in each example's ignored `.ink/` directory.
 
 ## Deliberate constraints
 
