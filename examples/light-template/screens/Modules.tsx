@@ -5,6 +5,7 @@ export default function Modules() {
     <Screen title="Modules">
       <Button href="/modules/audio">Audio</Button>
       <Button href="/modules/light-sdk">Light SDK</Button>
+      <Button href="/modules/location">Location</Button>
       <Button href="/modules/network">Network</Button>
     </Screen>
   );

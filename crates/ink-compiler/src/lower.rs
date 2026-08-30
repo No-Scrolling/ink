@@ -112,6 +112,8 @@ enum ExtensionFunction {
     PitchDetector,
     AudioPlayer,
     AudioRecorder,
+    LocationPermission,
+    CurrentLocation,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -245,6 +247,12 @@ fn validate_imports(
                         (Extension::Audio, "pitchDetector") => ExtensionFunction::PitchDetector,
                         (Extension::Audio, "audioPlayer") => ExtensionFunction::AudioPlayer,
                         (Extension::Audio, "audioRecorder") => ExtensionFunction::AudioRecorder,
+                        (Extension::Location, "locationPermission") => {
+                            ExtensionFunction::LocationPermission
+                        }
+                        (Extension::Location, "currentLocation") => {
+                            ExtensionFunction::CurrentLocation
+                        }
                         _ => {
                             return Err(CompileError::new(
                                 format!("{imported} is not exported by this Ink extension"),
@@ -614,7 +622,7 @@ fn resource_initialiser(
     }
     if function != ExtensionFunction::Json && call.type_arguments.is_some() {
         return Err(CompileError::new(
-            "Light SDK resources do not take type arguments",
+            "Ink resources do not take type arguments",
             call.span,
         ));
     }
@@ -693,12 +701,167 @@ fn resource_initialiser(
                 android_permission: Some(AndroidPermission::Microphone),
             }
         }
+        ExtensionFunction::LocationPermission => {
+            let accuracy = location_permission_accuracy(call)?;
+            ResourceInitialiser {
+                definition: Resource {
+                    module: "light-sdk".to_owned(),
+                    operation: "permission-status".to_owned(),
+                    payload: vec![PayloadPart::Literal(format!("location-{accuracy}"))],
+                    shape: StateShape::String,
+                    timeout_ms: 10_000,
+                },
+                request: Some(NativeOperation {
+                    module: "light-sdk".to_owned(),
+                    operation: "request-permission".to_owned(),
+                    payload: vec![PayloadPart::Literal(format!("location-{accuracy}"))],
+                    timeout_ms: 10_000,
+                }),
+                android_permission: Some(AndroidPermission::Location),
+            }
+        }
+        ExtensionFunction::CurrentLocation => current_location_resource(call)?,
         ExtensionFunction::LevelMeter
         | ExtensionFunction::PitchDetector
         | ExtensionFunction::AudioPlayer
         | ExtensionFunction::AudioRecorder => unreachable!(),
     };
     Ok(Some(resource))
+}
+
+fn location_permission_accuracy(
+    call: &oxc::ast::ast::CallExpression<'_>,
+) -> Result<&'static str, CompileError> {
+    match call.arguments.as_slice() {
+        [] => Ok("precise"),
+        [Argument::StringLiteral(accuracy)] => match accuracy.value.as_str() {
+            "approximate" => Ok("approximate"),
+            "precise" => Ok("precise"),
+            _ => Err(CompileError::new(
+                "location accuracy must be \"approximate\" or \"precise\"",
+                accuracy.span,
+            )),
+        },
+        _ => Err(CompileError::new(
+            "locationPermission() accepts an optional accuracy",
+            call.span,
+        )),
+    }
+}
+
+fn current_location_resource(
+    call: &oxc::ast::ast::CallExpression<'_>,
+) -> Result<ResourceInitialiser, CompileError> {
+    let mut accuracy = "precise";
+    let mut max_age_ms = 60_000_u64;
+    let mut timeout_ms = 15_000_u64;
+    match call.arguments.as_slice() {
+        [] => {}
+        [Argument::ObjectExpression(options)] => {
+            let mut seen = HashSet::new();
+            for property in &options.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return Err(CompileError::new(
+                        "location options cannot use spreads",
+                        property.span(),
+                    ));
+                };
+                let name = property_name(&property.key)?;
+                if !seen.insert(name.clone()) {
+                    return Err(CompileError::new(
+                        format!("location option {name:?} is declared twice"),
+                        property.span,
+                    ));
+                }
+                match name.as_str() {
+                    "accuracy" => {
+                        let Expression::StringLiteral(value) = &property.value else {
+                            return Err(CompileError::new(
+                                "location accuracy must be a string literal",
+                                property.value.span(),
+                            ));
+                        };
+                        accuracy = match value.value.as_str() {
+                            "approximate" => "approximate",
+                            "precise" => "precise",
+                            _ => {
+                                return Err(CompileError::new(
+                                    "location accuracy must be \"approximate\" or \"precise\"",
+                                    value.span,
+                                ));
+                            }
+                        };
+                    }
+                    "maxAgeMs" => {
+                        let Expression::NumericLiteral(value) = &property.value else {
+                            return Err(CompileError::new(
+                                "maxAgeMs must be a number literal",
+                                property.value.span(),
+                            ));
+                        };
+                        max_age_ms = integer(value.value, value.span, "maxAgeMs")?
+                            .try_into()
+                            .ok()
+                            .filter(|value: &u64| *value <= 3_600_000)
+                            .ok_or_else(|| {
+                                CompileError::new(
+                                    "maxAgeMs must be between 0 and 3600000",
+                                    value.span,
+                                )
+                            })?;
+                    }
+                    "timeoutMs" => {
+                        let Expression::NumericLiteral(value) = &property.value else {
+                            return Err(CompileError::new(
+                                "timeoutMs must be a number literal",
+                                property.value.span(),
+                            ));
+                        };
+                        timeout_ms = integer(value.value, value.span, "timeoutMs")?
+                            .try_into()
+                            .ok()
+                            .filter(|value: &u64| (1_000..=120_000).contains(value))
+                            .ok_or_else(|| {
+                                CompileError::new(
+                                    "timeoutMs must be between 1000 and 120000",
+                                    value.span,
+                                )
+                            })?;
+                    }
+                    _ => {
+                        return Err(CompileError::new(
+                            format!("unknown location option {name:?}"),
+                            property.key.span(),
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {
+            return Err(CompileError::new(
+                "currentLocation() accepts an optional { accuracy, maxAgeMs, timeoutMs } object",
+                call.span,
+            ));
+        }
+    }
+    let payload = format!("{{\"accuracy\":\"{accuracy}\",\"maxAgeMs\":{max_age_ms}}}");
+    Ok(ResourceInitialiser {
+        definition: Resource {
+            module: "location".to_owned(),
+            operation: "current".to_owned(),
+            payload: vec![PayloadPart::Literal(payload)],
+            shape: object_shape([
+                ("latitude", StateShape::Number),
+                ("longitude", StateShape::Number),
+                ("accuracy", StateShape::Number),
+                ("provider", StateShape::String),
+                ("timestamp", StateShape::Number),
+            ]),
+            timeout_ms,
+        },
+        request: None,
+        android_permission: Some(AndroidPermission::Location),
+    })
 }
 
 fn controller_initialiser(
@@ -3828,6 +3991,8 @@ fn validate_resource_comparison(
             &[
                 "unavailable",
                 "permission-denied",
+                "permission-blocked",
+                "location-disabled",
                 "timeout",
                 "protocol",
                 "unexpected",

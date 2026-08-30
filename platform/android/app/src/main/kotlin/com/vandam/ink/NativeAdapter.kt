@@ -32,4 +32,6 @@ internal enum class NativeErrorKind(val code: Int) {
     TIMEOUT(2),
     PROTOCOL(3),
     UNEXPECTED(4),
+    PERMISSION_BLOCKED(5),
+    LOCATION_DISABLED(6),
 }

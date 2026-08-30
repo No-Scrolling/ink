@@ -7,6 +7,7 @@
       "dependencies": {
         "@ink/audio": "file:../../packages/audio",
         "@ink/light-sdk": "file:../../packages/light-sdk",
+        "@ink/location": "file:../../packages/location",
         "@ink/network": "file:../../packages/network",
         "ink": "file:../../packages/ink",
       },
@@ -19,6 +20,8 @@
     "@ink/audio": ["@ink/audio@file:../../packages/audio", {}],
 
     "@ink/light-sdk": ["@ink/light-sdk@file:../../packages/light-sdk", {}],
+
+    "@ink/location": ["@ink/location@file:../../packages/location", {}],
 
     "@ink/network": ["@ink/network@file:../../packages/network", {}],
 

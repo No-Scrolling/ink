@@ -7,6 +7,7 @@ import Search from "./screens/Search";
 import Settings from "./screens/Settings";
 import Audio from "./screens/modules/Audio";
 import LightSdk from "./screens/modules/LightSdk";
+import Location from "./screens/modules/Location";
 import Network from "./screens/modules/Network";
 import LocalPlayback from "./screens/modules/audio/LocalPlayback";
 import Microphone from "./screens/modules/audio/Microphone";
@@ -72,6 +73,9 @@ export default function LightTemplate() {
       </Route>
       <Route path="/modules/light-sdk">
         <LightSdk />
+      </Route>
+      <Route path="/modules/location">
+        <Location />
       </Route>
       <Route path="/modules/network">
         <Network />

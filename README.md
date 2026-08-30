@@ -47,6 +47,7 @@ export default function Counter() {
 - Lightweight text input and keyboard
 - Local and remote images, plus generated app icons
 - Audio playback, recording and microphone analysis
+- Foreground device location through LightOS permissions
 - Multi-file apps and installed UI packages
 - Android development, signing and device tooling through the `ink` CLI
 
@@ -56,7 +57,7 @@ export default function Counter() {
 - `@ink/light-sdk` — LightOS integration
 - `@ink/network` — typed HTTPS JSON resources
 - `@ink/audio` — Playback, recording and microphone analysis
-- `@ink/location` — Device location (planned)
+- `@ink/location` — Foreground device location
 - `@ink/camera` — Camera and code scanning (planned)
 - `@ink/nfc` — NFC reading (planned)
 - `@ink/notifications` — Local notifications (planned)
@@ -141,6 +142,21 @@ const player = audioPlayer({ usage: "music", playback: "detached" });
 
 Bundled assets and HTTPS sources use the same player. Detached playback continues through an Android media session after the screen or application leaves the foreground. Apps that do not import `@ink/audio` carry none of its native implementation.
 
+## Location
+
+`@ink/location` combines the LightOS permission screen with a small native Android location adapter:
+
+```tsx
+import { currentLocation, locationPermission } from "@ink/location";
+
+const permission = locationPermission();
+const location = currentLocation({ accuracy: "precise" });
+
+<Button onPress={() => permission.request()}>Request Location</Button>
+```
+
+Recent fixes return immediately; stale fixes trigger a cancellable GPS/network request. Apps that do not import the module carry none of its native implementation.
+
 ## Development
 
 Check the local toolchain and run the counter example:
@@ -170,3 +186,4 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Light SDK adapter](docs/adr/0003-light-sdk-adapter.md)
 - [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
 - [Audio](docs/audio.md)
+- [Location](docs/location.md)

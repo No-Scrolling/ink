@@ -15,6 +15,8 @@ export interface ListSignal<T> {
 export type ResourceErrorKind =
   | "unavailable"
   | "permission-denied"
+  | "permission-blocked"
+  | "location-disabled"
   | "timeout"
   | "protocol"
   | "unexpected";

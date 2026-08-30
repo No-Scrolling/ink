@@ -16,7 +16,6 @@ use ink_core::{
 };
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
-#[cfg(feature = "network")]
 use jni::objects::JByteArray;
 #[cfg(feature = "audio")]
 use jni::objects::JShortArray;
@@ -258,7 +257,6 @@ impl AndroidEngine {
         changed
     }
 
-    #[cfg(feature = "network")]
     fn complete_native_json(&mut self, request_id: u64, bytes: &[u8]) -> bool {
         if !self.engine.complete_native_json(request_id, bytes) {
             return false;
@@ -644,7 +642,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteString(
         }) as jboolean
 }
 
-#[cfg(feature = "network")]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteBytes(
     mut env: EnvUnowned<'_>,
@@ -714,6 +711,8 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
         1 => ResourceErrorKind::PermissionDenied,
         2 => ResourceErrorKind::Timeout,
         3 => ResourceErrorKind::Protocol,
+        5 => ResourceErrorKind::PermissionBlocked,
+        6 => ResourceErrorKind::LocationDisabled,
         _ => ResourceErrorKind::Unexpected,
     };
     engine(handle)

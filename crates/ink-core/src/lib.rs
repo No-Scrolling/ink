@@ -277,6 +277,8 @@ impl ResourceDefinition {
 pub enum ResourceErrorKind {
     Unavailable,
     PermissionDenied,
+    PermissionBlocked,
+    LocationDisabled,
     Timeout,
     Protocol,
     Unexpected,
@@ -287,6 +289,8 @@ impl ResourceErrorKind {
         match self {
             Self::Unavailable => "unavailable",
             Self::PermissionDenied => "permission-denied",
+            Self::PermissionBlocked => "permission-blocked",
+            Self::LocationDisabled => "location-disabled",
             Self::Timeout => "timeout",
             Self::Protocol => "protocol",
             Self::Unexpected => "unexpected",

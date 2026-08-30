@@ -10,6 +10,7 @@ const LIGHT_SDK_PACKAGE: &str = "@ink/light-sdk";
 const LIGHT_SDK_VERSION: &str = "0.1.1";
 const NETWORK_PACKAGE: &str = "@ink/network";
 const AUDIO_PACKAGE: &str = "@ink/audio";
+const LOCATION_PACKAGE: &str = "@ink/location";
 
 pub struct ModuleResolver {
     project_root: PathBuf,
@@ -168,6 +169,14 @@ impl ModuleResolver {
             (AUDIO_PACKAGE, "audio") => Err(CompileError::new(
                 format!(
                     "@ink/audio targets Ink audio API {}, but this Ink version supports 1",
+                    ink.sdk_version
+                ),
+                span,
+            )),
+            (LOCATION_PACKAGE, "location") if ink.sdk_version == "1" => Ok(Extension::Location),
+            (LOCATION_PACKAGE, "location") => Err(CompileError::new(
+                format!(
+                    "@ink/location targets Ink location API {}, but this Ink version supports 1",
                     ink.sdk_version
                 ),
                 span,

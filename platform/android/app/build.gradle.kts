@@ -23,31 +23,46 @@ val inkUsesAudioPlayback = providers.gradleProperty("inkUsesAudioPlayback").orEl
 val inkUsesDetachedAudio = providers.gradleProperty("inkUsesDetachedAudio").orElse("false")
 val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission").orElse("false")
 val inkUsesMicrophonePermission = providers.gradleProperty("inkUsesMicrophonePermission").orElse("false")
+val inkUsesLocation = providers.gradleProperty("inkUsesLocation").orElse("false")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 val inkLightSdkVersion = "0.1.1"
-val inkPermissionManifest = when {
-    inkUsesDetachedAudio.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() &&
-        inkUsesMicrophonePermission.get().toBoolean() ->
-        "src/detachedCameraAudioPermission/AndroidManifest.xml"
-    inkUsesDetachedAudio.get().toBoolean() && inkUsesMicrophonePermission.get().toBoolean() ->
-        "src/detachedAudioPermission/AndroidManifest.xml"
-    inkUsesDetachedAudio.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() ->
-        "src/detachedCameraPermission/AndroidManifest.xml"
-    inkUsesDetachedAudio.get().toBoolean() -> "src/detachedPermission/AndroidManifest.xml"
-    inkUsesNetwork.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() &&
-        inkUsesMicrophonePermission.get().toBoolean() ->
-        "src/networkCameraAudioPermission/AndroidManifest.xml"
-    inkUsesNetwork.get().toBoolean() && inkUsesMicrophonePermission.get().toBoolean() ->
-        "src/networkAudioPermission/AndroidManifest.xml"
-    inkUsesCameraPermission.get().toBoolean() && inkUsesMicrophonePermission.get().toBoolean() ->
-        "src/cameraAudioPermission/AndroidManifest.xml"
-    inkUsesNetwork.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() ->
-        "src/networkCameraPermission/AndroidManifest.xml"
-    inkUsesMicrophonePermission.get().toBoolean() -> "src/audioPermission/AndroidManifest.xml"
-    inkUsesNetwork.get().toBoolean() -> "src/network/AndroidManifest.xml"
-    inkUsesCameraPermission.get().toBoolean() -> "src/cameraPermission/AndroidManifest.xml"
-    else -> null
+val inkPermissions = buildList {
+    if (inkUsesNetwork.get().toBoolean() || inkUsesDetachedAudio.get().toBoolean()) {
+        add("android.permission.ACCESS_NETWORK_STATE")
+        add("android.permission.INTERNET")
+    }
+    if (inkUsesDetachedAudio.get().toBoolean()) {
+        add("android.permission.FOREGROUND_SERVICE")
+        add("android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK")
+    }
+    if (inkUsesCameraPermission.get().toBoolean()) {
+        add("android.permission.CAMERA")
+    }
+    if (inkUsesMicrophonePermission.get().toBoolean()) {
+        add("android.permission.RECORD_AUDIO")
+    }
+    if (inkUsesLocation.get().toBoolean()) {
+        add("android.permission.ACCESS_COARSE_LOCATION")
+        add("android.permission.ACCESS_FINE_LOCATION")
+    }
+}
+val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
+val generateInkPermissionManifest by tasks.registering {
+    inputs.property("permissions", inkPermissions.joinToString())
+    outputs.file(inkPermissionManifest)
+    doLast {
+        val output = inkPermissionManifest.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(buildString {
+            appendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+            appendLine("<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">")
+            inkPermissions.forEach { permission ->
+                appendLine("    <uses-permission android:name=\"$permission\" />")
+            }
+            appendLine("</manifest>")
+        })
+    }
 }
 val inkLightSdkMarkerAction = if (inkUsesLightSdk.get().toBoolean()) {
     "com.thelightphone.sdk.ACTION_SDK_MARKER"
@@ -101,10 +116,8 @@ android {
     sourceSets {
         getByName("main").res.srcDir(inkAndroidResources)
         getByName("main").assets.srcDir(inkAndroidAssets)
-        if (inkPermissionManifest != null) {
-            getByName("debug").manifest.srcFile(inkPermissionManifest)
-            getByName("release").manifest.srcFile(inkPermissionManifest)
-        }
+        getByName("debug").manifest.srcFile(inkPermissionManifest)
+        getByName("release").manifest.srcFile(inkPermissionManifest)
         getByName("main").java.srcDir(
             if (inkUsesTextInput.get().toBoolean()) {
                 "src/textInput/kotlin"
@@ -145,6 +158,13 @@ android {
                 "src/lightSdk/kotlin"
             } else {
                 "src/noLightSdk/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesLocation.get().toBoolean()) {
+                "src/location/kotlin"
+            } else {
+                "src/noLocation/kotlin"
             },
         )
         if (inkUsesTextInput.get().toBoolean()) {
@@ -254,6 +274,8 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
 
 tasks.configureEach {
     when (name) {
+        "processDebugMainManifest", "processReleaseMainManifest" ->
+            dependsOn(generateInkPermissionManifest)
         "mergeDebugJniLibFolders" -> dependsOn(cargoBuildDebug)
         "mergeReleaseJniLibFolders" -> dependsOn(cargoBuildRelease)
     }

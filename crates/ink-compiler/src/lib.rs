@@ -23,6 +23,7 @@ pub struct AppFeatures {
     pub audio_playback: bool,
     pub audio_detached: bool,
     pub microphone_permission: bool,
+    pub location: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -127,7 +128,8 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
     });
     Ok(GeneratedApp {
         features: AppFeatures {
-            light_sdk: app.extensions.contains(&ir::Extension::LightSdk),
+            light_sdk: app.extensions.contains(&ir::Extension::LightSdk)
+                || app.extensions.contains(&ir::Extension::Location),
             network: app.extensions.contains(&ir::Extension::Network)
                 || uses_remote_image(&app.root)
                 || audio_playback,
@@ -141,6 +143,7 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
             microphone_permission: app
                 .android_permissions
                 .contains(&ir::AndroidPermission::Microphone),
+            location: app.extensions.contains(&ir::Extension::Location),
         },
         source: codegen::generate(&app, project.root())?,
     })

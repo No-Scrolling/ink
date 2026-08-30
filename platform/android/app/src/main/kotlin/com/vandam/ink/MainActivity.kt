@@ -40,6 +40,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var lightSdkAdapter: LightSdkAdapter
     private lateinit var networkAdapter: NetworkAdapter
     private lateinit var audioAdapter: AudioAdapter
+    private lateinit var locationAdapter: LocationAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
@@ -101,6 +102,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
         lightSdkAdapter = createLightSdkAdapter(this, textInputAdapter::setHapticsEnabled)
         networkAdapter = createNetworkAdapter(this)
+        locationAdapter = createLocationAdapter(this)
         audioAdapter = createAudioAdapter(
             this,
             { samples, sampleRate ->
@@ -208,6 +210,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         lightSdkAdapter.stop()
         networkAdapter.stop()
         audioAdapter.stop()
+        locationAdapter.stop()
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
         detachSurface()
@@ -301,6 +304,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 lightSdkAdapter.cancel(requestId)
                 networkAdapter.cancel(requestId)
                 audioAdapter.cancel(requestId)
+                locationAdapter.cancel(requestId)
                 continue
             }
             val module = nativeRequestModule(engineHandle, requestId)
@@ -315,6 +319,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 LIGHT_SDK_MODULE -> lightSdkAdapter
                 NETWORK_MODULE -> networkAdapter
                 AUDIO_MODULE -> if (lightAudioPermission) lightSdkAdapter else audioAdapter
+                LOCATION_MODULE -> locationAdapter
                 else -> null
             }
             if (adapter == null) {
@@ -363,6 +368,41 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             } else if (controller >= 0L && adapter === audioAdapter) {
                 audioAdapter.executeController(controller, operation, payload, execute)
+            } else if (adapter === locationAdapter) {
+                locationAdapter.execute(requestId, operation, payload) { result ->
+                    val permission = if (
+                        result is NativeResult.Failure &&
+                        result.kind == NativeErrorKind.PERMISSION_DENIED
+                    ) {
+                        locationAdapter.requiredPermission(payload)
+                    } else {
+                        null
+                    }
+                    if (permission == null) {
+                        execute(result)
+                    } else {
+                        lightSdkAdapter.execute(
+                            requestId,
+                            PERMISSION_STATUS_OPERATION,
+                            permission,
+                        ) { permissionResult ->
+                            execute(
+                                if (
+                                    permissionResult is NativeResult.Success &&
+                                    permissionResult.value == BLOCKED_PERMISSION
+                                ) {
+                                    NativeResult.Failure(
+                                        NativeErrorKind.PERMISSION_BLOCKED,
+                                        "Location permission is blocked by LightOS",
+                                        false,
+                                    )
+                                } else {
+                                    result
+                                },
+                            )
+                        }
+                    }
+                }
             } else {
                 adapter.execute(requestId, operation, payload, execute)
             }
@@ -534,9 +574,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val LIGHT_SDK_MODULE = "light-sdk"
         private const val NETWORK_MODULE = "network"
         private const val AUDIO_MODULE = "audio"
+        private const val LOCATION_MODULE = "location"
         private const val PERMISSION_STATUS_OPERATION = "permission-status"
         private const val REQUEST_PERMISSION_OPERATION = "request-permission"
         private const val MICROPHONE_PERMISSION = "microphone"
+        private const val BLOCKED_PERMISSION = "blocked"
         private const val NATIVE_REQUEST_RESOURCE = 0
         private const val NATIVE_REQUEST_CANCEL = 2
         private const val NATIVE_REQUEST_IMAGE = 3

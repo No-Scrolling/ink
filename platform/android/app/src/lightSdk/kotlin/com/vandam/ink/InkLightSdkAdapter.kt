@@ -3,6 +3,7 @@ package com.vandam.ink
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.Parcel
@@ -74,7 +75,10 @@ private class InkLightSdkAdapter(
         val valid = when (operation) {
             VERSION_OPERATION -> payload.isEmpty()
             PERMISSION_STATUS_OPERATION, REQUEST_PERMISSION_OPERATION ->
-                payload == CAMERA || payload == MICROPHONE
+                payload == CAMERA ||
+                    payload == MICROPHONE ||
+                    payload == LOCATION_APPROXIMATE ||
+                    payload == LOCATION_PRECISE
             else -> false
         }
         if (!valid) {
@@ -180,6 +184,13 @@ private class InkLightSdkAdapter(
     }
 
     private fun permissionStatus(permission: String): NativeResult {
+        if (
+            permission == LOCATION_APPROXIMATE &&
+            activity.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return NativeResult.Success("granted")
+        }
         val payload = JSONObject()
             .put(PERMISSION_NAME_KEY, androidPermission(permission))
             .toString()
@@ -231,6 +242,8 @@ private class InkLightSdkAdapter(
     private fun androidPermission(permission: String): String = when (permission) {
         CAMERA -> android.Manifest.permission.CAMERA
         MICROPHONE -> android.Manifest.permission.RECORD_AUDIO
+        LOCATION_APPROXIMATE -> android.Manifest.permission.ACCESS_COARSE_LOCATION
+        LOCATION_PRECISE -> android.Manifest.permission.ACCESS_FINE_LOCATION
         else -> error("Unsupported permission: $permission")
     }
 
@@ -381,5 +394,7 @@ private class InkLightSdkAdapter(
         const val REQUEST_PERMISSION_OPERATION = "request-permission"
         const val CAMERA = "camera"
         const val MICROPHONE = "microphone"
+        const val LOCATION_APPROXIMATE = "location-approximate"
+        const val LOCATION_PRECISE = "location-precise"
     }
 }

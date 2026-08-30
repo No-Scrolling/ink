@@ -37,12 +37,14 @@ pub enum Extension {
     LightSdk,
     Network,
     Audio,
+    Location,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AndroidPermission {
     Camera,
     Microphone,
+    Location,
 }
 
 #[derive(Debug)]
