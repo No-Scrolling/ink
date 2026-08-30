@@ -10,8 +10,8 @@ use quote::{format_ident, quote};
 use crate::{
     icons,
     ir::{
-        Action, Alignment, App, Axis, ImageFit, Justification, Node, StateValue, TextAlignment,
-        TextInputAction, TextPart, Tone,
+        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, StateValue,
+        TextAlignment, TextInputAction, TextPart, Tone, Value,
     },
 };
 
@@ -28,8 +28,8 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
     let declarations = emitter.declarations;
     let tokens = quote! {
         use ink_core::{
-            Action, Alignment, AppDefinition, Axis, Justification, Mask, Node, StateId, StateValue,
-            Route, Tab, TextAlign, TextInputAction, TextPart, Tone,
+            Action, Alignment, AppDefinition, Axis, Condition, Justification, Mask, Node, StateId,
+            StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone, Value,
         };
 
         #[rustfmt::skip]
@@ -119,6 +119,7 @@ impl<'a> Emitter<'a> {
                 underline,
                 action,
             } => {
+                let label = label.iter().map(text_part);
                 let icon = match icon {
                     Some(name) => {
                         let mask = self.mask(name, BUTTON_ICON_SIZE)?;
@@ -133,7 +134,7 @@ impl<'a> Emitter<'a> {
                     }
                     None => quote! { None },
                 };
-                quote! { Node::button(#label, #icon, #underline, #action) }
+                quote! { Node::button(vec![#(#label),*], #icon, #underline, #action) }
             }
             Node::Icon { name, size, tone } => {
                 let size = size.unwrap_or(DEFAULT_ICON_SIZE);
@@ -190,6 +191,33 @@ impl<'a> Emitter<'a> {
                 }
                 let back = self.mask("arrow_back_ios", HEADER_BACK_ICON_SIZE)?;
                 quote! { Node::navigator(vec![#(#generated_routes),*], #back) }
+            }
+            Node::Conditional {
+                condition,
+                consequent,
+                alternate,
+            } => {
+                let condition = condition_tokens(condition);
+                let consequent = self.node(consequent)?;
+                let alternate = match alternate {
+                    Some(alternate) => {
+                        let alternate = self.node(alternate)?;
+                        quote! { Some(#alternate) }
+                    }
+                    None => quote! { None },
+                };
+                quote! {
+                    Node::conditional(
+                        #condition,
+                        #consequent,
+                        #alternate,
+                    )
+                }
+            }
+            Node::ForEach { state, template } => {
+                let state = state.0;
+                let template = self.node(template)?;
+                quote! { Node::for_each(StateId::new(#state), #template) }
             }
         };
 
@@ -313,6 +341,17 @@ fn state_value(value: &StateValue) -> TokenStream {
         StateValue::Int(value) => quote! { StateValue::Int(#value) },
         StateValue::Bool(value) => quote! { StateValue::Bool(#value) },
         StateValue::String(value) => quote! { StateValue::String(#value.to_owned()) },
+        StateValue::List(values) => {
+            let values = values.iter().map(state_value);
+            quote! { StateValue::List(vec![#(#values),*]) }
+        }
+        StateValue::Object(fields) => {
+            let fields = fields.iter().map(|(name, value)| {
+                let value = state_value(value);
+                quote! { (#name.to_owned(), #value) }
+            });
+            quote! { StateValue::Object(vec![#(#fields),*]) }
+        }
     }
 }
 
@@ -322,6 +361,13 @@ fn text_part(part: &TextPart) -> TokenStream {
         TextPart::State(state) => {
             let id = state.0;
             quote! { TextPart::state(StateId::new(#id)) }
+        }
+        TextPart::ListLength(state) => {
+            let id = state.0;
+            quote! { TextPart::list_length(StateId::new(#id)) }
+        }
+        TextPart::Item(path) => {
+            quote! { TextPart::Item(vec![#(#path.to_owned()),*]) }
         }
     }
 }
@@ -344,8 +390,73 @@ fn action_tokens(action: &Action) -> TokenStream {
             let id = state.0;
             quote! { Action::Toggle { state: StateId::new(#id) } }
         }
+        Action::SetList { state, value } => {
+            let id = state.0;
+            let value = value_tokens(value);
+            quote! { Action::SetList { state: StateId::new(#id), value: #value } }
+        }
+        Action::AppendList { state, value } => {
+            let id = state.0;
+            let value = value_tokens(value);
+            quote! { Action::AppendList { state: StateId::new(#id), value: #value } }
+        }
+        Action::RemoveListItem { state } => {
+            let id = state.0;
+            quote! { Action::RemoveCurrentListItem { state: StateId::new(#id) } }
+        }
+        Action::ReplaceListItem { state, value } => {
+            let id = state.0;
+            let value = value_tokens(value);
+            quote! {
+                Action::ReplaceCurrentListItem {
+                    state: StateId::new(#id),
+                    value: #value,
+                }
+            }
+        }
+        Action::ClearList { state } => {
+            let id = state.0;
+            quote! { Action::ClearList { state: StateId::new(#id) } }
+        }
         Action::Navigate { path, .. } => {
             quote! { Action::Navigate { path: #path.to_owned() } }
+        }
+    }
+}
+
+fn condition_tokens(condition: &Condition) -> TokenStream {
+    match condition {
+        Condition::Bool { state, expected } => {
+            let id = state.0;
+            quote! { Condition::Bool { state: StateId::new(#id), expected: #expected } }
+        }
+        Condition::ListEmpty { state, expected } => {
+            let id = state.0;
+            quote! { Condition::ListEmpty { state: StateId::new(#id), expected: #expected } }
+        }
+    }
+}
+
+fn value_tokens(value: &Value) -> TokenStream {
+    match value {
+        Value::Int(value) => quote! { Value::Int(#value) },
+        Value::Bool(value) => quote! { Value::Bool(#value) },
+        Value::String(value) => quote! { Value::String(#value.to_owned()) },
+        Value::State(state) => {
+            let id = state.0;
+            quote! { Value::State(StateId::new(#id)) }
+        }
+        Value::Item(path) => quote! { Value::Item(vec![#(#path.to_owned()),*]) },
+        Value::List(values) => {
+            let values = values.iter().map(value_tokens);
+            quote! { Value::List(vec![#(#values),*]) }
+        }
+        Value::Object(fields) => {
+            let fields = fields.iter().map(|(name, value)| {
+                let value = value_tokens(value);
+                quote! { (#name.to_owned(), #value) }
+            });
+            quote! { Value::Object(vec![#(#fields),*]) }
         }
     }
 }

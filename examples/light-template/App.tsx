@@ -3,6 +3,7 @@ import {
   Navigator,
   Route,
   Screen,
+  Stack,
   Tab,
   Tabs,
   Text,
@@ -16,7 +17,9 @@ export default function LightTemplate() {
   const query = state("");
   const name = state("");
   const invertColours = state(false);
+  const showApps = state(true);
   const option = state(0);
+  const apps = state(["Weather", "Passes"]);
 
   return (
     <Navigator>
@@ -50,6 +53,7 @@ export default function LightTemplate() {
             <Screen title="Settings">
               <Button href="/settings/customise">Customise</Button>
               <Button href="/settings/text-input">Text Input</Button>
+              <Button href="/settings/dynamic-ui">Dynamic UI</Button>
               <Button href="/confirm">Example Confirm</Button>
             </Screen>
           </Tab>
@@ -85,6 +89,34 @@ export default function LightTemplate() {
             onChange={(value) => name.set(value)}
             action="done"
           />
+        </Screen>
+      </Route>
+      <Route path="/settings/dynamic-ui">
+        <Screen title="Dynamic UI">
+          <Toggle
+            label="Show Apps"
+            value={showApps.value}
+            onChange={() => showApps.set(!showApps.value)}
+          />
+          {showApps.value && (
+            <Stack>
+              {apps.value.length === 0 ? (
+                <Stack gap={47}>
+                  <Text size={18}>No apps</Text>
+                  <Button onPress={() => apps.set(["Weather", "Passes"])}>Restore Apps</Button>
+                </Stack>
+              ) : (
+                <Stack gap={47}>
+                  {apps.value.map((app) => (
+                    <Text>{app}</Text>
+                  ))}
+                  <Button onPress={() => apps.append("Beeper")}>Add Beeper</Button>
+                  <Button onPress={() => apps.clear()}>Clear Apps</Button>
+                </Stack>
+              )}
+            </Stack>
+          )}
+          {!showApps.value && <Text size={18}>App list hidden</Text>}
         </Screen>
       </Route>
       <Route path="/confirm">

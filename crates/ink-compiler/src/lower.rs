@@ -1,20 +1,21 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use oxc::{
     ast::ast::{
         Argument, ArrowFunctionBody, BindingPattern, ExportDefaultDeclarationKind, Expression,
         Function, JSXAttribute, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild,
-        JSXElement, JSXElementName, JSXExpression, Statement, VariableDeclarationKind,
+        JSXElement, JSXElementName, JSXExpression, ObjectPropertyKind, PropertyKey, PropertyKind,
+        Statement, TSSignature, TSType, VariableDeclarationKind,
     },
     span::{GetSpan, Span},
-    syntax::operator::{BinaryOperator, UnaryOperator},
+    syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator},
 };
 
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, App, Axis, ImageFit, Justification, Node, Route, State, StateId,
-        StateValue, Tab, TextAlignment, TextPart, Tone,
+        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, Route, State,
+        StateId, StateValue, Tab, TextAlignment, TextPart, Tone, Value,
     },
 };
 
@@ -34,17 +35,25 @@ const INK_IMPORTS: [&str; 13] = [
     "state",
 ];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum StateKind {
     Int,
     Bool,
     String,
+    List(Box<StateKind>),
+    Object(BTreeMap<String, StateKind>),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct StateBinding {
     id: StateId,
     kind: StateKind,
+}
+
+#[derive(Clone, Copy)]
+struct ItemBinding<'a> {
+    name: &'a str,
+    kind: &'a StateKind,
 }
 
 pub fn lower(program: &oxc::ast::ast::Program<'_>) -> Result<App, CompileError> {
@@ -178,11 +187,12 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
                             declarator.id.span(),
                         ));
                     };
-                    let initial = state_initialiser(declarator.init.as_ref(), declarator.span)?;
+                    let (initial, kind) =
+                        state_initialiser(declarator.init.as_ref(), declarator.span)?;
                     let name = binding.name.as_str();
                     let binding = StateBinding {
                         id: StateId(states.len()),
-                        kind: state_kind(&initial),
+                        kind,
                     };
                     if state_names.insert(name, binding).is_some() {
                         return Err(CompileError::new(
@@ -209,7 +219,7 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
                 let node = if element_name(&element.opening_element.name)? == "Navigator" {
                     lower_navigator(element, &state_names, imports)?
                 } else {
-                    lower_node(element, &state_names, imports)?
+                    lower_node(element, &state_names, imports, None)?
                 };
                 if !matches!(
                     node,
@@ -244,10 +254,10 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
 fn state_initialiser(
     initialiser: Option<&Expression<'_>>,
     span: Span,
-) -> Result<StateValue, CompileError> {
+) -> Result<(StateValue, StateKind), CompileError> {
     let Some(Expression::CallExpression(call)) = initialiser else {
         return Err(CompileError::new(
-            "state must be initialised with state(number), state(boolean) or state(string)",
+            "state must be initialised with state(value)",
             span,
         ));
     };
@@ -260,26 +270,206 @@ fn state_initialiser(
     if callee.name.as_str() != "state" || call.arguments.len() != 1 {
         return Err(CompileError::new("expected state(value)", call.span));
     }
-    match &call.arguments[0] {
-        Argument::NumericLiteral(value) => Ok(StateValue::Int(integer(
+    let Some(value) = call.arguments[0].as_expression() else {
+        return Err(CompileError::new(
+            "state values cannot use spread syntax",
+            call.arguments[0].span(),
+        ));
+    };
+    let value = literal_state_value(value)?;
+    let declared = match &call.type_arguments {
+        Some(arguments) => {
+            let [kind] = arguments.params.as_slice() else {
+                return Err(CompileError::new(
+                    "state accepts one type argument",
+                    arguments.span,
+                ));
+            };
+            Some(state_kind_from_type(kind)?)
+        }
+        None => None,
+    };
+    let inferred = state_kind(&value);
+    let kind = match (declared, inferred) {
+        (Some(declared), Some(inferred)) if declared != inferred => {
+            return Err(CompileError::new(
+                "the state type does not match its initial value",
+                call.span,
+            ));
+        }
+        (Some(declared), _) => declared,
+        (None, Some(inferred)) => inferred,
+        (None, None) => {
+            return Err(CompileError::new(
+                "empty list state needs an explicit array type",
+                call.span,
+            )
+            .with_help("state<{ name: string }[]>([])"));
+        }
+    };
+    if matches!(&kind, StateKind::Object(_)) {
+        return Err(CompileError::new(
+            "state supports scalar values and lists",
+            call.span,
+        ));
+    }
+    Ok((value, kind))
+}
+
+fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileError> {
+    match value {
+        Expression::NumericLiteral(value) => Ok(StateValue::Int(integer(
             value.value,
             value.span,
             "state value",
         )?)),
-        Argument::BooleanLiteral(value) => Ok(StateValue::Bool(value.value)),
-        Argument::StringLiteral(value) => Ok(StateValue::String(value.value.to_string())),
-        value => Err(CompileError::new(
-            "state currently accepts one integer, boolean or string literal",
+        Expression::BooleanLiteral(value) => Ok(StateValue::Bool(value.value)),
+        Expression::StringLiteral(value) => Ok(StateValue::String(value.value.to_string())),
+        Expression::ArrayExpression(array) => {
+            let mut values = Vec::with_capacity(array.elements.len());
+            let mut item_kind = None;
+            for element in &array.elements {
+                let Some(expression) = element.as_expression() else {
+                    return Err(CompileError::new(
+                        "state lists cannot contain holes or spreads",
+                        element.span(),
+                    ));
+                };
+                let value = literal_state_value(expression)?;
+                let Some(kind) = state_kind(&value) else {
+                    return Err(CompileError::new(
+                        "nested empty lists need an explicit shape",
+                        expression.span(),
+                    ));
+                };
+                if item_kind.as_ref().is_some_and(|expected| expected != &kind) {
+                    return Err(CompileError::new(
+                        "every item in a state list must have the same shape",
+                        expression.span(),
+                    ));
+                }
+                item_kind.get_or_insert(kind);
+                values.push(value);
+            }
+            Ok(StateValue::List(values))
+        }
+        Expression::ObjectExpression(object) => {
+            let mut values = Vec::with_capacity(object.properties.len());
+            let mut names = HashSet::new();
+            for property in &object.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return Err(CompileError::new(
+                        "state objects cannot use spread properties",
+                        property.span(),
+                    ));
+                };
+                if property.kind != PropertyKind::Init
+                    || property.method
+                    || property.shorthand
+                    || property.computed
+                {
+                    return Err(CompileError::new(
+                        "state objects use explicit literal properties",
+                        property.span,
+                    ));
+                }
+                let name = property_name(&property.key)?;
+                if !names.insert(name.clone()) {
+                    return Err(CompileError::new(
+                        format!("state object property {name:?} is declared twice"),
+                        property.key.span(),
+                    ));
+                }
+                values.push((name, literal_state_value(&property.value)?));
+            }
+            Ok(StateValue::Object(values))
+        }
+        _ => Err(CompileError::new(
+            "state values must be literal numbers, booleans, strings, objects or lists",
             value.span(),
         )),
     }
 }
 
-const fn state_kind(value: &StateValue) -> StateKind {
+fn state_kind(value: &StateValue) -> Option<StateKind> {
     match value {
-        StateValue::Int(_) => StateKind::Int,
-        StateValue::Bool(_) => StateKind::Bool,
-        StateValue::String(_) => StateKind::String,
+        StateValue::Int(_) => Some(StateKind::Int),
+        StateValue::Bool(_) => Some(StateKind::Bool),
+        StateValue::String(_) => Some(StateKind::String),
+        StateValue::List(values) => values
+            .first()
+            .and_then(state_kind)
+            .map(|kind| StateKind::List(Box::new(kind))),
+        StateValue::Object(values) => {
+            let fields = values
+                .iter()
+                .map(|(name, value)| Some((name.clone(), state_kind(value)?)))
+                .collect::<Option<_>>()?;
+            Some(StateKind::Object(fields))
+        }
+    }
+}
+
+fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateKind, CompileError> {
+    match kind {
+        TSType::TSNumberKeyword(_) => Ok(StateKind::Int),
+        TSType::TSBooleanKeyword(_) => Ok(StateKind::Bool),
+        TSType::TSStringKeyword(_) => Ok(StateKind::String),
+        TSType::TSArrayType(array) => Ok(StateKind::List(Box::new(state_kind_from_type(
+            &array.element_type,
+        )?))),
+        TSType::TSParenthesizedType(parenthesised) => {
+            state_kind_from_type(&parenthesised.type_annotation)
+        }
+        TSType::TSTypeLiteral(object) => {
+            let mut fields = BTreeMap::new();
+            for member in &object.members {
+                let TSSignature::TSPropertySignature(property) = member else {
+                    return Err(CompileError::new(
+                        "state object types use required properties",
+                        member.span(),
+                    ));
+                };
+                if property.computed || property.optional {
+                    return Err(CompileError::new(
+                        "state object properties must be required names",
+                        property.span,
+                    ));
+                }
+                let name = property_name(&property.key)?;
+                let annotation = property.type_annotation.as_ref().ok_or_else(|| {
+                    CompileError::new("state properties need a type", property.span)
+                })?;
+                if fields
+                    .insert(
+                        name.clone(),
+                        state_kind_from_type(&annotation.type_annotation)?,
+                    )
+                    .is_some()
+                {
+                    return Err(CompileError::new(
+                        format!("state object property {name:?} is declared twice"),
+                        property.key.span(),
+                    ));
+                }
+            }
+            Ok(StateKind::Object(fields))
+        }
+        _ => Err(CompileError::new(
+            "state types use number, boolean, string, arrays and object literals",
+            kind.span(),
+        )),
+    }
+}
+
+fn property_name(key: &PropertyKey<'_>) -> Result<String, CompileError> {
+    match key {
+        PropertyKey::StaticIdentifier(name) => Ok(name.name.to_string()),
+        PropertyKey::StringLiteral(name) => Ok(name.value.to_string()),
+        _ => Err(CompileError::new(
+            "state object keys must be names or strings",
+            key.span(),
+        )),
     }
 }
 
@@ -287,15 +477,16 @@ fn lower_node(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
     imports: &HashSet<String>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let name = element_name(&element.opening_element.name)?;
     require_import(imports, name, element.opening_element.name.span())?;
     match name {
-        "Screen" => lower_screen(element, states, imports),
-        "Stack" => lower_stack(element, states, imports),
-        "Text" => lower_text(element, states),
+        "Screen" => lower_screen(element, states, imports, item),
+        "Stack" => lower_stack(element, states, imports, item),
+        "Text" => lower_text(element, states, item),
         "TextInput" => lower_text_input(element, states),
-        "Button" => lower_button(element, states),
+        "Button" => lower_button(element, states, item),
         "Icon" => lower_icon(element),
         "Image" => lower_image(element),
         "Toggle" => lower_toggle(element, states),
@@ -323,12 +514,13 @@ fn lower_screen(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
     imports: &HashSet<String>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let title = optional_string_attribute(element, "title")?;
     let centered = boolean_attribute(element, "centered")?;
     reject_other_attributes(element, &["title", "centered"])?;
     Ok(Node::Screen {
-        children: lower_element_children(element, states, imports, "Screen")?,
+        children: lower_element_children(element, states, imports, item, "Screen")?,
         title,
         centered,
     })
@@ -338,6 +530,7 @@ fn lower_stack(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
     imports: &HashSet<String>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let axis = match optional_string_attribute(element, "axis")?.as_deref() {
         None | Some("vertical") => Axis::Vertical,
@@ -363,7 +556,7 @@ fn lower_stack(
     let gap = optional_number_attribute(element, "gap")?;
     reject_other_attributes(element, &["axis", "gap", "align", "justify"])?;
     Ok(Node::Stack {
-        children: lower_element_children(element, states, imports, "Stack")?,
+        children: lower_element_children(element, states, imports, item, "Stack")?,
         axis,
         gap,
         align,
@@ -374,49 +567,13 @@ fn lower_stack(
 fn lower_text(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let font_size = optional_number_attribute(element, "size")?;
     let align = text_alignment(element)?;
     reject_other_attributes(element, &["size", "align"])?;
-    let mut parts = Vec::new();
-
-    for (index, child) in element.children.iter().enumerate() {
-        match child {
-            JSXChild::Text(text) => {
-                let value = normalise_inline_text(
-                    text.value.as_str(),
-                    index
-                        .checked_sub(1)
-                        .and_then(|index| element.children.get(index))
-                        .is_some_and(|child| matches!(child, JSXChild::ExpressionContainer(_))),
-                    element
-                        .children
-                        .get(index + 1)
-                        .is_some_and(|child| matches!(child, JSXChild::ExpressionContainer(_))),
-                );
-                if !value.is_empty() {
-                    parts.push(TextPart::Literal(value));
-                }
-            }
-            JSXChild::ExpressionContainer(container) => {
-                parts.push(TextPart::State(
-                    state_value(&container.expression, states)?.id,
-                ));
-            }
-            _ => {
-                return Err(CompileError::new(
-                    "Text supports literal text and {state.value}",
-                    child.span(),
-                ));
-            }
-        }
-    }
-
-    if parts.is_empty() {
-        return Err(CompileError::new("Text cannot be empty", element.span));
-    }
     Ok(Node::Text {
-        parts,
+        parts: lower_text_parts(element, states, item, "Text")?,
         font_size,
         align,
     })
@@ -434,7 +591,7 @@ fn lower_text_input(
         Some(_) => return invalid_value(element, "action", "search, return or done"),
     };
     let state = state_attribute(element, "value", states, StateKind::String)?;
-    text_change_attribute(element, "onChange", state, states)?;
+    text_change_attribute(element, "onChange", &state, states)?;
     reject_other_attributes(element, &["placeholder", "value", "onChange", "action"])?;
     if !element_children(element)?.is_empty() {
         return Err(CompileError::new(
@@ -452,6 +609,7 @@ fn lower_text_input(
 fn lower_button(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let href = optional_string_attribute(element, "href")?;
     if href.is_some() && attribute(element, "onPress").is_some() {
@@ -467,12 +625,12 @@ fn lower_button(
             validate_route_path(&path, span)?;
             Some(Action::Navigate { path, span })
         }
-        None => optional_action_attribute(element, "onPress", states)?,
+        None => optional_action_attribute(element, "onPress", states, item)?,
     };
     let icon = optional_icon_attribute(element, "icon")?;
     let underline = boolean_attribute(element, "underline")?;
     reject_other_attributes(element, &["onPress", "href", "icon", "underline"])?;
-    let label = literal_children(element, "Button labels must be literal text")?;
+    let label = lower_text_parts(element, states, item, "Button")?;
     Ok(Node::Button {
         label,
         icon,
@@ -528,7 +686,7 @@ fn lower_toggle(
 ) -> Result<Node, CompileError> {
     let label = required_string_attribute(element, "label")?;
     let state = state_attribute(element, "value", states, StateKind::Bool)?;
-    let action = action_attribute(element, "onChange", states)?;
+    let action = action_attribute(element, "onChange", states, None)?;
     reject_other_attributes(element, &["label", "value", "onChange"])?;
     if !element_children(element)?.is_empty() {
         return Err(CompileError::new(
@@ -617,7 +775,7 @@ fn lower_navigator(
                 children[0].span(),
             ));
         };
-        let screen = lower_node(screen, states, imports)?;
+        let screen = lower_node(screen, states, imports, None)?;
         if !matches!(screen, Node::Screen { .. } | Node::Tabs { .. }) {
             return Err(CompileError::new(
                 "Route must contain exactly one Screen or Tabs",
@@ -646,7 +804,7 @@ fn lower_tab(
 ) -> Result<Tab, CompileError> {
     expect_element(element, "Tab")?;
     let icon = required_icon_attribute(element, "icon")?;
-    let action = action_attribute(element, "onPress", states)?;
+    let action = action_attribute(element, "onPress", states, None)?;
     reject_other_attributes(element, &["icon", "onPress"])?;
     let children = element_children(element)?;
     if children.len() != 1 {
@@ -666,7 +824,7 @@ fn lower_tab(
     Ok(Tab {
         icon,
         action,
-        screen: Box::new(lower_screen(screen, states, imports)?),
+        screen: Box::new(lower_screen(screen, states, imports, None)?),
     })
 }
 
@@ -717,6 +875,17 @@ fn validate_navigation_node(
                 validate_navigation_node(&route.screen, routes)?;
             }
         }
+        Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            validate_navigation_node(consequent, routes)?;
+            if let Some(alternate) = alternate {
+                validate_navigation_node(alternate, routes)?;
+            }
+        }
+        Node::ForEach { template, .. } => validate_navigation_node(template, routes)?,
         Node::Text { .. }
         | Node::TextInput { .. }
         | Node::Button { .. }
@@ -745,26 +914,269 @@ fn lower_element_children(
     element: &JSXElement<'_>,
     states: &HashMap<&str, StateBinding>,
     imports: &HashSet<String>,
+    item: Option<ItemBinding<'_>>,
     parent: &str,
 ) -> Result<Vec<Node>, CompileError> {
     element_children(element)?
         .into_iter()
-        .map(|child| {
-            let JSXChild::Element(child) = child else {
-                return Err(CompileError::new(
-                    format!("{parent} children must be Ink elements"),
-                    child.span(),
-                ));
-            };
-            lower_node(child, states, imports)
+        .map(|child| match child {
+            JSXChild::Element(child) => lower_node(child, states, imports, item),
+            JSXChild::ExpressionContainer(container) => {
+                let Some(expression) = container.expression.as_expression() else {
+                    return Err(CompileError::new(
+                        format!("{parent} expressions cannot be empty"),
+                        container.span,
+                    ));
+                };
+                lower_dynamic_child(expression, states, imports, item)
+            }
+            _ => Err(CompileError::new(
+                format!("{parent} children must be Ink elements"),
+                child.span(),
+            )),
         })
         .collect()
+}
+
+fn lower_dynamic_child(
+    expression: &Expression<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Node, CompileError> {
+    match unparenthesised(expression) {
+        Expression::LogicalExpression(expression)
+            if expression.operator == LogicalOperator::And =>
+        {
+            let condition = condition(&expression.left, states)?;
+            let consequent =
+                dynamic_branch(&expression.right, states, imports, item)?.ok_or_else(|| {
+                    CompileError::new(
+                        "the visible branch needs an Ink element",
+                        expression.right.span(),
+                    )
+                })?;
+            Ok(Node::Conditional {
+                condition,
+                consequent: Box::new(consequent),
+                alternate: None,
+            })
+        }
+        Expression::ConditionalExpression(expression) => {
+            let condition = condition(&expression.test, states)?;
+            let consequent = dynamic_branch(&expression.consequent, states, imports, item)?;
+            let alternate = dynamic_branch(&expression.alternate, states, imports, item)?;
+            let (condition, consequent, alternate) = match (consequent, alternate) {
+                (Some(consequent), alternate) => (condition, consequent, alternate),
+                (None, Some(alternate)) => (invert_condition(condition), alternate, None),
+                (None, None) => {
+                    return Err(CompileError::new(
+                        "a conditional needs at least one Ink element",
+                        expression.span,
+                    ));
+                }
+            };
+            Ok(Node::Conditional {
+                condition,
+                consequent: Box::new(consequent),
+                alternate: alternate.map(Box::new),
+            })
+        }
+        Expression::CallExpression(expression) => {
+            lower_collection(expression, states, imports, item)
+        }
+        _ => Err(CompileError::new(
+            "dynamic children use state.value && <Element>, a conditional, or state.value.map(...)",
+            expression.span(),
+        )),
+    }
+}
+
+fn condition(
+    expression: &Expression<'_>,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<Condition, CompileError> {
+    match unparenthesised(expression) {
+        Expression::UnaryExpression(expression)
+            if expression.operator == UnaryOperator::LogicalNot =>
+        {
+            condition(&expression.argument, states).map(invert_condition)
+        }
+        Expression::BinaryExpression(expression) => {
+            let state = list_length_state(&expression.left, states)?;
+            let Expression::NumericLiteral(value) = unparenthesised(&expression.right) else {
+                return Err(CompileError::new(
+                    "list length conditions compare with zero",
+                    expression.right.span(),
+                ));
+            };
+            if value.value != 0.0 {
+                return Err(CompileError::new(
+                    "list length conditions compare with zero",
+                    value.span,
+                ));
+            }
+            let expected = match expression.operator {
+                BinaryOperator::Equality | BinaryOperator::StrictEquality => true,
+                BinaryOperator::Inequality
+                | BinaryOperator::StrictInequality
+                | BinaryOperator::GreaterThan => false,
+                _ => {
+                    return Err(CompileError::new(
+                        "list length supports === 0, !== 0 or > 0",
+                        expression.span,
+                    ));
+                }
+            };
+            Ok(Condition::ListEmpty { state, expected })
+        }
+        expression => {
+            let binding = expression_state_value(expression, states)?;
+            if binding.kind != StateKind::Bool {
+                return Err(CompileError::new(
+                    "conditional state must be boolean",
+                    expression.span(),
+                ));
+            }
+            Ok(Condition::Bool {
+                state: binding.id,
+                expected: true,
+            })
+        }
+    }
+}
+
+const fn invert_condition(condition: Condition) -> Condition {
+    match condition {
+        Condition::Bool { state, expected } => Condition::Bool {
+            state,
+            expected: !expected,
+        },
+        Condition::ListEmpty { state, expected } => Condition::ListEmpty {
+            state,
+            expected: !expected,
+        },
+    }
+}
+
+fn list_length_state(
+    expression: &Expression<'_>,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<StateId, CompileError> {
+    let Expression::StaticMemberExpression(length) = unparenthesised(expression) else {
+        return Err(CompileError::new(
+            "expected list.value.length",
+            expression.span(),
+        ));
+    };
+    if length.property.name.as_str() != "length" {
+        return Err(CompileError::new("expected list.value.length", length.span));
+    }
+    let binding = expression_state_value(&length.object, states)?;
+    if !matches!(binding.kind, StateKind::List(_)) {
+        return Err(CompileError::new(
+            "length requires list state",
+            expression.span(),
+        ));
+    }
+    Ok(binding.id)
+}
+
+fn dynamic_branch(
+    expression: &Expression<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Option<Node>, CompileError> {
+    match unparenthesised(expression) {
+        Expression::JSXElement(element) => lower_node(element, states, imports, item).map(Some),
+        Expression::NullLiteral(_) => Ok(None),
+        expression => Err(CompileError::new(
+            "conditional branches must be an Ink element or null",
+            expression.span(),
+        )),
+    }
+}
+
+fn lower_collection(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &HashSet<String>,
+    current_item: Option<ItemBinding<'_>>,
+) -> Result<Node, CompileError> {
+    if current_item.is_some() {
+        return Err(CompileError::new(
+            "nested list rendering is not supported yet",
+            call.span,
+        ));
+    }
+    let Expression::StaticMemberExpression(map) = &call.callee else {
+        return Err(CompileError::new(
+            "collections use state.value.map((item) => <Element>)",
+            call.span,
+        ));
+    };
+    if map.property.name.as_str() != "map" {
+        return Err(CompileError::new(
+            "collections use state.value.map((item) => <Element>)",
+            map.span,
+        ));
+    }
+    let binding = expression_state_value(&map.object, states)?;
+    let StateKind::List(item_kind) = &binding.kind else {
+        return Err(CompileError::new(
+            "map requires list state",
+            map.object.span(),
+        ));
+    };
+    let [Argument::ArrowFunctionExpression(function)] = call.arguments.as_slice() else {
+        return Err(CompileError::new("map needs one arrow function", call.span));
+    };
+    let [formal] = function.params.items.as_slice() else {
+        return Err(CompileError::new(
+            "map's arrow function needs one item parameter",
+            function.params.span,
+        ));
+    };
+    let BindingPattern::BindingIdentifier(parameter) = &formal.pattern else {
+        return Err(CompileError::new(
+            "map's item parameter must be an identifier",
+            formal.pattern.span(),
+        ));
+    };
+    if function.r#async || function.params.rest.is_some() || formal.initializer.is_some() {
+        return Err(CompileError::new(
+            "map needs a synchronous arrow function with one item parameter",
+            function.span,
+        ));
+    }
+    let Some(body) = function.body.as_expression() else {
+        return Err(CompileError::new(
+            "map's arrow function must directly return an Ink element",
+            function.body.span(),
+        ));
+    };
+    let Expression::JSXElement(element) = unparenthesised(body) else {
+        return Err(CompileError::new(
+            "map's arrow function must directly return an Ink element",
+            body.span(),
+        ));
+    };
+    let item = ItemBinding {
+        name: parameter.name.as_str(),
+        kind: item_kind,
+    };
+    Ok(Node::ForEach {
+        state: binding.id,
+        template: Box::new(lower_node(element, states, imports, Some(item))?),
+    })
 }
 
 fn action_attribute(
     element: &JSXElement<'_>,
     name: &str,
     states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Action, CompileError> {
     let attribute = attribute(element, name).ok_or_else(|| {
         CompileError::new(
@@ -793,25 +1205,26 @@ fn action_attribute(
             function.span,
         ));
     }
-    lower_action(&function.body, states)
+    lower_action(&function.body, states, item)
 }
 
 fn optional_action_attribute(
     element: &JSXElement<'_>,
     name: &str,
     states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Option<Action>, CompileError> {
     if attribute(element, name).is_none() {
         Ok(None)
     } else {
-        action_attribute(element, name, states).map(Some)
+        action_attribute(element, name, states, item).map(Some)
     }
 }
 
 fn text_change_attribute(
     element: &JSXElement<'_>,
     name: &str,
-    state: StateBinding,
+    state: &StateBinding,
     states: &HashMap<&str, StateBinding>,
 ) -> Result<(), CompileError> {
     let attribute = attribute(element, name).ok_or_else(|| {
@@ -868,7 +1281,7 @@ fn text_change_attribute(
             call.span,
         ));
     };
-    let bound_state = states.get(state_object.name.as_str()).copied();
+    let bound_state = states.get(state_object.name.as_str());
     if function.r#async
         || function.params.rest.is_some()
         || formal.initializer.is_some()
@@ -887,34 +1300,120 @@ fn text_change_attribute(
 fn lower_action(
     body: &ArrowFunctionBody<'_>,
     states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
 ) -> Result<Action, CompileError> {
     let ArrowFunctionBody::CallExpression(call) = body else {
         return Err(CompileError::new(
-            "an action currently supports one state.set(...) call",
+            "an action supports one state mutation call",
             body.span(),
         ));
     };
     let Expression::StaticMemberExpression(callee) = &call.callee else {
         return Err(CompileError::new(
-            "expected state.set(...)",
+            "expected a state mutation",
             call.callee.span(),
         ));
     };
     let Expression::Identifier(state_object) = &callee.object else {
         return Err(CompileError::new(
-            "expected state.set(...)",
+            "expected a state mutation",
             callee.object.span(),
         ));
     };
-    if callee.property.name.as_str() != "set" || call.arguments.len() != 1 {
-        return Err(CompileError::new("expected state.set(...)", call.span));
-    }
     let name = state_object.name.as_str();
     let binding = states
         .get(name)
-        .copied()
+        .cloned()
         .ok_or_else(|| CompileError::new(format!("unknown state {name}"), state_object.span))?;
 
+    let method = callee.property.name.as_str();
+    let StateKind::List(item_kind) = &binding.kind else {
+        if method != "set" || call.arguments.len() != 1 {
+            return Err(CompileError::new("expected state.set(...)", call.span));
+        }
+        return lower_scalar_set(call, &binding, states);
+    };
+
+    match method {
+        "set" => {
+            let [value] = call.arguments.as_slice() else {
+                return Err(CompileError::new("list.set needs one list", call.span));
+            };
+            let Some(value) = value.as_expression() else {
+                return Err(CompileError::new(
+                    "list values cannot use spread syntax",
+                    value.span(),
+                ));
+            };
+            Ok(Action::SetList {
+                state: binding.id,
+                value: lower_value(value, &binding.kind, states, item)?,
+            })
+        }
+        "append" => {
+            let [value] = call.arguments.as_slice() else {
+                return Err(CompileError::new("list.append needs one item", call.span));
+            };
+            let Some(value) = value.as_expression() else {
+                return Err(CompileError::new(
+                    "list items cannot use spread syntax",
+                    value.span(),
+                ));
+            };
+            Ok(Action::AppendList {
+                state: binding.id,
+                value: lower_value(value, item_kind, states, item)?,
+            })
+        }
+        "remove" => {
+            let [value] = call.arguments.as_slice() else {
+                return Err(CompileError::new(
+                    "list.remove needs one mapped item",
+                    call.span,
+                ));
+            };
+            let Some(value) = value.as_expression() else {
+                return Err(CompileError::new(
+                    "list.remove needs the mapped item",
+                    value.span(),
+                ));
+            };
+            require_current_item(value, item_kind, item)?;
+            Ok(Action::RemoveListItem { state: binding.id })
+        }
+        "replace" => {
+            let [current, value] = call.arguments.as_slice() else {
+                return Err(CompileError::new(
+                    "list.replace needs a mapped item and its replacement",
+                    call.span,
+                ));
+            };
+            let (Some(current), Some(value)) = (current.as_expression(), value.as_expression())
+            else {
+                return Err(CompileError::new(
+                    "list.replace does not support spread syntax",
+                    call.span,
+                ));
+            };
+            require_current_item(current, item_kind, item)?;
+            Ok(Action::ReplaceListItem {
+                state: binding.id,
+                value: lower_value(value, item_kind, states, item)?,
+            })
+        }
+        "clear" if call.arguments.is_empty() => Ok(Action::ClearList { state: binding.id }),
+        _ => Err(CompileError::new(
+            "lists support set, append, remove, replace and clear",
+            call.span,
+        )),
+    }
+}
+
+fn lower_scalar_set(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    binding: &StateBinding,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<Action, CompileError> {
     match &call.arguments[0] {
         Argument::NumericLiteral(value) if binding.kind == StateKind::Int => Ok(Action::SetInt {
             state: binding.id,
@@ -973,6 +1472,134 @@ fn lower_action(
     }
 }
 
+fn require_current_item(
+    expression: &Expression<'_>,
+    expected: &StateKind,
+    item: Option<ItemBinding<'_>>,
+) -> Result<(), CompileError> {
+    let Some(item) = item else {
+        return Err(CompileError::new(
+            "remove and replace are used inside a list map",
+            expression.span(),
+        ));
+    };
+    if item.kind != expected || item_path(expression, item.name) != Some(Vec::new()) {
+        return Err(CompileError::new(
+            "expected the current mapped item",
+            expression.span(),
+        ));
+    }
+    Ok(())
+}
+
+fn lower_value(
+    expression: &Expression<'_>,
+    expected: &StateKind,
+    states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Value, CompileError> {
+    let expression = unparenthesised(expression);
+    if let Some(item) = item
+        && let Some(path) = item_path(expression, item.name)
+    {
+        let Some(kind) = kind_at_path(item.kind, &path) else {
+            return Err(CompileError::new(
+                "unknown list-item field",
+                expression.span(),
+            ));
+        };
+        if kind != expected {
+            return Err(CompileError::new(
+                "list-item value has the wrong type",
+                expression.span(),
+            ));
+        }
+        return Ok(Value::Item(path));
+    }
+    if let Expression::StaticMemberExpression(_) = expression {
+        let binding = expression_state_value(expression, states)?;
+        if &binding.kind != expected {
+            return Err(CompileError::new(
+                "state value has the wrong type",
+                expression.span(),
+            ));
+        }
+        return Ok(Value::State(binding.id));
+    }
+    match (expression, expected) {
+        (Expression::NumericLiteral(value), StateKind::Int) => {
+            Ok(Value::Int(integer(value.value, value.span, "state value")?))
+        }
+        (Expression::BooleanLiteral(value), StateKind::Bool) => Ok(Value::Bool(value.value)),
+        (Expression::StringLiteral(value), StateKind::String) => {
+            Ok(Value::String(value.value.to_string()))
+        }
+        (Expression::ArrayExpression(array), StateKind::List(item_kind)) => {
+            let values = array
+                .elements
+                .iter()
+                .map(|value| {
+                    let Some(value) = value.as_expression() else {
+                        return Err(CompileError::new(
+                            "list values cannot use holes or spread syntax",
+                            value.span(),
+                        ));
+                    };
+                    lower_value(value, item_kind, states, item)
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(Value::List(values))
+        }
+        (Expression::ObjectExpression(object), StateKind::Object(fields)) => {
+            let mut values = Vec::with_capacity(object.properties.len());
+            let mut seen = HashSet::new();
+            for property in &object.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return Err(CompileError::new(
+                        "list items cannot use spread properties",
+                        property.span(),
+                    ));
+                };
+                if property.kind != PropertyKind::Init
+                    || property.method
+                    || property.shorthand
+                    || property.computed
+                {
+                    return Err(CompileError::new(
+                        "list items use explicit properties",
+                        property.span,
+                    ));
+                }
+                let name = property_name(&property.key)?;
+                let expected = fields.get(&name).ok_or_else(|| {
+                    CompileError::new(
+                        format!("unknown list-item property {name:?}"),
+                        property.key.span(),
+                    )
+                })?;
+                if !seen.insert(name.clone()) {
+                    return Err(CompileError::new(
+                        format!("list-item property {name:?} is declared twice"),
+                        property.key.span(),
+                    ));
+                }
+                values.push((name, lower_value(&property.value, expected, states, item)?));
+            }
+            if seen.len() != fields.len() {
+                return Err(CompileError::new(
+                    "list item is missing a required property",
+                    object.span,
+                ));
+            }
+            Ok(Value::Object(values))
+        }
+        _ => Err(CompileError::new(
+            "collection value does not match the list's item type",
+            expression.span(),
+        )),
+    }
+}
+
 fn state_attribute<'a>(
     element: &JSXElement<'a>,
     name: &str,
@@ -1021,7 +1648,7 @@ fn expression_state_value(
     expression: &Expression<'_>,
     states: &HashMap<&str, StateBinding>,
 ) -> Result<StateBinding, CompileError> {
-    let Expression::StaticMemberExpression(member) = expression else {
+    let Expression::StaticMemberExpression(member) = unparenthesised(expression) else {
         return Err(CompileError::new("expected state.value", expression.span()));
     };
     member_state_value(member, states)
@@ -1040,7 +1667,7 @@ fn member_state_value(
     if member.property.name.as_str() != "value" {
         return Err(CompileError::new("expected state.value", member.span));
     }
-    states.get(object.name.as_str()).copied().ok_or_else(|| {
+    states.get(object.name.as_str()).cloned().ok_or_else(|| {
         CompileError::new(
             format!("unknown state {}", object.name.as_str()),
             object.span,
@@ -1201,22 +1828,114 @@ fn invalid_value<T>(
     ))
 }
 
-fn literal_children(element: &JSXElement<'_>, error: &str) -> Result<String, CompileError> {
-    let label = element
-        .children
-        .iter()
-        .map(|child| match child {
-            JSXChild::Text(text) => Ok(normalise_text(text.value.as_str())),
-            _ => Err(CompileError::new(error, child.span())),
-        })
-        .collect::<Result<Vec<_>, _>>()?
-        .join(" ")
-        .trim()
-        .to_owned();
-    if label.is_empty() {
+fn lower_text_parts(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
+    parent: &str,
+) -> Result<Vec<TextPart>, CompileError> {
+    let mut parts = Vec::new();
+    for (index, child) in element.children.iter().enumerate() {
+        match child {
+            JSXChild::Text(text) => {
+                let value = normalise_inline_text(
+                    text.value.as_str(),
+                    index
+                        .checked_sub(1)
+                        .and_then(|index| element.children.get(index))
+                        .is_some_and(|child| matches!(child, JSXChild::ExpressionContainer(_))),
+                    element
+                        .children
+                        .get(index + 1)
+                        .is_some_and(|child| matches!(child, JSXChild::ExpressionContainer(_))),
+                );
+                if !value.is_empty() {
+                    parts.push(TextPart::Literal(value));
+                }
+            }
+            JSXChild::ExpressionContainer(container) => {
+                let Some(expression) = container.expression.as_expression() else {
+                    return Err(CompileError::new(
+                        format!("{parent} expressions must reference state or a list item"),
+                        container.span,
+                    ));
+                };
+                parts.push(expression_text_part(expression, states, item)?);
+            }
+            _ => {
+                return Err(CompileError::new(
+                    format!("{parent} supports text and state or list-item values"),
+                    child.span(),
+                ));
+            }
+        }
+    }
+    if parts.is_empty() {
         return Err(CompileError::new("text cannot be empty", element.span));
     }
-    Ok(label)
+    Ok(parts)
+}
+
+fn expression_text_part(
+    expression: &Expression<'_>,
+    states: &HashMap<&str, StateBinding>,
+    item: Option<ItemBinding<'_>>,
+) -> Result<TextPart, CompileError> {
+    if let Ok(state) = list_length_state(expression, states) {
+        return Ok(TextPart::ListLength(state));
+    }
+    if let Some(item) = item
+        && let Some(path) = item_path(expression, item.name)
+    {
+        let Some(kind) = kind_at_path(item.kind, &path) else {
+            return Err(CompileError::new(
+                "unknown list-item field",
+                expression.span(),
+            ));
+        };
+        if !scalar_kind(kind) {
+            return Err(CompileError::new(
+                "Text can only display scalar list-item fields",
+                expression.span(),
+            ));
+        }
+        return Ok(TextPart::Item(path));
+    }
+
+    let binding = expression_state_value(expression, states)?;
+    if !scalar_kind(&binding.kind) {
+        return Err(CompileError::new(
+            "Text can only display number, boolean or string state",
+            expression.span(),
+        ));
+    }
+    Ok(TextPart::State(binding.id))
+}
+
+fn item_path(expression: &Expression<'_>, name: &str) -> Option<Vec<String>> {
+    match unparenthesised(expression) {
+        Expression::Identifier(identifier) if identifier.name == name => Some(Vec::new()),
+        Expression::StaticMemberExpression(member) => {
+            let mut path = item_path(&member.object, name)?;
+            path.push(member.property.name.to_string());
+            Some(path)
+        }
+        _ => None,
+    }
+}
+
+fn kind_at_path<'a>(mut kind: &'a StateKind, path: &[String]) -> Option<&'a StateKind> {
+    for field in path {
+        let StateKind::Object(fields) = kind else {
+            return None;
+        };
+        kind = fields.get(field)?;
+    }
+    Some(kind)
+}
+
+const fn scalar_kind(kind: &StateKind) -> bool {
+    matches!(kind, StateKind::Int | StateKind::Bool | StateKind::String)
 }
 
 fn reject_other_attributes(element: &JSXElement<'_>, allowed: &[&str]) -> Result<(), CompileError> {

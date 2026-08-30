@@ -152,6 +152,12 @@ fn uses_text_input(node: &ir::Node) -> bool {
         }
         ir::Node::Tabs { tabs, .. } => tabs.iter().any(|tab| uses_text_input(&tab.screen)),
         ir::Node::Navigator { routes } => routes.iter().any(|route| uses_text_input(&route.screen)),
+        ir::Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => uses_text_input(consequent) || alternate.as_deref().is_some_and(uses_text_input),
+        ir::Node::ForEach { template, .. } => uses_text_input(template),
         ir::Node::Text { .. }
         | ir::Node::Button { .. }
         | ir::Node::Icon { .. }

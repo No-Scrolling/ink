@@ -19,6 +19,8 @@ pub enum StateValue {
     Int(i64),
     Bool(bool),
     String(String),
+    List(Vec<StateValue>),
+    Object(Vec<(String, StateValue)>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -101,7 +103,7 @@ pub enum Node {
         action: TextInputAction,
     },
     Button {
-        label: String,
+        label: Vec<TextPart>,
         icon: Option<String>,
         underline: bool,
         action: Option<Action>,
@@ -129,6 +131,15 @@ pub enum Node {
     Navigator {
         routes: Vec<Route>,
     },
+    Conditional {
+        condition: Condition,
+        consequent: Box<Node>,
+        alternate: Option<Box<Node>>,
+    },
+    ForEach {
+        state: StateId,
+        template: Box<Node>,
+    },
 }
 
 #[derive(Debug)]
@@ -148,6 +159,25 @@ pub struct Route {
 pub enum TextPart {
     Literal(String),
     State(StateId),
+    ListLength(StateId),
+    Item(Vec<String>),
+}
+
+#[derive(Debug)]
+pub enum Condition {
+    Bool { state: StateId, expected: bool },
+    ListEmpty { state: StateId, expected: bool },
+}
+
+#[derive(Debug)]
+pub enum Value {
+    Int(i64),
+    Bool(bool),
+    String(String),
+    State(StateId),
+    Item(Vec<String>),
+    List(Vec<Value>),
+    Object(Vec<(String, Value)>),
 }
 
 #[derive(Debug)]
@@ -156,5 +186,10 @@ pub enum Action {
     SetInt { state: StateId, value: i64 },
     SetBool { state: StateId, value: bool },
     Toggle { state: StateId },
+    SetList { state: StateId, value: Value },
+    AppendList { state: StateId, value: Value },
+    RemoveListItem { state: StateId },
+    ReplaceListItem { state: StateId, value: Value },
+    ClearList { state: StateId },
     Navigate { path: String, span: Span },
 }

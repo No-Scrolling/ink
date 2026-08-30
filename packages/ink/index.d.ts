@@ -3,9 +3,21 @@ export interface Signal<T> {
   set(value: T): void;
 }
 
+export interface ListSignal<T> {
+  readonly value: ReadonlyArray<T>;
+  set(value: ReadonlyArray<T>): void;
+  append(value: T): void;
+  remove(value: T): void;
+  replace(value: T, replacement: T): void;
+  clear(): void;
+}
+
 export declare function state(initial: boolean): Signal<boolean>;
 export declare function state(initial: number): Signal<number>;
 export declare function state(initial: string): Signal<string>;
+export declare function state<T extends ReadonlyArray<Ink.ListItem>>(
+  initial: T,
+): ListSignal<T[number]>;
 
 export declare function Screen(props: Ink.ScreenProps): Ink.Element;
 export declare function Stack(props: Ink.StackProps): Ink.Element;
@@ -23,8 +35,11 @@ export declare function Route(props: Ink.RouteProps): Ink.Element;
 export namespace Ink {
   interface Element {}
 
-  type Child = Element | string | number;
+  type Scalar = boolean | number | string;
+  type ListItem = Scalar | { readonly [key: string]: ListItem };
+  type Child = Element | string | number | false | null;
   type Children = Child | ReadonlyArray<Child>;
+  type TextContent = Scalar | ReadonlyArray<Scalar>;
   type Alignment = "start" | "center" | "end" | "stretch";
   type Justification = "start" | "center" | "end" | "space-between";
   type TextAlignment = "start" | "center" | "end";
@@ -58,7 +73,7 @@ export namespace Ink {
   }
 
   type ButtonProps = {
-    children: string;
+    children: TextContent;
     icon?: string;
     underline?: boolean;
   } & (

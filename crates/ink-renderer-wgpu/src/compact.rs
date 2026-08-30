@@ -169,6 +169,7 @@ struct GlyphAtlas {
     cursor_x: u32,
     cursor_y: u32,
     row_height: u32,
+    pending_uploads: bool,
 }
 
 impl GlyphAtlas {
@@ -219,6 +220,7 @@ impl GlyphAtlas {
             cursor_x: 0,
             cursor_y: 0,
             row_height: 0,
+            pending_uploads: false,
         })
     }
 
@@ -295,6 +297,7 @@ impl GlyphAtlas {
         };
         self.cursor_x += width;
         self.row_height = self.row_height.max(height);
+        self.pending_uploads = true;
         self.glyphs.insert((id, size), glyph);
         Ok(Some(glyph))
     }
@@ -355,8 +358,13 @@ impl GlyphAtlas {
         };
         self.cursor_x += padded_width;
         self.row_height = self.row_height.max(padded_height);
+        self.pending_uploads = true;
         self.masks.insert(mask.id, cached);
         Ok(cached)
+    }
+
+    fn take_pending_uploads(&mut self) -> bool {
+        std::mem::take(&mut self.pending_uploads)
     }
 }
 
@@ -704,6 +712,7 @@ impl Renderer {
         if text.len() > MAX_GLYPHS * 6 {
             return Err(anyhow!("scene exceeds the prototype glyph budget"));
         }
+        let atlas_changed = self.glyph_atlas.take_pending_uploads();
         if !quads.is_empty() {
             self.queue
                 .write_buffer(&self.quad_buffer, 0, bytemuck::cast_slice(&quads));
@@ -788,7 +797,12 @@ impl Renderer {
 
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(frame);
-        Ok(RenderOutcome::Presented)
+        if atlas_changed {
+            // Some Android drivers only expose new atlas uploads reliably on the next frame.
+            self.render(scene)
+        } else {
+            Ok(RenderOutcome::Presented)
+        }
     }
 
     fn text_vertices(&mut self, scene: &Scene) -> Result<(Vec<TextVertex>, Vec<TextVertex>)> {

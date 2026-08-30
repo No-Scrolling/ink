@@ -22,6 +22,7 @@ const BUTTON_ICON_GAP: f32 = 12.0;
 const CONTENT_INSET_START: f32 = 37.0;
 const CONTENT_INSET_END: f32 = 46.0;
 const CONTENT_TOP: f32 = 14.0;
+const CONTENT_BOTTOM: f32 = 20.0;
 const CONTENT_GAP: f32 = 47.0;
 const HEADER_HEIGHT: f32 = 42.0;
 const HEADER_TEXT_SIZE: f32 = 20.0;
@@ -62,6 +63,8 @@ pub enum StateValue {
     Int(i64),
     Bool(bool),
     String(String),
+    List(Vec<StateValue>),
+    Object(Vec<(String, StateValue)>),
 }
 
 impl fmt::Display for StateValue {
@@ -70,6 +73,8 @@ impl fmt::Display for StateValue {
             Self::Int(value) => value.fmt(formatter),
             Self::Bool(value) => value.fmt(formatter),
             Self::String(value) => value.fmt(formatter),
+            Self::List(values) => write!(formatter, "{} items", values.len()),
+            Self::Object(_) => formatter.write_str("object"),
         }
     }
 }
@@ -107,6 +112,33 @@ pub enum Action {
     Toggle {
         state: StateId,
     },
+    SetList {
+        state: StateId,
+        value: Value,
+    },
+    AppendList {
+        state: StateId,
+        value: Value,
+    },
+    RemoveCurrentListItem {
+        state: StateId,
+    },
+    RemoveListItem {
+        state: StateId,
+        index: usize,
+    },
+    ReplaceCurrentListItem {
+        state: StateId,
+        value: Value,
+    },
+    ReplaceListItem {
+        state: StateId,
+        index: usize,
+        value: Value,
+    },
+    ClearList {
+        state: StateId,
+    },
     FocusTextInput {
         state: StateId,
         action: TextInputAction,
@@ -121,6 +153,8 @@ pub enum Action {
 pub enum TextPart {
     Literal(String),
     State(StateId),
+    ListLength(StateId),
+    Item(Vec<String>),
 }
 
 impl TextPart {
@@ -131,6 +165,27 @@ impl TextPart {
     pub const fn state(state: StateId) -> Self {
         Self::State(state)
     }
+
+    pub const fn list_length(state: StateId) -> Self {
+        Self::ListLength(state)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Condition {
+    Bool { state: StateId, expected: bool },
+    ListEmpty { state: StateId, expected: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Value {
+    Int(i64),
+    Bool(bool),
+    String(String),
+    State(StateId),
+    Item(Vec<String>),
+    List(Vec<Value>),
+    Object(Vec<(String, Value)>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -248,7 +303,7 @@ enum NodeKind {
         action: TextInputAction,
     },
     Button {
-        label: String,
+        label: Vec<TextPart>,
         icon: Option<Mask>,
         underline: bool,
         action: Option<Action>,
@@ -278,6 +333,15 @@ enum NodeKind {
     Navigator {
         routes: Vec<Route>,
         back: Mask,
+    },
+    Conditional {
+        condition: Condition,
+        consequent: Box<Node>,
+        alternate: Option<Box<Node>>,
+    },
+    ForEach {
+        state: StateId,
+        template: Box<Node>,
     },
 }
 
@@ -335,14 +399,14 @@ impl Node {
     }
 
     pub fn button(
-        label: impl Into<String>,
+        label: Vec<TextPart>,
         icon: Option<Mask>,
         underline: bool,
         action: Option<Action>,
     ) -> Self {
         Self {
             kind: NodeKind::Button {
-                label: label.into(),
+                label,
                 icon,
                 underline,
                 action,
@@ -394,6 +458,25 @@ impl Node {
     pub fn navigator(routes: Vec<Route>, back: Mask) -> Self {
         Self {
             kind: NodeKind::Navigator { routes, back },
+        }
+    }
+
+    pub fn conditional(condition: Condition, consequent: Self, alternate: Option<Self>) -> Self {
+        Self {
+            kind: NodeKind::Conditional {
+                condition,
+                consequent: Box::new(consequent),
+                alternate: alternate.map(Box::new),
+            },
+        }
+    }
+
+    pub fn for_each(state: StateId, template: Self) -> Self {
+        Self {
+            kind: NodeKind::ForEach {
+                state,
+                template: Box::new(template),
+            },
         }
     }
 }
@@ -548,6 +631,12 @@ struct HitRegion {
 struct Pointer {
     start_y: f32,
     start_offset: f32,
+}
+
+#[derive(Clone, Copy)]
+struct MaterialisedItem<'a> {
+    value: &'a StateValue,
+    index: usize,
 }
 
 pub struct Engine {
@@ -764,6 +853,69 @@ impl Engine {
                 };
                 *value = !*value;
             }
+            Action::SetList { state, value } => {
+                let Some(StateValue::List(value)) = self.evaluate_value(&value) else {
+                    return false;
+                };
+                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                if *current == value {
+                    return false;
+                }
+                *current = value;
+                self.scroll_offset = 0.0;
+            }
+            Action::AppendList { state, value } => {
+                let Some(value) = self.evaluate_value(&value) else {
+                    return false;
+                };
+                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                current.push(value);
+            }
+            Action::RemoveListItem { state, index } => {
+                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                if index >= current.len() {
+                    return false;
+                }
+                current.remove(index);
+            }
+            Action::ReplaceListItem {
+                state,
+                index,
+                value,
+            } => {
+                let Some(value) = self.evaluate_value(&value) else {
+                    return false;
+                };
+                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                let Some(item) = current.get_mut(index) else {
+                    return false;
+                };
+                if *item == value {
+                    return false;
+                }
+                *item = value;
+            }
+            Action::ClearList { state } => {
+                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                if current.is_empty() {
+                    return false;
+                }
+                current.clear();
+                self.scroll_offset = 0.0;
+            }
+            Action::RemoveCurrentListItem { .. } | Action::ReplaceCurrentListItem { .. } => {
+                unreachable!("current-list actions are materialised before interaction")
+            }
             Action::FocusTextInput { state, action } => {
                 if self.focused_input == Some(state) && self.focused_input_action == action {
                     return false;
@@ -789,6 +941,26 @@ impl Engine {
             Action::Back => return self.pop_route(),
         }
         true
+    }
+
+    fn evaluate_value(&self, value: &Value) -> Option<StateValue> {
+        match value {
+            Value::Int(value) => Some(StateValue::Int(*value)),
+            Value::Bool(value) => Some(StateValue::Bool(*value)),
+            Value::String(value) => Some(StateValue::String(value.clone())),
+            Value::State(state) => self.state.get(state.0).cloned(),
+            Value::Item(_) => None,
+            Value::List(values) => values
+                .iter()
+                .map(|value| self.evaluate_value(value))
+                .collect::<Option<_>>()
+                .map(StateValue::List),
+            Value::Object(fields) => fields
+                .iter()
+                .map(|(name, value)| Some((name.clone(), self.evaluate_value(value)?)))
+                .collect::<Option<_>>()
+                .map(StateValue::Object),
+        }
     }
 
     fn pop_route(&mut self) -> bool {
@@ -833,10 +1005,13 @@ impl Engine {
                     .navigation
                     .last()
                     .expect("navigator history is never empty");
-                (routes[route].screen.clone(), Some(*back))
+                (&routes[route].screen, Some(*back))
             }
-            _ => (self.definition.root.clone(), None),
+            _ => (&self.definition.root, None),
         };
+        let mut roots = self.materialise(root, None);
+        assert_eq!(roots.len(), 1, "an app route has exactly one root");
+        let root = roots.remove(0);
         self.back_icon = if self.navigation.len() > 1 {
             back_icon
         } else {
@@ -919,11 +1094,12 @@ impl Engine {
             },
             NodeKind::Button { label, icon, .. } => {
                 let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
+                let label = self.resolve_text(label);
                 let icon_width = icon
                     .map(|_| self.scaled(BUTTON_ICON_SIZE + BUTTON_ICON_GAP))
                     .unwrap_or_default();
                 MeasuredSize {
-                    width: (self.text_width(label, font_size).ceil() + 1.0 + icon_width)
+                    width: (self.text_width(&label, font_size).ceil() + 1.0 + icon_width)
                         .min(available.width),
                     height: self.scaled(BUTTON_HEIGHT).min(available.height),
                 }
@@ -947,16 +1123,29 @@ impl Engine {
                 width: available.width,
                 height: self.scaled(TOGGLE_HEIGHT).min(available.height),
             },
+            NodeKind::Conditional { .. } | NodeKind::ForEach { .. } => {
+                unreachable!("dynamic nodes are materialised before layout")
+            }
         }
     }
 
     fn layout(&mut self, node: &Node, rect: Rect) {
+        self.layout_node(node, rect, true);
+    }
+
+    fn layout_node(&mut self, node: &Node, rect: Rect, screen_bottom_inset: bool) {
         match &node.kind {
             NodeKind::Screen {
                 children,
                 title,
                 centred,
-            } => self.layout_screen(children, title.as_deref(), *centred, rect),
+            } => self.layout_screen(
+                children,
+                title.as_deref(),
+                *centred,
+                screen_bottom_inset,
+                rect,
+            ),
             NodeKind::Stack {
                 children,
                 axis,
@@ -1018,10 +1207,196 @@ impl Engine {
             } => self.layout_toggle(label, *state, action, *off, *on, rect),
             NodeKind::Tabs { state, tabs } => self.layout_tabs(*state, tabs, rect),
             NodeKind::Navigator { .. } => unreachable!("navigator is resolved before layout"),
+            NodeKind::Conditional { .. } | NodeKind::ForEach { .. } => {
+                unreachable!("dynamic nodes are materialised before layout")
+            }
         }
     }
 
-    fn layout_screen(&mut self, children: &[Node], title: Option<&str>, centred: bool, rect: Rect) {
+    fn materialise(&self, node: &Node, item: Option<MaterialisedItem<'_>>) -> Vec<Node> {
+        let node = match &node.kind {
+            NodeKind::Screen {
+                children,
+                title,
+                centred,
+            } => Node::screen(
+                self.materialise_children(children, item),
+                title.clone(),
+                *centred,
+            ),
+            NodeKind::Stack {
+                children,
+                axis,
+                gap,
+                align,
+                justify,
+            } => Node::stack(
+                self.materialise_children(children, item),
+                *axis,
+                *gap,
+                *align,
+                *justify,
+            ),
+            NodeKind::Text {
+                parts,
+                font_size,
+                align,
+            } => Node::text(self.materialise_text(parts, item), *font_size, *align),
+            NodeKind::Button {
+                label,
+                icon,
+                underline,
+                action,
+            } => Node::button(
+                self.materialise_text(label, item),
+                *icon,
+                *underline,
+                action
+                    .as_ref()
+                    .map(|action| self.materialise_action(action, item)),
+            ),
+            NodeKind::Tabs { state, tabs } => Node::tabs(
+                *state,
+                tabs.iter()
+                    .map(|tab| {
+                        let mut screens = self.materialise(&tab.screen, item);
+                        assert_eq!(screens.len(), 1, "a tab has exactly one screen");
+                        Tab::new(tab.icon, tab.action.clone(), screens.remove(0))
+                    })
+                    .collect(),
+            ),
+            NodeKind::Navigator { routes, back } => Node::navigator(
+                routes
+                    .iter()
+                    .map(|route| {
+                        let mut screens = self.materialise(&route.screen, item);
+                        assert_eq!(screens.len(), 1, "a route has exactly one screen");
+                        Route::new(route.path.clone(), screens.remove(0))
+                    })
+                    .collect(),
+                *back,
+            ),
+            NodeKind::Conditional {
+                condition,
+                consequent,
+                alternate,
+            } => {
+                let enabled = match condition {
+                    Condition::Bool { state, expected } => {
+                        matches!(self.state.get(state.0), Some(StateValue::Bool(value)) if value == expected)
+                    }
+                    Condition::ListEmpty { state, expected } => {
+                        matches!(self.state.get(state.0), Some(StateValue::List(value)) if value.is_empty() == *expected)
+                    }
+                };
+                return if enabled {
+                    self.materialise(consequent, item)
+                } else {
+                    alternate
+                        .as_deref()
+                        .map_or_else(Vec::new, |alternate| self.materialise(alternate, item))
+                };
+            }
+            NodeKind::ForEach { state, template } => {
+                let Some(StateValue::List(items)) = self.state.get(state.0) else {
+                    return Vec::new();
+                };
+                return items
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, value)| {
+                        self.materialise(template, Some(MaterialisedItem { value, index }))
+                    })
+                    .collect();
+            }
+            _ => node.clone(),
+        };
+        vec![node]
+    }
+
+    fn materialise_children(
+        &self,
+        children: &[Node],
+        item: Option<MaterialisedItem<'_>>,
+    ) -> Vec<Node> {
+        children
+            .iter()
+            .flat_map(|child| self.materialise(child, item))
+            .collect()
+    }
+
+    fn materialise_text(
+        &self,
+        parts: &[TextPart],
+        item: Option<MaterialisedItem<'_>>,
+    ) -> Vec<TextPart> {
+        parts
+            .iter()
+            .map(|part| match part {
+                TextPart::Item(path) => {
+                    let item = item.expect("list-item text has a mapped item");
+                    let value =
+                        item_at_path(item.value, path).expect("compiled list-item path is valid");
+                    TextPart::literal(value.to_string())
+                }
+                part => part.clone(),
+            })
+            .collect()
+    }
+
+    fn materialise_action(&self, action: &Action, item: Option<MaterialisedItem<'_>>) -> Action {
+        match action {
+            Action::SetList { state, value } => Action::SetList {
+                state: *state,
+                value: self.materialise_value(value, item),
+            },
+            Action::AppendList { state, value } => Action::AppendList {
+                state: *state,
+                value: self.materialise_value(value, item),
+            },
+            Action::RemoveCurrentListItem { state } => Action::RemoveListItem {
+                state: *state,
+                index: item.expect("list action has a mapped item").index,
+            },
+            Action::ReplaceCurrentListItem { state, value } => Action::ReplaceListItem {
+                state: *state,
+                index: item.expect("list action has a mapped item").index,
+                value: self.materialise_value(value, item),
+            },
+            action => action.clone(),
+        }
+    }
+
+    fn materialise_value(&self, value: &Value, item: Option<MaterialisedItem<'_>>) -> Value {
+        match value {
+            Value::Item(path) => value_from_state(
+                item.and_then(|item| item_at_path(item.value, path))
+                    .expect("compiled list-item path is valid"),
+            ),
+            Value::List(values) => Value::List(
+                values
+                    .iter()
+                    .map(|value| self.materialise_value(value, item))
+                    .collect(),
+            ),
+            Value::Object(fields) => Value::Object(
+                fields
+                    .iter()
+                    .map(|(name, value)| (name.clone(), self.materialise_value(value, item)))
+                    .collect(),
+            ),
+            value => value.clone(),
+        }
+    }
+
+    fn layout_screen(
+        &mut self,
+        children: &[Node],
+        title: Option<&str>,
+        centred: bool,
+        bottom_inset: bool,
+        rect: Rect,
+    ) {
         let has_header = title.is_some() || self.back_icon.is_some();
         let header_height = if has_header {
             self.scaled(HEADER_HEIGHT)
@@ -1065,16 +1440,26 @@ impl Engine {
 
         let inset_start = self.scaled(CONTENT_INSET_START);
         let inset_end = self.scaled(CONTENT_INSET_END);
+        let inset_bottom = if bottom_inset {
+            self.scaled(CONTENT_BOTTOM)
+        } else {
+            0.0
+        };
         let content = Rect {
             x: rect.x + inset_start,
             y: rect.y + header_height + self.scaled(CONTENT_TOP),
             width: (rect.width - inset_start - inset_end).max(0.0),
-            height: (rect.height - header_height - self.scaled(CONTENT_TOP)).max(0.0),
+            height: (rect.height - header_height - self.scaled(CONTENT_TOP) - inset_bottom)
+                .max(0.0),
         };
         let gap = self.scaled(CONTENT_GAP);
+        let unbounded_content = Rect {
+            height: f32::INFINITY,
+            ..content
+        };
         let content_height = children
             .iter()
-            .map(|child| self.measure(child, content).height)
+            .map(|child| self.measure(child, unbounded_content).height)
             .sum::<f32>()
             + gap * children.len().saturating_sub(1) as f32;
         self.scroll_max = (content_height - content.height).max(0.0);
@@ -1255,7 +1640,7 @@ impl Engine {
 
     fn layout_button(
         &mut self,
-        label: &str,
+        label: &[TextPart],
         icon: Option<Mask>,
         underline: bool,
         action: &Option<Action>,
@@ -1285,7 +1670,8 @@ impl Engine {
             width: (rect.x + rect.width - text_x).max(0.0),
             height: (rect.height - self.scaled(1.0)).max(0.0),
         };
-        let visible_label = self.ellipsize(label, font_size, text_rect.width);
+        let label = self.resolve_text(label);
+        let visible_label = self.ellipsize(&label, font_size, text_rect.width);
         let text_width = self.text_width(&visible_label, font_size);
         self.scene.text.push(TextRun {
             text: visible_label,
@@ -1465,7 +1851,7 @@ impl Engine {
         }
         .min(tabs.len().saturating_sub(1));
         if let Some(tab) = tabs.get(active) {
-            self.layout(&tab.screen, content);
+            self.layout_node(&tab.screen, content, false);
         }
 
         if tabs.is_empty() {
@@ -1537,6 +1923,12 @@ impl Engine {
                         text.push_str(&value.to_string());
                     }
                 }
+                TextPart::ListLength(state) => {
+                    if let Some(StateValue::List(value)) = self.state.get(state.0) {
+                        text.push_str(&value.len().to_string());
+                    }
+                }
+                TextPart::Item(_) => unreachable!("list items are materialised before layout"),
             }
         }
         text
@@ -1615,6 +2007,33 @@ fn tone_colour(tone: Tone) -> Colour {
     match tone {
         Tone::Primary => Colour::WHITE,
         Tone::Muted => Colour::MUTED,
+    }
+}
+
+fn item_at_path<'a>(mut item: &'a StateValue, path: &[String]) -> Option<&'a StateValue> {
+    for field in path {
+        let StateValue::Object(fields) = item else {
+            return None;
+        };
+        item = fields
+            .iter()
+            .find_map(|(name, value)| (name == field).then_some(value))?;
+    }
+    Some(item)
+}
+
+fn value_from_state(value: &StateValue) -> Value {
+    match value {
+        StateValue::Int(value) => Value::Int(*value),
+        StateValue::Bool(value) => Value::Bool(*value),
+        StateValue::String(value) => Value::String(value.clone()),
+        StateValue::List(values) => Value::List(values.iter().map(value_from_state).collect()),
+        StateValue::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), value_from_state(value)))
+                .collect(),
+        ),
     }
 }
 

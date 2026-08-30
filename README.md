@@ -42,6 +42,33 @@ Ink discovers `ink.toml` from the current directory. Use `ink -C <directory> <co
 
 Ink includes its lightweight keyboard automatically when an app uses `TextInput`. Its Android module and resources are omitted from apps without text input.
 
+## Dynamic UI
+
+Ink supports conditional elements and rendering homogeneous state lists with ordinary TSX. Both are compiled into native Ink nodes; they do not add a JavaScript runtime.
+
+```tsx
+const showApps = state(true);
+const apps = state<{ name: string; description: string }[]>([]);
+
+<Stack gap={16}>
+  {showApps.value && <Text>Favourite apps</Text>}
+  {apps.value.length === 0 ? (
+    <Text>No apps yet</Text>
+  ) : (
+    <Stack gap={8}>
+      {apps.value.map((app) => (
+        <Stack>
+          <Text>{app.name}: {app.description}</Text>
+          <Button onPress={() => apps.remove(app)}>Remove</Button>
+        </Stack>
+      ))}
+    </Stack>
+  )}
+</Stack>
+```
+
+Empty lists use an explicit inline array type; non-empty literal lists infer their shape. Every item must have the same shape. Lists support `set`, `append`, `remove`, `replace` and `clear`, while `value.length` works in text and empty-state conditions. Removal and replacement use the current mapped item, with row identity handled by Ink.
+
 ## Application metadata
 
 Application identity and Android versioning live in `ink.toml`:
