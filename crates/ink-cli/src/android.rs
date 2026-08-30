@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use ink_compiler::Project;
+use ink_compiler::{AppFeatures, Project};
 
 use crate::{output, process, watch};
 
@@ -102,8 +102,8 @@ impl Device {
 }
 
 pub fn build(project: &Project, profile: Profile, verbose: bool) -> Result<BuildArtifact> {
-    let mut gradle = gradle_command(project, profile)?;
-    compile(project)?;
+    let features = compile(project)?;
+    let mut gradle = gradle_command(project, profile, features)?;
     let message = format!("Building {} APK", profile.label());
     let duration = process::run(&mut gradle, &message, verbose)?;
     build_artifact(profile, duration, verbose)
@@ -115,8 +115,8 @@ pub fn build_watched(
     verbose: bool,
     baseline: &watch::Snapshot,
 ) -> Result<BuildOutcome> {
-    let mut gradle = gradle_command(project, profile)?;
-    compile(project)?;
+    let features = compile(project)?;
+    let mut gradle = gradle_command(project, profile, features)?;
     if watch::changed(project.root(), baseline)? {
         return Ok(BuildOutcome::Changed);
     }
@@ -132,7 +132,7 @@ pub fn build_watched(
     )?))
 }
 
-fn gradle_command(project: &Project, profile: Profile) -> Result<Command> {
+fn gradle_command(project: &Project, profile: Profile, features: AppFeatures) -> Result<Command> {
     let release_signing = if profile == Profile::Release {
         let signing = project.release_signing().context(
             "release signing is not configured; add [signing] with keystore and key_alias to ink.toml",
@@ -165,6 +165,7 @@ fn gradle_command(project: &Project, profile: Profile) -> Result<Command> {
         .arg(format!("-PinkApplicationId={}", project.package()))
         .arg(format!("-PinkVersionName={}", project.version()))
         .arg(format!("-PinkVersionCode={}", project.version_code()))
+        .arg(format!("-PinkUsesTextInput={}", features.text_input))
         .arg(format!(
             "-PinkGeneratedSource={}",
             project.generated_source_path().display()
@@ -184,10 +185,10 @@ fn gradle_command(project: &Project, profile: Profile) -> Result<Command> {
     Ok(gradle)
 }
 
-fn compile(project: &Project) -> Result<()> {
-    ink_compiler::compile(project)?;
+fn compile(project: &Project) -> Result<AppFeatures> {
+    let features = ink_compiler::compile(project)?;
     output::success(format!("Compiled {}", project.source_path().display()));
-    Ok(())
+    Ok(features)
 }
 
 fn build_artifact(profile: Profile, duration: Duration, verbose: bool) -> Result<BuildArtifact> {

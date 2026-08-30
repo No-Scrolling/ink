@@ -9,7 +9,6 @@ rust-version.workspace = true
 ab_glyph = "0.2.32"
 anyhow.workspace = true
 image.workspace = true
-material-icons.workspace = true
 miniz_oxide.workspace = true
 oxc.workspace = true
 prettyplease.workspace = true

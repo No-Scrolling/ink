@@ -13,6 +13,11 @@ pub use config::ReleaseSigning;
 use config::ResolvedConfig;
 use oxc::{allocator::Allocator, parser::Parser, semantic::SemanticBuilder, span::SourceType};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AppFeatures {
+    pub text_input: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct Project {
     config_path: PathBuf,
@@ -80,17 +85,23 @@ pub fn check(project: &Project) -> Result<()> {
     Ok(())
 }
 
-pub fn compile(project: &Project) -> Result<()> {
+pub fn compile(project: &Project) -> Result<AppFeatures> {
     let generated = generate(project)?;
-    write_if_changed(&project.config.generated, generated.as_bytes())?;
-    icon::generate(&project.config.name, &project.config.android_resources)
+    write_if_changed(&project.config.generated, generated.source.as_bytes())?;
+    icon::generate(&project.config.name, &project.config.android_resources)?;
+    Ok(generated.features)
 }
 
 pub fn generate_icon(project: &Project) -> Result<()> {
     icon::generate(&project.config.name, &project.config.android_resources)
 }
 
-fn generate(project: &Project) -> Result<String> {
+struct GeneratedApp {
+    source: String,
+    features: AppFeatures,
+}
+
+fn generate(project: &Project) -> Result<GeneratedApp> {
     let source = std::fs::read_to_string(&project.config.source)
         .with_context(|| format!("could not read {}", project.config.source.display()))?;
     let source_type = SourceType::from_path(&project.config.source).with_context(|| {
@@ -125,7 +136,28 @@ fn generate(project: &Project) -> Result<String> {
 
     let app = lower::lower(&parsed.program)
         .map_err(|error| anyhow::anyhow!(error.render(&project.config.source, &source)))?;
-    codegen::generate(&app, project.root())
+    Ok(GeneratedApp {
+        features: AppFeatures {
+            text_input: uses_text_input(&app.root),
+        },
+        source: codegen::generate(&app, project.root())?,
+    })
+}
+
+fn uses_text_input(node: &ir::Node) -> bool {
+    match node {
+        ir::Node::TextInput { .. } => true,
+        ir::Node::Screen { children, .. } | ir::Node::Stack { children, .. } => {
+            children.iter().any(uses_text_input)
+        }
+        ir::Node::Tabs { tabs, .. } => tabs.iter().any(|tab| uses_text_input(&tab.screen)),
+        ir::Node::Navigator { routes } => routes.iter().any(|route| uses_text_input(&route.screen)),
+        ir::Node::Text { .. }
+        | ir::Node::Button { .. }
+        | ir::Node::Icon { .. }
+        | ir::Node::Image { .. }
+        | ir::Node::Toggle { .. } => false,
+    }
 }
 
 fn write_if_changed(path: &Path, contents: &[u8]) -> Result<()> {

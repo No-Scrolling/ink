@@ -2,10 +2,10 @@ use std::ffi::{CString, c_char, c_int};
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
-use ink_core::Engine;
+use ink_core::{Engine, PUBLIC_SANS, TextEdit, TextInputAction};
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
-use jni::objects::{JClass, JObject};
+use jni::objects::{JByteBuffer, JClass, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use ndk::native_window::NativeWindow;
 
@@ -146,6 +146,14 @@ impl AndroidEngine {
         true
     }
 
+    fn edit_text(&mut self, edit: TextEdit) -> bool {
+        if !self.engine.edit_text(edit) {
+            return false;
+        }
+        self.render();
+        true
+    }
+
     fn render(&mut self) {
         let Some(surface) = &mut self.surface else {
             return;
@@ -178,6 +186,17 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
 ) -> jlong {
     android_log(ANDROID_LOG_INFO, "created Ink engine");
     Box::into_raw(Box::new(Mutex::new(AndroidEngine::new()))) as jlong
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePublicSans<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+) -> JByteBuffer<'local> {
+    env.with_env(|env| unsafe {
+        env.new_direct_byte_buffer(PUBLIC_SANS.as_ptr().cast_mut(), PUBLIC_SANS.len())
+    })
+    .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]
@@ -250,6 +269,59 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| engine.back()) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputActive(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|engine| engine.engine.text_input_active()) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputAction(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jint {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .map(|engine| match engine.engine.text_input_action() {
+            TextInputAction::Return => 0,
+            TextInputAction::Search => 1,
+            TextInputAction::Done => 2,
+        })
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    action: jint,
+    value: JString<'_>,
+) -> jboolean {
+    let edit = match action {
+        0 if !value.is_null() => Some(TextEdit::Insert(
+            env.with_env(|env| value.try_to_string(env))
+                .resolve::<jni::errors::LogErrorAndDefault>(),
+        )),
+        1 => Some(TextEdit::Backspace),
+        2 => Some(TextEdit::Submit),
+        3 => Some(TextEdit::Dismiss),
+        _ => None,
+    };
+    let Some(edit) = edit else {
+        return false as jboolean;
+    };
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.edit_text(edit)) as jboolean
 }
 
 #[unsafe(no_mangle)]

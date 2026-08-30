@@ -14,10 +14,11 @@ pub struct State {
     pub initial: StateValue,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StateValue {
     Int(i64),
     Bool(bool),
+    String(String),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -51,6 +52,14 @@ pub enum TextAlignment {
     Start,
     Center,
     End,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextInputAction {
+    Return,
+    #[default]
+    Search,
+    Done,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -88,6 +97,8 @@ pub enum Node {
     },
     TextInput {
         placeholder: String,
+        state: StateId,
+        action: TextInputAction,
     },
     Button {
         label: String,

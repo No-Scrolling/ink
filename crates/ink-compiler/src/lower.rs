@@ -34,10 +34,17 @@ const INK_IMPORTS: [&str; 13] = [
     "state",
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StateKind {
+    Int,
+    Bool,
+    String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct StateBinding {
     id: StateId,
-    value: StateValue,
+    kind: StateKind,
 }
 
 pub fn lower(program: &oxc::ast::ast::Program<'_>) -> Result<App, CompileError> {
@@ -175,7 +182,7 @@ fn lower_function(function: &Function<'_>, imports: &HashSet<String>) -> Result<
                     let name = binding.name.as_str();
                     let binding = StateBinding {
                         id: StateId(states.len()),
-                        value: initial,
+                        kind: state_kind(&initial),
                     };
                     if state_names.insert(name, binding).is_some() {
                         return Err(CompileError::new(
@@ -240,7 +247,7 @@ fn state_initialiser(
 ) -> Result<StateValue, CompileError> {
     let Some(Expression::CallExpression(call)) = initialiser else {
         return Err(CompileError::new(
-            "state must be initialised with state(number) or state(boolean)",
+            "state must be initialised with state(number), state(boolean) or state(string)",
             span,
         ));
     };
@@ -260,10 +267,19 @@ fn state_initialiser(
             "state value",
         )?)),
         Argument::BooleanLiteral(value) => Ok(StateValue::Bool(value.value)),
+        Argument::StringLiteral(value) => Ok(StateValue::String(value.value.to_string())),
         value => Err(CompileError::new(
-            "state currently accepts one integer or boolean literal",
+            "state currently accepts one integer, boolean or string literal",
             value.span(),
         )),
+    }
+}
+
+const fn state_kind(value: &StateValue) -> StateKind {
+    match value {
+        StateValue::Int(_) => StateKind::Int,
+        StateValue::Bool(_) => StateKind::Bool,
+        StateValue::String(_) => StateKind::String,
     }
 }
 
@@ -278,7 +294,7 @@ fn lower_node(
         "Screen" => lower_screen(element, states, imports),
         "Stack" => lower_stack(element, states, imports),
         "Text" => lower_text(element, states),
-        "TextInput" => lower_text_input(element),
+        "TextInput" => lower_text_input(element, states),
         "Button" => lower_button(element, states),
         "Icon" => lower_icon(element),
         "Image" => lower_image(element),
@@ -406,16 +422,31 @@ fn lower_text(
     })
 }
 
-fn lower_text_input(element: &JSXElement<'_>) -> Result<Node, CompileError> {
+fn lower_text_input(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<Node, CompileError> {
     let placeholder = required_string_attribute(element, "placeholder")?;
-    reject_other_attributes(element, &["placeholder"])?;
+    let action = match optional_string_attribute(element, "action")?.as_deref() {
+        None | Some("search") => crate::ir::TextInputAction::Search,
+        Some("return") => crate::ir::TextInputAction::Return,
+        Some("done") => crate::ir::TextInputAction::Done,
+        Some(_) => return invalid_value(element, "action", "search, return or done"),
+    };
+    let state = state_attribute(element, "value", states, StateKind::String)?;
+    text_change_attribute(element, "onChange", state, states)?;
+    reject_other_attributes(element, &["placeholder", "value", "onChange", "action"])?;
     if !element_children(element)?.is_empty() {
         return Err(CompileError::new(
             "TextInput cannot have children",
             element.span,
         ));
     }
-    Ok(Node::TextInput { placeholder })
+    Ok(Node::TextInput {
+        placeholder,
+        state: state.id,
+        action,
+    })
 }
 
 fn lower_button(
@@ -496,7 +527,7 @@ fn lower_toggle(
     states: &HashMap<&str, StateBinding>,
 ) -> Result<Node, CompileError> {
     let label = required_string_attribute(element, "label")?;
-    let state = state_attribute(element, "value", states, StateValue::Bool(false))?;
+    let state = state_attribute(element, "value", states, StateKind::Bool)?;
     let action = action_attribute(element, "onChange", states)?;
     reject_other_attributes(element, &["label", "value", "onChange"])?;
     if !element_children(element)?.is_empty() {
@@ -517,7 +548,7 @@ fn lower_tabs(
     states: &HashMap<&str, StateBinding>,
     imports: &HashSet<String>,
 ) -> Result<Node, CompileError> {
-    let state = state_attribute(element, "value", states, StateValue::Int(0))?;
+    let state = state_attribute(element, "value", states, StateKind::Int)?;
     reject_other_attributes(element, &["value"])?;
     require_import(imports, "Tab", element.span)?;
     let mut tabs = Vec::new();
@@ -777,6 +808,82 @@ fn optional_action_attribute(
     }
 }
 
+fn text_change_attribute(
+    element: &JSXElement<'_>,
+    name: &str,
+    state: StateBinding,
+    states: &HashMap<&str, StateBinding>,
+) -> Result<(), CompileError> {
+    let attribute = attribute(element, name).ok_or_else(|| {
+        CompileError::new(
+            format!("TextInput requires {name}"),
+            element.opening_element.span,
+        )
+    })?;
+    let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
+        return Err(CompileError::new(
+            format!("{name} must update the TextInput state"),
+            attribute.span,
+        ));
+    };
+    let JSXExpression::ArrowFunctionExpression(function) = &container.expression else {
+        return Err(CompileError::new(
+            format!("{name} must update the TextInput state"),
+            container.span,
+        ));
+    };
+    let [formal] = function.params.items.as_slice() else {
+        return Err(CompileError::new(
+            format!("{name} must have one value parameter"),
+            function.params.span,
+        ));
+    };
+    let BindingPattern::BindingIdentifier(parameter) = &formal.pattern else {
+        return Err(CompileError::new(
+            format!("{name} must have one value parameter"),
+            formal.span,
+        ));
+    };
+    let ArrowFunctionBody::CallExpression(call) = &function.body else {
+        return Err(CompileError::new(
+            format!("{name} must call state.set(value)"),
+            function.body.span(),
+        ));
+    };
+    let Expression::StaticMemberExpression(callee) = &call.callee else {
+        return Err(CompileError::new(
+            format!("{name} must call state.set(value)"),
+            call.callee.span(),
+        ));
+    };
+    let Expression::Identifier(state_object) = &callee.object else {
+        return Err(CompileError::new(
+            format!("{name} must call state.set(value)"),
+            callee.object.span(),
+        ));
+    };
+    let [Argument::Identifier(value)] = call.arguments.as_slice() else {
+        return Err(CompileError::new(
+            format!("{name} must call state.set(value)"),
+            call.span,
+        ));
+    };
+    let bound_state = states.get(state_object.name.as_str()).copied();
+    if function.r#async
+        || function.params.rest.is_some()
+        || formal.initializer.is_some()
+        || callee.property.name.as_str() != "set"
+        || bound_state != Some(state)
+        || value.name != parameter.name
+    {
+        return Err(CompileError::new(
+            format!("{name} must update the TextInput state with state.set(value)"),
+            function.span,
+        ));
+    }
+    Ok(())
+}
+
 fn lower_action(
     body: &ArrowFunctionBody<'_>,
     states: &HashMap<&str, StateBinding>,
@@ -809,19 +916,15 @@ fn lower_action(
         .ok_or_else(|| CompileError::new(format!("unknown state {name}"), state_object.span))?;
 
     match &call.arguments[0] {
-        Argument::NumericLiteral(value) if matches!(binding.value, StateValue::Int(_)) => {
-            Ok(Action::SetInt {
-                state: binding.id,
-                value: integer(value.value, value.span, "state value")?,
-            })
-        }
-        Argument::BooleanLiteral(value) if matches!(binding.value, StateValue::Bool(_)) => {
-            Ok(Action::SetBool {
-                state: binding.id,
-                value: value.value,
-            })
-        }
-        Argument::BinaryExpression(value) if matches!(binding.value, StateValue::Int(_)) => {
+        Argument::NumericLiteral(value) if binding.kind == StateKind::Int => Ok(Action::SetInt {
+            state: binding.id,
+            value: integer(value.value, value.span, "state value")?,
+        }),
+        Argument::BooleanLiteral(value) if binding.kind == StateKind::Bool => Ok(Action::SetBool {
+            state: binding.id,
+            value: value.value,
+        }),
+        Argument::BinaryExpression(value) if binding.kind == StateKind::Int => {
             let read_state = expression_state_value(&value.left, states)?;
             if read_state.id != binding.id {
                 return Err(CompileError::new(
@@ -852,8 +955,7 @@ fn lower_action(
             })
         }
         Argument::UnaryExpression(value)
-            if value.operator == UnaryOperator::LogicalNot
-                && matches!(binding.value, StateValue::Bool(_)) =>
+            if value.operator == UnaryOperator::LogicalNot && binding.kind == StateKind::Bool =>
         {
             let read_state = expression_state_value(&value.argument, states)?;
             if read_state.id != binding.id {
@@ -875,7 +977,7 @@ fn state_attribute<'a>(
     element: &JSXElement<'a>,
     name: &str,
     states: &HashMap<&str, StateBinding>,
-    expected: StateValue,
+    expected: StateKind,
 ) -> Result<StateBinding, CompileError> {
     let attribute = attribute(element, name).ok_or_else(|| {
         CompileError::new(
@@ -893,7 +995,7 @@ fn state_attribute<'a>(
         ));
     };
     let binding = state_value(&container.expression, states)?;
-    if std::mem::discriminant(&binding.value) != std::mem::discriminant(&expected) {
+    if binding.kind != expected {
         return Err(CompileError::new(
             format!("{name} has the wrong state type"),
             container.span,
@@ -1041,7 +1143,7 @@ fn validate_icon(
         let span = attribute(element, attribute_name)
             .map_or(element.opening_element.span, |attribute| attribute.span);
         Err(CompileError::new(
-            format!("unknown Material icon {value:?}"),
+            format!("unknown Material Symbol {value:?}"),
             span,
         ))
     }

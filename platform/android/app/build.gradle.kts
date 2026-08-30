@@ -15,6 +15,7 @@ val inkVersionCode = providers.gradleProperty("inkVersionCode").orElse("1")
 val inkSigning = providers.gradleProperty("inkSigning").orElse("development")
 val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
 val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
+val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 
 android {
     namespace = "com.vandam.ink"
@@ -50,6 +51,16 @@ android {
 
     sourceSets {
         getByName("main").res.srcDir(inkAndroidResources)
+        getByName("main").java.srcDir(
+            if (inkUsesTextInput.get().toBoolean()) {
+                "src/textInput/kotlin"
+            } else {
+                "src/noTextInput/kotlin"
+            },
+        )
+        if (inkUsesTextInput.get().toBoolean()) {
+            getByName("main").res.srcDir("src/textInput/res")
+        }
         getByName("debug").jniLibs.srcDir(generatedJniRoot.map { it.dir("debug") })
         getByName("release").jniLibs.srcDir(generatedJniRoot.map { it.dir("release") })
     }

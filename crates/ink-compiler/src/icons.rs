@@ -1,6 +1,13 @@
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
-use anyhow::{Context, Result, bail};
-use material_icons::{ALL_ICONS, FONT, Icon, icon_to_char, icon_to_html_name};
+use anyhow::{Context, Result, anyhow, bail};
+use std::sync::OnceLock;
+
+const MATERIAL_SYMBOLS_OUTLINED_FONT: &[u8] =
+    include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-300.ttf.zlib");
+const MATERIAL_SYMBOLS_FILLED_FONT: &[u8] =
+    include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-Fill1-400.ttf.zlib");
+const MATERIAL_SYMBOLS_CODEPOINTS: &str =
+    include_str!("../../../assets/icons/MaterialSymbolsOutlined.codepoints");
 
 const LP3_REFERENCE_SCALE: f32 = 2.55;
 const MAX_ICON_PIXELS: u32 = 512;
@@ -21,20 +28,26 @@ pub fn exists(name: &str) -> bool {
 }
 
 pub fn raster(name: &str, logical_size: f32) -> Result<RasterIcon> {
-    let icon = find(name).with_context(|| format!("unknown Material icon {name:?}"))?;
+    raster_variant(name, logical_size, false)
+}
+
+pub fn raster_filled(name: &str, logical_size: f32) -> Result<RasterIcon> {
+    raster_variant(name, logical_size, true)
+}
+
+fn raster_variant(name: &str, logical_size: f32, filled: bool) -> Result<RasterIcon> {
+    let character = find(name).with_context(|| format!("unknown Material Symbol {name:?}"))?;
     let dimension = (logical_size * LP3_REFERENCE_SCALE).round().max(1.0) as u32;
     if dimension > MAX_ICON_PIXELS {
-        bail!("Material icon {name:?} exceeds Ink's maximum size");
+        bail!("Material Symbol {name:?} exceeds Ink's maximum size");
     }
 
-    let font = FontArc::try_from_slice(FONT).context("Material Icons font is invalid")?;
+    let font = material_symbols_font(filled)?;
     let scaled = font.as_scaled(PxScale::from(dimension as f32));
-    let glyph = scaled
-        .glyph_id(icon_to_char(icon))
-        .with_scale(dimension as f32);
+    let glyph = scaled.glyph_id(character).with_scale(dimension as f32);
     let outlined = font
         .outline_glyph(glyph)
-        .with_context(|| format!("Material icon {name:?} has no outline"))?;
+        .with_context(|| format!("Material Symbol {name:?} has no outline"))?;
     let bounds = outlined.px_bounds();
     let glyph_width = bounds.width().ceil().max(0.0) as u32;
     let glyph_height = bounds.height().ceil().max(0.0) as u32;
@@ -49,8 +62,14 @@ pub fn raster(name: &str, logical_size: f32) -> Result<RasterIcon> {
         }
     });
 
+    let id = if filled {
+        hash(&format!("filled:{name}"), dimension)
+    } else {
+        hash(name, dimension)
+    };
+
     Ok(RasterIcon {
-        id: hash(name, dimension),
+        id,
         width: dimension as u16,
         height: dimension as u16,
         pixels,
@@ -99,11 +118,37 @@ pub fn toggle_circle(filled: bool) -> RasterIcon {
     }
 }
 
-fn find(name: &str) -> Option<Icon> {
-    ALL_ICONS
-        .iter()
-        .copied()
-        .find(|icon| icon_to_html_name(icon) == name)
+fn find(name: &str) -> Option<char> {
+    MATERIAL_SYMBOLS_CODEPOINTS.lines().find_map(|line| {
+        let mut fields = line.split_whitespace();
+        let candidate = fields.next()?;
+        let codepoint = fields.next()?;
+        (candidate == name)
+            .then(|| {
+                u32::from_str_radix(codepoint, 16)
+                    .ok()
+                    .and_then(char::from_u32)
+            })
+            .flatten()
+    })
+}
+
+fn material_symbols_font(filled: bool) -> Result<&'static FontArc> {
+    static OUTLINED_FONT: OnceLock<Result<FontArc, String>> = OnceLock::new();
+    static FILLED_FONT: OnceLock<Result<FontArc, String>> = OnceLock::new();
+    let (font, compressed) = if filled {
+        (&FILLED_FONT, MATERIAL_SYMBOLS_FILLED_FONT)
+    } else {
+        (&OUTLINED_FONT, MATERIAL_SYMBOLS_OUTLINED_FONT)
+    };
+    font.get_or_init(|| {
+        let bytes = miniz_oxide::inflate::decompress_to_vec_zlib(compressed)
+            .map_err(|error| format!("could not decompress Material Symbols: {error:?}"))?;
+        FontArc::try_from_vec(bytes)
+            .map_err(|error| format!("Material Symbols font is invalid: {error}"))
+    })
+    .as_ref()
+    .map_err(|error| anyhow!(error.clone()))
 }
 
 fn hash(name: &str, dimension: u32) -> u64 {

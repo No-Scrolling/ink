@@ -11,25 +11,25 @@ use crate::{
     icons,
     ir::{
         Action, Alignment, App, Axis, ImageFit, Justification, Node, StateValue, TextAlignment,
-        TextPart, Tone,
+        TextInputAction, TextPart, Tone,
     },
 };
 
 const DEFAULT_ICON_SIZE: f32 = 28.0;
 const BUTTON_ICON_SIZE: f32 = 30.0;
 const HEADER_BACK_ICON_SIZE: f32 = 28.0;
-const TAB_ICON_SIZE: f32 = 48.0;
+const TAB_ICON_SIZE: f32 = 52.0;
 const TOGGLE_ICON_SIZE: f32 = 9.8;
 
 pub fn generate(app: &App, root: &Path) -> Result<String> {
-    let states = app.states.iter().map(|state| state_value(state.initial));
+    let states = app.states.iter().map(|state| state_value(&state.initial));
     let mut emitter = Emitter::new(root);
     let root = emitter.node(&app.root)?;
     let declarations = emitter.declarations;
     let tokens = quote! {
         use ink_core::{
             Action, Alignment, AppDefinition, Axis, Justification, Mask, Node, StateId, StateValue,
-            Route, Tab, TextAlign, TextPart, Tone,
+            Route, Tab, TextAlign, TextInputAction, TextPart, Tone,
         };
 
         #[rustfmt::skip]
@@ -100,7 +100,19 @@ impl<'a> Emitter<'a> {
                 let align = text_alignment_tokens(*align);
                 quote! { Node::text(vec![#(#parts),*], #font_size, #align) }
             }
-            Node::TextInput { placeholder } => quote! { Node::text_input(#placeholder) },
+            Node::TextInput {
+                placeholder,
+                state,
+                action,
+            } => {
+                let state = state.0;
+                let action = match action {
+                    TextInputAction::Return => quote! { TextInputAction::Return },
+                    TextInputAction::Search => quote! { TextInputAction::Search },
+                    TextInputAction::Done => quote! { TextInputAction::Done },
+                };
+                quote! { Node::text_input(#placeholder, StateId::new(#state), #action) }
+            }
             Node::Button {
                 label,
                 icon,
@@ -161,7 +173,7 @@ impl<'a> Emitter<'a> {
             Node::Tabs { state, tabs } => {
                 let mut generated_tabs = Vec::with_capacity(tabs.len());
                 for tab in tabs {
-                    let icon = self.mask(&tab.icon, TAB_ICON_SIZE)?;
+                    let icon = self.filled_mask(&tab.icon, TAB_ICON_SIZE)?;
                     let action = action_tokens(&tab.action);
                     let screen = self.node(&tab.screen)?;
                     generated_tabs.push(quote! { Tab::new(#icon, #action, #screen) });
@@ -192,12 +204,31 @@ impl<'a> Emitter<'a> {
     }
 
     fn mask(&mut self, name: &str, size: f32) -> Result<TokenStream> {
-        let key = (name.to_owned(), size.to_bits());
+        self.material_mask(name, size, false)
+    }
+
+    fn filled_mask(&mut self, name: &str, size: f32) -> Result<TokenStream> {
+        self.material_mask(name, size, true)
+    }
+
+    fn material_mask(&mut self, name: &str, size: f32, filled: bool) -> Result<TokenStream> {
+        let key = (
+            if filled {
+                format!("filled:{name}")
+            } else {
+                name.to_owned()
+            },
+            size.to_bits(),
+        );
         if let Some(mask) = self.masks.get(&key) {
             return Ok(mask.clone());
         }
 
-        let icon = icons::raster(name, size)?;
+        let icon = if filled {
+            icons::raster_filled(name, size)?
+        } else {
+            icons::raster(name, size)?
+        };
         let id = icon.id;
         let width = icon.width;
         let height = icon.height;
@@ -277,10 +308,11 @@ impl<'a> Emitter<'a> {
     }
 }
 
-fn state_value(value: StateValue) -> TokenStream {
+fn state_value(value: &StateValue) -> TokenStream {
     match value {
         StateValue::Int(value) => quote! { StateValue::Int(#value) },
         StateValue::Bool(value) => quote! { StateValue::Bool(#value) },
+        StateValue::String(value) => quote! { StateValue::String(#value.to_owned()) },
     }
 }
 

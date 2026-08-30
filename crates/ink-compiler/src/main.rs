@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     let project = Project::load(config_path)?;
 
     match command.as_str() {
-        "compile" => ink_compiler::compile(&project),
+        "compile" => ink_compiler::compile(&project).map(|_| ()),
         "icon" => ink_compiler::generate_icon(&project),
         _ => bail!("unknown command {command:?}; expected compile or icon"),
     }

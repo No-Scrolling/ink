@@ -5,6 +5,7 @@ export interface Signal<T> {
 
 export declare function state(initial: boolean): Signal<boolean>;
 export declare function state(initial: number): Signal<number>;
+export declare function state(initial: string): Signal<string>;
 
 export declare function Screen(props: Ink.ScreenProps): Ink.Element;
 export declare function Stack(props: Ink.StackProps): Ink.Element;
@@ -51,6 +52,9 @@ export namespace Ink {
 
   interface TextInputProps {
     placeholder: string;
+    value: string;
+    onChange(value: string): void;
+    action?: "search" | "return" | "done";
   }
 
   type ButtonProps = {

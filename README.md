@@ -40,6 +40,8 @@ Ink discovers `ink.toml` from the current directory. Use `ink -C <directory> <co
 
 `ink dev --logs` keeps Logcat alongside the development watcher. Use `--device <serial-or-name>` to select a device; Ink remembers its serial for later commands.
 
+Ink includes its lightweight keyboard automatically when an app uses `TextInput`. Its Android module and resources are omitted from apps without text input.
+
 ## Application metadata
 
 Application identity and Android versioning live in `ink.toml`:
@@ -63,7 +65,7 @@ key_alias = "upload"
 
 Supply passwords through `INK_KEYSTORE_PASSWORD` and `INK_KEY_PASSWORD`; never store them in the repository. Ink asks Gradle to sign the APK and verifies the resulting signature before copying it to `dist/`.
 
-The current signed, optimised arm64 APK is approximately 2.4 MB. The development APK is intentionally unoptimised and much larger.
+The current signed, optimised arm64 base APK is approximately 2.9 MB. The development APK is intentionally unoptimised and much larger.
 
 Ink currently targets Android API 34 or newer. The saved LP3 emulator and physical LP3 builds are arm64-only.
 
@@ -74,13 +76,24 @@ Style values are authored directly in Ink's LP3 logical units. At the LP3's 1080
 - `Screen` owns the app header, content insets, vertical rhythm, overflow scrolling and scroll indicator.
 - `Stack` arranges children vertically or horizontally with optional gap, alignment and distribution.
 - `Text` uses Public Sans and always renders at the full foreground colour. It supports an optional size and alignment, but no opacity or muted-text styling.
-- `TextInput` renders the established LP3 text-field treatment. Editing waits for the Light Keyboard adapter.
-- `Button` is a text-first action with optional Material icon and underline.
-- `Icon` accepts a Material icon name. Ink embeds only the icon masks referenced by the app.
+- `TextInput` binds to string state and uses Ink's lightweight keyboard renderer for touch editing. The keyboard shares Ink's embedded Public Sans bytes rather than bundling another font. It accepts `action="search"`, `"return"` or `"done"`; the bottom close control and Android back dismiss the keyboard.
+- `Button` is a text-first action with an optional Material Symbol and underline.
+- `Icon` accepts a Material Symbol name. Ink uses the outlined family at weight 300 and embeds only the masks referenced by the app.
 - `Image` embeds a local PNG at compile time with `cover` or `contain` fitting.
 - `Toggle` provides the established LP3 line-and-circle setting control.
-- `Tabs` and `Tab` own the fixed bottom navigation bar and screen switching.
+- `Tabs` and `Tab` own the fixed bottom navigation bar and screen switching. Tab icons use the filled Material Symbols variant at weight 400.
 - `Navigator` and `Route` declare a compile-time checked screen graph. Buttons navigate with `href`; nested screens receive an automatic back control and Android back uses the same history.
+
+```tsx
+const query = state("");
+
+<TextInput
+  placeholder="Search..."
+  value={query.value}
+  onChange={(value) => query.set(value)}
+  action="search"
+/>
+```
 
 ```tsx
 <Navigator>
@@ -101,4 +114,4 @@ Style values are authored directly in Ink's LP3 logical units. At the LP3's 1080
 
 ## Status
 
-Ink remains a deliberately narrow prototype. Editable text, route parameters, Light SDK resources, Light Keyboard and persistence are not implemented yet. Those integrations will sit behind framework-owned adapters rather than expanding every component's surface.
+Ink remains a deliberately narrow prototype. Route parameters, Light SDK resources and persistence are not implemented yet. Those integrations will sit behind framework-owned adapters rather than expanding every component's surface.

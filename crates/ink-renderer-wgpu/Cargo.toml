@@ -11,6 +11,7 @@ anyhow.workspace = true
 bytemuck.workspace = true
 ink-core = { path = "../ink-core" }
 miniz_oxide.workspace = true
+unicode-segmentation.workspace = true
 wgpu.workspace = true
 
 [build-dependencies]

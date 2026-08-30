@@ -13,6 +13,8 @@ import {
 
 export default function LightTemplate() {
   const tab = state(0);
+  const query = state("");
+  const name = state("");
   const invertColours = state(false);
   const option = state(0);
 
@@ -36,12 +38,18 @@ export default function LightTemplate() {
           </Tab>
           <Tab icon="search" onPress={() => tab.set(1)}>
             <Screen title="Search">
-              <TextInput placeholder="Search..." />
+              <TextInput
+                placeholder="Search..."
+                value={query.value}
+                onChange={(value) => query.set(value)}
+                action="search"
+              />
             </Screen>
           </Tab>
           <Tab icon="settings" onPress={() => tab.set(2)}>
             <Screen title="Settings">
               <Button href="/settings/customise">Customise</Button>
+              <Button href="/settings/text-input">Text Input</Button>
               <Button href="/confirm">Example Confirm</Button>
             </Screen>
           </Tab>
@@ -67,6 +75,16 @@ export default function LightTemplate() {
           <Button onPress={() => option.set(0)}>Option 1</Button>
           <Button onPress={() => option.set(1)}>Option 2</Button>
           <Button onPress={() => option.set(2)}>Option 3</Button>
+        </Screen>
+      </Route>
+      <Route path="/settings/text-input">
+        <Screen title="Text Input">
+          <TextInput
+            placeholder="Name..."
+            value={name.value}
+            onChange={(value) => name.set(value)}
+            action="done"
+          />
         </Screen>
       </Route>
       <Route path="/confirm">

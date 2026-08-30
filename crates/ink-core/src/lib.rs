@@ -1,8 +1,15 @@
 use std::fmt;
 
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
+use unicode_segmentation::UnicodeSegmentation;
 
 pub const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
+pub const APPLE_EMOJI_ATLAS: ImageAsset = ImageAsset::new(
+    0x6170_706c_655f_656d,
+    512,
+    192,
+    include_bytes!("../../../assets/emoji/apple_emoji.rgba.zlib"),
+);
 
 const DEFAULT_TEXT_SIZE: f32 = 30.0;
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
@@ -24,7 +31,7 @@ const HEADER_BACK_ICON_SIZE: f32 = 28.0;
 const HEADER_BACK_OFFSET_X: f32 = -7.0;
 const HEADER_BACK_OFFSET_Y: f32 = 11.0;
 const NAV_HEIGHT: f32 = 70.0;
-const NAV_ICON_SIZE: f32 = 48.0;
+const NAV_ICON_SIZE: f32 = 52.0;
 const NAV_VERTICAL_INSET: f32 = 10.0;
 const TOGGLE_HEIGHT: f32 = 46.0;
 const TOGGLE_ICON_SIZE: f32 = 9.8;
@@ -54,6 +61,7 @@ impl StateId {
 pub enum StateValue {
     Int(i64),
     Bool(bool),
+    String(String),
 }
 
 impl fmt::Display for StateValue {
@@ -61,17 +69,51 @@ impl fmt::Display for StateValue {
         match self {
             Self::Int(value) => value.fmt(formatter),
             Self::Bool(value) => value.fmt(formatter),
+            Self::String(value) => value.fmt(formatter),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TextEdit {
+    Insert(String),
+    Backspace,
+    Submit,
+    Dismiss,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextInputAction {
+    Return,
+    #[default]
+    Search,
+    Done,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
-    Increment { state: StateId, by: i64 },
-    SetInt { state: StateId, value: i64 },
-    SetBool { state: StateId, value: bool },
-    Toggle { state: StateId },
-    Navigate { path: String },
+    Increment {
+        state: StateId,
+        by: i64,
+    },
+    SetInt {
+        state: StateId,
+        value: i64,
+    },
+    SetBool {
+        state: StateId,
+        value: bool,
+    },
+    Toggle {
+        state: StateId,
+    },
+    FocusTextInput {
+        state: StateId,
+        action: TextInputAction,
+    },
+    Navigate {
+        path: String,
+    },
     Back,
 }
 
@@ -202,6 +244,8 @@ enum NodeKind {
     },
     TextInput {
         placeholder: String,
+        state: StateId,
+        action: TextInputAction,
     },
     Button {
         label: String,
@@ -276,10 +320,16 @@ impl Node {
         }
     }
 
-    pub fn text_input(placeholder: impl Into<String>) -> Self {
+    pub fn text_input(
+        placeholder: impl Into<String>,
+        state: StateId,
+        action: TextInputAction,
+    ) -> Self {
         Self {
             kind: NodeKind::TextInput {
                 placeholder: placeholder.into(),
+                state,
+                action,
             },
         }
     }
@@ -510,6 +560,8 @@ pub struct Engine {
     scroll_offset: f32,
     scroll_max: f32,
     pointer: Option<Pointer>,
+    focused_input: Option<StateId>,
+    focused_input_action: TextInputAction,
     navigation: Vec<usize>,
     back_icon: Option<Mask>,
     font: FontRef<'static>,
@@ -545,6 +597,8 @@ impl Engine {
             scroll_offset: 0.0,
             scroll_max: 0.0,
             pointer: None,
+            focused_input: None,
+            focused_input_action: TextInputAction::default(),
             navigation,
             back_icon: None,
             font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
@@ -571,17 +625,20 @@ impl Engine {
     }
 
     pub fn tap(&mut self, x: f32, y: f32) -> bool {
-        let Some(action) = self
+        let action = self
             .hit_regions
             .iter()
             .rev()
             .find(|region| region.rect.contains(x, y))
-            .map(|region| region.action.clone())
-        else {
-            return false;
-        };
+            .map(|region| region.action.clone());
+        let blurred = self.focused_input.is_some()
+            && !matches!(action.as_ref(), Some(Action::FocusTextInput { .. }));
+        if blurred {
+            self.focused_input = None;
+        }
 
-        if !self.apply(action) {
+        let changed = action.is_some_and(|action| self.apply(action));
+        if !changed && !blurred {
             return false;
         }
 
@@ -634,6 +691,48 @@ impl Engine {
         true
     }
 
+    pub const fn text_input_active(&self) -> bool {
+        self.focused_input.is_some()
+    }
+
+    pub const fn text_input_action(&self) -> TextInputAction {
+        self.focused_input_action
+    }
+
+    pub fn edit_text(&mut self, edit: TextEdit) -> bool {
+        let Some(state) = self.focused_input else {
+            return false;
+        };
+        let changed = match edit {
+            TextEdit::Insert(text) if !text.chars().any(char::is_control) => {
+                let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                value.push_str(&text);
+                true
+            }
+            TextEdit::Backspace => {
+                let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
+                    return false;
+                };
+                let Some(last) = value.grapheme_indices(true).next_back() else {
+                    return false;
+                };
+                value.truncate(last.0);
+                true
+            }
+            TextEdit::Submit | TextEdit::Dismiss => {
+                self.focused_input = None;
+                true
+            }
+            TextEdit::Insert(_) => false,
+        };
+        if changed {
+            self.rebuild_scene();
+        }
+        changed
+    }
+
     pub fn scene(&self) -> &Scene {
         &self.scene
     }
@@ -665,6 +764,13 @@ impl Engine {
                 };
                 *value = !*value;
             }
+            Action::FocusTextInput { state, action } => {
+                if self.focused_input == Some(state) && self.focused_input_action == action {
+                    return false;
+                }
+                self.focused_input = Some(state);
+                self.focused_input_action = action;
+            }
             Action::Navigate { path } => {
                 let NodeKind::Navigator { routes, .. } = &self.definition.root.kind else {
                     return false;
@@ -678,6 +784,7 @@ impl Engine {
                 self.navigation.push(route);
                 self.scroll_offset = 0.0;
                 self.pointer = None;
+                self.focused_input = None;
             }
             Action::Back => return self.pop_route(),
         }
@@ -691,6 +798,7 @@ impl Engine {
         self.navigation.pop();
         self.scroll_offset = 0.0;
         self.pointer = None;
+        self.focused_input = None;
         true
     }
 
@@ -878,7 +986,11 @@ impl Engine {
                     align: *align,
                 });
             }
-            NodeKind::TextInput { placeholder } => self.layout_text_input(placeholder, rect),
+            NodeKind::TextInput {
+                placeholder,
+                state,
+                action,
+            } => self.layout_text_input(placeholder, *state, *action, rect),
             NodeKind::Button {
                 label,
                 icon,
@@ -1200,29 +1312,61 @@ impl Engine {
         }
     }
 
-    fn layout_text_input(&mut self, placeholder: &str, rect: Rect) {
+    fn layout_text_input(
+        &mut self,
+        placeholder: &str,
+        state: StateId,
+        action: TextInputAction,
+        rect: Rect,
+    ) {
+        let value = match self.state.get(state.0) {
+            Some(StateValue::String(value)) => value.clone(),
+            _ => String::new(),
+        };
+        let focused = self.focused_input == Some(state);
+        let text = if value.is_empty() {
+            placeholder
+        } else {
+            &value
+        };
         let text_height = (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0);
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let visible_text = self.ellipsize(text, font_size, rect.width);
         self.scene.text.push(TextRun {
-            text: placeholder.to_owned(),
+            text: visible_text.clone(),
             rect: Rect {
                 height: text_height,
                 ..rect
             },
             clip: self.clip,
-            font_size: self.scaled_font(TEXT_INPUT_TEXT_SIZE),
+            font_size,
             colour: Colour::WHITE,
             align: TextAlign::Start,
         });
+        if focused && !value.is_empty() {
+            self.scene.quads.push(Quad {
+                rect: Rect {
+                    x: rect.x + self.text_width(&visible_text, font_size),
+                    y: rect.y + self.scaled(2.0),
+                    width: self.scaled(1.0),
+                    height: (text_height - self.scaled(4.0)).max(0.0),
+                },
+                clip: self.clip,
+                colour: Colour::WHITE,
+            });
+        }
+        let underline_height = self.scaled(1.0);
         self.scene.quads.push(Quad {
             rect: Rect {
                 x: rect.x,
-                y: rect.y + rect.height - self.scaled(1.0),
+                y: rect.y + rect.height - underline_height,
                 width: rect.width,
-                height: self.scaled(1.0),
+                height: underline_height,
             },
             clip: self.clip,
             colour: Colour::WHITE,
         });
+        self.push_hit_region(rect, Action::FocusTextInput { state, action });
     }
 
     fn layout_toggle(
@@ -1401,13 +1545,20 @@ impl Engine {
     fn text_width(&self, text: &str, font_size: f32) -> f32 {
         let scaled = self.font.as_scaled(PxScale::from(font_size));
         let mut previous = None;
-        text.chars().fold(0.0, |width, character| {
-            let glyph = scaled.glyph_id(character);
-            let kerning = previous
-                .map(|previous| scaled.kern(previous, glyph))
-                .unwrap_or_default();
-            previous = Some(glyph);
-            width + kerning + scaled.h_advance(glyph)
+        text.graphemes(true).fold(0.0, |mut width, grapheme| {
+            if emoji_index(grapheme).is_some() {
+                previous = None;
+                return width + font_size;
+            }
+            for character in grapheme.chars() {
+                let glyph = scaled.glyph_id(character);
+                let kerning = previous
+                    .map(|previous| scaled.kern(previous, glyph))
+                    .unwrap_or_default();
+                width += kerning + scaled.h_advance(glyph);
+                previous = Some(glyph);
+            }
+            width
         })
     }
 
@@ -1421,7 +1572,10 @@ impl Engine {
         while !visible.is_empty()
             && self.text_width(&visible, font_size) + ellipsis_width > available_width
         {
-            visible.pop();
+            let Some((index, _)) = visible.grapheme_indices(true).next_back() else {
+                break;
+            };
+            visible.truncate(index);
         }
         visible.push(ellipsis);
         visible
@@ -1441,6 +1595,14 @@ impl Engine {
             self.hit_regions.push(HitRegion { rect, action });
         }
     }
+}
+
+pub fn emoji_index(grapheme: &str) -> Option<usize> {
+    const EMOJI: [&str; 24] = [
+        "😅", "☺️", "🙃", "😍", "😜", "😂", "😭", "😎", "🙌", "👍", "👎", "🤞", "✌️", "👌", "👋",
+        "🙏", "✨", "🔥", "❤️", "💔", "🏆", "🎯", "👑", "👀",
+    ];
+    EMOJI.iter().position(|emoji| *emoji == grapheme)
 }
 
 #[derive(Clone, Copy, Debug, Default)]

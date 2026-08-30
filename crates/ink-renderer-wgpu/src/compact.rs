@@ -3,7 +3,11 @@ use std::{borrow::Cow, collections::HashMap, ops::Range};
 use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
-use ink_core::{Colour, ImageAsset, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign};
+use ink_core::{
+    APPLE_EMOJI_ATLAS, Colour, ImageAsset, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign,
+    emoji_index,
+};
+use unicode_segmentation::UnicodeSegmentation;
 
 const MAX_QUADS: usize = 64;
 const MAX_GLYPHS: usize = 512;
@@ -684,9 +688,19 @@ impl Renderer {
         if quads.len() > MAX_QUADS * 6 {
             return Err(anyhow!("scene exceeds the prototype quad budget"));
         }
-        let mut text = self.text_vertices(scene)?;
+        let (mut text, emoji) = self.text_vertices(scene)?;
         text.extend(self.mask_vertices(scene)?);
-        let (images, image_draws) = self.image_vertices(scene)?;
+        let (mut images, mut image_draws) = self.image_vertices(scene)?;
+        if !emoji.is_empty() {
+            self.image_cache
+                .prepare(&self.device, &self.queue, APPLE_EMOJI_ATLAS)?;
+            let start = images.len() as u32;
+            images.extend(emoji);
+            image_draws.push(ImageDraw {
+                id: APPLE_EMOJI_ATLAS.id,
+                vertices: start..images.len() as u32,
+            });
+        }
         if text.len() > MAX_GLYPHS * 6 {
             return Err(anyhow!("scene exceeds the prototype glyph budget"));
         }
@@ -777,27 +791,14 @@ impl Renderer {
         Ok(RenderOutcome::Presented)
     }
 
-    fn text_vertices(&mut self, scene: &Scene) -> Result<Vec<TextVertex>> {
+    fn text_vertices(&mut self, scene: &Scene) -> Result<(Vec<TextVertex>, Vec<TextVertex>)> {
         let font = self.glyph_atlas.font.clone();
         let mut vertices = Vec::new();
+        let mut emoji = Vec::new();
         for run in &scene.text {
             let size = run.font_size.round().clamp(1.0, u16::MAX as f32) as u16;
             let scaled = font.as_scaled(PxScale::from(size as f32));
-            let glyph_ids: Vec<_> = run
-                .text
-                .chars()
-                .map(|character| scaled.glyph_id(character))
-                .collect();
-            let width = glyph_ids
-                .iter()
-                .enumerate()
-                .fold(0.0, |width, (index, id)| {
-                    let kern = index
-                        .checked_sub(1)
-                        .map(|previous| scaled.kern(glyph_ids[previous], *id))
-                        .unwrap_or_default();
-                    width + kern + scaled.h_advance(*id)
-                });
+            let width = text_run_width(&scaled, &run.text, size as f32);
             let mut pen_x = match run.align {
                 TextAlign::Start => run.rect.x,
                 TextAlign::Centre => run.rect.x + (run.rect.width - width).max(0.0) / 2.0,
@@ -805,30 +806,51 @@ impl Renderer {
             };
             let baseline = run.rect.y + (run.rect.height - scaled.height()) / 2.0 + scaled.ascent();
             let mut previous = None;
-            for id in glyph_ids {
-                if let Some(previous) = previous {
-                    pen_x += scaled.kern(previous, id);
-                }
-                if let Some(glyph) = self.glyph_atlas.glyph(&self.queue, id, size)? {
-                    push_text_quad(
-                        &mut vertices,
+            for grapheme in run.text.graphemes(true) {
+                if let Some(index) = emoji_index(grapheme) {
+                    let emoji_size = size as f32 * 0.9;
+                    push_atlas_quad(
+                        &mut emoji,
                         scene,
-                        intersect(run.rect, run.clip),
                         Rect {
-                            x: pen_x + glyph.offset_x,
-                            y: baseline + glyph.offset_y,
-                            width: glyph.width as f32,
-                            height: glyph.height as f32,
+                            x: pen_x + (size as f32 - emoji_size) / 2.0,
+                            y: run.rect.y + (run.rect.height - emoji_size) / 2.0,
+                            width: emoji_size,
+                            height: emoji_size,
                         },
-                        glyph,
-                        run.colour,
+                        intersect(run.rect, run.clip),
+                        index,
                     );
+                    pen_x += size as f32;
+                    previous = None;
+                    continue;
                 }
-                pen_x += scaled.h_advance(id);
-                previous = Some(id);
+                for character in grapheme.chars() {
+                    let id = scaled.glyph_id(character);
+                    if let Some(previous) = previous {
+                        pen_x += scaled.kern(previous, id);
+                    }
+                    if let Some(glyph) = self.glyph_atlas.glyph(&self.queue, id, size)? {
+                        push_text_quad(
+                            &mut vertices,
+                            scene,
+                            intersect(run.rect, run.clip),
+                            Rect {
+                                x: pen_x + glyph.offset_x,
+                                y: baseline + glyph.offset_y,
+                                width: glyph.width as f32,
+                                height: glyph.height as f32,
+                            },
+                            glyph,
+                            run.colour,
+                        );
+                    }
+                    pen_x += scaled.h_advance(id);
+                    previous = Some(id);
+                }
             }
         }
-        Ok(vertices)
+        Ok((vertices, emoji))
     }
 
     fn mask_vertices(&mut self, scene: &Scene) -> Result<Vec<TextVertex>> {
@@ -864,6 +886,27 @@ impl Renderer {
         }
         Ok((vertices, draws))
     }
+}
+
+fn text_run_width<F: Font>(font: &impl ScaleFont<F>, text: &str, emoji_size: f32) -> f32 {
+    let mut width = 0.0;
+    let mut previous = None;
+    for grapheme in text.graphemes(true) {
+        if emoji_index(grapheme).is_some() {
+            width += emoji_size;
+            previous = None;
+            continue;
+        }
+        for character in grapheme.chars() {
+            let glyph = font.glyph_id(character);
+            width += previous
+                .map(|previous| font.kern(previous, glyph))
+                .unwrap_or_default();
+            width += font.h_advance(glyph);
+            previous = Some(glyph);
+        }
+    }
+    width
 }
 
 fn colour_target(format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
@@ -1099,6 +1142,67 @@ fn push_image_quad(
     let clipped_v0 = v0 + (visible.y - rect.y) / rect.height * source_height;
     let clipped_u1 = u0 + (visible.x + visible.width - rect.x) / rect.width * source_width;
     let clipped_v1 = v0 + (visible.y + visible.height - rect.y) / rect.height * source_height;
+    let [left, top] = position(scene, visible.x, visible.y);
+    let [right, bottom] = position(scene, visible.x + visible.width, visible.y + visible.height);
+    let colour = [1.0; 4];
+    vertices.extend_from_slice(&[
+        TextVertex {
+            position: [left, top],
+            uv: [clipped_u0, clipped_v0],
+            colour,
+        },
+        TextVertex {
+            position: [left, bottom],
+            uv: [clipped_u0, clipped_v1],
+            colour,
+        },
+        TextVertex {
+            position: [right, bottom],
+            uv: [clipped_u1, clipped_v1],
+            colour,
+        },
+        TextVertex {
+            position: [left, top],
+            uv: [clipped_u0, clipped_v0],
+            colour,
+        },
+        TextVertex {
+            position: [right, bottom],
+            uv: [clipped_u1, clipped_v1],
+            colour,
+        },
+        TextVertex {
+            position: [right, top],
+            uv: [clipped_u1, clipped_v0],
+            colour,
+        },
+    ]);
+}
+
+fn push_atlas_quad(
+    vertices: &mut Vec<TextVertex>,
+    scene: &Scene,
+    rect: Rect,
+    clip: Rect,
+    index: usize,
+) {
+    let visible = intersect(rect, clip);
+    if visible.width <= 0.0 || visible.height <= 0.0 {
+        return;
+    }
+    let column = index % 8;
+    let row = index / 8;
+    let cell_u = 1.0 / 8.0;
+    let cell_v = 1.0 / 3.0;
+    let u0 = column as f32 * cell_u;
+    let v0 = row as f32 * cell_v;
+    let u1 = u0 + cell_u;
+    let v1 = v0 + cell_v;
+    let clipped_u0 = u0 + (visible.x - rect.x) / rect.width * cell_u;
+    let clipped_v0 = v0 + (visible.y - rect.y) / rect.height * cell_v;
+    let clipped_u1 = u1 - (rect.x + rect.width - visible.x - visible.width) / rect.width * cell_u;
+    let clipped_v1 =
+        v1 - (rect.y + rect.height - visible.y - visible.height) / rect.height * cell_v;
     let [left, top] = position(scene, visible.x, visible.y);
     let [right, bottom] = position(scene, visible.x + visible.width, visible.y + visible.height);
     let colour = [1.0; 4];

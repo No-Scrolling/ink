@@ -3,6 +3,9 @@ package com.vandam.ink
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.fonts.Font
+import android.graphics.fonts.FontFamily
 import android.os.Bundle
 import android.view.Choreographer
 import android.view.MotionEvent
@@ -14,14 +17,22 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.widget.FrameLayout
 import android.widget.OverScroller
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import java.nio.ByteBuffer
 import kotlin.math.abs
 
 class MainActivity : Activity(), SurfaceHolder.Callback {
+    internal val publicSansTypeface: Typeface by lazy(LazyThreadSafetyMode.NONE) {
+        Typeface.CustomFallbackBuilder(
+            FontFamily.Builder(Font.Builder(nativePublicSans()).build()).build(),
+        ).build()
+    }
     private lateinit var inkView: InkSurfaceView
+    private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
     private val backCallback = OnBackInvokedCallback {
@@ -35,6 +46,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun handleBack() {
         inkView.stopScrolling()
+        if (textInputAdapter.dismiss()) {
+            return
+        }
         if (engineHandle == 0L || !nativeBack(engineHandle)) {
             finish()
         }
@@ -56,9 +70,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             holder.setFormat(PixelFormat.RGBA_8888)
             holder.addCallback(this@MainActivity)
         }
-
+        val root = FrameLayout(this).apply {
+            addView(
+                inkView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+        textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
         setContentView(
-            inkView,
+            root,
             ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -131,6 +154,27 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    private fun handleTextEdit(edit: TextEdit) {
+        if (engineHandle == 0L) {
+            return
+        }
+        val (action, value) = when (edit) {
+            is TextEdit.Insert -> TEXT_INPUT_INSERT to edit.text
+            TextEdit.Backspace -> TEXT_INPUT_BACKSPACE to null
+            TextEdit.Submit -> TEXT_INPUT_SUBMIT to null
+            TextEdit.Dismiss -> TEXT_INPUT_DISMISS to null
+        }
+        nativeTextInput(engineHandle, action, value)
+        syncTextInput()
+    }
+
+    private fun syncTextInput() {
+        textInputAdapter.sync(
+            nativeTextInputActive(engineHandle),
+            nativeTextInputAction(engineHandle),
+        )
+    }
+
     private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
         private val choreographer = Choreographer.getInstance()
         private val minimumFlingVelocity =
@@ -190,6 +234,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
             if (engineHandle != 0L && surfaceAttached) {
                 nativePointer(engineHandle, event.actionMasked, event.x, event.y)
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    syncTextInput()
+                }
             }
             if (flingVelocity != 0) {
                 startFling(flingVelocity)
@@ -234,12 +281,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private companion object {
+        private const val TEXT_INPUT_INSERT = 0
+        private const val TEXT_INPUT_BACKSPACE = 1
+        private const val TEXT_INPUT_SUBMIT = 2
+        private const val TEXT_INPUT_DISMISS = 3
+
         init {
             System.loadLibrary("ink_android")
         }
 
         @JvmStatic
         private external fun nativeCreate(): Long
+
+        @JvmStatic
+        private external fun nativePublicSans(): ByteBuffer
 
         @JvmStatic
         private external fun nativeAttachSurface(
@@ -265,6 +320,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeBack(handle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeTextInputActive(handle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeTextInputAction(handle: Long): Int
+
+        @JvmStatic
+        private external fun nativeTextInput(handle: Long, action: Int, value: String?): Boolean
 
         @JvmStatic
         private external fun nativeDetachSurface(handle: Long)
