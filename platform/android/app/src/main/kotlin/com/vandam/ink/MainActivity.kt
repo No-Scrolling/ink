@@ -36,6 +36,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         ).build()
     }
     private lateinit var inkView: InkSurfaceView
+    private lateinit var lightSdkAdapter: LightSdkAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
@@ -90,6 +91,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             )
         }
         textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
+        lightSdkAdapter = createLightSdkAdapter(this, textInputAdapter::setHapticsEnabled)
+        lightSdkAdapter.start()
         setContentView(
             root,
             ViewGroup.LayoutParams(
@@ -109,6 +112,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (hasFocus) {
             enterFullscreen()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lightSdkAdapter.refresh()
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -144,6 +152,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             persistenceExecutor.shutdown()
         }
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
+        lightSdkAdapter.stop()
         detachSurface()
         if (engineHandle != 0L) {
             nativeDestroy(engineHandle)
@@ -280,10 +289,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             }
             if (engineHandle != 0L && surfaceAttached) {
-                if (nativePointer(engineHandle, event.actionMasked, event.x, event.y)) {
+                val changed = nativePointer(engineHandle, event.actionMasked, event.x, event.y)
+                if (changed) {
                     schedulePersistence()
                 }
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    if (changed) {
+                        lightSdkAdapter.performHaptic(this)
+                    }
                     syncTextInput()
                 }
             }

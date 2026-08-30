@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
 };
 
@@ -11,6 +11,7 @@ use crate::{
         Action, App, Condition, Node, Route, State, StateId, StateLifetime, Tab, TextPart, Value,
     },
     lower::{self, ModuleKind},
+    resolver::ModuleResolver,
 };
 
 pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
@@ -20,11 +21,14 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
     let mut compiler = Compiler {
         project_root,
         stack: Vec::new(),
+        extensions: BTreeSet::new(),
         states: Vec::new(),
         keyed_states: HashMap::new(),
+        resolver: ModuleResolver::new(project_root),
     };
     let root = compiler.module(&entry, ModuleKind::App)?;
     let app = App {
+        extensions: compiler.extensions,
         states: compiler.states,
         root,
     };
@@ -35,8 +39,10 @@ pub fn compile(project_root: &Path, entry: &Path) -> Result<App> {
 struct Compiler<'a> {
     project_root: &'a Path,
     stack: Vec<PathBuf>,
+    extensions: BTreeSet<crate::ir::Extension>,
     states: Vec<State>,
     keyed_states: HashMap<String, StateId>,
+    resolver: ModuleResolver,
 }
 
 impl Compiler<'_> {
@@ -85,8 +91,9 @@ impl Compiler<'_> {
             bail!("{}:\n{diagnostics}", path.display());
         }
 
-        let app = lower::lower(&parsed.program, self.project_root, path, kind)
+        let app = lower::lower(&parsed.program, path, kind, &self.resolver)
             .map_err(|error| anyhow::anyhow!(error.render(path, &source)))?;
+        self.extensions.extend(app.extensions);
         let mapping = app
             .states
             .into_iter()
@@ -201,6 +208,7 @@ impl Compiler<'_> {
             node @ (Node::Text { .. }
             | Node::TextInput { .. }
             | Node::Button { .. }
+            | Node::SelectorButton { .. }
             | Node::Icon { .. }
             | Node::Image { .. }
             | Node::Toggle { .. }) => node,
@@ -244,6 +252,17 @@ fn remap_node(node: &mut Node, mapping: &[StateId]) {
         }
         Node::Button { label, action, .. } => {
             for part in label {
+                match part {
+                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
+                    TextPart::Literal(_) | TextPart::Item(_) => {}
+                }
+            }
+            if let Some(action) = action {
+                remap_action(action, mapping);
+            }
+        }
+        Node::SelectorButton { value, action, .. } => {
+            for part in value {
                 match part {
                     TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
                     TextPart::Literal(_) | TextPart::Item(_) => {}

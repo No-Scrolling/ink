@@ -41,6 +41,7 @@ export declare function Stack(props: Ink.StackProps): Ink.Element;
 export declare function Text(props: Ink.TextProps): Ink.Element;
 export declare function TextInput(props: Ink.TextInputProps): Ink.Element;
 export declare function Button(props: Ink.ButtonProps): Ink.Element;
+export declare function SelectorButton(props: Ink.SelectorButtonProps): Ink.Element;
 export declare function Icon(props: Ink.IconProps): Ink.Element;
 export declare function Image(props: Ink.ImageProps): Ink.Element;
 export declare function Toggle(props: Ink.ToggleProps): Ink.Element;
@@ -89,14 +90,20 @@ export namespace Ink {
     action?: "search" | "return" | "done";
   }
 
+  type PressProps =
+    | { href: string; onPress?: never }
+    | { href?: never; onPress?: () => void };
+
   type ButtonProps = {
     children: TextContent;
     icon?: string;
     underline?: boolean;
-  } & (
-    | { href: string; onPress?: never }
-    | { href?: never; onPress?: () => void }
-  );
+  } & PressProps;
+
+  type SelectorButtonProps = {
+    children: TextContent;
+    label: string;
+  } & PressProps;
 
   interface IconProps {
     name: string;
@@ -151,6 +158,7 @@ export namespace JSX {
     Text: Ink.TextProps;
     TextInput: Ink.TextInputProps;
     Button: Ink.ButtonProps;
+    SelectorButton: Ink.SelectorButtonProps;
     Icon: Ink.IconProps;
     Image: Ink.ImageProps;
     Toggle: Ink.ToggleProps;

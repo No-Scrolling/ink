@@ -6,6 +6,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ink/light-sdk": "file:../../packages/light-sdk",
     "ink": "file:../../packages/ink"
   },
   "devDependencies": {

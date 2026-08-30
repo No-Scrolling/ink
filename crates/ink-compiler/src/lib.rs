@@ -5,6 +5,7 @@ mod icon;
 mod icons;
 mod ir;
 mod lower;
+mod resolver;
 mod source;
 
 use std::path::{Path, PathBuf};
@@ -14,6 +15,7 @@ pub use config::ReleaseSigning;
 use config::ResolvedConfig;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AppFeatures {
+    pub light_sdk: bool,
     pub text_input: bool,
 }
 
@@ -54,6 +56,10 @@ impl Project {
 
     pub fn release_signing(&self) -> Option<&ReleaseSigning> {
         self.config.signing.as_ref()
+    }
+
+    pub fn light_server(&self) -> &str {
+        &self.config.light_server
     }
 
     pub fn root(&self) -> &Path {
@@ -104,6 +110,7 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
     let app = source::compile(project.root(), &project.config.source)?;
     Ok(GeneratedApp {
         features: AppFeatures {
+            light_sdk: app.extensions.contains(&ir::Extension::LightSdk),
             text_input: uses_text_input(&app.root),
         },
         source: codegen::generate(&app, project.root())?,
@@ -126,6 +133,7 @@ fn uses_text_input(node: &ir::Node) -> bool {
         ir::Node::ForEach { template, .. } => uses_text_input(template),
         ir::Node::Text { .. }
         | ir::Node::Button { .. }
+        | ir::Node::SelectorButton { .. }
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
         | ir::Node::Toggle { .. } => false,

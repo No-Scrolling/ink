@@ -3,7 +3,7 @@
 Ink keeps its public authoring surface small and pushes complexity into a few deep modules.
 
 ```text
-App.tsx + local screen modules
+App.tsx + local or installed screen modules + extension imports
    |
    v
 ink-compiler: parse -> validate -> typed lowering -> generated Rust
@@ -30,7 +30,7 @@ This is the app-author interface. It contains compile-time TypeScript declaratio
 
 ### `crates/ink-compiler`
 
-The compiler module hides TSX parsing, the local screen-module graph, restricted-language validation, typed lowering, Rust generation, diagnostics and app branding. `App.tsx` is the composition root; relative `.tsx` modules are zero-argument screens expanded at compile time. Local state receives a linked application ID, while matching shared and persisted keys link declarations in separate screens to one slot. Its interface is one build input, a set of generated native artefacts and the native capabilities used by that app. Oxc is an implementation detail behind this seam.
+The compiler module hides package resolution, TSX parsing, the screen-module graph, restricted-language validation, typed lowering, Rust generation, diagnostics and app branding. `App.tsx` is the composition root; local and package-exported `.tsx` modules are zero-argument screens expanded at compile time. Oxc Resolver follows normal `node_modules` lookup and the `ink` export condition behind a framework-owned resolver seam. Local state receives a linked application ID, while matching shared and persisted keys link declarations in separate screens to one slot. Its interface is one build input, a set of generated native artefacts and the native capabilities used by that app.
 
 ### `crates/ink-core`
 
@@ -42,11 +42,11 @@ The renderer module consumes a clipped display list and owns the Vulkan surface,
 
 ### `platform/android`
 
-Android is an adapter. It supplies a surface, lifecycle, pointer events, text edits, system-back requests and app-private persistence through a coarse JNI seam. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. The compiler detects `TextInput` and Gradle includes Ink's keyboard source set and resources only for those apps. The adapter builds its `Typeface` from the same static Public Sans bytes used by the renderer, exposed as a direct buffer rather than duplicated as an Android font resource. Rust still owns the text value, focus state and persistence format.
+Android is an adapter. It supplies a surface, lifecycle, pointer events, text edits, system-back requests and app-private persistence through a coarse JNI seam. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. The compiler detects `TextInput` and the `@ink/light-sdk` extension independently; Gradle includes only the required keyboard and Light SDK source sets. The keyboard builds its `Typeface` from the same static Public Sans bytes used by the renderer, exposed as a direct buffer rather than duplicated as an Android font resource. The Light SDK adapter owns service discovery, Binder authentication, protocol version checks and preference translation without pulling Compose into the app. Rust still owns the text value, focus state and persistence format.
 
 ### `examples`
 
-The counter is the smallest interactive example, exercising one state value and one action on a single screen. The light-template example keeps navigation composition in `App.tsx` and places each tab or nested page in a screen module, while mirroring the template for deterministic visual comparisons. Generated Rust and Android resources stay in each example's ignored `.ink/` directory.
+The counter is the smallest interactive example, exercising one state value and one action on a single screen. The light-template example keeps navigation composition in `App.tsx` and places each tab or nested page in a local screen module, while mirroring the template for deterministic visual comparisons. It imports the first-party Light SDK extension to exercise conditional native integration. Generated Rust and Android resources stay in each example's ignored `.ink/` directory.
 
 ## Deliberate constraints
 
@@ -55,9 +55,10 @@ The counter is the smallest interactive example, exercising one state value and 
 - Public Sans Regular is the default and only bundled font in v0.
 - Text is full-opacity, scalar left-to-right with kerning in v0. The supported 24 emoji use compact colour atlases and grapheme-safe editing; complex shaping, wrapping, general font fallback, bold and italic remain future capabilities.
 - Material Symbols are rasterised by the compiler. General interface icons use the outlined variant at weight 300 and bottom navigation icons use the filled variant at weight 400; only referenced glyph masks enter generated application code.
-- Images are local compile-time PNG assets in v0; remote and Light SDK resources need a resource adapter.
-- No JavaScript runtime or arbitrary production npm packages.
+- Images are local compile-time PNG assets in v0; remote and Light SDK resources need further resource adapters.
+- No JavaScript runtime or arbitrary JavaScript packages. Installed Ink source packages are compiled under the same restricted language as application screens.
 - No idle animation loop; redraw only after invalidation or while native scrolling is active.
 - Blank black Android splash and first frame.
 - First-letter black-and-white launcher artwork generated from app metadata.
-- The keyboard is a conditional, Canvas-rendered Android adapter and is absent from apps without `TextInput`; it does not bring Compose into the application. Light SDK remains a future adapter rather than a dependency of the core module.
+- The keyboard is a conditional, Canvas-rendered Android adapter and is absent from apps without `TextInput`; it does not bring Compose into the application.
+- Light SDK support is another conditional Android adapter. It is absent without `@ink/light-sdk`, pins one upstream protocol version and does not become a dependency of the core module.

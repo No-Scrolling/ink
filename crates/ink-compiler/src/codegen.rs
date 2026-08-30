@@ -145,6 +145,21 @@ impl<'a> Emitter<'a> {
                 };
                 quote! { Node::button(vec![#(#label),*], #icon, #underline, #action) }
             }
+            Node::SelectorButton {
+                label,
+                value,
+                action,
+            } => {
+                let value = value.iter().map(text_part);
+                let action = match action {
+                    Some(action) => {
+                        let action = action_tokens(action);
+                        quote! { Some(#action) }
+                    }
+                    None => quote! { None },
+                };
+                quote! { Node::selector_button(#label, vec![#(#value),*], #action) }
+            }
             Node::Icon { name, size, tone } => {
                 let size = size.unwrap_or(DEFAULT_ICON_SIZE);
                 let mask = self.mask(name, size)?;

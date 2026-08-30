@@ -165,6 +165,11 @@ fn gradle_command(project: &Project, profile: Profile, features: AppFeatures) ->
         .arg(format!("-PinkApplicationId={}", project.package()))
         .arg(format!("-PinkVersionName={}", project.version()))
         .arg(format!("-PinkVersionCode={}", project.version_code()))
+        .arg(format!("-PinkUsesLightSdk={}", features.light_sdk))
+        .arg(format!(
+            "-PinkLightServerPackage={}",
+            project.light_server()
+        ))
         .arg(format!("-PinkUsesTextInput={}", features.text_input))
         .arg(format!(
             "-PinkGeneratedSource={}",

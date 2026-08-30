@@ -191,6 +191,7 @@ fn show_info(project: &Project) -> Result<()> {
         format!("{} ({})", project.version(), project.version_code()),
     );
     output::field("Source", project.source_path().display().to_string());
+    output::field("Light server", project.light_server());
     output::field("Target", "Android arm64");
     output::field("Ink", env!("CARGO_PKG_VERSION"));
     output::field(

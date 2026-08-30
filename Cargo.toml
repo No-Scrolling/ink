@@ -24,6 +24,7 @@ jni = "0.22.4"
 miniz_oxide = "0.8.9"
 ndk = "0.9.0"
 oxc = { version = "0.147.0", default-features = false, features = ["semantic"] }
+oxc_resolver = "11.24.3"
 owo-colors = { version = "4.2.3", features = ["supports-colors"] }
 pollster = "0.4.0"
 prettyplease = "0.2.37"

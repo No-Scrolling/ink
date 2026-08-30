@@ -15,7 +15,15 @@ val inkVersionCode = providers.gradleProperty("inkVersionCode").orElse("1")
 val inkSigning = providers.gradleProperty("inkSigning").orElse("development")
 val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
 val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
+val inkUsesLightSdk = providers.gradleProperty("inkUsesLightSdk").orElse("false")
+val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
+val inkLightSdkVersion = "0.1.1"
+val inkLightSdkMarkerAction = if (inkUsesLightSdk.get().toBoolean()) {
+    "com.thelightphone.sdk.ACTION_SDK_MARKER"
+} else {
+    "com.vandam.ink.NO_LIGHT_SDK"
+}
 
 android {
     namespace = "com.vandam.ink"
@@ -29,6 +37,16 @@ android {
         versionCode = inkVersionCode.get().toInt()
         versionName = inkVersionName.get()
         resValue("string", "app_name", inkAppName.get())
+        manifestPlaceholders["inkLightSdkEnabled"] = inkUsesLightSdk.get()
+        manifestPlaceholders["inkLightSdkMarkerAction"] = inkLightSdkMarkerAction
+        manifestPlaceholders["inkLightSdkVersion"] = inkLightSdkVersion
+        manifestPlaceholders["inkLightServerPackage"] = inkLightServerPackage.get()
+        buildConfigField(
+            "String",
+            "INK_LIGHT_SERVER_PACKAGE",
+            "\"${inkLightServerPackage.get()}\"",
+        )
+        buildConfigField("String", "INK_LIGHT_SDK_VERSION", "\"$inkLightSdkVersion\"")
     }
 
     signingConfigs {
@@ -56,6 +74,13 @@ android {
                 "src/textInput/kotlin"
             } else {
                 "src/noTextInput/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesLightSdk.get().toBoolean()) {
+                "src/lightSdk/kotlin"
+            } else {
+                "src/noLightSdk/kotlin"
             },
         )
         if (inkUsesTextInput.get().toBoolean()) {
@@ -91,6 +116,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 }
 

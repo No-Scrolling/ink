@@ -1,3 +1,4 @@
+import "@ink/light-sdk";
 import { Navigator, Route, Tab, Tabs, state } from "ink";
 import Confirm from "./screens/Confirm";
 import Home from "./screens/Home";

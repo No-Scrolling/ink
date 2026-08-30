@@ -10,4 +10,6 @@ internal fun createTextInputAdapter(
     override fun sync(active: Boolean, action: Int) = Unit
 
     override fun dismiss() = false
+
+    override fun setHapticsEnabled(enabled: Boolean) = Unit
 }

@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
 use oxc::span::Span;
 
@@ -13,8 +16,14 @@ pub struct SourceSpan {
 
 #[derive(Debug)]
 pub struct App {
+    pub extensions: BTreeSet<Extension>,
     pub states: Vec<State>,
     pub root: Node,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Extension {
+    LightSdk,
 }
 
 #[derive(Debug)]
@@ -133,6 +142,11 @@ pub enum Node {
         label: Vec<TextPart>,
         icon: Option<String>,
         underline: bool,
+        action: Option<Action>,
+    },
+    SelectorButton {
+        label: String,
+        value: Vec<TextPart>,
         action: Option<Action>,
     },
     Icon {

@@ -13,6 +13,7 @@ struct AppConfig {
     #[serde(default = "default_version_code")]
     version_code: u32,
     signing: Option<SigningConfig>,
+    light: Option<LightConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -20,6 +21,13 @@ struct AppConfig {
 struct SigningConfig {
     keystore: PathBuf,
     key_alias: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LightConfig {
+    #[serde(default = "default_light_server")]
+    server: String,
 }
 
 #[derive(Clone, Debug)]
@@ -38,6 +46,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) generated: PathBuf,
     pub(crate) android_resources: PathBuf,
     pub(crate) signing: Option<ReleaseSigning>,
+    pub(crate) light_server: String,
 }
 
 impl ResolvedConfig {
@@ -61,6 +70,9 @@ impl ResolvedConfig {
                 keystore: directory.join(signing.keystore),
                 key_alias: signing.key_alias,
             }),
+            light_server: config
+                .light
+                .map_or_else(default_light_server, |light| light.server),
         })
     }
 }
@@ -86,6 +98,14 @@ fn validate(config: &AppConfig) -> Result<()> {
     {
         anyhow::bail!("signing.key_alias must not be empty");
     }
+    if let Some(light) = &config.light
+        && (!light.server.split('.').all(valid_package_segment) || !light.server.contains('.'))
+    {
+        anyhow::bail!(
+            "light.server {:?} is invalid; use a dotted Android application ID such as com.lightos",
+            light.server
+        );
+    }
     Ok(())
 }
 
@@ -103,4 +123,8 @@ fn default_version() -> String {
 
 fn default_version_code() -> u32 {
     1
+}
+
+fn default_light_server() -> String {
+    "com.lightos".to_owned()
 }

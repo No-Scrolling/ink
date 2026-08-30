@@ -25,6 +25,9 @@ const DEFAULT_ICON_SIZE: f32 = 28.0;
 const BUTTON_HEIGHT: f32 = 40.0;
 const BUTTON_ICON_SIZE: f32 = 30.0;
 const BUTTON_ICON_GAP: f32 = 12.0;
+const SELECTOR_LABEL_SIZE: f32 = 20.0;
+const SELECTOR_LABEL_HEIGHT: f32 = 25.0;
+const SELECTOR_HEIGHT: f32 = SELECTOR_LABEL_HEIGHT + BUTTON_HEIGHT;
 const CONTENT_INSET_START: f32 = 37.0;
 const CONTENT_INSET_END: f32 = 46.0;
 const CONTENT_TOP: f32 = 14.0;
@@ -433,6 +436,11 @@ enum NodeKind {
         underline: bool,
         action: Option<Action>,
     },
+    SelectorButton {
+        label: String,
+        value: Vec<TextPart>,
+        action: Option<Action>,
+    },
     Icon {
         mask: Mask,
         size: f32,
@@ -534,6 +542,20 @@ impl Node {
                 label,
                 icon,
                 underline,
+                action,
+            },
+        }
+    }
+
+    pub fn selector_button(
+        label: impl Into<String>,
+        value: Vec<TextPart>,
+        action: Option<Action>,
+    ) -> Self {
+        Self {
+            kind: NodeKind::SelectorButton {
+                label: label.into(),
+                value,
                 action,
             },
         }
@@ -1328,6 +1350,17 @@ impl Engine {
                     height: self.scaled(BUTTON_HEIGHT).min(available.height),
                 }
             }
+            NodeKind::SelectorButton { label, value, .. } => {
+                let label_width = self.text_width(label, self.scaled_font(SELECTOR_LABEL_SIZE));
+                let value_width = self.text_width(
+                    &self.resolve_text(value),
+                    self.scaled_font(DEFAULT_TEXT_SIZE),
+                );
+                MeasuredSize {
+                    width: label_width.max(value_width).ceil().min(available.width),
+                    height: self.scaled(SELECTOR_HEIGHT).min(available.height),
+                }
+            }
             NodeKind::Icon { size, .. } => {
                 let size = self.scaled(if *size > 0.0 {
                     *size
@@ -1410,6 +1443,11 @@ impl Engine {
                 underline,
                 action,
             } => self.layout_button(label, *icon, *underline, action, rect),
+            NodeKind::SelectorButton {
+                label,
+                value,
+                action,
+            } => self.layout_selector_button(label, value, action, rect),
             NodeKind::Icon { mask, tone, .. } => self.scene.masks.push(MaskRun {
                 mask: *mask,
                 rect,
@@ -1475,6 +1513,17 @@ impl Engine {
                 self.materialise_text(label, item),
                 *icon,
                 *underline,
+                action
+                    .as_ref()
+                    .map(|action| self.materialise_action(action, item)),
+            ),
+            NodeKind::SelectorButton {
+                label,
+                value,
+                action,
+            } => Node::selector_button(
+                label.clone(),
+                self.materialise_text(value, item),
                 action
                     .as_ref()
                     .map(|action| self.materialise_action(action, item)),
@@ -1939,6 +1988,41 @@ impl Engine {
         }
     }
 
+    fn layout_selector_button(
+        &mut self,
+        label: &str,
+        value: &[TextPart],
+        action: &Option<Action>,
+        rect: Rect,
+    ) {
+        let label_height = self.scaled(SELECTOR_LABEL_HEIGHT).min(rect.height);
+        self.scene.text.push(TextRun {
+            text: label.to_owned(),
+            rect: Rect {
+                height: label_height,
+                ..rect
+            },
+            clip: self.clip,
+            font_size: self.scaled_font(SELECTOR_LABEL_SIZE),
+            colour: Colour::WHITE,
+            align: TextAlign::Start,
+        });
+        self.layout_button(
+            value,
+            None,
+            false,
+            &None,
+            Rect {
+                y: rect.y + label_height,
+                height: (rect.height - label_height).max(0.0),
+                ..rect
+            },
+        );
+        if let Some(action) = action {
+            self.push_hit_region(rect, action.clone());
+        }
+    }
+
     fn layout_text_input(
         &mut self,
         placeholder: &str,
@@ -2289,6 +2373,7 @@ fn stretchable(node: &Node) -> bool {
             | NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
+            | NodeKind::SelectorButton { .. }
             | NodeKind::Toggle { .. }
     )
 }

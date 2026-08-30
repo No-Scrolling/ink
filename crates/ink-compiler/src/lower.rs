@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -17,19 +17,21 @@ use oxc::{
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, App, Axis, Condition, ImageFit, Justification, Node, Route, SourceSpan,
-        State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment, TextPart, Tone,
-        Value,
+        Action, Alignment, App, Axis, Condition, Extension, ImageFit, Justification, Node, Route,
+        SourceSpan, State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment,
+        TextPart, Tone, Value,
     },
+    resolver::ModuleResolver,
 };
 
-const INK_IMPORTS: [&str; 16] = [
+const INK_IMPORTS: [&str; 17] = [
     "Button",
     "Icon",
     "Image",
     "Navigator",
     "Route",
     "Screen",
+    "SelectorButton",
     "Stack",
     "Tab",
     "Tabs",
@@ -65,6 +67,7 @@ pub enum ModuleKind {
 }
 
 struct Imports {
+    extensions: BTreeSet<Extension>,
     ink: HashSet<String>,
     screens: HashMap<String, PathBuf>,
     source_path: PathBuf,
@@ -72,21 +75,22 @@ struct Imports {
 
 pub fn lower(
     program: &oxc::ast::ast::Program<'_>,
-    project_root: &Path,
     source_path: &Path,
     kind: ModuleKind,
+    resolver: &ModuleResolver,
 ) -> Result<App, CompileError> {
-    let imports = validate_imports(program, project_root, source_path)?;
+    let imports = validate_imports(program, source_path, resolver)?;
     let function = app_function(program)?;
     lower_function(function, &imports, kind)
 }
 
 fn validate_imports(
     program: &oxc::ast::ast::Program<'_>,
-    project_root: &Path,
     source_path: &Path,
+    resolver: &ModuleResolver,
 ) -> Result<Imports, CompileError> {
     let allowed = HashSet::from(INK_IMPORTS);
+    let mut extensions = BTreeSet::new();
     let mut ink = HashSet::new();
     let mut screens = HashMap::new();
 
@@ -94,22 +98,13 @@ fn validate_imports(
         let Statement::ImportDeclaration(declaration) = statement else {
             continue;
         };
+        let source = declaration.source.value.as_str();
         let Some(specifiers) = &declaration.specifiers else {
-            return Err(CompileError::new(
-                "side-effect imports are not supported",
-                declaration.span,
-            ));
+            extensions.insert(resolver.extension(source_path, source, declaration.source.span)?);
+            continue;
         };
 
-        let source = declaration.source.value.as_str();
         if source != "ink" {
-            if !source.starts_with("./") && !source.starts_with("../") {
-                return Err(CompileError::new(
-                    "screen modules use relative imports",
-                    declaration.source.span,
-                )
-                .with_help("import Settings from \"./screens/Settings\""));
-            }
             let [ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier)] =
                 specifiers.as_slice()
             else {
@@ -128,7 +123,7 @@ fn validate_imports(
             }
             screens.insert(
                 local.to_owned(),
-                resolve_screen_module(project_root, source_path, source, declaration.source.span)?,
+                resolver.screen(source_path, source, declaration.source.span)?,
             );
             continue;
         }
@@ -166,38 +161,11 @@ fn validate_imports(
     }
 
     Ok(Imports {
+        extensions,
         ink,
         screens,
         source_path: source_path.to_owned(),
     })
-}
-
-fn resolve_screen_module(
-    project_root: &Path,
-    source_path: &Path,
-    source: &str,
-    span: Span,
-) -> Result<PathBuf, CompileError> {
-    let mut path = source_path
-        .parent()
-        .expect("a source path has a parent")
-        .join(source);
-    if path.extension().is_none() {
-        path.set_extension("tsx");
-    }
-    if path.extension().and_then(|extension| extension.to_str()) != Some("tsx") {
-        return Err(CompileError::new("screen modules must be .tsx files", span));
-    }
-    let path = path
-        .canonicalize()
-        .map_err(|_| CompileError::new(format!("could not find screen module {source:?}"), span))?;
-    if !path.starts_with(project_root) {
-        return Err(CompileError::new(
-            "screen modules must stay inside the Ink application",
-            span,
-        ));
-    }
-    Ok(path)
 }
 
 fn app_function<'a>(
@@ -357,7 +325,11 @@ fn lower_function(
         ),
         ModuleKind::Screen => CompileError::new("a screen module must return <Screen>", body.span),
     })?;
-    Ok(App { states, root })
+    Ok(App {
+        extensions: imports.extensions.clone(),
+        states,
+        root,
+    })
 }
 
 fn state_initialiser(
@@ -660,6 +632,7 @@ fn lower_node(
         "Text" => lower_text(element, states, item),
         "TextInput" => lower_text_input(element, states),
         "Button" => lower_button(element, states, imports, item),
+        "SelectorButton" => lower_selector_button(element, states, imports, item),
         "Icon" => lower_icon(element),
         "Image" => lower_image(element),
         "Toggle" => lower_toggle(element, states),
@@ -801,28 +774,7 @@ fn lower_button(
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
-    let href = optional_string_attribute(element, "href")?;
-    if href.is_some() && attribute(element, "onPress").is_some() {
-        return Err(CompileError::new(
-            "Button accepts either href or onPress, not both",
-            element.opening_element.span,
-        ));
-    }
-    let action = match href {
-        Some(path) => {
-            let span = attribute(element, "href")
-                .map_or(element.opening_element.span, |attribute| attribute.span);
-            validate_route_path(&path, span)?;
-            Some(Action::Navigate {
-                path,
-                source: SourceSpan {
-                    path: imports.source_path.clone(),
-                    span,
-                },
-            })
-        }
-        None => optional_button_action_attribute(element, states, imports, item)?,
-    };
+    let action = press_action(element, "Button", states, imports, item)?;
     let icon = optional_icon_attribute(element, "icon")?;
     let underline = button_underline(element, states)?;
     reject_other_attributes(element, &["onPress", "href", "icon", "underline"])?;
@@ -841,6 +793,53 @@ fn lower_button(
             alternate: Some(Box::new(button(label, action, false))),
         },
     })
+}
+
+fn lower_selector_button(
+    element: &JSXElement<'_>,
+    states: &HashMap<&str, StateBinding>,
+    imports: &Imports,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Node, CompileError> {
+    let label = required_string_attribute(element, "label")?;
+    let action = press_action(element, "SelectorButton", states, imports, item)?;
+    reject_other_attributes(element, &["label", "onPress", "href"])?;
+    Ok(Node::SelectorButton {
+        label,
+        value: lower_text_parts(element, states, item, "SelectorButton")?,
+        action,
+    })
+}
+
+fn press_action(
+    element: &JSXElement<'_>,
+    component: &str,
+    states: &HashMap<&str, StateBinding>,
+    imports: &Imports,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Option<Action>, CompileError> {
+    let href = optional_string_attribute(element, "href")?;
+    if href.is_some() && attribute(element, "onPress").is_some() {
+        return Err(CompileError::new(
+            format!("{component} accepts either href or onPress, not both"),
+            element.opening_element.span,
+        ));
+    }
+    match href {
+        Some(path) => {
+            let span = attribute(element, "href")
+                .map_or(element.opening_element.span, |attribute| attribute.span);
+            validate_route_path(&path, span)?;
+            Ok(Some(Action::Navigate {
+                path,
+                source: SourceSpan {
+                    path: imports.source_path.clone(),
+                    span,
+                },
+            }))
+        }
+        None => optional_button_action_attribute(element, states, imports, item),
+    }
 }
 
 fn lower_icon(element: &JSXElement<'_>) -> Result<Node, CompileError> {
@@ -1080,11 +1079,15 @@ fn validate_navigation_node(
         Node::Button {
             action: Some(Action::Navigate { path, source }),
             ..
+        }
+        | Node::SelectorButton {
+            action: Some(Action::Navigate { path, source }),
+            ..
         } => {
             let Some(routes) = routes else {
                 return Err(NavigationError {
                     source: source.path.clone(),
-                    error: CompileError::new("Button href requires a Navigator", source.span),
+                    error: CompileError::new("href requires a Navigator", source.span),
                 });
             };
             if !routes.contains(path.as_str()) {
@@ -1118,6 +1121,7 @@ fn validate_navigation_node(
         Node::Text { .. }
         | Node::TextInput { .. }
         | Node::Button { .. }
+        | Node::SelectorButton { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
         | Node::Toggle { .. } => {}

@@ -2,6 +2,7 @@
   "compilerOptions": {
     "jsx": "preserve",
     "jsxImportSource": "ink",
+    "customConditions": ["ink"],
     "module": "Preserve",
     "moduleResolution": "bundler",
     "noEmit": true,

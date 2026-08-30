@@ -57,6 +57,10 @@ private class InkKeyboardAdapter(
         return true
     }
 
+    override fun setHapticsEnabled(enabled: Boolean) {
+        keyboard.isHapticFeedbackEnabled = enabled
+    }
+
     override fun onText(text: String) {
         onEdit(TextEdit.Insert(text))
     }

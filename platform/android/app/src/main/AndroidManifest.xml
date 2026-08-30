@@ -8,6 +8,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Ink">
+        <meta-data
+            android:name="com.thelightphone.sdk.LIGHT_SERVER_PACKAGE"
+            android:value="${inkLightServerPackage}" />
         <activity
             android:name=".MainActivity"
             android:configChanges="density|fontScale|keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
@@ -20,5 +23,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver
+            android:name=".InkLightSdkReceiver"
+            android:enabled="${inkLightSdkEnabled}"
+            android:exported="true"
+            android:permission="normal">
+            <intent-filter>
+                <action android:name="${inkLightSdkMarkerAction}" />
+            </intent-filter>
+            <meta-data
+                android:name="com.thelightphone.sdk.SDK_VERSION"
+                android:value="${inkLightSdkVersion}" />
+        </receiver>
     </application>
+    <queries>
+        <intent>
+            <action android:name="${inkLightSdkMarkerAction}" />
+        </intent>
+    </queries>
 </manifest>
