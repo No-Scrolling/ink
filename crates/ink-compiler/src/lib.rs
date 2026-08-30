@@ -16,6 +16,7 @@ use config::ResolvedConfig;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AppFeatures {
     pub light_sdk: bool,
+    pub network: bool,
     pub text_input: bool,
     pub camera_permission: bool,
 }
@@ -112,6 +113,8 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
     Ok(GeneratedApp {
         features: AppFeatures {
             light_sdk: app.extensions.contains(&ir::Extension::LightSdk),
+            network: app.extensions.contains(&ir::Extension::Network)
+                || uses_remote_image(&app.root),
             text_input: uses_text_input(&app.root),
             camera_permission: app
                 .android_permissions
@@ -119,6 +122,38 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
         },
         source: codegen::generate(&app, project.root())?,
     })
+}
+
+fn uses_remote_image(node: &ir::Node) -> bool {
+    match node {
+        ir::Node::Image {
+            source: ir::ImageSource::Remote(_),
+            ..
+        } => true,
+        ir::Node::Screen { children, .. } | ir::Node::Stack { children, .. } => {
+            children.iter().any(uses_remote_image)
+        }
+        ir::Node::Tabs { tabs, .. } => tabs.iter().any(|tab| uses_remote_image(&tab.screen)),
+        ir::Node::Navigator { routes } => {
+            routes.iter().any(|route| uses_remote_image(&route.screen))
+        }
+        ir::Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => uses_remote_image(consequent) || alternate.as_deref().is_some_and(uses_remote_image),
+        ir::Node::ForEach { template, .. } => uses_remote_image(template),
+        ir::Node::Text { .. }
+        | ir::Node::TextInput { .. }
+        | ir::Node::Button { .. }
+        | ir::Node::SelectorButton { .. }
+        | ir::Node::Icon { .. }
+        | ir::Node::Image { .. }
+        | ir::Node::Toggle { .. } => false,
+        ir::Node::ScreenModule { .. } => {
+            unreachable!("screen modules are expanded before feature detection")
+        }
+    }
 }
 
 fn uses_text_input(node: &ir::Node) -> bool {

@@ -37,6 +37,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
     private lateinit var inkView: InkSurfaceView
     private lateinit var lightSdkAdapter: LightSdkAdapter
+    private lateinit var networkAdapter: NetworkAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private var engineHandle = 0L
     private var surfaceAttached = false
@@ -97,6 +98,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
         lightSdkAdapter = createLightSdkAdapter(this, textInputAdapter::setHapticsEnabled)
+        networkAdapter = createNetworkAdapter(this)
         lightSdkAdapter.start()
         drainNativeRequests()
         setContentView(
@@ -163,6 +165,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         lightSdkAdapter.stop()
+        networkAdapter.stop()
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
         detachSurface()
@@ -253,12 +256,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             if (kind == NATIVE_REQUEST_CANCEL) {
                 nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
                 lightSdkAdapter.cancel(requestId)
+                networkAdapter.cancel(requestId)
                 continue
             }
             val module = nativeRequestModule(engineHandle, requestId)
             val operation = nativeRequestOperation(engineHandle, requestId)
             val payload = nativeRequestPayload(engineHandle, requestId)
-            if (module != LIGHT_SDK_MODULE) {
+            val adapter = when (module) {
+                LIGHT_SDK_MODULE -> lightSdkAdapter
+                NETWORK_MODULE -> networkAdapter
+                else -> null
+            }
+            if (adapter == null) {
                 completeNativeRequest(
                     requestId,
                     kind,
@@ -271,7 +280,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 continue
             }
             val timeout = Runnable {
-                lightSdkAdapter.cancel(requestId)
+                adapter.cancel(requestId)
                 completeNativeRequest(
                     requestId,
                     kind,
@@ -287,7 +296,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 timeout,
                 nativeRequestTimeoutMs(engineHandle, requestId),
             )
-            lightSdkAdapter.execute(requestId, operation, payload) { result ->
+            adapter.execute(requestId, operation, payload) { result ->
                 runOnUiThread { completeNativeRequest(requestId, kind, result) }
             }
         }
@@ -304,7 +313,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             } else {
                 nativeCompleteAction(engineHandle, requestId)
             }
-            is NativeResult.Failure -> if (kind == NATIVE_REQUEST_RESOURCE) {
+            is NativeResult.Bytes -> nativeCompleteBytes(engineHandle, requestId, result.value)
+            is NativeResult.File -> try {
+                nativeCompleteFile(engineHandle, requestId, result.path)
+            } finally {
+                File(result.path).delete()
+            }
+            is NativeResult.Failure -> if (
+                kind == NATIVE_REQUEST_RESOURCE || kind == NATIVE_REQUEST_IMAGE
+            ) {
                 nativeFailRequest(
                     engineHandle,
                     requestId,
@@ -438,8 +455,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_DISMISS = 3
         private const val PERSISTENCE_DELAY_MS = 250L
         private const val LIGHT_SDK_MODULE = "light-sdk"
+        private const val NETWORK_MODULE = "network"
         private const val NATIVE_REQUEST_RESOURCE = 0
         private const val NATIVE_REQUEST_CANCEL = 2
+        private const val NATIVE_REQUEST_IMAGE = 3
 
         init {
             System.loadLibrary("ink_android")
@@ -517,6 +536,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             handle: Long,
             requestId: Long,
             value: String,
+        ): Boolean
+
+        @JvmStatic
+        private external fun nativeCompleteBytes(
+            handle: Long,
+            requestId: Long,
+            value: ByteArray,
+        ): Boolean
+
+        @JvmStatic
+        private external fun nativeCompleteFile(
+            handle: Long,
+            requestId: Long,
+            path: String,
         ): Boolean
 
         @JvmStatic

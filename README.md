@@ -41,10 +41,11 @@ export default function Counter() {
 - Tabs and stack navigation
 - Shared and persisted state
 - Async resources and native actions
+- Typed HTTPS data resources
 - Conditional and repeated UI
 - Momentum scrolling
 - Lightweight text input and keyboard
-- Local images and generated app icons
+- Local and remote images, plus generated app icons
 - Multi-file apps and installed UI packages
 - Android development, signing and device tooling through the `ink` CLI
 
@@ -52,7 +53,7 @@ export default function Counter() {
 
 - `ink` — UI, layout, navigation, state and persistence
 - `@ink/light-sdk` — LightOS integration
-- `@ink/network` — HTTP, WebSockets and connectivity (planned)
+- `@ink/network` — typed HTTPS JSON resources
 - `@ink/audio` — Playback and recording (planned)
 - `@ink/location` — Device location (planned)
 - `@ink/camera` — Camera and code scanning (planned)

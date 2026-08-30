@@ -8,8 +8,8 @@ use oxc::{allocator::Allocator, parser::Parser, semantic::SemanticBuilder, span:
 
 use crate::{
     ir::{
-        Action, App, Condition, Node, Resource, ResourceId, Route, State, StateId, StateLifetime,
-        Tab, TextPart, Value,
+        Action, App, Collection, Condition, ImageSource, Node, PayloadPart, Resource, ResourceId,
+        Route, State, StateId, StateLifetime, Tab, TextPart, Value,
     },
     lower::{self, ModuleKind},
     resolver::ModuleResolver,
@@ -113,7 +113,12 @@ impl Compiler<'_> {
         let resource_mapping = app
             .resources
             .into_iter()
-            .map(|resource| {
+            .map(|mut resource| {
+                for part in &mut resource.payload {
+                    if let PayloadPart::State(state) = part {
+                        remap(state, &mapping);
+                    }
+                }
                 let id = ResourceId(self.resources.len());
                 self.resources.push(resource);
                 id
@@ -229,8 +234,11 @@ impl Compiler<'_> {
                     .map(|node| self.expand_node(*node).map(Box::new))
                     .transpose()?,
             },
-            Node::ForEach { state, template } => Node::ForEach {
-                state,
+            Node::ForEach {
+                collection,
+                template,
+            } => Node::ForEach {
+                collection,
                 template: Box::new(self.expand_node(*template)?),
             },
             Node::ScreenModule { path } => self.module(&path, ModuleKind::Screen)?,
@@ -354,9 +362,27 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
                 remap_node(alternate, mapping, resource_mapping);
             }
         }
-        Node::ForEach { state, template } => {
-            remap(state, mapping);
+        Node::ForEach {
+            collection,
+            template,
+        } => {
+            match collection {
+                Collection::State(state) => remap(state, mapping),
+                Collection::Resource(resource, _) => remap_resource(resource, resource_mapping),
+            }
             remap_node(template, mapping, resource_mapping);
+        }
+        Node::Image {
+            source: ImageSource::Remote(parts),
+            ..
+        } => {
+            for part in parts {
+                match part {
+                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
+                    TextPart::Resource(resource, _) => remap_resource(resource, resource_mapping),
+                    TextPart::Literal(_) | TextPart::Item(_) => {}
+                }
+            }
         }
         Node::Icon { .. } | Node::Image { .. } => {}
         Node::ScreenModule { .. } => {}
@@ -366,7 +392,7 @@ fn remap_node(node: &mut Node, mapping: &[StateId], resource_mapping: &[Resource
 fn remap_action(action: &mut Action, mapping: &[StateId], resource_mapping: &[ResourceId]) {
     match action {
         Action::Increment { state, .. }
-        | Action::SetInt { state, .. }
+        | Action::SetNumber { state, .. }
         | Action::SetBool { state, .. }
         | Action::SetString { state, .. }
         | Action::Toggle { state }
@@ -384,7 +410,13 @@ fn remap_action(action: &mut Action, mapping: &[StateId], resource_mapping: &[Re
             }
         }
         Action::ReloadResource { resource } => remap_resource(resource, resource_mapping),
-        Action::Native { .. } => {}
+        Action::Native { operation } => {
+            for part in &mut operation.payload {
+                if let PayloadPart::State(state) = part {
+                    remap(state, mapping);
+                }
+            }
+        }
         Action::Navigate { .. } | Action::Back => {}
     }
 }
@@ -406,7 +438,7 @@ fn remap_value(value: &mut Value, mapping: &[StateId]) {
                 remap_value(value, mapping);
             }
         }
-        Value::Int(_) | Value::Bool(_) | Value::String(_) | Value::Item(_) => {}
+        Value::Number(_) | Value::Bool(_) | Value::String(_) | Value::Item(_) => {}
     }
 }
 

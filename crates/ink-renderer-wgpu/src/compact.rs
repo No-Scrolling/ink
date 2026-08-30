@@ -1,10 +1,14 @@
-use std::{borrow::Cow, collections::HashMap, ops::Range};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    ops::Range,
+};
 
 use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
-    APPLE_EMOJI_ATLAS, Colour, ImageAsset, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign,
+    APPLE_EMOJI_ATLAS, Colour, ImageData, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign,
     emoji_index,
 };
 use unicode_segmentation::UnicodeSegmentation;
@@ -13,6 +17,7 @@ const MAX_QUADS: usize = 64;
 const MAX_GLYPHS: usize = 512;
 const ATLAS_SIZE: u32 = 1024;
 const ATLAS_PADDING: u32 = 1;
+const IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, Pod, Zeroable)]
 #[repr(C)]
@@ -52,11 +57,14 @@ struct CachedImage {
     bind_group: wgpu::BindGroup,
     width: u32,
     height: u32,
+    bytes: usize,
+    last_used: u64,
 }
 
 struct ImageCache {
     bind_group_layout: wgpu::BindGroupLayout,
     images: HashMap<u64, CachedImage>,
+    frame: u64,
 }
 
 impl ImageCache {
@@ -64,6 +72,7 @@ impl ImageCache {
         Self {
             bind_group_layout,
             images: HashMap::new(),
+            frame: 0,
         }
     }
 
@@ -71,13 +80,27 @@ impl ImageCache {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        asset: ImageAsset,
+        image: &ImageData,
     ) -> Result<&CachedImage> {
-        if !self.images.contains_key(&asset.id) {
-            let pixels = miniz_oxide::inflate::decompress_to_vec_zlib(asset.compressed_pixels)
-                .map_err(|error| anyhow!("an Ink image could not be decompressed: {error:?}"))?;
-            let width = asset.width;
-            let height = asset.height;
+        let id = image.id();
+        if !self.images.contains_key(&id) {
+            let (pixels, width, height) = match image {
+                ImageData::Asset(asset) => (
+                    Cow::Owned(
+                        miniz_oxide::inflate::decompress_to_vec_zlib(asset.compressed_pixels)
+                            .map_err(|error| {
+                                anyhow!("an Ink image could not be decompressed: {error:?}")
+                            })?,
+                    ),
+                    asset.width,
+                    asset.height,
+                ),
+                ImageData::Remote(image) => (
+                    Cow::Borrowed(image.pixels.as_ref()),
+                    image.width,
+                    image.height,
+                ),
+            };
             if width == 0 || height == 0 {
                 return Err(anyhow!("an Ink image has invalid dimensions"));
             }
@@ -140,18 +163,46 @@ impl ImageCache {
                 ],
             });
             self.images.insert(
-                asset.id,
+                id,
                 CachedImage {
                     _texture: texture,
                     bind_group,
                     width,
                     height,
+                    bytes: expected_length,
+                    last_used: self.frame,
                 },
             );
         }
         self.images
-            .get(&asset.id)
+            .get_mut(&id)
+            .map(|image| {
+                image.last_used = self.frame;
+                &*image
+            })
             .context("an Ink image was not cached")
+    }
+
+    fn begin_frame(&mut self) {
+        self.frame = self.frame.wrapping_add(1);
+    }
+
+    fn trim(&mut self, protected: &HashSet<u64>) {
+        let mut bytes = self.images.values().map(|image| image.bytes).sum::<usize>();
+        while bytes > IMAGE_CACHE_BYTES {
+            let candidate = self
+                .images
+                .iter()
+                .filter(|(id, _)| !protected.contains(id))
+                .min_by_key(|(_, image)| image.last_used)
+                .map(|(id, _)| *id);
+            let Some(id) = candidate else {
+                break;
+            };
+            if let Some(image) = self.images.remove(&id) {
+                bytes = bytes.saturating_sub(image.bytes);
+            }
+        }
     }
 }
 
@@ -169,7 +220,6 @@ struct GlyphAtlas {
     cursor_x: u32,
     cursor_y: u32,
     row_height: u32,
-    pending_uploads: bool,
 }
 
 impl GlyphAtlas {
@@ -220,7 +270,6 @@ impl GlyphAtlas {
             cursor_x: 0,
             cursor_y: 0,
             row_height: 0,
-            pending_uploads: false,
         })
     }
 
@@ -297,7 +346,6 @@ impl GlyphAtlas {
         };
         self.cursor_x += width;
         self.row_height = self.row_height.max(height);
-        self.pending_uploads = true;
         self.glyphs.insert((id, size), glyph);
         Ok(Some(glyph))
     }
@@ -358,13 +406,8 @@ impl GlyphAtlas {
         };
         self.cursor_x += padded_width;
         self.row_height = self.row_height.max(padded_height);
-        self.pending_uploads = true;
         self.masks.insert(mask.id, cached);
         Ok(cached)
-    }
-
-    fn take_pending_uploads(&mut self) -> bool {
-        std::mem::take(&mut self.pending_uploads)
     }
 }
 
@@ -698,10 +741,14 @@ impl Renderer {
         }
         let (mut text, emoji) = self.text_vertices(scene)?;
         text.extend(self.mask_vertices(scene)?);
+        self.image_cache.begin_frame();
         let (mut images, mut image_draws) = self.image_vertices(scene)?;
         if !emoji.is_empty() {
-            self.image_cache
-                .prepare(&self.device, &self.queue, APPLE_EMOJI_ATLAS)?;
+            self.image_cache.prepare(
+                &self.device,
+                &self.queue,
+                &ImageData::Asset(APPLE_EMOJI_ATLAS),
+            )?;
             let start = images.len() as u32;
             images.extend(emoji);
             image_draws.push(ImageDraw {
@@ -709,10 +756,15 @@ impl Renderer {
                 vertices: start..images.len() as u32,
             });
         }
+        self.image_cache.trim(
+            &image_draws
+                .iter()
+                .map(|draw| draw.id)
+                .collect::<HashSet<_>>(),
+        );
         if text.len() > MAX_GLYPHS * 6 {
             return Err(anyhow!("scene exceeds the prototype glyph budget"));
         }
-        let atlas_changed = self.glyph_atlas.take_pending_uploads();
         if !quads.is_empty() {
             self.queue
                 .write_buffer(&self.quad_buffer, 0, bytemuck::cast_slice(&quads));
@@ -774,19 +826,6 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.quad_buffer.slice(..));
                 pass.draw(0..quads.len() as u32, 0..1);
             }
-            if !images.is_empty() {
-                pass.set_pipeline(&self.image_pipeline);
-                pass.set_vertex_buffer(0, self.image_buffer.slice(..));
-                for draw in &image_draws {
-                    let image = self
-                        .image_cache
-                        .images
-                        .get(&draw.id)
-                        .expect("prepared image stays cached");
-                    pass.set_bind_group(0, &image.bind_group, &[]);
-                    pass.draw(draw.vertices.clone(), 0..1);
-                }
-            }
             if !text.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
                 pass.set_bind_group(0, &self.glyph_atlas.bind_group, &[]);
@@ -794,15 +833,40 @@ impl Renderer {
                 pass.draw(0..text.len() as u32, 0..1);
             }
         }
+        if !images.is_empty() {
+            // Android's Vulkan driver can lose the glyph binding after switching image pipelines.
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Ink images"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.image_pipeline);
+            pass.set_vertex_buffer(0, self.image_buffer.slice(..));
+            for draw in &image_draws {
+                let image = self
+                    .image_cache
+                    .images
+                    .get(&draw.id)
+                    .expect("prepared image stays cached");
+                pass.set_bind_group(0, &image.bind_group, &[]);
+                pass.draw(draw.vertices.clone(), 0..1);
+            }
+        }
 
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(frame);
-        if atlas_changed {
-            // Some Android drivers only expose new atlas uploads reliably on the next frame.
-            self.render(scene)
-        } else {
-            Ok(RenderOutcome::Presented)
-        }
+        Ok(RenderOutcome::Presented)
     }
 
     fn text_vertices(&mut self, scene: &Scene) -> Result<(Vec<TextVertex>, Vec<TextVertex>)> {
@@ -882,7 +946,7 @@ impl Renderer {
         for run in &scene.images {
             let image = self
                 .image_cache
-                .prepare(&self.device, &self.queue, run.asset)?;
+                .prepare(&self.device, &self.queue, &run.image)?;
             let start = vertices.len() as u32;
             push_image_quad(
                 &mut vertices,
@@ -894,7 +958,7 @@ impl Renderer {
                 run.fit,
             );
             draws.push(ImageDraw {
-                id: run.asset.id,
+                id: run.image.id(),
                 vertices: start..vertices.len() as u32,
             });
         }

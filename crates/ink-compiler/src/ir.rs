@@ -30,6 +30,7 @@ pub struct App {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Extension {
     LightSdk,
+    Network,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -49,17 +50,23 @@ pub struct State {
 pub struct Resource {
     pub module: String,
     pub operation: String,
-    pub payload: String,
+    pub payload: Vec<PayloadPart>,
     pub shape: StateShape,
     pub timeout_ms: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NativeOperation {
     pub module: String,
     pub operation: String,
-    pub payload: String,
+    pub payload: Vec<PayloadPart>,
     pub timeout_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PayloadPart {
+    Literal(String),
+    State(StateId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -80,16 +87,16 @@ pub enum StateLifetime {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StateShape {
-    Int,
+    Number,
     Bool,
     String,
     List(Box<StateShape>),
     Object(BTreeMap<String, StateShape>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StateValue {
-    Int(i64),
+    Number(f64),
     Bool(bool),
     String(String),
     List(Vec<StateValue>),
@@ -193,7 +200,9 @@ pub enum Node {
         tone: Tone,
     },
     Image {
-        source: String,
+        source: ImageSource,
+        fallback: Option<String>,
+        bleed: bool,
         width: f32,
         height: f32,
         fit: ImageFit,
@@ -216,7 +225,7 @@ pub enum Node {
         alternate: Option<Box<Node>>,
     },
     ForEach {
-        state: StateId,
+        collection: Collection,
         template: Box<Node>,
     },
     ScreenModule {
@@ -247,6 +256,18 @@ pub enum TextPart {
 }
 
 #[derive(Clone, Debug)]
+pub enum ImageSource {
+    Local(String),
+    Remote(Vec<TextPart>),
+}
+
+#[derive(Clone, Debug)]
+pub enum Collection {
+    State(StateId),
+    Resource(ResourceId, Vec<String>),
+}
+
+#[derive(Clone, Debug)]
 pub enum Condition {
     Bool {
         state: StateId,
@@ -271,7 +292,7 @@ pub enum Condition {
 
 #[derive(Clone, Debug)]
 pub enum Value {
-    Int(i64),
+    Number(f64),
     Bool(bool),
     String(String),
     State(StateId),
@@ -282,8 +303,8 @@ pub enum Value {
 
 #[derive(Clone, Debug)]
 pub enum Action {
-    Increment { state: StateId, by: i64 },
-    SetInt { state: StateId, value: i64 },
+    Increment { state: StateId, by: f64 },
+    SetNumber { state: StateId, value: f64 },
     SetBool { state: StateId, value: bool },
     SetString { state: StateId, value: String },
     Toggle { state: StateId },

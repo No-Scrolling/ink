@@ -137,6 +137,8 @@ export namespace Ink {
 
   interface ImageProps {
     src: string;
+    fallback?: string;
+    bleed?: boolean;
     width: number;
     height: number;
     fit?: "cover" | "contain";

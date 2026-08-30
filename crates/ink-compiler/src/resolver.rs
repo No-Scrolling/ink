@@ -8,6 +8,7 @@ use crate::{diagnostic::CompileError, ir::Extension};
 
 const LIGHT_SDK_PACKAGE: &str = "@ink/light-sdk";
 const LIGHT_SDK_VERSION: &str = "0.1.1";
+const NETWORK_PACKAGE: &str = "@ink/network";
 
 pub struct ModuleResolver {
     project_root: PathBuf,
@@ -150,6 +151,14 @@ impl ModuleResolver {
             (LIGHT_SDK_PACKAGE, "light-sdk") => Err(CompileError::new(
                 format!(
                     "@ink/light-sdk targets Light SDK {}, but this Ink version supports {LIGHT_SDK_VERSION}",
+                    ink.sdk_version
+                ),
+                span,
+            )),
+            (NETWORK_PACKAGE, "network") if ink.sdk_version == "1" => Ok(Extension::Network),
+            (NETWORK_PACKAGE, "network") => Err(CompileError::new(
+                format!(
+                    "@ink/network targets Ink network API {}, but this Ink version supports 1",
                     ink.sdk_version
                 ),
                 span,

@@ -1,12 +1,11 @@
 {
-  "name": "ink-light-template-example",
+  "name": "ink-weather-example",
   "private": true,
   "packageManager": "bun@1.4.0",
   "scripts": {
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ink/light-sdk": "file:../../packages/light-sdk",
     "@ink/network": "file:../../packages/network",
     "ink": "file:../../packages/ink"
   },

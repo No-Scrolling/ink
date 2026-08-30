@@ -17,10 +17,10 @@ use oxc::{
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, AndroidPermission, App, Axis, Condition, Extension, ImageFit,
-        Justification, NativeOperation, Node, Resource, ResourceField, ResourceId, Route,
-        SourceSpan, State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment,
-        TextPart, Tone, Value,
+        Action, Alignment, AndroidPermission, App, Axis, Collection, Condition, Extension,
+        ImageFit, ImageSource, Justification, NativeOperation, Node, PayloadPart, Resource,
+        ResourceField, ResourceId, Route, SourceSpan, State, StateId, StateLifetime, StateShape,
+        StateValue, Tab, TextAlignment, TextPart, Tone, Value,
     },
     resolver::ModuleResolver,
 };
@@ -81,10 +81,11 @@ impl Bindings {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ExtensionFunction {
     LightSdkVersion,
     LightSdkPermission,
+    Json,
 }
 
 #[derive(Clone, Copy)]
@@ -109,6 +110,7 @@ struct Imports {
     extension_functions: HashMap<String, ExtensionFunction>,
     ink: HashSet<String>,
     screens: HashMap<String, PathBuf>,
+    type_aliases: HashMap<String, StateShape>,
     source_path: PathBuf,
 }
 
@@ -133,8 +135,26 @@ fn validate_imports(
     let mut extension_functions = HashMap::new();
     let mut ink = HashSet::new();
     let mut screens = HashMap::new();
+    let mut type_aliases = HashMap::new();
 
     for statement in &program.body {
+        if let Statement::TSTypeAliasDeclaration(alias) = statement {
+            if alias.type_parameters.is_some() {
+                return Err(CompileError::new(
+                    "Ink data types cannot have type parameters",
+                    alias.span,
+                ));
+            }
+            let name = alias.id.name.to_string();
+            let shape = state_kind_from_type(&alias.type_annotation)?;
+            if type_aliases.insert(name.clone(), shape).is_some() {
+                return Err(CompileError::new(
+                    format!("type {name} is declared twice"),
+                    alias.span,
+                ));
+            }
+            continue;
+        }
         let Statement::ImportDeclaration(declaration) = statement else {
             continue;
         };
@@ -183,6 +203,7 @@ fn validate_imports(
                         (Extension::LightSdk, "lightSdkPermission") => {
                             ExtensionFunction::LightSdkPermission
                         }
+                        (Extension::Network, "json") => ExtensionFunction::Json,
                         _ => {
                             return Err(CompileError::new(
                                 format!("{imported} is not exported by this Ink extension"),
@@ -244,6 +265,7 @@ fn validate_imports(
         extension_functions,
         ink,
         screens,
+        type_aliases,
         source_path: source_path.to_owned(),
     })
 }
@@ -255,7 +277,7 @@ fn app_function<'a>(
 
     for statement in &program.body {
         match statement {
-            Statement::ImportDeclaration(_) => {}
+            Statement::ImportDeclaration(_) | Statement::TSTypeAliasDeclaration(_) => {}
             Statement::ExportDefaultDeclaration(export) => {
                 let ExportDefaultDeclarationKind::FunctionDeclaration(candidate) =
                     &export.declaration
@@ -332,7 +354,8 @@ fn lower_function(
                             declarator.span,
                         ));
                     }
-                    if let Some(resource) = resource_initialiser(declarator.init.as_ref(), imports)?
+                    if let Some(resource) =
+                        resource_initialiser(declarator.init.as_ref(), imports, &state_names)?
                     {
                         let id = ResourceId(resources.len());
                         if let Some(permission) = resource.android_permission {
@@ -467,6 +490,7 @@ fn lower_function(
 fn resource_initialiser(
     initialiser: Option<&Expression<'_>>,
     imports: &Imports,
+    states: &Bindings,
 ) -> Result<Option<ResourceInitialiser>, CompileError> {
     let Some(Expression::CallExpression(call)) = initialiser else {
         return Ok(None);
@@ -481,7 +505,7 @@ fn resource_initialiser(
     else {
         return Ok(None);
     };
-    if call.type_arguments.is_some() {
+    if function != ExtensionFunction::Json && call.type_arguments.is_some() {
         return Err(CompileError::new(
             "Light SDK resources do not take type arguments",
             call.span,
@@ -499,7 +523,7 @@ fn resource_initialiser(
                 definition: Resource {
                     module: "light-sdk".to_owned(),
                     operation: "version".to_owned(),
-                    payload: String::new(),
+                    payload: vec![PayloadPart::Literal(String::new())],
                     shape: StateShape::String,
                     timeout_ms: 10_000,
                 },
@@ -524,21 +548,233 @@ fn resource_initialiser(
                 definition: Resource {
                     module: "light-sdk".to_owned(),
                     operation: "permission-status".to_owned(),
-                    payload: "camera".to_owned(),
+                    payload: vec![PayloadPart::Literal("camera".to_owned())],
                     shape: StateShape::String,
                     timeout_ms: 10_000,
                 },
                 request: Some(NativeOperation {
                     module: "light-sdk".to_owned(),
                     operation: "request-permission".to_owned(),
-                    payload: "camera".to_owned(),
+                    payload: vec![PayloadPart::Literal("camera".to_owned())],
                     timeout_ms: 10_000,
                 }),
                 android_permission: Some(AndroidPermission::Camera),
             }
         }
+        ExtensionFunction::Json => network_json_resource(call, imports, states)?,
     };
     Ok(Some(resource))
+}
+
+fn network_json_resource(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    imports: &Imports,
+    states: &Bindings,
+) -> Result<ResourceInitialiser, CompileError> {
+    let Some(arguments) = &call.type_arguments else {
+        return Err(CompileError::new(
+            "json<T>() needs the response data type",
+            call.span,
+        ));
+    };
+    let [response_type] = arguments.params.as_slice() else {
+        return Err(CompileError::new(
+            "json<T>() accepts one response data type",
+            arguments.span,
+        ));
+    };
+    let shape = match response_type {
+        TSType::TSTypeReference(reference) if reference.type_arguments.is_none() => {
+            let oxc::ast::ast::TSTypeName::IdentifierReference(name) = &reference.type_name else {
+                return Err(CompileError::new(
+                    "network response types use a local type alias or an inline data type",
+                    reference.span,
+                ));
+            };
+            imports
+                .type_aliases
+                .get(name.name.as_str())
+                .cloned()
+                .ok_or_else(|| {
+                    CompileError::new(
+                        format!("unknown response type {}", name.name),
+                        reference.span,
+                    )
+                })?
+        }
+        response_type => state_kind_from_type(response_type)?,
+    };
+    let Some(Argument::StringLiteral(url)) = call.arguments.first() else {
+        return Err(CompileError::new(
+            "json<T>() starts with an HTTPS URL string",
+            call.span,
+        ));
+    };
+    if !url.value.as_str().starts_with("https://") {
+        return Err(CompileError::new(
+            "network requests require HTTPS",
+            url.span,
+        ));
+    }
+    let mut timeout_ms = 15_000;
+    let mut query = Vec::new();
+    let mut headers = Vec::new();
+    match call.arguments.as_slice() {
+        [_] => {}
+        [_, Argument::ObjectExpression(options)] => {
+            let mut seen = HashSet::new();
+            for property in &options.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return Err(CompileError::new(
+                        "network options cannot use spreads",
+                        property.span(),
+                    ));
+                };
+                let name = property_name(&property.key)?;
+                if !seen.insert(name.clone()) {
+                    return Err(CompileError::new(
+                        format!("network option {name:?} is declared twice"),
+                        property.span,
+                    ));
+                }
+                match name.as_str() {
+                    "query" => query = network_values(&property.value, false, states)?,
+                    "headers" => headers = network_values(&property.value, true, states)?,
+                    "timeoutMs" => {
+                        let Expression::NumericLiteral(value) = &property.value else {
+                            return Err(CompileError::new(
+                                "timeoutMs must be a number literal",
+                                property.value.span(),
+                            ));
+                        };
+                        timeout_ms = integer(value.value, value.span, "timeoutMs")?
+                            .try_into()
+                            .ok()
+                            .filter(|value: &u64| (1_000..=120_000).contains(value))
+                            .ok_or_else(|| {
+                                CompileError::new(
+                                    "timeoutMs must be between 1000 and 120000",
+                                    value.span,
+                                )
+                            })?;
+                    }
+                    _ => {
+                        return Err(CompileError::new(
+                            format!("unknown network option {name:?}"),
+                            property.key.span(),
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {
+            return Err(CompileError::new(
+                "json<T>() accepts a URL and optional options object",
+                call.span,
+            ));
+        }
+    }
+    let mut payload = vec![PayloadPart::Literal(format!(
+        "{{\"url\":{},\"query\":{{",
+        serde_json::to_string(url.value.as_str()).expect("a source string is valid JSON"),
+    ))];
+    append_network_values(&mut payload, query);
+    payload.push(PayloadPart::Literal(",\"headers\":{".to_owned()));
+    append_network_values(&mut payload, headers);
+    payload.push(PayloadPart::Literal("}".to_owned()));
+    Ok(ResourceInitialiser {
+        definition: Resource {
+            module: "network".to_owned(),
+            operation: "json".to_owned(),
+            payload,
+            shape,
+            timeout_ms,
+        },
+        request: None,
+        android_permission: None,
+    })
+}
+
+fn network_values(
+    expression: &Expression<'_>,
+    strings_only: bool,
+    states: &Bindings,
+) -> Result<Vec<(String, PayloadPart)>, CompileError> {
+    let Expression::ObjectExpression(object) = expression else {
+        return Err(CompileError::new(
+            "query and headers must be object literals",
+            expression.span(),
+        ));
+    };
+    let mut values = Vec::new();
+    let mut seen = HashSet::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "query and headers cannot use spreads",
+                property.span(),
+            ));
+        };
+        let name = property_name(&property.key)?;
+        if !seen.insert(name.clone()) {
+            return Err(CompileError::new(
+                format!("network value {name:?} is declared twice"),
+                property.span,
+            ));
+        }
+        let part = match &property.value {
+            Expression::StringLiteral(value) => PayloadPart::Literal(
+                serde_json::to_string(value.value.as_str()).expect("a source string is valid JSON"),
+            ),
+            Expression::BooleanLiteral(value) if !strings_only => {
+                PayloadPart::Literal(value.value.to_string())
+            }
+            Expression::NumericLiteral(value) if !strings_only && value.value.is_finite() => {
+                PayloadPart::Literal(value.value.to_string())
+            }
+            Expression::UnaryExpression(value)
+                if !strings_only && value.operator == UnaryOperator::UnaryNegation =>
+            {
+                let Expression::NumericLiteral(number) = &value.argument else {
+                    return Err(CompileError::new(
+                        "query values must be strings, numbers or booleans",
+                        value.span,
+                    ));
+                };
+                PayloadPart::Literal((-number.value).to_string())
+            }
+            expression => {
+                let binding = expression_state_value(expression, states)?;
+                if strings_only && binding.kind != StateShape::String
+                    || !strings_only && !scalar_kind(&binding.kind)
+                {
+                    return Err(CompileError::new(
+                        if strings_only {
+                            "header values must be strings"
+                        } else {
+                            "query values must be strings, numbers or booleans"
+                        },
+                        expression.span(),
+                    ));
+                }
+                PayloadPart::State(binding.id)
+            }
+        };
+        values.push((name, part));
+    }
+    Ok(values)
+}
+
+fn append_network_values(payload: &mut Vec<PayloadPart>, values: Vec<(String, PayloadPart)>) {
+    for (index, (name, value)) in values.into_iter().enumerate() {
+        let comma = if index == 0 { "" } else { "," };
+        payload.push(PayloadPart::Literal(format!(
+            "{comma}{}:",
+            serde_json::to_string(&name).expect("a source string is valid JSON"),
+        )));
+        payload.push(value);
+    }
+    payload.push(PayloadPart::Literal("}".to_owned()));
 }
 
 fn state_initialiser(
@@ -662,11 +898,9 @@ fn state_initialiser(
 
 fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileError> {
     match value {
-        Expression::NumericLiteral(value) => Ok(StateValue::Int(integer(
-            value.value,
-            value.span,
-            "state value",
-        )?)),
+        Expression::NumericLiteral(value) if value.value.is_finite() => {
+            Ok(StateValue::Number(value.value))
+        }
         Expression::BooleanLiteral(value) => Ok(StateValue::Bool(value.value)),
         Expression::StringLiteral(value) => Ok(StateValue::String(value.value.to_string())),
         Expression::ArrayExpression(array) => {
@@ -737,7 +971,7 @@ fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileErro
 
 fn state_kind(value: &StateValue) -> Option<StateShape> {
     match value {
-        StateValue::Int(_) => Some(StateShape::Int),
+        StateValue::Number(_) => Some(StateShape::Number),
         StateValue::Bool(_) => Some(StateShape::Bool),
         StateValue::String(_) => Some(StateShape::String),
         StateValue::List(values) => values
@@ -756,7 +990,7 @@ fn state_kind(value: &StateValue) -> Option<StateShape> {
 
 fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateShape, CompileError> {
     match kind {
-        TSType::TSNumberKeyword(_) => Ok(StateShape::Int),
+        TSType::TSNumberKeyword(_) => Ok(StateShape::Number),
         TSType::TSBooleanKeyword(_) => Ok(StateShape::Bool),
         TSType::TSStringKeyword(_) => Ok(StateShape::String),
         TSType::TSArrayType(array) => Ok(StateShape::List(Box::new(state_kind_from_type(
@@ -843,7 +1077,7 @@ fn lower_node(
         "Button" => lower_button(element, states, imports, item),
         "SelectorButton" => lower_selector_button(element, states, imports, item),
         "Icon" => lower_icon(element),
-        "Image" => lower_image(element),
+        "Image" => lower_image(element, states, item),
         "Toggle" => lower_toggle(element, states),
         "Tabs" => lower_tabs(element, states, imports),
         "Navigator" => Err(CompileError::new(
@@ -1060,8 +1294,54 @@ fn lower_icon(element: &JSXElement<'_>) -> Result<Node, CompileError> {
     Ok(Node::Icon { name, size, tone })
 }
 
-fn lower_image(element: &JSXElement<'_>) -> Result<Node, CompileError> {
-    let source = required_string_attribute(element, "src")?;
+fn lower_image(
+    element: &JSXElement<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Node, CompileError> {
+    let source_attribute = attribute(element, "src")
+        .ok_or_else(|| CompileError::new("Image requires src", element.opening_element.span))?;
+    let source = match &source_attribute.value {
+        Some(JSXAttributeValue::StringLiteral(value)) => {
+            let span = value.span;
+            let value = value.value.as_str().to_owned();
+            if value.starts_with("https://") {
+                ImageSource::Remote(vec![TextPart::Literal(value)])
+            } else if value.contains("://") {
+                return Err(CompileError::new("remote images require HTTPS", span));
+            } else {
+                ImageSource::Local(value)
+            }
+        }
+        Some(JSXAttributeValue::ExpressionContainer(container)) => {
+            let Some(expression) = container.expression.as_expression() else {
+                return Err(CompileError::new(
+                    "Image src cannot be empty",
+                    container.span,
+                ));
+            };
+            ImageSource::Remote(vec![image_source_part(expression, states, item)?])
+        }
+        _ => {
+            return Err(CompileError::new(
+                "Image src must be a local path, HTTPS URL or string value",
+                source_attribute.span,
+            ));
+        }
+    };
+    let fallback = optional_string_attribute(element, "fallback")?;
+    if fallback
+        .as_deref()
+        .is_some_and(|value| value.contains("://"))
+    {
+        return Err(CompileError::new(
+            "Image fallback must be a local PNG",
+            attribute(element, "fallback")
+                .expect("fallback exists")
+                .span,
+        ));
+    }
+    let bleed = boolean_attribute(element, "bleed")?;
     let width = required_number_attribute(element, "width")?;
     let height = required_number_attribute(element, "height")?;
     if width == 0.0 || height == 0.0 {
@@ -1075,7 +1355,10 @@ fn lower_image(element: &JSXElement<'_>) -> Result<Node, CompileError> {
         Some("contain") => ImageFit::Contain,
         Some(_) => return invalid_value(element, "fit", "cover or contain"),
     };
-    reject_other_attributes(element, &["src", "width", "height", "fit"])?;
+    reject_other_attributes(
+        element,
+        &["src", "fallback", "bleed", "width", "height", "fit"],
+    )?;
     if !element_children(element)?.is_empty() {
         return Err(CompileError::new(
             "Image cannot have children",
@@ -1084,10 +1367,47 @@ fn lower_image(element: &JSXElement<'_>) -> Result<Node, CompileError> {
     }
     Ok(Node::Image {
         source,
+        fallback,
+        bleed,
         width,
         height,
         fit,
     })
+}
+
+fn image_source_part(
+    expression: &Expression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<TextPart, CompileError> {
+    if let Some(binding) = expression_resource_value(expression, states)? {
+        if binding.kind != StateShape::String {
+            return Err(CompileError::new(
+                "Image src must be a string",
+                expression.span(),
+            ));
+        }
+        return Ok(TextPart::Resource(binding.resource, binding.field));
+    }
+    if let Some(item) = item
+        && let Some(path) = item_path(expression, item.name)
+    {
+        if kind_at_path(item.kind, &path) != Some(&StateShape::String) {
+            return Err(CompileError::new(
+                "Image src must be a string",
+                expression.span(),
+            ));
+        }
+        return Ok(TextPart::Item(path));
+    }
+    let binding = expression_state_value(expression, states)?;
+    if binding.kind != StateShape::String {
+        return Err(CompileError::new(
+            "Image src must be a string",
+            expression.span(),
+        ));
+    }
+    Ok(TextPart::State(binding.id))
 }
 
 fn lower_toggle(element: &JSXElement<'_>, states: &Bindings) -> Result<Node, CompileError> {
@@ -1113,7 +1433,7 @@ fn lower_tabs(
     states: &Bindings,
     imports: &Imports,
 ) -> Result<Node, CompileError> {
-    let state = state_attribute(element, "value", states, StateShape::Int)?;
+    let state = state_attribute(element, "value", states, StateShape::Number)?;
     reject_other_attributes(element, &["value"])?;
     require_import(imports, "Tab", element.span)?;
     let mut tabs = Vec::new();
@@ -1665,10 +1985,22 @@ fn lower_collection(
             map.span,
         ));
     }
-    let binding = expression_state_value(&map.object, states)?;
-    let StateShape::List(item_kind) = &binding.kind else {
+    let (collection, collection_kind) =
+        if let Some(resource) = expression_resource_value(&map.object, states)? {
+            let ResourceField::Value(path) = resource.field else {
+                return Err(CompileError::new(
+                    "map requires a resource value list",
+                    map.object.span(),
+                ));
+            };
+            (Collection::Resource(resource.resource, path), resource.kind)
+        } else {
+            let binding = expression_state_value(&map.object, states)?;
+            (Collection::State(binding.id), binding.kind)
+        };
+    let StateShape::List(item_kind) = &collection_kind else {
         return Err(CompileError::new(
-            "map requires list state",
+            "map requires a list value",
             map.object.span(),
         ));
     };
@@ -1710,7 +2042,7 @@ fn lower_collection(
         kind: item_kind,
     };
     Ok(Node::ForEach {
-        state: binding.id,
+        collection,
         template: Box::new(lower_content_node(element, states, imports, Some(item))?),
     })
 }
@@ -2063,10 +2395,12 @@ fn lower_scalar_set(
     states: &Bindings,
 ) -> Result<Action, CompileError> {
     match &call.arguments[0] {
-        Argument::NumericLiteral(value) if binding.kind == StateShape::Int => Ok(Action::SetInt {
-            state: binding.id,
-            value: integer(value.value, value.span, "state value")?,
-        }),
+        Argument::NumericLiteral(value) if binding.kind == StateShape::Number => {
+            Ok(Action::SetNumber {
+                state: binding.id,
+                value: value.value,
+            })
+        }
         Argument::BooleanLiteral(value) if binding.kind == StateShape::Bool => {
             Ok(Action::SetBool {
                 state: binding.id,
@@ -2079,7 +2413,7 @@ fn lower_scalar_set(
                 value: value.value.to_string(),
             })
         }
-        Argument::BinaryExpression(value) if binding.kind == StateShape::Int => {
+        Argument::BinaryExpression(value) if binding.kind == StateShape::Number => {
             let read_state = expression_state_value(&value.left, states)?;
             if read_state.id != binding.id {
                 return Err(CompileError::new(
@@ -2089,11 +2423,11 @@ fn lower_scalar_set(
             }
             let Expression::NumericLiteral(amount) = &value.right else {
                 return Err(CompileError::new(
-                    "the increment must be an integer literal",
+                    "the increment must be a number literal",
                     value.right.span(),
                 ));
             };
-            let mut by = integer(amount.value, amount.span, "increment")?;
+            let mut by = amount.value;
             match value.operator {
                 BinaryOperator::Addition => {}
                 BinaryOperator::Subtraction => by = -by,
@@ -2183,9 +2517,7 @@ fn lower_value(
         return Ok(Value::State(binding.id));
     }
     match (expression, expected) {
-        (Expression::NumericLiteral(value), StateShape::Int) => {
-            Ok(Value::Int(integer(value.value, value.span, "state value")?))
-        }
+        (Expression::NumericLiteral(value), StateShape::Number) => Ok(Value::Number(value.value)),
         (Expression::BooleanLiteral(value), StateShape::Bool) => Ok(Value::Bool(value.value)),
         (Expression::StringLiteral(value), StateShape::String) => {
             Ok(Value::String(value.value.to_string()))
@@ -2713,7 +3045,7 @@ fn kind_at_path<'a>(mut kind: &'a StateShape, path: &[String]) -> Option<&'a Sta
 const fn scalar_kind(kind: &StateShape) -> bool {
     matches!(
         kind,
-        StateShape::Int | StateShape::Bool | StateShape::String
+        StateShape::Number | StateShape::Bool | StateShape::String
     )
 }
 

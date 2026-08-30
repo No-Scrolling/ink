@@ -16,10 +16,18 @@ val inkSigning = providers.gradleProperty("inkSigning").orElse("development")
 val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
 val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
 val inkUsesLightSdk = providers.gradleProperty("inkUsesLightSdk").orElse("false")
+val inkUsesNetwork = providers.gradleProperty("inkUsesNetwork").orElse("false")
 val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission").orElse("false")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
 val inkLightSdkVersion = "0.1.1"
+val inkPermissionManifest = when {
+    inkUsesNetwork.get().toBoolean() && inkUsesCameraPermission.get().toBoolean() ->
+        "src/networkCameraPermission/AndroidManifest.xml"
+    inkUsesNetwork.get().toBoolean() -> "src/network/AndroidManifest.xml"
+    inkUsesCameraPermission.get().toBoolean() -> "src/cameraPermission/AndroidManifest.xml"
+    else -> null
+}
 val inkLightSdkMarkerAction = if (inkUsesLightSdk.get().toBoolean()) {
     "com.thelightphone.sdk.ACTION_SDK_MARKER"
 } else {
@@ -70,15 +78,22 @@ android {
 
     sourceSets {
         getByName("main").res.srcDir(inkAndroidResources)
-        if (inkUsesCameraPermission.get().toBoolean()) {
-            getByName("debug").manifest.srcFile("src/cameraPermission/AndroidManifest.xml")
-            getByName("release").manifest.srcFile("src/cameraPermission/AndroidManifest.xml")
+        if (inkPermissionManifest != null) {
+            getByName("debug").manifest.srcFile(inkPermissionManifest)
+            getByName("release").manifest.srcFile(inkPermissionManifest)
         }
         getByName("main").java.srcDir(
             if (inkUsesTextInput.get().toBoolean()) {
                 "src/textInput/kotlin"
             } else {
                 "src/noTextInput/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesNetwork.get().toBoolean()) {
+                "src/network/kotlin"
+            } else {
+                "src/noNetwork/kotlin"
             },
         )
         getByName("main").java.srcDir(
@@ -138,17 +153,24 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
     group = "rust"
     description = "Builds the Ink runtime for the arm64 LP3 emulator."
     workingDir(repositoryRoot)
-    commandLine(
-        "cargo",
-        "ndk",
-        "-t",
-        "arm64-v8a",
-        "-o",
-        generatedJniRoot.get().dir("debug").asFile.absolutePath,
-        "build",
-        "-p",
-        "ink-android",
-    )
+    commandLine(buildList {
+        addAll(
+            listOf(
+                "cargo",
+                "ndk",
+                "-t",
+                "arm64-v8a",
+                "-o",
+                generatedJniRoot.get().dir("debug").asFile.absolutePath,
+                "build",
+                "-p",
+                "ink-android",
+            ),
+        )
+        if (inkUsesNetwork.get().toBoolean()) {
+            addAll(listOf("--features", "network"))
+        }
+    })
     environment("INK_APP_RS", inkGeneratedSource.get())
 }
 
@@ -156,18 +178,25 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
     group = "rust"
     description = "Builds the Ink runtime for the LP3 arm64 ABI."
     workingDir(repositoryRoot)
-    commandLine(
-        "cargo",
-        "ndk",
-        "-t",
-        "arm64-v8a",
-        "-o",
-        generatedJniRoot.get().dir("release").asFile.absolutePath,
-        "build",
-        "-p",
-        "ink-android",
-        "--release",
-    )
+    commandLine(buildList {
+        addAll(
+            listOf(
+                "cargo",
+                "ndk",
+                "-t",
+                "arm64-v8a",
+                "-o",
+                generatedJniRoot.get().dir("release").asFile.absolutePath,
+                "build",
+                "-p",
+                "ink-android",
+                "--release",
+            ),
+        )
+        if (inkUsesNetwork.get().toBoolean()) {
+            addAll(listOf("--features", "network"))
+        }
+    })
     environment("INK_APP_RS", inkGeneratedSource.get())
 }
 

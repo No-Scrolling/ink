@@ -1,15 +1,23 @@
+#[cfg(feature = "network")]
+use std::ffi::c_void;
 use std::ffi::{CString, c_char, c_int};
 use std::io::Write;
+#[cfg(feature = "network")]
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "network")]
+use ink_core::ImageFit;
 use ink_core::{
     Engine, Hydration, NativeRequestKind, PUBLIC_SANS, ResourceError, ResourceErrorKind,
     StateValue, TextEdit, TextInputAction,
 };
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
+#[cfg(feature = "network")]
+use jni::objects::JByteArray;
 use jni::objects::{JByteBuffer, JClass, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use ndk::native_window::NativeWindow;
@@ -20,10 +28,39 @@ const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_WARN: c_int = 5;
 const ANDROID_LOG_ERROR: c_int = 6;
 const LOG_TAG: &[u8] = b"Ink\0";
+#[cfg(feature = "network")]
+const IMAGE_DECODER_SUCCESS: c_int = 0;
+#[cfg(feature = "network")]
+const BITMAP_FORMAT_RGBA_8888: c_int = 1;
 
 #[link(name = "log")]
 unsafe extern "C" {
     fn __android_log_write(priority: c_int, tag: *const c_char, text: *const c_char) -> c_int;
+}
+
+#[cfg(feature = "network")]
+enum AImageDecoder {}
+#[cfg(feature = "network")]
+enum AImageDecoderHeaderInfo {}
+
+#[cfg(feature = "network")]
+#[link(name = "jnigraphics")]
+unsafe extern "C" {
+    fn AImageDecoder_createFromFd(fd: c_int, decoder: *mut *mut AImageDecoder) -> c_int;
+    fn AImageDecoder_delete(decoder: *mut AImageDecoder);
+    fn AImageDecoder_getHeaderInfo(decoder: *const AImageDecoder)
+    -> *const AImageDecoderHeaderInfo;
+    fn AImageDecoderHeaderInfo_getWidth(info: *const AImageDecoderHeaderInfo) -> i32;
+    fn AImageDecoderHeaderInfo_getHeight(info: *const AImageDecoderHeaderInfo) -> i32;
+    fn AImageDecoder_setAndroidBitmapFormat(decoder: *mut AImageDecoder, format: i32) -> c_int;
+    fn AImageDecoder_setTargetSize(decoder: *mut AImageDecoder, width: i32, height: i32) -> c_int;
+    fn AImageDecoder_getMinimumStride(decoder: *mut AImageDecoder) -> usize;
+    fn AImageDecoder_decodeImage(
+        decoder: *mut AImageDecoder,
+        pixels: *mut c_void,
+        stride: usize,
+        size: usize,
+    ) -> c_int;
 }
 
 struct AndroidEngine {
@@ -198,6 +235,41 @@ impl AndroidEngine {
         result: Result<StateValue, ResourceError>,
     ) -> bool {
         if !self.engine.complete_native(request_id, result) {
+            return false;
+        }
+        self.render();
+        true
+    }
+
+    #[cfg(feature = "network")]
+    fn complete_native_json(&mut self, request_id: u64, bytes: &[u8]) -> bool {
+        if !self.engine.complete_native_json(request_id, bytes) {
+            return false;
+        }
+        self.render();
+        true
+    }
+
+    #[cfg(feature = "network")]
+    fn complete_native_image(
+        &mut self,
+        request_id: u64,
+        width: u32,
+        height: u32,
+        pixels: Vec<u8>,
+    ) -> bool {
+        if !self
+            .engine
+            .complete_native_image(request_id, width, height, pixels)
+        {
+            return false;
+        }
+        self.render();
+        true
+    }
+
+    fn fail_native(&mut self, request_id: u64, error: ResourceError) -> bool {
+        if !self.engine.fail_native(request_id, error) {
             return false;
         }
         self.render();
@@ -450,6 +522,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestKind(
                     NativeRequestKind::ResourceRead => 0,
                     NativeRequestKind::Action => 1,
                     NativeRequestKind::Cancel => 2,
+                    NativeRequestKind::Image => 3,
                 })
         })
         .unwrap_or(-1)
@@ -511,6 +584,58 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteString(
         }) as jboolean
 }
 
+#[cfg(feature = "network")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteBytes(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+    value: JByteArray<'_>,
+) -> jboolean {
+    let bytes = env
+        .with_env(|env| env.convert_byte_array(&value))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.complete_native_json(request_id as u64, &bytes))
+        as jboolean
+}
+
+#[cfg(feature = "network")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+    path: JString<'_>,
+) -> jboolean {
+    let path = env
+        .with_env(|env| path.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    let Some(engine) = engine(handle) else {
+        return false as jboolean;
+    };
+    let Some((width, height, fit)) = engine
+        .lock()
+        .ok()
+        .and_then(|engine| engine.engine.image_request_target(request_id as u64))
+    else {
+        return false as jboolean;
+    };
+    let decoded = decode_image(&path, width, height, fit);
+    engine.lock().ok().is_some_and(|mut engine| match decoded {
+        Ok((width, height, pixels)) => {
+            engine.complete_native_image(request_id as u64, width, height, pixels)
+        }
+        Err(message) => engine.fail_native(
+            request_id as u64,
+            ResourceError::new(ResourceErrorKind::Protocol, message, false),
+        ),
+    }) as jboolean
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
     mut env: EnvUnowned<'_>,
@@ -534,9 +659,9 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| {
-            engine.complete_native(
+            engine.fail_native(
                 request_id as u64,
-                Err(ResourceError::new(kind, message, retryable)),
+                ResourceError::new(kind, message, retryable),
             )
         }) as jboolean
 }
@@ -620,6 +745,112 @@ fn persist(engine: &Mutex<AndroidEngine>) {
             ANDROID_LOG_WARN,
             &format!("could not save persisted state: {error}"),
         ),
+    }
+}
+
+#[cfg(feature = "network")]
+fn decode_image(
+    path: &str,
+    target_width: u32,
+    target_height: u32,
+    fit: ImageFit,
+) -> Result<(u32, u32, Vec<u8>), String> {
+    let file = std::fs::File::open(path)
+        .map_err(|error| format!("Android could not open the remote image: {error}"))?;
+    let mut raw = std::ptr::null_mut();
+    let result = unsafe { AImageDecoder_createFromFd(file.as_raw_fd(), &mut raw) };
+    if result != IMAGE_DECODER_SUCCESS {
+        return Err(format!(
+            "Android could not decode the remote image ({result})"
+        ));
+    }
+    let decoder = ImageDecoder(
+        NonNull::new(raw).ok_or_else(|| "Android returned no image decoder".to_owned())?,
+    );
+    let header = unsafe { AImageDecoder_getHeaderInfo(decoder.0.as_ptr()) };
+    if header.is_null() {
+        return Err("Android returned no image header".to_owned());
+    }
+    let source_width = unsafe { AImageDecoderHeaderInfo_getWidth(header) };
+    let source_height = unsafe { AImageDecoderHeaderInfo_getHeight(header) };
+    if source_width <= 0 || source_height <= 0 {
+        return Err("Remote image had invalid dimensions".to_owned());
+    }
+    let width_scale = target_width.max(1) as f64 / source_width as f64;
+    let height_scale = target_height.max(1) as f64 / source_height as f64;
+    let scale = match fit {
+        ImageFit::Cover => width_scale.max(height_scale),
+        ImageFit::Contain => width_scale.min(height_scale),
+    }
+    .min(1.0);
+    let width = (source_width as f64 * scale).round().max(1.0) as u32;
+    let height = (source_height as f64 * scale).round().max(1.0) as u32;
+    let format = unsafe {
+        AImageDecoder_setAndroidBitmapFormat(decoder.0.as_ptr(), BITMAP_FORMAT_RGBA_8888)
+    };
+    if format != IMAGE_DECODER_SUCCESS {
+        return Err(format!(
+            "Android could not convert the remote image ({format})"
+        ));
+    }
+    if width != source_width as u32 || height != source_height as u32 {
+        let scaled =
+            unsafe { AImageDecoder_setTargetSize(decoder.0.as_ptr(), width as i32, height as i32) };
+        if scaled != IMAGE_DECODER_SUCCESS {
+            return Err(format!(
+                "Android could not scale the remote image ({scaled})"
+            ));
+        }
+    }
+    let stride = unsafe { AImageDecoder_getMinimumStride(decoder.0.as_ptr()) };
+    let size = stride
+        .checked_mul(height as usize)
+        .ok_or_else(|| "Remote image was too large".to_owned())?;
+    if size > 16 * 1024 * 1024 || stride < width as usize * 4 {
+        return Err("Remote image was too large".to_owned());
+    }
+    let mut decoded = vec![0; size];
+    let result = unsafe {
+        AImageDecoder_decodeImage(
+            decoder.0.as_ptr(),
+            decoded.as_mut_ptr().cast(),
+            stride,
+            size,
+        )
+    };
+    if result != IMAGE_DECODER_SUCCESS {
+        return Err(format!(
+            "Android could not decode the remote image ({result})"
+        ));
+    }
+    let mut pixels = if stride == width as usize * 4 {
+        decoded
+    } else {
+        let row_bytes = width as usize * 4;
+        let mut compact = Vec::with_capacity(row_bytes * height as usize);
+        for row in decoded.chunks(stride).take(height as usize) {
+            compact.extend_from_slice(&row[..row_bytes]);
+        }
+        compact
+    };
+    for pixel in pixels.chunks_exact_mut(4) {
+        let alpha = u32::from(pixel[3]);
+        if alpha != 0 && alpha != 255 {
+            for channel in &mut pixel[..3] {
+                *channel = ((u32::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8;
+            }
+        }
+    }
+    Ok((width, height, pixels))
+}
+
+#[cfg(feature = "network")]
+struct ImageDecoder(NonNull<AImageDecoder>);
+
+#[cfg(feature = "network")]
+impl Drop for ImageDecoder {
+    fn drop(&mut self) {
+        unsafe { AImageDecoder_delete(self.0.as_ptr()) };
     }
 }
 

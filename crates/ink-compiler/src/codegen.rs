@@ -10,9 +10,9 @@ use quote::{format_ident, quote};
 use crate::{
     icons,
     ir::{
-        Action, Alignment, App, Axis, Condition, ImageFit, Justification, NativeOperation, Node,
-        Resource, ResourceField, State, StateLifetime, StateShape, StateValue, TextAlignment,
-        TextInputAction, TextPart, Tone, Value,
+        Action, Alignment, App, Axis, Collection, Condition, ImageFit, ImageSource, Justification,
+        NativeOperation, Node, PayloadPart, Resource, ResourceField, State, StateLifetime,
+        StateShape, StateValue, TextAlignment, TextInputAction, TextPart, Tone, Value,
     },
 };
 
@@ -40,8 +40,9 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
         #[allow(unused_imports)]
         use ink_core::{
             Action, Alignment, AppDefinition, Axis, Condition, Justification, Mask, Node, StateId,
-            NativeOperation, ResourceDefinition, ResourceField, ResourceId, StateDefinition,
-            StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone, Value,
+            Collection, ImageSource, NativeOperation, PayloadPart, ResourceDefinition,
+            ResourceField, ResourceId, StateDefinition, StateValue, Route, Tab, TextAlign,
+            TextInputAction, TextPart, Tone, Value,
         };
 
         pub const USES_PERSISTENCE: bool = #uses_persistence;
@@ -185,13 +186,31 @@ impl<'a> Emitter<'a> {
             }
             Node::Image {
                 source,
+                fallback,
+                bleed,
                 width,
                 height,
                 fit,
             } => {
-                let asset = self.asset(source)?;
+                let source = match source {
+                    ImageSource::Local(source) => {
+                        let asset = self.asset(source)?;
+                        quote! { ImageSource::Asset(#asset) }
+                    }
+                    ImageSource::Remote(parts) => {
+                        let parts = parts.iter().map(text_part);
+                        quote! { ImageSource::Remote(vec![#(#parts),*]) }
+                    }
+                };
+                let fallback = match fallback {
+                    Some(source) => {
+                        let asset = self.asset(source)?;
+                        quote! { Some(#asset) }
+                    }
+                    None => quote! { None },
+                };
                 let fit = image_fit_tokens(*fit);
-                quote! { Node::image(#asset, #width, #height, #fit) }
+                quote! { Node::image(#source, #fallback, #bleed, #width, #height, #fit) }
             }
             Node::Toggle {
                 label,
@@ -255,10 +274,23 @@ impl<'a> Emitter<'a> {
                     )
                 }
             }
-            Node::ForEach { state, template } => {
-                let state = state.0;
+            Node::ForEach {
+                collection,
+                template,
+            } => {
+                let collection = match collection {
+                    Collection::State(state) => {
+                        let state = state.0;
+                        quote! { Collection::State(StateId::new(#state)) }
+                    }
+                    Collection::Resource(resource, path) => {
+                        let resource = resource.0;
+                        let path = path.iter().map(|field| quote! { #field.to_owned() });
+                        quote! { Collection::Resource(ResourceId::new(#resource), vec![#(#path),*]) }
+                    }
+                };
                 let template = self.node(template)?;
-                quote! { Node::for_each(StateId::new(#state), #template) }
+                quote! { Node::for_each(#collection, #template) }
             }
             Node::ScreenModule { .. } => {
                 unreachable!("screen modules are expanded before code generation")
@@ -382,7 +414,7 @@ impl<'a> Emitter<'a> {
 
 fn state_value(value: &StateValue) -> TokenStream {
     match value {
-        StateValue::Int(value) => quote! { StateValue::Int(#value) },
+        StateValue::Number(value) => quote! { StateValue::Number(#value) },
         StateValue::Bool(value) => quote! { StateValue::Bool(#value) },
         StateValue::String(value) => quote! { StateValue::String(#value.to_owned()) },
         StateValue::List(values) => {
@@ -415,20 +447,20 @@ fn state_definition(state: &State) -> TokenStream {
 fn resource_definition(resource: &Resource) -> TokenStream {
     let module = &resource.module;
     let operation = &resource.operation;
-    let payload = &resource.payload;
+    let payload = resource.payload.iter().map(payload_part);
     let timeout_ms = resource.timeout_ms;
     let shape = state_shape(&resource.shape);
     quote! {
         ResourceDefinition::new(
             #shape,
-            NativeOperation::new(#module, #operation, #payload, #timeout_ms),
+            NativeOperation::templated(#module, #operation, vec![#(#payload),*], #timeout_ms),
         )
     }
 }
 
 fn state_shape(shape: &StateShape) -> TokenStream {
     match shape {
-        StateShape::Int => quote! { ink_core::StateShape::Int },
+        StateShape::Number => quote! { ink_core::StateShape::Number },
         StateShape::Bool => quote! { ink_core::StateShape::Bool },
         StateShape::String => quote! { ink_core::StateShape::String },
         StateShape::List(item) => {
@@ -447,7 +479,7 @@ fn state_shape(shape: &StateShape) -> TokenStream {
 
 fn state_shape_name(shape: &StateShape) -> String {
     match shape {
-        StateShape::Int => "int".to_owned(),
+        StateShape::Number => "number".to_owned(),
         StateShape::Bool => "bool".to_owned(),
         StateShape::String => "string".to_owned(),
         StateShape::List(item) => format!("list<{}>", state_shape_name(item)),
@@ -490,9 +522,9 @@ fn action_tokens(action: &Action) -> TokenStream {
             let id = state.0;
             quote! { Action::Increment { state: StateId::new(#id), by: #by } }
         }
-        Action::SetInt { state, value } => {
+        Action::SetNumber { state, value } => {
             let id = state.0;
-            quote! { Action::SetInt { state: StateId::new(#id), value: #value } }
+            quote! { Action::SetNumber { state: StateId::new(#id), value: #value } }
         }
         Action::SetBool { state, value } => {
             let id = state.0;
@@ -556,9 +588,19 @@ fn action_tokens(action: &Action) -> TokenStream {
 fn native_operation_tokens(operation: &NativeOperation) -> TokenStream {
     let module = &operation.module;
     let name = &operation.operation;
-    let payload = &operation.payload;
+    let payload = operation.payload.iter().map(payload_part);
     let timeout_ms = operation.timeout_ms;
-    quote! { NativeOperation::new(#module, #name, #payload, #timeout_ms) }
+    quote! { NativeOperation::templated(#module, #name, vec![#(#payload),*], #timeout_ms) }
+}
+
+fn payload_part(part: &PayloadPart) -> TokenStream {
+    match part {
+        PayloadPart::Literal(value) => quote! { PayloadPart::Literal(#value.to_owned()) },
+        PayloadPart::State(state) => {
+            let id = state.0;
+            quote! { PayloadPart::State(StateId::new(#id)) }
+        }
+    }
 }
 
 fn condition_tokens(condition: &Condition) -> TokenStream {
@@ -621,7 +663,7 @@ fn resource_field_tokens(field: &ResourceField) -> TokenStream {
 
 fn value_tokens(value: &Value) -> TokenStream {
     match value {
-        Value::Int(value) => quote! { Value::Int(#value) },
+        Value::Number(value) => quote! { Value::Number(#value) },
         Value::Bool(value) => quote! { Value::Bool(#value) },
         Value::String(value) => quote! { Value::String(#value.to_owned()) },
         Value::State(state) => {

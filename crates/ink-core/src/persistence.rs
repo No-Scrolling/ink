@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt};
 
 use super::{PersistedState, StateValue};
 
-const HEADER: &[u8] = b"INKS\x01";
+const HEADER: &[u8] = b"INKS\x02";
 const SIZE_LIMIT: usize = 1024 * 1024;
 const DEPTH_LIMIT: usize = 16;
 
@@ -62,7 +62,7 @@ pub(super) fn decode_persisted_state(bytes: &[u8]) -> Option<HashMap<String, (u6
 
 fn encode_value(output: &mut Vec<u8>, value: &StateValue) -> Result<(), PersistenceTooLarge> {
     match value {
-        StateValue::Int(value) => {
+        StateValue::Number(value) => {
             output.push(0);
             output.extend_from_slice(&value.to_le_bytes());
         }
@@ -144,9 +144,10 @@ impl Reader<'_> {
             return None;
         }
         match self.u8()? {
-            0 => Some(StateValue::Int(i64::from_le_bytes(
-                self.take(8)?.try_into().ok()?,
-            ))),
+            0 => {
+                let value = f64::from_le_bytes(self.take(8)?.try_into().ok()?);
+                value.is_finite().then_some(StateValue::Number(value))
+            }
             1 => match self.u8()? {
                 0 => Some(StateValue::Bool(false)),
                 1 => Some(StateValue::Bool(true)),

@@ -1,6 +1,8 @@
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     fmt,
+    hash::{Hash, Hasher},
+    sync::Arc,
 };
 
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
@@ -32,17 +34,18 @@ const SELECTOR_LABEL_SIZE: f32 = 20.0;
 const SELECTOR_LABEL_HEIGHT: f32 = 25.0;
 const SELECTOR_HEIGHT: f32 = SELECTOR_LABEL_HEIGHT + BUTTON_HEIGHT;
 const CONTENT_INSET_START: f32 = 37.0;
-const CONTENT_INSET_END: f32 = 46.0;
+const CONTENT_INSET_END: f32 = CONTENT_INSET_START;
 const CONTENT_TOP: f32 = 14.0;
 const CONTENT_BOTTOM: f32 = 20.0;
 const CONTENT_GAP: f32 = 47.0;
-const HEADER_HEIGHT: f32 = 42.0;
+const HEADER_HEIGHT: f32 = 50.0;
 const HEADER_TEXT_SIZE: f32 = 20.0;
 const HEADER_HORIZONTAL_INSET: f32 = 22.0;
 const HEADER_BUTTON_SIZE: f32 = 32.0;
 const HEADER_BACK_ICON_SIZE: f32 = 28.0;
 const HEADER_BACK_OFFSET_X: f32 = -7.0;
 const HEADER_BACK_OFFSET_Y: f32 = 11.0;
+const HEADER_CONTENT_TOP: f32 = 6.0;
 const NAV_HEIGHT: f32 = 70.0;
 const NAV_ICON_SIZE: f32 = 52.0;
 const NAV_VERTICAL_INSET: f32 = 10.0;
@@ -79,9 +82,9 @@ impl ResourceId {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StateValue {
-    Int(i64),
+    Number(f64),
     Bool(bool),
     String(String),
     List(Vec<StateValue>),
@@ -90,7 +93,7 @@ pub enum StateValue {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StateShape {
-    Int,
+    Number,
     Bool,
     String,
     List(Box<StateShape>),
@@ -100,9 +103,8 @@ pub enum StateShape {
 impl StateShape {
     fn accepts(&self, value: &StateValue) -> bool {
         match (self, value) {
-            (Self::Int, StateValue::Int(_))
-            | (Self::Bool, StateValue::Bool(_))
-            | (Self::String, StateValue::String(_)) => true,
+            (Self::Number, StateValue::Number(value)) if value.is_finite() => true,
+            (Self::Bool, StateValue::Bool(_)) | (Self::String, StateValue::String(_)) => true,
             (Self::List(item), StateValue::List(values)) => {
                 values.iter().all(|value| item.accepts(value))
             }
@@ -123,7 +125,8 @@ impl StateShape {
 impl fmt::Display for StateValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Int(value) => value.fmt(formatter),
+            Self::Number(value) if value.fract() == 0.0 => write!(formatter, "{value:.0}"),
+            Self::Number(value) => value.fmt(formatter),
             Self::Bool(value) => value.fmt(formatter),
             Self::String(value) => value.fmt(formatter),
             Self::List(values) => write!(formatter, "{} items", values.len()),
@@ -132,18 +135,24 @@ impl fmt::Display for StateValue {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StateDefinition {
     initial: StateValue,
     persisted: Option<PersistedState>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NativeOperation {
     module: String,
     operation: String,
-    payload: String,
+    payload: Vec<PayloadPart>,
     timeout_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PayloadPart {
+    Literal(String),
+    State(StateId),
 }
 
 impl NativeOperation {
@@ -156,13 +165,47 @@ impl NativeOperation {
         Self {
             module: module.into(),
             operation: operation.into(),
-            payload: payload.into(),
+            payload: vec![PayloadPart::Literal(payload.into())],
             timeout_ms,
         }
     }
+
+    pub fn templated(
+        module: impl Into<String>,
+        operation: impl Into<String>,
+        payload: Vec<PayloadPart>,
+        timeout_ms: u64,
+    ) -> Self {
+        Self {
+            module: module.into(),
+            operation: operation.into(),
+            payload,
+            timeout_ms,
+        }
+    }
+
+    fn dependencies(&self) -> impl Iterator<Item = StateId> + '_ {
+        self.payload.iter().filter_map(|part| match part {
+            PayloadPart::State(state) => Some(*state),
+            PayloadPart::Literal(_) => None,
+        })
+    }
+
+    fn materialise(&self, state: &[StateValue]) -> Option<String> {
+        let mut output = String::new();
+        for part in &self.payload {
+            match part {
+                PayloadPart::Literal(value) => output.push_str(value),
+                PayloadPart::State(id) => {
+                    output.push_str(&json_value(state.get(id.0)?)?);
+                }
+            }
+        }
+        Some(output)
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ResourceDefinition {
     shape: StateShape,
     read: NativeOperation,
@@ -212,7 +255,7 @@ impl ResourceError {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 enum ResourceState {
     Inactive,
     Loading {
@@ -239,13 +282,15 @@ pub enum NativeRequestKind {
     ResourceRead,
     Action,
     Cancel,
+    Image,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NativeRequest {
     id: u64,
     kind: NativeRequestKind,
     operation: Option<NativeOperation>,
+    payload: String,
 }
 
 impl NativeRequest {
@@ -270,9 +315,7 @@ impl NativeRequest {
     }
 
     pub fn payload(&self) -> &str {
-        self.operation
-            .as_ref()
-            .map_or("", |operation| &operation.payload)
+        &self.payload
     }
 
     pub fn timeout_ms(&self) -> u64 {
@@ -342,15 +385,15 @@ pub enum TextInputAction {
     Done,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     Increment {
         state: StateId,
-        by: i64,
+        by: f64,
     },
-    SetInt {
+    SetNumber {
         state: StateId,
-        value: i64,
+        value: f64,
     },
     SetBool {
         state: StateId,
@@ -410,7 +453,7 @@ pub enum Action {
 fn action_state(action: &Action) -> Option<StateId> {
     match action {
         Action::Increment { state, .. }
-        | Action::SetInt { state, .. }
+        | Action::SetNumber { state, .. }
         | Action::SetBool { state, .. }
         | Action::SetString { state, .. }
         | Action::Toggle { state }
@@ -457,7 +500,7 @@ impl TextPart {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Condition {
     Bool {
         state: StateId,
@@ -480,9 +523,9 @@ pub enum Condition {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    Int(i64),
+    Number(f64),
     Bool(bool),
     String(String),
     State(StateId),
@@ -558,6 +601,35 @@ pub struct ImageAsset {
     pub compressed_pixels: &'static [u8],
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RemoteImage {
+    pub id: u64,
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Arc<[u8]>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ImageData {
+    Asset(ImageAsset),
+    Remote(RemoteImage),
+}
+
+impl ImageData {
+    pub const fn id(&self) -> u64 {
+        match self {
+            Self::Asset(asset) => asset.id,
+            Self::Remote(image) => image.id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ImageSource {
+    Asset(ImageAsset),
+    Remote(Vec<TextPart>),
+}
+
 impl ImageAsset {
     pub const fn new(id: u64, width: u32, height: u32, compressed_pixels: &'static [u8]) -> Self {
         Self {
@@ -569,7 +641,7 @@ impl ImageAsset {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ImageFit {
     #[default]
     Cover,
@@ -623,7 +695,9 @@ enum NodeKind {
         tone: Tone,
     },
     Image {
-        asset: ImageAsset,
+        source: ImageSource,
+        fallback: Option<ImageAsset>,
+        bleed: bool,
         width: f32,
         height: f32,
         fit: ImageFit,
@@ -649,9 +723,15 @@ enum NodeKind {
         alternate: Option<Box<Node>>,
     },
     ForEach {
-        state: StateId,
+        collection: Collection,
         template: Box<Node>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Collection {
+    State(StateId),
+    Resource(ResourceId, Vec<String>),
 }
 
 impl Node {
@@ -749,10 +829,19 @@ impl Node {
         }
     }
 
-    pub const fn image(asset: ImageAsset, width: f32, height: f32, fit: ImageFit) -> Self {
+    pub fn image(
+        source: ImageSource,
+        fallback: Option<ImageAsset>,
+        bleed: bool,
+        width: f32,
+        height: f32,
+        fit: ImageFit,
+    ) -> Self {
         Self {
             kind: NodeKind::Image {
-                asset,
+                source,
+                fallback,
+                bleed,
                 width,
                 height,
                 fit,
@@ -800,10 +889,10 @@ impl Node {
         }
     }
 
-    pub fn for_each(state: StateId, template: Self) -> Self {
+    pub fn for_each(collection: Collection, template: Self) -> Self {
         Self {
             kind: NodeKind::ForEach {
-                state,
+                collection,
                 template: Box::new(template),
             },
         }
@@ -941,9 +1030,9 @@ pub struct MaskRun {
     pub colour: Colour,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ImageRun {
-    pub asset: ImageAsset,
+    pub image: ImageData,
     pub rect: Rect,
     pub clip: Rect,
     pub fit: ImageFit,
@@ -983,10 +1072,26 @@ struct PendingRequest {
     owner: RequestOwner,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum RequestOwner {
     Resource(ResourceId),
     Action,
+    Image(RemoteImageKey),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct RemoteImageKey {
+    url: String,
+    width: u32,
+    height: u32,
+    fit: ImageFit,
+}
+
+#[derive(Clone)]
+enum RemoteImageState {
+    Loading { request_id: u64 },
+    Ready(RemoteImage),
+    Failed,
 }
 
 enum QueuedRequest {
@@ -1014,6 +1119,8 @@ pub struct Engine {
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
     resource_requests: HashMap<ResourceId, u64>,
+    remote_images: HashMap<RemoteImageKey, RemoteImageState>,
+    visible_images: BTreeSet<RemoteImageKey>,
     last_native_request: Option<NativeRequest>,
     next_request_id: u64,
     back_icon: Option<Mask>,
@@ -1093,6 +1200,8 @@ impl Engine {
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
             resource_requests: HashMap::new(),
+            remote_images: HashMap::new(),
+            visible_images: BTreeSet::new(),
             last_native_request: None,
             next_request_id: 1,
             back_icon: None,
@@ -1156,6 +1265,91 @@ impl Engine {
         true
     }
 
+    pub fn complete_native_json(&mut self, request_id: u64, bytes: &[u8]) -> bool {
+        let Some(PendingRequest {
+            owner: RequestOwner::Resource(resource),
+            ..
+        }) = self.in_flight_requests.get(&request_id)
+        else {
+            return false;
+        };
+        let shape = self.definition.resources[resource.0].shape.clone();
+        let result = serde_json::from_slice(bytes)
+            .map_err(|error| {
+                ResourceError::new(
+                    ResourceErrorKind::Protocol,
+                    format!("response was not valid JSON: {error}"),
+                    false,
+                )
+            })
+            .and_then(|value| state_from_json(&shape, &value, "$"));
+        self.complete_native(request_id, result)
+    }
+
+    pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit)> {
+        let pending = self.in_flight_requests.get(&request_id)?;
+        let RequestOwner::Image(key) = &pending.owner else {
+            return None;
+        };
+        Some((key.width, key.height, key.fit))
+    }
+
+    pub fn complete_native_image(
+        &mut self,
+        request_id: u64,
+        width: u32,
+        height: u32,
+        pixels: Vec<u8>,
+    ) -> bool {
+        let Some(pending) = self.in_flight_requests.remove(&request_id) else {
+            return false;
+        };
+        let RequestOwner::Image(key) = pending.owner else {
+            return false;
+        };
+        if !matches!(
+            self.remote_images.get(&key),
+            Some(RemoteImageState::Loading { request_id: active }) if *active == request_id
+        ) || width == 0
+            || height == 0
+            || pixels.len() != width as usize * height as usize * 4
+        {
+            return false;
+        }
+        let id = image_id(&key);
+        self.remote_images.insert(
+            key,
+            RemoteImageState::Ready(RemoteImage {
+                id,
+                width,
+                height,
+                pixels: pixels.into(),
+            }),
+        );
+        self.rebuild_scene();
+        true
+    }
+
+    pub fn fail_native(&mut self, request_id: u64, error: ResourceError) -> bool {
+        let Some(owner) = self
+            .in_flight_requests
+            .get(&request_id)
+            .map(|pending| pending.owner.clone())
+        else {
+            return false;
+        };
+        match owner {
+            RequestOwner::Resource(_) => self.complete_native(request_id, Err(error)),
+            RequestOwner::Image(key) => {
+                self.in_flight_requests.remove(&request_id);
+                self.remote_images.insert(key, RemoteImageState::Failed);
+                self.rebuild_scene();
+                true
+            }
+            RequestOwner::Action => self.complete_native_action(request_id),
+        }
+    }
+
     pub fn complete_native_action(&mut self, request_id: u64) -> bool {
         let Some(pending) = self.in_flight_requests.remove(&request_id) else {
             return false;
@@ -1164,10 +1358,14 @@ impl Engine {
     }
 
     fn queue_native_action(&mut self, operation: NativeOperation) -> bool {
+        let Some(payload) = operation.materialise(&self.state) else {
+            return false;
+        };
         let request = NativeRequest {
             id: self.next_request_id(),
             kind: NativeRequestKind::Action,
             operation: Some(operation),
+            payload,
         };
         self.queued_requests
             .push_back(QueuedRequest::Start(PendingRequest {
@@ -1197,6 +1395,7 @@ impl Engine {
                     id: request_id,
                     kind: NativeRequestKind::Cancel,
                     operation: None,
+                    payload: String::new(),
                 }));
         }
     }
@@ -1228,6 +1427,9 @@ impl Engine {
         };
         self.resources[resource.0] = ResourceState::Loading { previous };
         let request_id = self.next_request_id();
+        let Some(payload) = definition.read.materialise(&self.state) else {
+            return false;
+        };
         self.resource_requests.insert(resource, request_id);
         self.queued_requests
             .push_back(QueuedRequest::Start(PendingRequest {
@@ -1235,10 +1437,54 @@ impl Engine {
                     id: request_id,
                     kind: NativeRequestKind::ResourceRead,
                     operation: Some(definition.read),
+                    payload,
                 },
                 owner: RequestOwner::Resource(resource),
             }));
         true
+    }
+
+    fn queue_remote_image(&mut self, key: RemoteImageKey) {
+        if self.remote_images.contains_key(&key) {
+            return;
+        }
+        let request_id = self.next_request_id();
+        let payload = format!(
+            "{{\"url\":{},\"headers\":{{}}}}",
+            serde_json::to_string(&key.url).expect("a Rust string is valid JSON"),
+        );
+        let request = NativeRequest {
+            id: request_id,
+            kind: NativeRequestKind::Image,
+            operation: Some(NativeOperation::new("network", "image", "", 20_000)),
+            payload,
+        };
+        self.remote_images
+            .insert(key.clone(), RemoteImageState::Loading { request_id });
+        self.queued_requests
+            .push_back(QueuedRequest::Start(PendingRequest {
+                request,
+                owner: RequestOwner::Image(key),
+            }));
+    }
+
+    fn sync_visible_images(&mut self) {
+        let stale = self
+            .remote_images
+            .iter()
+            .filter_map(|(key, state)| {
+                (!self.visible_images.contains(key)).then(|| match state {
+                    RemoteImageState::Loading { request_id } => Some((key.clone(), *request_id)),
+                    RemoteImageState::Ready(_) | RemoteImageState::Failed => Some((key.clone(), 0)),
+                })?
+            })
+            .collect::<Vec<_>>();
+        for (key, request_id) in stale {
+            self.remote_images.remove(&key);
+            if request_id != 0 {
+                self.cancel_request(request_id);
+            }
+        }
     }
 
     pub fn persisted_snapshot(&self) -> Result<Option<(u64, Vec<u8>)>, PersistenceTooLarge> {
@@ -1406,6 +1652,7 @@ impl Engine {
         if changed {
             if mutated {
                 self.mark_persisted(state);
+                self.refresh_dependent_resources(state);
             }
             self.rebuild_scene();
         }
@@ -1420,13 +1667,13 @@ impl Engine {
         let mutated_state = action_state(&action);
         match action {
             Action::Increment { state, by } => {
-                let Some(StateValue::Int(value)) = self.state.get_mut(state.0) else {
+                let Some(StateValue::Number(value)) = self.state.get_mut(state.0) else {
                     return false;
                 };
                 *value += by;
             }
-            Action::SetInt { state, value } => {
-                let Some(StateValue::Int(current)) = self.state.get_mut(state.0) else {
+            Action::SetNumber { state, value } => {
+                let Some(StateValue::Number(current)) = self.state.get_mut(state.0) else {
                     return false;
                 };
                 *current = value;
@@ -1555,6 +1802,7 @@ impl Engine {
         }
         if let Some(state) = mutated_state {
             self.mark_persisted(state);
+            self.refresh_dependent_resources(state);
         }
         true
     }
@@ -1571,9 +1819,29 @@ impl Engine {
         }
     }
 
+    fn refresh_dependent_resources(&mut self, state: StateId) {
+        let resources = self
+            .definition
+            .resources
+            .iter()
+            .enumerate()
+            .filter_map(|(index, resource)| {
+                (self.active_resources.contains(&ResourceId(index))
+                    && resource
+                        .read
+                        .dependencies()
+                        .any(|dependency| dependency == state))
+                .then_some(ResourceId(index))
+            })
+            .collect::<Vec<_>>();
+        for resource in resources {
+            self.queue_resource(resource);
+        }
+    }
+
     fn evaluate_value(&self, value: &Value) -> Option<StateValue> {
         match value {
-            Value::Int(value) => Some(StateValue::Int(*value)),
+            Value::Number(value) => Some(StateValue::Number(*value)),
             Value::Bool(value) => Some(StateValue::Bool(*value)),
             Value::String(value) => Some(StateValue::String(value.clone())),
             Value::State(state) => self.state.get(state.0).cloned(),
@@ -1669,7 +1937,9 @@ impl Engine {
             }
             NodeKind::Tabs { state, tabs } => {
                 let active_tab = match self.state.get(state.0) {
-                    Some(StateValue::Int(value)) => usize::try_from(*value).unwrap_or_default(),
+                    Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
+                        *value as usize
+                    }
                     _ => 0,
                 };
                 if let Some(tab) = tabs.get(active_tab) {
@@ -1789,6 +2059,7 @@ impl Engine {
             images: Vec::new(),
         };
         self.hit_regions.clear();
+        self.visible_images.clear();
         self.scroll_max = 0.0;
 
         if self.viewport.width == 0 || self.viewport.height == 0 {
@@ -1828,6 +2099,7 @@ impl Engine {
                 height: self.viewport.height as f32,
             },
         );
+        self.sync_visible_images();
     }
 
     fn measure(&self, node: &Node, available: Rect) -> MeasuredSize {
@@ -1922,10 +2194,26 @@ impl Engine {
                     height: size.min(available.height),
                 }
             }
-            NodeKind::Image { width, height, .. } => MeasuredSize {
-                width: self.scaled(*width).min(available.width),
-                height: self.scaled(*height).min(available.height),
-            },
+            NodeKind::Image {
+                bleed,
+                width,
+                height,
+                ..
+            } => {
+                let measured_width = if *bleed {
+                    self.viewport.width as f32
+                } else {
+                    self.scaled(*width).min(available.width)
+                };
+                MeasuredSize {
+                    width: measured_width,
+                    height: if *bleed {
+                        (measured_width * height / width).min(available.height)
+                    } else {
+                        self.scaled(*height).min(available.height)
+                    },
+                }
+            }
             NodeKind::Toggle { .. } => MeasuredSize {
                 width: available.width,
                 height: self.scaled(TOGGLE_HEIGHT).min(available.height),
@@ -2005,12 +2293,12 @@ impl Engine {
                 clip: self.clip,
                 colour: tone_colour(*tone),
             }),
-            NodeKind::Image { asset, fit, .. } => self.scene.images.push(ImageRun {
-                asset: *asset,
-                rect,
-                clip: self.clip,
-                fit: *fit,
-            }),
+            NodeKind::Image {
+                source,
+                fallback,
+                fit,
+                ..
+            } => self.layout_image(source, *fallback, *fit, rect),
             NodeKind::Toggle {
                 label,
                 state,
@@ -2070,6 +2358,26 @@ impl Engine {
                     .as_ref()
                     .map(|action| self.materialise_action(action, item)),
             ),
+            NodeKind::Image {
+                source,
+                fallback,
+                bleed,
+                width,
+                height,
+                fit,
+            } => Node::image(
+                match source {
+                    ImageSource::Asset(asset) => ImageSource::Asset(*asset),
+                    ImageSource::Remote(parts) => {
+                        ImageSource::Remote(self.materialise_text(parts, item))
+                    }
+                },
+                *fallback,
+                *bleed,
+                *width,
+                *height,
+                *fit,
+            ),
             NodeKind::SelectorButton {
                 label,
                 value,
@@ -2116,10 +2424,25 @@ impl Engine {
                         .map_or_else(Vec::new, |alternate| self.materialise(alternate, item))
                 };
             }
-            NodeKind::ForEach { state, template } => {
-                let Some(StateValue::List(items)) = self.state.get(state.0) else {
-                    return Vec::new();
+            NodeKind::ForEach {
+                collection,
+                template,
+            } => {
+                let items = match collection {
+                    Collection::State(state) => match self.state.get(state.0) {
+                        Some(StateValue::List(items)) => items.clone(),
+                        _ => return Vec::new(),
+                    },
+                    Collection::Resource(resource, path) => match self
+                        .resource_field_value(*resource, &ResourceField::Value(path.clone()))
+                    {
+                        Some(StateValue::List(items)) => items,
+                        _ => return Vec::new(),
+                    },
                 };
+                if items.is_empty() {
+                    return Vec::new();
+                }
                 return items
                     .iter()
                     .enumerate()
@@ -2248,13 +2571,14 @@ impl Engine {
                 } else {
                     0.0
                 };
+            let title_height = self.scaled(32.0);
             self.scene.text.push(TextRun {
                 text: title.to_owned(),
                 rect: Rect {
                     x: rect.x + title_inset,
-                    y: rect.y + self.scaled(7.0),
+                    y: rect.y + (header_height - title_height) / 2.0,
                     width: (rect.width - title_inset * 2.0).max(0.0),
-                    height: self.scaled(32.0),
+                    height: title_height,
                 },
                 clip: self.clip,
                 font_size: self.scaled_font(HEADER_TEXT_SIZE),
@@ -2265,28 +2589,41 @@ impl Engine {
 
         let inset_start = self.scaled(CONTENT_INSET_START);
         let inset_end = self.scaled(CONTENT_INSET_END);
-        let inset_bottom = if bottom_inset {
+        let first_child_is_full_bleed = children.first().is_some_and(full_bleed_image);
+        let inset_top = if first_child_is_full_bleed {
+            0.0
+        } else if has_header {
+            self.scaled(HEADER_CONTENT_TOP)
+        } else {
+            self.scaled(CONTENT_TOP)
+        };
+        let requested_bottom_inset = if bottom_inset {
             self.scaled(CONTENT_BOTTOM)
         } else {
             0.0
         };
-        let content = Rect {
+        let unbounded_content = Rect {
             x: rect.x + inset_start,
-            y: rect.y + header_height + self.scaled(CONTENT_TOP),
+            y: rect.y + header_height + inset_top,
             width: (rect.width - inset_start - inset_end).max(0.0),
-            height: (rect.height - header_height - self.scaled(CONTENT_TOP) - inset_bottom)
-                .max(0.0),
+            height: f32::INFINITY,
         };
         let gap = self.scaled(CONTENT_GAP);
-        let unbounded_content = Rect {
-            height: f32::INFINITY,
-            ..content
-        };
         let content_height = children
             .iter()
             .map(|child| self.measure(child, unbounded_content).height)
             .sum::<f32>()
             + gap * children.len().saturating_sub(1) as f32;
+        let inset_bottom = if first_child_is_full_bleed {
+            requested_bottom_inset
+                .min((rect.height - header_height - inset_top - content_height).max(0.0))
+        } else {
+            requested_bottom_inset
+        };
+        let content = Rect {
+            height: (rect.height - header_height - inset_top - inset_bottom).max(0.0),
+            ..unbounded_content
+        };
         self.scroll_max = (content_height - content.height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, self.scroll_max);
 
@@ -2402,12 +2739,19 @@ impl Engine {
             justify,
         );
         for (child, size) in children.iter().zip(sizes) {
-            let width = if align == Alignment::Stretch && stretchable(child) {
+            let bleed = full_bleed_image(child);
+            let width = if bleed {
+                self.viewport.width as f32
+            } else if align == Alignment::Stretch && stretchable(child) {
                 rect.width
             } else {
                 size.width.min(rect.width)
             };
-            let x = cross_position(rect.x, rect.width, width, align);
+            let x = if bleed {
+                0.0
+            } else {
+                cross_position(rect.x, rect.width, width, align)
+            };
             self.layout(
                 child,
                 Rect {
@@ -2707,7 +3051,9 @@ impl Engine {
             ..rect
         };
         let active = match self.state.get(state.0) {
-            Some(StateValue::Int(value)) if *value >= 0 => *value as usize,
+            Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
+                *value as usize
+            }
             _ => 0,
         }
         .min(tabs.len().saturating_sub(1));
@@ -2798,6 +3144,54 @@ impl Engine {
             }
         }
         text
+    }
+
+    fn layout_image(
+        &mut self,
+        source: &ImageSource,
+        fallback: Option<ImageAsset>,
+        fit: ImageFit,
+        rect: Rect,
+    ) {
+        let visible = rect.intersection(self.clip);
+        if visible.width <= 0.0 || visible.height <= 0.0 {
+            return;
+        }
+        let image = match source {
+            ImageSource::Asset(asset) => Some(ImageData::Asset(*asset)),
+            ImageSource::Remote(parts) => {
+                let url = self.resolve_text(parts);
+                if url.is_empty() {
+                    fallback.map(ImageData::Asset)
+                } else {
+                    let key = RemoteImageKey {
+                        url,
+                        width: rect.width.ceil().max(1.0) as u32,
+                        height: rect.height.ceil().max(1.0) as u32,
+                        fit,
+                    };
+                    self.visible_images.insert(key.clone());
+                    let loaded = match self.remote_images.get(&key) {
+                        Some(RemoteImageState::Ready(image)) => {
+                            Some(ImageData::Remote(image.clone()))
+                        }
+                        _ => None,
+                    };
+                    if loaded.is_none() {
+                        self.queue_remote_image(key);
+                    }
+                    loaded.or_else(|| fallback.map(ImageData::Asset))
+                }
+            }
+        };
+        if let Some(image) = image {
+            self.scene.images.push(ImageRun {
+                image,
+                rect,
+                clip: self.clip,
+                fit,
+            });
+        }
     }
 
     fn text_width(&self, text: &str, font_size: f32) -> f32 {
@@ -2894,7 +3288,7 @@ fn item_at_path<'a>(mut item: &'a StateValue, path: &[String]) -> Option<&'a Sta
 
 fn value_from_state(value: &StateValue) -> Value {
     match value {
-        StateValue::Int(value) => Value::Int(*value),
+        StateValue::Number(value) => Value::Number(*value),
         StateValue::Bool(value) => Value::Bool(*value),
         StateValue::String(value) => Value::String(value.clone()),
         StateValue::List(values) => Value::List(values.iter().map(value_from_state).collect()),
@@ -2907,6 +3301,75 @@ fn value_from_state(value: &StateValue) -> Value {
     }
 }
 
+fn json_value(value: &StateValue) -> Option<String> {
+    match value {
+        StateValue::Number(value) if value.is_finite() => serde_json::Number::from_f64(*value)
+            .map(serde_json::Value::Number)
+            .map(|value| value.to_string()),
+        StateValue::Bool(value) => Some(value.to_string()),
+        StateValue::String(value) => serde_json::to_string(value).ok(),
+        StateValue::Number(_) | StateValue::List(_) | StateValue::Object(_) => None,
+    }
+}
+
+fn state_from_json(
+    shape: &StateShape,
+    value: &serde_json::Value,
+    path: &str,
+) -> Result<StateValue, ResourceError> {
+    let mismatch = || {
+        ResourceError::new(
+            ResourceErrorKind::Protocol,
+            format!("response field {path} had the wrong type"),
+            false,
+        )
+    };
+    match shape {
+        StateShape::Number => value
+            .as_f64()
+            .filter(|value| value.is_finite())
+            .map(StateValue::Number)
+            .ok_or_else(mismatch),
+        StateShape::Bool => value.as_bool().map(StateValue::Bool).ok_or_else(mismatch),
+        StateShape::String => value
+            .as_str()
+            .map(|value| StateValue::String(value.to_owned()))
+            .ok_or_else(mismatch),
+        StateShape::List(item_shape) => value
+            .as_array()
+            .ok_or_else(mismatch)?
+            .iter()
+            .enumerate()
+            .map(|(index, value)| state_from_json(item_shape, value, &format!("{path}[{index}]")))
+            .collect::<Result<Vec<_>, _>>()
+            .map(StateValue::List),
+        StateShape::Object(fields) => {
+            let object = value.as_object().ok_or_else(mismatch)?;
+            fields
+                .iter()
+                .map(|(name, shape)| {
+                    let field_path = format!("{path}.{name}");
+                    let value = object.get(name).ok_or_else(|| {
+                        ResourceError::new(
+                            ResourceErrorKind::Protocol,
+                            format!("response was missing field {field_path}"),
+                            false,
+                        )
+                    })?;
+                    Ok((name.clone(), state_from_json(shape, value, &field_path)?))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(StateValue::Object)
+        }
+    }
+}
+
+fn image_id(key: &RemoteImageKey) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut hasher);
+    hasher.finish()
+}
+
 fn stretchable(node: &Node) -> bool {
     matches!(
         &node.kind,
@@ -2917,6 +3380,10 @@ fn stretchable(node: &Node) -> bool {
             | NodeKind::SelectorButton { .. }
             | NodeKind::Toggle { .. }
     )
+}
+
+fn full_bleed_image(node: &Node) -> bool {
+    matches!(&node.kind, NodeKind::Image { bleed: true, .. })
 }
 
 fn cross_position(origin: f32, available: f32, size: f32, align: Alignment) -> f32 {
