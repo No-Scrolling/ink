@@ -43,3 +43,8 @@ lto = "fat"
 opt-level = "z"
 panic = "abort"
 strip = "symbols"
+
+[profile.ink-dev]
+inherits = "dev"
+debug = 1
+opt-level = 2

@@ -1196,6 +1196,7 @@ pub struct Engine {
     persistence_dirty: bool,
     viewport: Viewport,
     scene: Scene,
+    materialised_root: Option<Node>,
     hit_regions: Vec<HitRegion>,
     clip: Rect,
     scroll_offset: f32,
@@ -1278,6 +1279,7 @@ impl Engine {
             persistence_dirty: false,
             viewport: Viewport::default(),
             scene: Scene::default(),
+            materialised_root: None,
             hit_regions: Vec::new(),
             clip: Rect::default(),
             scroll_offset: 0.0,
@@ -2046,7 +2048,7 @@ impl Engine {
             return false;
         }
         self.scroll_offset = offset;
-        self.rebuild_scene();
+        self.relayout_scene();
         true
     }
 
@@ -2341,19 +2343,9 @@ impl Engine {
 
     fn rebuild_scene(&mut self) {
         self.sync_active_resources();
-        self.scene = Scene {
-            width: self.viewport.width,
-            height: self.viewport.height,
-            quads: Vec::new(),
-            text: Vec::new(),
-            masks: Vec::new(),
-            images: Vec::new(),
-        };
-        self.hit_regions.clear();
-        self.visible_images.clear();
-        self.scroll_max = 0.0;
-
         if self.viewport.width == 0 || self.viewport.height == 0 {
+            self.materialised_root = None;
+            self.relayout_scene();
             return;
         }
 
@@ -2369,11 +2361,32 @@ impl Engine {
         };
         let mut roots = self.materialise(root, None);
         assert_eq!(roots.len(), 1, "an app route has exactly one root");
-        let root = roots.remove(0);
+        self.materialised_root = Some(roots.remove(0));
         self.back_icon = if self.navigation.len() > 1 {
             back_icon
         } else {
             None
+        };
+        self.relayout_scene();
+    }
+
+    fn relayout_scene(&mut self) {
+        self.scene.width = self.viewport.width;
+        self.scene.height = self.viewport.height;
+        self.scene.quads.clear();
+        self.scene.text.clear();
+        self.scene.masks.clear();
+        self.scene.images.clear();
+        self.hit_regions.clear();
+        self.visible_images.clear();
+        self.scroll_max = 0.0;
+
+        if self.viewport.width == 0 || self.viewport.height == 0 {
+            return;
+        }
+
+        let Some(root) = self.materialised_root.take() else {
+            return;
         };
         self.clip = Rect {
             x: 0.0,
@@ -2390,6 +2403,7 @@ impl Engine {
                 height: self.viewport.height as f32,
             },
         );
+        self.materialised_root = Some(root);
         self.sync_visible_images();
     }
 
@@ -2941,10 +2955,11 @@ impl Engine {
             height: f32::INFINITY,
         };
         let gap = self.scaled(CONTENT_GAP);
-        let content_height = children
+        let sizes = children
             .iter()
-            .map(|child| self.measure(child, unbounded_content).height)
-            .sum::<f32>()
+            .map(|child| self.measure(child, unbounded_content))
+            .collect::<Vec<_>>();
+        let content_height = sizes.iter().map(|size| size.height).sum::<f32>()
             + gap * children.len().saturating_sub(1) as f32;
         let inset_bottom = if first_child_is_full_bleed {
             requested_bottom_inset
@@ -2967,8 +2982,9 @@ impl Engine {
         };
         let previous_clip = self.clip;
         self.clip = self.clip.intersection(scroll_clip);
-        self.layout_vertical_children(
+        self.layout_vertical_children_with_sizes(
             children,
+            sizes,
             gap,
             Alignment::Stretch,
             if centred && self.scroll_max == 0.0 {
@@ -3060,6 +3076,18 @@ impl Engine {
             .iter()
             .map(|child| self.measure(child, rect))
             .collect();
+        self.layout_vertical_children_with_sizes(children, sizes, gap, align, justify, rect);
+    }
+
+    fn layout_vertical_children_with_sizes(
+        &mut self,
+        children: &[Node],
+        sizes: Vec<MeasuredSize>,
+        gap: f32,
+        align: Alignment,
+        justify: Justification,
+        rect: Rect,
+    ) {
         let content_height = sizes.iter().map(|size| size.height).sum::<f32>()
             + gap * children.len().saturating_sub(1) as f32;
         let (mut cursor, actual_gap) = distribution(

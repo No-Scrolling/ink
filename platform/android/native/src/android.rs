@@ -298,9 +298,7 @@ impl AndroidEngine {
             return;
         };
         match surface.renderer.render(self.engine.scene()) {
-            Ok(RenderOutcome::Presented) => {
-                android_log(ANDROID_LOG_INFO, "presented dirty frame");
-            }
+            Ok(RenderOutcome::Presented) => {}
             Ok(RenderOutcome::Skipped) => {
                 android_log(ANDROID_LOG_WARN, "surface skipped dirty frame");
             }

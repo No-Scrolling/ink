@@ -209,6 +209,8 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
                 "build",
                 "-p",
                 "ink-android",
+                "--profile",
+                "ink-dev",
             ),
         )
         if (inkUsesNetwork.get().toBoolean()) {

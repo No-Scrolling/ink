@@ -882,13 +882,22 @@ impl Renderer {
         let mut vertices = Vec::new();
         let mut emoji = Vec::new();
         for run in &scene.text {
+            let clip = intersect(run.rect, run.clip);
+            if clip.width <= 0.0 || clip.height <= 0.0 {
+                continue;
+            }
             let size = run.font_size.round().clamp(1.0, u16::MAX as f32) as u16;
             let scaled = font.as_scaled(PxScale::from(size as f32));
-            let width = text_run_width(&scaled, &run.text, size as f32);
             let mut pen_x = match run.align {
                 TextAlign::Start => run.rect.x,
-                TextAlign::Centre => run.rect.x + (run.rect.width - width).max(0.0) / 2.0,
-                TextAlign::End => run.rect.x + (run.rect.width - width).max(0.0),
+                TextAlign::Centre => {
+                    let width = text_run_width(&scaled, &run.text, size as f32);
+                    run.rect.x + (run.rect.width - width).max(0.0) / 2.0
+                }
+                TextAlign::End => {
+                    let width = text_run_width(&scaled, &run.text, size as f32);
+                    run.rect.x + (run.rect.width - width).max(0.0)
+                }
             };
             let baseline = run.rect.y + (run.rect.height - scaled.height()) / 2.0 + scaled.ascent();
             let mut previous = None;
@@ -904,7 +913,7 @@ impl Renderer {
                             width: emoji_size,
                             height: emoji_size,
                         },
-                        intersect(run.rect, run.clip),
+                        clip,
                         index,
                     );
                     pen_x += size as f32;
@@ -920,7 +929,7 @@ impl Renderer {
                         push_text_quad(
                             &mut vertices,
                             scene,
-                            intersect(run.rect, run.clip),
+                            clip,
                             Rect {
                                 x: pen_x + glyph.offset_x,
                                 y: baseline + glyph.offset_y,
