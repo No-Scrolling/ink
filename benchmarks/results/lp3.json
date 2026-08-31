@@ -1,6 +1,6 @@
 {
   "environment": {
-    "capturedAt": "2026-08-31T11:38:34.116Z",
+    "capturedAt": "2026-08-31T12:57:30.460Z",
     "device": "LightPhoneIII",
     "model": "TLP301",
     "android": "14",
@@ -15,7 +15,9 @@
   },
   "protocol": {
     "stacks": [
-      "ink"
+      "ink",
+      "expo",
+      "light-sdk"
     ],
     "scenarios": [
       "Counter",
@@ -46,101 +48,102 @@
         "assets": 127,
         "other": 58292
       },
+      "counterTapY": 760,
       "startup": {
         "samplesMs": [
-          308,
-          316,
-          305,
-          290,
-          292,
-          292,
+          372,
+          293,
+          286,
+          304,
+          285,
           296,
-          324,
-          315,
-          309,
-          309,
-          299,
-          294,
-          301,
-          298
+          296,
+          303,
+          290,
+          308,
+          283,
+          297,
+          291,
+          304,
+          288
         ],
-        "medianMs": 301,
-        "p95Ms": 324
+        "medianMs": 296,
+        "p95Ms": 372
       },
       "idleMemory": {
         "samples": [
           {
-            "pssKb": 17256,
-            "rssKb": 136732,
+            "pssKb": 18251,
+            "rssKb": 132964,
             "threads": 24
           },
           {
-            "pssKb": 17595,
-            "rssKb": 136556,
+            "pssKb": 18284,
+            "rssKb": 133436,
+            "threads": 25
+          },
+          {
+            "pssKb": 18312,
+            "rssKb": 133448,
+            "threads": 25
+          },
+          {
+            "pssKb": 18202,
+            "rssKb": 133440,
             "threads": 24
           },
           {
-            "pssKb": 17596,
-            "rssKb": 136636,
-            "threads": 24
-          },
-          {
-            "pssKb": 17534,
-            "rssKb": 136608,
-            "threads": 23
-          },
-          {
-            "pssKb": 17631,
-            "rssKb": 136780,
-            "threads": 24
+            "pssKb": 18378,
+            "rssKb": 133628,
+            "threads": 25
           }
         ],
-        "medianPssKb": 17595,
-        "medianRssKb": 136636,
-        "medianThreads": 24
+        "medianPssKb": 18284,
+        "medianRssKb": 133440,
+        "medianThreads": 25
       },
       "workload": {
         "samples": [
           {
+            "cpuMs": 850,
+            "elapsedMs": 12018.609209000017,
+            "cpuPercent": 7.072365738986554,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 98,
+            "averageFps": 8.756,
+            "presentP95Ms": 134,
+            "presentP99Ms": 134,
+            "acquireP95Ms": 28,
+            "compositorP95Ms": 15,
+            "pssKb": 19338,
+            "rssKb": 134832,
+            "threads": 20
+          },
+          {
             "cpuMs": 860,
-            "elapsedMs": 12165.601790999994,
-            "cpuPercent": 7.06911186782573,
+            "elapsedMs": 11825.723957999959,
+            "cpuPercent": 7.272282044248297,
             "frames": 98,
             "droppedFrames": 0,
             "lateAcquireFrames": 0,
             "jankyFrames": 0,
             "longPresentIntervals": 98,
-            "averageFps": 8.666,
+            "averageFps": 8.883,
             "presentP95Ms": 134,
             "presentP99Ms": 134,
             "acquireP95Ms": 28,
             "compositorP95Ms": 15,
-            "pssKb": 18719,
-            "rssKb": 138608,
-            "threads": 20
+            "pssKb": 19361,
+            "rssKb": 135204,
+            "threads": 21
           },
           {
-            "cpuMs": 850,
-            "elapsedMs": 11964.911999999997,
-            "cpuPercent": 7.104105738512747,
-            "frames": 98,
-            "droppedFrames": 0,
-            "lateAcquireFrames": 0,
-            "jankyFrames": 0,
-            "longPresentIntervals": 98,
-            "averageFps": 8.822,
-            "presentP95Ms": 134,
-            "presentP99Ms": 134,
-            "acquireP95Ms": 28,
-            "compositorP95Ms": 15,
-            "pssKb": 18808,
-            "rssKb": 138660,
-            "threads": 20
-          },
-          {
-            "cpuMs": 850,
-            "elapsedMs": 12161.228917000015,
-            "cpuPercent": 6.989425211886248,
+            "cpuMs": 890,
+            "elapsedMs": 12155.676749999984,
+            "cpuPercent": 7.3216820281108665,
             "frames": 98,
             "droppedFrames": 0,
             "lateAcquireFrames": 0,
@@ -148,59 +151,845 @@
             "longPresentIntervals": 98,
             "averageFps": 8.663,
             "presentP95Ms": 134,
-            "presentP99Ms": 150,
-            "acquireP95Ms": 28,
-            "compositorP95Ms": 15,
-            "pssKb": 18710,
-            "rssKb": 138540,
-            "threads": 20
-          },
-          {
-            "cpuMs": 850,
-            "elapsedMs": 11719.553791000013,
-            "cpuPercent": 7.252835860122545,
-            "frames": 98,
-            "droppedFrames": 0,
-            "lateAcquireFrames": 0,
-            "jankyFrames": 0,
-            "longPresentIntervals": 98,
-            "averageFps": 9.014,
-            "presentP95Ms": 134,
             "presentP99Ms": 134,
             "acquireP95Ms": 28,
             "compositorP95Ms": 15,
-            "pssKb": 18782,
-            "rssKb": 138768,
+            "pssKb": 19427,
+            "rssKb": 135272,
             "threads": 20
           },
           {
             "cpuMs": 860,
-            "elapsedMs": 11822.318874999997,
-            "cpuPercent": 7.2743766184364596,
+            "elapsedMs": 12239.763999999966,
+            "cpuPercent": 7.026279264861662,
             "frames": 98,
             "droppedFrames": 0,
             "lateAcquireFrames": 0,
             "jankyFrames": 0,
             "longPresentIntervals": 98,
-            "averageFps": 8.909,
+            "averageFps": 8.578,
             "presentP95Ms": 134,
             "presentP99Ms": 150,
             "acquireP95Ms": 28,
             "compositorP95Ms": 15,
-            "pssKb": 18762,
-            "rssKb": 138772,
+            "pssKb": 19340,
+            "rssKb": 135192,
+            "threads": 20
+          },
+          {
+            "cpuMs": 860,
+            "elapsedMs": 12213.421875,
+            "cpuPercent": 7.041433668645791,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 98,
+            "averageFps": 8.63,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 28,
+            "compositorP95Ms": 15,
+            "pssKb": 19440,
+            "rssKb": 135276,
             "threads": 20
           }
         ],
-        "medianCpuMs": 850,
-        "medianCpuPercent": 7.104105738512747,
+        "medianCpuMs": 860,
+        "medianCpuPercent": 7.072365738986554,
         "medianFrames": 98,
         "medianDroppedFrames": 0,
-        "medianAverageFps": 8.822,
+        "medianAverageFps": 8.663,
         "medianPresentP95Ms": 134,
         "medianCompositorP95Ms": 15,
-        "medianPssKb": 18762,
-        "medianRssKb": 138660
+        "medianPssKb": 19361,
+        "medianRssKb": 135204
+      }
+    },
+    {
+      "key": "expo",
+      "stack": "Expo",
+      "scenario": "Counter",
+      "packageName": "com.vandam.benchmark.expo.counter",
+      "component": "com.vandam.benchmark.expo.counter/.MainActivity",
+      "apk": {
+        "bytes": 31997292,
+        "uncompressedBytes": 50405408,
+        "dex": 23143284,
+        "native": 16319344,
+        "resources": 8894744,
+        "assets": 1719242,
+        "other": 328794
+      },
+      "counterTapY": 810,
+      "startup": {
+        "samplesMs": [
+          538,
+          591,
+          441,
+          518,
+          536,
+          516,
+          515,
+          450,
+          440,
+          455,
+          496,
+          518,
+          537,
+          538,
+          431
+        ],
+        "medianMs": 516,
+        "p95Ms": 591
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 68300,
+            "rssKb": 179452,
+            "threads": 33
+          },
+          {
+            "pssKb": 68119,
+            "rssKb": 179300,
+            "threads": 33
+          },
+          {
+            "pssKb": 68154,
+            "rssKb": 179292,
+            "threads": 33
+          },
+          {
+            "pssKb": 68266,
+            "rssKb": 179392,
+            "threads": 33
+          },
+          {
+            "pssKb": 68169,
+            "rssKb": 179316,
+            "threads": 32
+          }
+        ],
+        "medianPssKb": 68169,
+        "medianRssKb": 179316,
+        "medianThreads": 33
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 4370,
+            "elapsedMs": 11604.635499999975,
+            "cpuPercent": 37.65736545538211,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 98,
+            "averageFps": 9.157,
+            "presentP95Ms": 134,
+            "presentP99Ms": 200,
+            "acquireP95Ms": 24,
+            "compositorP95Ms": 15,
+            "pssKb": 72489,
+            "rssKb": 186748,
+            "threads": 29
+          },
+          {
+            "cpuMs": 4180,
+            "elapsedMs": 11652.684582999966,
+            "cpuPercent": 35.87156221578483,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 97,
+            "averageFps": 9.109,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 23,
+            "compositorP95Ms": 15,
+            "pssKb": 66609,
+            "rssKb": 180112,
+            "threads": 28
+          },
+          {
+            "cpuMs": 4300,
+            "elapsedMs": 11847.785083000024,
+            "cpuPercent": 36.293703589964004,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 98,
+            "averageFps": 8.953,
+            "presentP95Ms": 134,
+            "presentP99Ms": 200,
+            "acquireP95Ms": 24,
+            "compositorP95Ms": 15,
+            "pssKb": 66757,
+            "rssKb": 180260,
+            "threads": 29
+          },
+          {
+            "cpuMs": 4240,
+            "elapsedMs": 11613.566375000053,
+            "cpuPercent": 36.509026280912614,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 98,
+            "averageFps": 9.132,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 24,
+            "compositorP95Ms": 15,
+            "pssKb": 66803,
+            "rssKb": 180368,
+            "threads": 28
+          },
+          {
+            "cpuMs": 4360,
+            "elapsedMs": 11900.667916000006,
+            "cpuPercent": 36.636599145314705,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 98,
+            "averageFps": 8.935,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 23,
+            "compositorP95Ms": 15,
+            "pssKb": 66574,
+            "rssKb": 180040,
+            "threads": 28
+          }
+        ],
+        "medianCpuMs": 4300,
+        "medianCpuPercent": 36.509026280912614,
+        "medianFrames": 98,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 9.109,
+        "medianPresentP95Ms": 134,
+        "medianCompositorP95Ms": 15,
+        "medianPssKb": 66757,
+        "medianRssKb": 180260
+      }
+    },
+    {
+      "key": "light-sdk",
+      "stack": "Light SDK",
+      "scenario": "Counter",
+      "packageName": "com.vandam.benchmark.lightsdk.counter",
+      "component": "com.vandam.benchmark.lightsdk.counter/com.thelightphone.sdk.LightActivity",
+      "apk": {
+        "bytes": 25834693,
+        "uncompressedBytes": 26110616,
+        "dex": 2900068,
+        "native": 20461236,
+        "resources": 1448688,
+        "assets": 1018524,
+        "other": 282100
+      },
+      "counterTapY": 760,
+      "startup": {
+        "samplesMs": [
+          1192,
+          1175,
+          1161,
+          1203,
+          1175,
+          1226,
+          1185,
+          1209,
+          1159,
+          1197,
+          1186,
+          1196,
+          1195,
+          1173,
+          1175
+        ],
+        "medianMs": 1186,
+        "p95Ms": 1226
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 18538,
+            "rssKb": 131476,
+            "threads": 33
+          },
+          {
+            "pssKb": 18462,
+            "rssKb": 131412,
+            "threads": 34
+          },
+          {
+            "pssKb": 18523,
+            "rssKb": 131480,
+            "threads": 34
+          },
+          {
+            "pssKb": 18524,
+            "rssKb": 131464,
+            "threads": 34
+          },
+          {
+            "pssKb": 18494,
+            "rssKb": 131448,
+            "threads": 34
+          }
+        ],
+        "medianPssKb": 18523,
+        "medianRssKb": 131464,
+        "medianThreads": 34
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 3650,
+            "elapsedMs": 11765.199541999958,
+            "cpuPercent": 31.023698212427757,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 45,
+            "longPresentIntervals": 98,
+            "averageFps": 8.965,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 22194,
+            "rssKb": 136620,
+            "threads": 29
+          },
+          {
+            "cpuMs": 3530,
+            "elapsedMs": 11535.365500000014,
+            "cpuPercent": 30.60154444174305,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 42,
+            "longPresentIntervals": 98,
+            "averageFps": 9.19,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 24356,
+            "rssKb": 137492,
+            "threads": 29
+          },
+          {
+            "cpuMs": 3730,
+            "elapsedMs": 11615.014166000008,
+            "cpuPercent": 32.11360698051169,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 53,
+            "longPresentIntervals": 98,
+            "averageFps": 9.084,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 24298,
+            "rssKb": 137484,
+            "threads": 30
+          },
+          {
+            "cpuMs": 3540,
+            "elapsedMs": 11743.29470800003,
+            "cpuPercent": 30.14486213641902,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 47,
+            "longPresentIntervals": 98,
+            "averageFps": 8.994,
+            "presentP95Ms": 150,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 29,
+            "compositorP95Ms": 15,
+            "pssKb": 24310,
+            "rssKb": 137460,
+            "threads": 28
+          },
+          {
+            "cpuMs": 3670,
+            "elapsedMs": 11495.377165999962,
+            "cpuPercent": 31.925877220060343,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 61,
+            "longPresentIntervals": 98,
+            "averageFps": 9.207,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 24415,
+            "rssKb": 137636,
+            "threads": 32
+          }
+        ],
+        "medianCpuMs": 3650,
+        "medianCpuPercent": 31.023698212427757,
+        "medianFrames": 98,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 9.084,
+        "medianPresentP95Ms": 134,
+        "medianCompositorP95Ms": 15,
+        "medianPssKb": 24310,
+        "medianRssKb": 137484
+      }
+    },
+    {
+      "key": "light-sdk",
+      "stack": "Light SDK",
+      "scenario": "Scroll",
+      "packageName": "com.vandam.benchmark.lightsdk.scroll",
+      "component": "com.vandam.benchmark.lightsdk.scroll/com.thelightphone.sdk.LightActivity",
+      "apk": {
+        "bytes": 25932993,
+        "uncompressedBytes": 26213336,
+        "dex": 3002660,
+        "native": 20461236,
+        "resources": 1448688,
+        "assets": 1018664,
+        "other": 282088
+      },
+      "startup": {
+        "samplesMs": [
+          1201,
+          1233,
+          1188,
+          1167,
+          1190,
+          1185,
+          1182,
+          1193,
+          1182,
+          1201,
+          1175,
+          1177,
+          1178,
+          1203,
+          1177
+        ],
+        "medianMs": 1185,
+        "p95Ms": 1233
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 33113,
+            "rssKb": 145800,
+            "threads": 33
+          },
+          {
+            "pssKb": 33096,
+            "rssKb": 145500,
+            "threads": 33
+          },
+          {
+            "pssKb": 33213,
+            "rssKb": 145944,
+            "threads": 33
+          },
+          {
+            "pssKb": 33236,
+            "rssKb": 145680,
+            "threads": 31
+          },
+          {
+            "pssKb": 33114,
+            "rssKb": 145936,
+            "threads": 34
+          }
+        ],
+        "medianPssKb": 33114,
+        "medianRssKb": 145800,
+        "medianThreads": 33
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 4080,
+            "elapsedMs": 6423.931666999997,
+            "cpuPercent": 63.51250622666379,
+            "frames": 322,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 11,
+            "averageFps": 60.311,
+            "presentP95Ms": 16,
+            "presentP99Ms": 33,
+            "acquireP95Ms": 29,
+            "compositorP95Ms": 15,
+            "pssKb": 31448,
+            "rssKb": 146636,
+            "threads": 29
+          },
+          {
+            "cpuMs": 4040,
+            "elapsedMs": 6355.887791000016,
+            "cpuPercent": 63.563110817039124,
+            "frames": 318,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 5,
+            "longPresentIntervals": 17,
+            "averageFps": 59.141,
+            "presentP95Ms": 33,
+            "presentP99Ms": 33,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 31401,
+            "rssKb": 146484,
+            "threads": 31
+          },
+          {
+            "cpuMs": 4050,
+            "elapsedMs": 6354.6712919999845,
+            "cpuPercent": 63.73264349799842,
+            "frames": 316,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 15,
+            "averageFps": 59.499,
+            "presentP95Ms": 16,
+            "presentP99Ms": 33,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 30060,
+            "rssKb": 145120,
+            "threads": 30
+          },
+          {
+            "cpuMs": 3960,
+            "elapsedMs": 6360.691375000053,
+            "cpuPercent": 62.25738314492529,
+            "frames": 320,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 14,
+            "averageFps": 59.724,
+            "presentP95Ms": 16,
+            "presentP99Ms": 33,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 37387,
+            "rssKb": 152496,
+            "threads": 29
+          },
+          {
+            "cpuMs": 3960,
+            "elapsedMs": 6292.367207999923,
+            "cpuPercent": 62.93339007560426,
+            "frames": 313,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 3,
+            "longPresentIntervals": 15,
+            "averageFps": 59.472,
+            "presentP95Ms": 16,
+            "presentP99Ms": 33,
+            "acquireP95Ms": 31,
+            "compositorP95Ms": 15,
+            "pssKb": 30770,
+            "rssKb": 145776,
+            "threads": 28
+          }
+        ],
+        "medianCpuMs": 4040,
+        "medianCpuPercent": 63.51250622666379,
+        "medianFrames": 318,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 59.499,
+        "medianPresentP95Ms": 16,
+        "medianCompositorP95Ms": 15,
+        "medianPssKb": 31401,
+        "medianRssKb": 146484
+      },
+      "continuousScroll": {
+        "samples": [
+          {
+            "frames": 293,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 0,
+            "averageFps": 62.5,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15
+          },
+          {
+            "frames": 293,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 0,
+            "averageFps": 62.5,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15
+          },
+          {
+            "frames": 294,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 0,
+            "averageFps": 62.5,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15
+          }
+        ],
+        "medianFrames": 293,
+        "medianDroppedFrames": 0,
+        "medianLateAcquireFrames": 0,
+        "medianJankyFrames": 0,
+        "medianLongPresentIntervals": 0,
+        "medianPresentP95Ms": 16,
+        "medianPresentP99Ms": 16,
+        "medianAcquireP95Ms": 32
+      }
+    },
+    {
+      "key": "expo",
+      "stack": "Expo",
+      "scenario": "Scroll",
+      "packageName": "com.vandam.benchmark.expo.scroll",
+      "component": "com.vandam.benchmark.expo.scroll/.MainActivity",
+      "apk": {
+        "bytes": 31981336,
+        "uncompressedBytes": 50389421,
+        "dex": 23143268,
+        "native": 16319344,
+        "resources": 8894740,
+        "assets": 1703291,
+        "other": 328778
+      },
+      "startup": {
+        "samplesMs": [
+          446,
+          1340,
+          1326,
+          455,
+          449,
+          1373,
+          449,
+          1325,
+          442,
+          476,
+          454,
+          1373,
+          432,
+          1336,
+          1333
+        ],
+        "medianMs": 476,
+        "p95Ms": 1373
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 119338,
+            "rssKb": 241848,
+            "threads": 35
+          },
+          {
+            "pssKb": 119249,
+            "rssKb": 241688,
+            "threads": 35
+          },
+          {
+            "pssKb": 119379,
+            "rssKb": 242028,
+            "threads": 34
+          },
+          {
+            "pssKb": 119377,
+            "rssKb": 241916,
+            "threads": 34
+          },
+          {
+            "pssKb": 119646,
+            "rssKb": 242184,
+            "threads": 35
+          }
+        ],
+        "medianPssKb": 119377,
+        "medianRssKb": 241916,
+        "medianThreads": 35
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 2960,
+            "elapsedMs": 6292.447665999993,
+            "cpuPercent": 47.040518366068895,
+            "frames": 205,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 2,
+            "averageFps": 55.691,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 108745,
+            "rssKb": 232336,
+            "threads": 28
+          },
+          {
+            "cpuMs": 2890,
+            "elapsedMs": 6391.996708000021,
+            "cpuPercent": 45.212789242881925,
+            "frames": 206,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 2,
+            "averageFps": 55.721,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 96599,
+            "rssKb": 210576,
+            "threads": 29
+          },
+          {
+            "cpuMs": 2850,
+            "elapsedMs": 6229.073166999966,
+            "cpuPercent": 45.75319511574483,
+            "frames": 200,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 3,
+            "longPresentIntervals": 2,
+            "averageFps": 55.54,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 96885,
+            "rssKb": 210848,
+            "threads": 29
+          },
+          {
+            "cpuMs": 3040,
+            "elapsedMs": 6380.435375000001,
+            "cpuPercent": 47.64565145368312,
+            "frames": 221,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 3,
+            "averageFps": 55.43,
+            "presentP95Ms": 16,
+            "presentP99Ms": 33,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 96718,
+            "rssKb": 210620,
+            "threads": 29
+          },
+          {
+            "cpuMs": 3000,
+            "elapsedMs": 6376.504457999952,
+            "cpuPercent": 47.04772057731733,
+            "frames": 206,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 2,
+            "averageFps": 55.721,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15,
+            "pssKb": 96559,
+            "rssKb": 210500,
+            "threads": 30
+          }
+        ],
+        "medianCpuMs": 2960,
+        "medianCpuPercent": 47.040518366068895,
+        "medianFrames": 206,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 55.691,
+        "medianPresentP95Ms": 16,
+        "medianCompositorP95Ms": 15,
+        "medianPssKb": 96718,
+        "medianRssKb": 210620
+      },
+      "continuousScroll": {
+        "samples": [
+          {
+            "frames": 292,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 1,
+            "longPresentIntervals": 1,
+            "averageFps": 62.273,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15
+          },
+          {
+            "frames": 292,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 1,
+            "averageFps": 62.273,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15
+          },
+          {
+            "frames": 308,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 2,
+            "averageFps": 62.072,
+            "presentP95Ms": 16,
+            "presentP99Ms": 16,
+            "acquireP95Ms": 32,
+            "compositorP95Ms": 15
+          }
+        ],
+        "medianFrames": 292,
+        "medianDroppedFrames": 0,
+        "medianLateAcquireFrames": 0,
+        "medianJankyFrames": 2,
+        "medianLongPresentIntervals": 1,
+        "medianPresentP95Ms": 16,
+        "medianPresentP99Ms": 16,
+        "medianAcquireP95Ms": 32
       }
     },
     {
@@ -220,159 +1009,159 @@
       },
       "startup": {
         "samplesMs": [
-          302,
-          298,
-          326,
-          320,
-          309,
-          299,
-          284,
-          299,
-          307,
-          294,
+          343,
+          322,
           321,
+          370,
+          337,
+          331,
           293,
-          308,
-          315,
-          296
+          355,
+          341,
+          327,
+          327,
+          314,
+          339,
+          325,
+          317
         ],
-        "medianMs": 302,
-        "p95Ms": 326
+        "medianMs": 327,
+        "p95Ms": 370
       },
       "idleMemory": {
         "samples": [
           {
-            "pssKb": 17812,
-            "rssKb": 136980,
-            "threads": 24
+            "pssKb": 19114,
+            "rssKb": 134108,
+            "threads": 27
           },
           {
-            "pssKb": 17828,
-            "rssKb": 137056,
-            "threads": 24
+            "pssKb": 19170,
+            "rssKb": 134432,
+            "threads": 25
           },
           {
-            "pssKb": 17650,
-            "rssKb": 136688,
-            "threads": 24
+            "pssKb": 19191,
+            "rssKb": 134244,
+            "threads": 25
           },
           {
-            "pssKb": 17848,
-            "rssKb": 136796,
-            "threads": 24
+            "pssKb": 19300,
+            "rssKb": 134336,
+            "threads": 25
           },
           {
-            "pssKb": 17800,
-            "rssKb": 136752,
-            "threads": 24
+            "pssKb": 18988,
+            "rssKb": 134228,
+            "threads": 26
           }
         ],
-        "medianPssKb": 17812,
-        "medianRssKb": 136796,
-        "medianThreads": 24
+        "medianPssKb": 19170,
+        "medianRssKb": 134244,
+        "medianThreads": 25
       },
       "workload": {
         "samples": [
           {
-            "cpuMs": 1080,
-            "elapsedMs": 6206.441875000004,
-            "cpuPercent": 17.401274703793135,
-            "frames": 306,
-            "droppedFrames": 0,
-            "lateAcquireFrames": 0,
-            "jankyFrames": 0,
-            "longPresentIntervals": 11,
-            "averageFps": 59.016,
-            "presentP95Ms": 16,
-            "presentP99Ms": 50,
-            "acquireP95Ms": 27,
-            "compositorP95Ms": 15,
-            "pssKb": 19349,
-            "rssKb": 141036,
-            "threads": 20
-          },
-          {
             "cpuMs": 1110,
-            "elapsedMs": 6277.456290999995,
-            "cpuPercent": 17.682321445892182,
-            "frames": 313,
+            "elapsedMs": 6251.226875000051,
+            "cpuPercent": 17.756514396223878,
+            "frames": 311,
             "droppedFrames": 0,
             "lateAcquireFrames": 0,
             "jankyFrames": 0,
             "longPresentIntervals": 11,
-            "averageFps": 59.28,
+            "averageFps": 59.647,
             "presentP95Ms": 16,
-            "presentP99Ms": 50,
+            "presentP99Ms": 33,
             "acquireP95Ms": 27,
             "compositorP95Ms": 15,
-            "pssKb": 19172,
-            "rssKb": 140748,
+            "pssKb": 20512,
+            "rssKb": 138032,
             "threads": 20
           },
           {
-            "cpuMs": 1120,
-            "elapsedMs": 6188.180374999996,
-            "cpuPercent": 18.099019940090237,
-            "frames": 310,
-            "droppedFrames": 0,
-            "lateAcquireFrames": 0,
-            "jankyFrames": 0,
-            "longPresentIntervals": 11,
-            "averageFps": 59.059,
-            "presentP95Ms": 16,
-            "presentP99Ms": 50,
-            "acquireP95Ms": 27,
-            "compositorP95Ms": 15,
-            "pssKb": 19300,
-            "rssKb": 140860,
-            "threads": 20
-          },
-          {
-            "cpuMs": 1090,
-            "elapsedMs": 6166.3949589999975,
-            "cpuPercent": 17.676454512682803,
+            "cpuMs": 1070,
+            "elapsedMs": 6205.373583000037,
+            "cpuPercent": 17.24311978462222,
             "frames": 307,
             "droppedFrames": 0,
             "lateAcquireFrames": 0,
             "jankyFrames": 0,
             "longPresentIntervals": 11,
-            "averageFps": 59.416,
+            "averageFps": 59.221,
             "presentP95Ms": 16,
             "presentP99Ms": 50,
             "acquireP95Ms": 27,
             "compositorP95Ms": 15,
-            "pssKb": 19283,
-            "rssKb": 141016,
+            "pssKb": 19970,
+            "rssKb": 137072,
             "threads": 20
           },
           {
-            "cpuMs": 1110,
-            "elapsedMs": 6230.065333000006,
-            "cpuPercent": 17.816827604045272,
-            "frames": 315,
+            "cpuMs": 1090,
+            "elapsedMs": 6230.1252920000115,
+            "cpuPercent": 17.495635302867004,
+            "frames": 309,
             "droppedFrames": 0,
             "lateAcquireFrames": 0,
             "jankyFrames": 0,
             "longPresentIntervals": 11,
-            "averageFps": 59.875,
+            "averageFps": 59.048,
+            "presentP95Ms": 16,
+            "presentP99Ms": 50,
+            "acquireP95Ms": 27,
+            "compositorP95Ms": 15,
+            "pssKb": 20036,
+            "rssKb": 137192,
+            "threads": 20
+          },
+          {
+            "cpuMs": 1110,
+            "elapsedMs": 6249.043041000026,
+            "cpuPercent": 17.76271971111865,
+            "frames": 314,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 12,
+            "averageFps": 59.481,
             "presentP95Ms": 16,
             "presentP99Ms": 33,
             "acquireP95Ms": 27,
             "compositorP95Ms": 15,
-            "pssKb": 19361,
-            "rssKb": 140956,
+            "pssKb": 20077,
+            "rssKb": 137380,
+            "threads": 20
+          },
+          {
+            "cpuMs": 1090,
+            "elapsedMs": 6209.872917000088,
+            "cpuPercent": 17.552694146381427,
+            "frames": 308,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 12,
+            "averageFps": 59.038,
+            "presentP95Ms": 16,
+            "presentP99Ms": 50,
+            "acquireP95Ms": 28,
+            "compositorP95Ms": 15,
+            "pssKb": 19971,
+            "rssKb": 137144,
             "threads": 20
           }
         ],
-        "medianCpuMs": 1110,
-        "medianCpuPercent": 17.682321445892182,
-        "medianFrames": 310,
+        "medianCpuMs": 1090,
+        "medianCpuPercent": 17.552694146381427,
+        "medianFrames": 309,
         "medianDroppedFrames": 0,
-        "medianAverageFps": 59.28,
+        "medianAverageFps": 59.221,
         "medianPresentP95Ms": 16,
         "medianCompositorP95Ms": 15,
-        "medianPssKb": 19300,
-        "medianRssKb": 140956
+        "medianPssKb": 20036,
+        "medianRssKb": 137192
       },
       "continuousScroll": {
         "samples": [

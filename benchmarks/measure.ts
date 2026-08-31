@@ -8,11 +8,13 @@ let clockTicksPerSecond = 100;
 type App = {
   key: "ink" | "expo" | "light-sdk";
   stack: "Ink" | "Expo" | "Light SDK";
-  scenario: "Counter" | "Scroll";
   packageName: string;
   component: string;
   apk: string;
-};
+} & (
+  | { scenario: "Counter"; counterTapY: number }
+  | { scenario: "Scroll" }
+);
 
 type MemorySample = {
   pssKb: number;
@@ -78,6 +80,7 @@ const apps: App[] = [
     packageName: "com.vandam.benchmark.ink.counter",
     component: "com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity",
     apk: inkCounter,
+    counterTapY: 760,
   },
   {
     key: "expo",
@@ -86,6 +89,7 @@ const apps: App[] = [
     packageName: "com.vandam.benchmark.expo.counter",
     component: "com.vandam.benchmark.expo.counter/.MainActivity",
     apk: expoCounter,
+    counterTapY: 810,
   },
   {
     key: "light-sdk",
@@ -94,6 +98,7 @@ const apps: App[] = [
     packageName: "com.vandam.benchmark.lightsdk.counter",
     component: "com.vandam.benchmark.lightsdk.counter/com.thelightphone.sdk.LightActivity",
     apk: "benchmarks/apps/light-sdk-counter/build/outputs/apk/release/benchmark-counter-release.apk",
+    counterTapY: 760,
   },
   {
     key: "light-sdk",
@@ -193,7 +198,10 @@ function apkBreakdown(apk: string) {
 }
 
 function start(app: App): number {
-  const result = shell(`am start -S -W -n ${app.component}`);
+  for (const candidate of apps) {
+    shell(`am force-stop ${candidate.packageName}`);
+  }
+  const result = shell(`am start -W -n ${app.component}`);
   const match = result.match(/^(?:TotalTime|WaitTime):\s+(\d+)/m);
   if (!match) throw new Error(`No launch time for ${app.packageName}:\n${result}`);
   return Number(match[1]);
@@ -258,7 +266,7 @@ function workload(app: App): WorkloadSample {
 
   if (app.scenario === "Counter") {
     for (let index = 0; index < 100; index += 1) {
-      shell("input tap 540 760");
+      shell(`input tap 540 ${app.counterTapY}`);
     }
   } else {
     for (let index = 0; index < 6; index += 1) {

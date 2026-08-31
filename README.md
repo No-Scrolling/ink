@@ -71,25 +71,25 @@ export default function Counter() {
 
 ## Benchmarks
 
-Six equivalent arm64 release applications were measured on the same Android 14 emulator. Values are medians; start-up also shows p95.
+Six equivalent arm64 release apps were measured on the same physical Light Phone III. Values are medians; cold starts also show the 95th percentile. Build times use the same development computer.
 
 | Counter | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK | **3.07 MB** | 26.30 MB | 25.83 MB |
-| Clean release build | **1.21 s** | 53.59 s | 46.07 s |
-| Cold start | **174 / 217 ms** | 204 / 267 ms | 1,156 / 1,177 ms |
-| Idle PSS / RSS | 26.2 / **135.7 MB** | 61.9 / 179.7 MB | **25.3** / 142.5 MB |
-| CPU for 100 taps | **200 ms** | 400 ms | 310 ms |
+| App file size | **3.07 MB** | 32.00 MB | 25.83 MB |
+| Clean release build | **1.29 s** | 36.20 s | 47.92 s |
+| Cold start, typical / slow | **296 / 372 ms** | 516 / 591 ms | 1,186 / 1,226 ms |
+| Active memory while idle | **17.9 MiB** | 66.6 MiB | 18.1 MiB |
+| CPU time for 100 taps | **860 ms** | 4,300 ms | 3,650 ms |
 
 | 1,000-row scroll | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK | **3.07 MB** | 26.30 MB | 25.93 MB |
-| Idle PSS / RSS | **26.3 / 135.7 MB** | 110.4 / 229.1 MB | 40.9 / 158.7 MB |
-| CPU for 12 swipes | **580 ms** | 850 ms | 980 ms |
-| Average compositor cadence | 56.6 fps | 54.8 fps | **57.6 fps** |
-| p95 presented-frame interval | 21 ms | **17 ms** | 21 ms |
+| App file size | **3.07 MB** | 31.98 MB | 25.93 MB |
+| Active memory while idle | **18.7 MiB** | 116.6 MiB | 32.3 MiB |
+| CPU time for 12 swipes | **1,090 ms** | 2,960 ms | 4,040 ms |
+| 99% of frame intervals | **≤16 ms** | **≤16 ms** | **≤16 ms** |
+| Intervals longer than 17 ms | **0** | 1 | **0** |
 
-Ink retains its size, build and memory advantages while using the least process CPU in the scrolling workload. See the [full protocol, raw results and design](benchmarks/README.md).
+Ink leads on app size, build time, startup, memory, and CPU use. See the [full methodology and physical-device results](benchmarks/README.md).
 
 ## LightOS support
 
@@ -245,11 +245,7 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 ## Documentation
 
 - [Architecture](docs/architecture.md)
-- [Persistence and shared state](docs/adr/0001-persistence-and-shared-state.md)
-- [Installed UI packages](docs/adr/0002-installed-source-packages.md)
-- [Light SDK adapter](docs/adr/0003-light-sdk-adapter.md)
 - [LightOS capabilities](docs/light-sdk.md)
-- [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
 - [Data and effects](docs/data.md)
 - [Notifications](docs/notifications.md)
 - [Background resources](docs/background.md)

@@ -9,7 +9,7 @@ adb="${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}"
 benchmark_device="${BENCHMARK_DEVICE:-$("$adb" devices | awk '/^emulator-/{ print $1; exit }')}"
 benchmark_output="${BENCHMARK_OUTPUT:-benchmarks/results/ink.json}"
 if [ -z "$benchmark_device" ]; then
-  echo "No Android emulator found" >&2
+  echo "No benchmark device found. Start an emulator or set BENCHMARK_DEVICE." >&2
   exit 1
 fi
 
