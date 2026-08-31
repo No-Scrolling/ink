@@ -3,25 +3,13 @@
   <source media="(prefers-color-scheme: light)" srcset="./assets/images/title-light.png">
   <img src="./assets/images/title-light.png" alt="Ink" width="48">
 </picture>
+<p>
+  <a href="https://github.com/lightphone/light-sdk/tree/3df3c24a21247e70ad59e1bc0393ac6d63840bc2"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Light%20SDK-0.1.1-e5e5e5?labelColor=f5f5f5"><source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/Light%20SDK-0.1.1-black"><img src="https://img.shields.io/badge/Light%20SDK-0.1.1-black" alt="Light SDK 0.1.1"></picture></a>
+  <a href="LICENSE"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/licence-MIT-e5e5e5?labelColor=f5f5f5"><source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/licence-MIT-black"><img src="https://img.shields.io/badge/licence-MIT-black" alt="MIT licence"></picture></a>
+</p>
 <br><br>
 <p>A TypeScript framework for small, fast Light Phone III apps.</p>
 
-<p>
-  <a href="https://github.com/lightphone/light-sdk/tree/3df3c24a21247e70ad59e1bc0393ac6d63840bc2">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/Light%20SDK-0.1.1-e5e5e5?labelColor=f5f5f5">
-      <source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/Light%20SDK-0.1.1-black">
-      <img src="https://img.shields.io/badge/Light%20SDK-0.1.1-black" alt="Light SDK 0.1.1">
-    </picture>
-  </a>
-  <a href="LICENSE">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/licence-MIT-e5e5e5?labelColor=f5f5f5">
-      <source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/licence-MIT-black">
-      <img src="https://img.shields.io/badge/licence-MIT-black" alt="MIT licence">
-    </picture>
-  </a>
-</p>
 
 Write apps in TypeScript and TSX. Ink builds them as native Android apps powered by Rust and Vulkan, without bundling a JavaScript engine.
 
