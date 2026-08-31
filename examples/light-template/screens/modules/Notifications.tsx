@@ -3,7 +3,7 @@ import {
   notificationPermission,
   notificationTap,
 } from "@ink/notifications";
-import { Button, Screen, Text } from "ink";
+import { Button, Screen, Stack, Text, match } from "ink";
 
 export default function Notifications() {
   const permission = notificationPermission();
@@ -12,13 +12,11 @@ export default function Notifications() {
 
   return (
     <Screen title="Notifications">
-      {permission.status === "ready" ? (
-        <Text>Permission: {permission.value}</Text>
-      ) : permission.status === "error" ? (
-        <Text>{permission.error.message}</Text>
-      ) : (
-        <Text>Checking permission…</Text>
-      )}
+      {match(permission, {
+        loading: () => <Text>Checking permission…</Text>,
+        ready: (result) => <Text>Permission: {result.value}</Text>,
+        error: (result) => <Text>{result.error.message}</Text>,
+      })}
       <Button onPress={() => permission.request()}>Request Permission</Button>
       <Button
         onPress={() =>
@@ -54,16 +52,17 @@ export default function Notifications() {
       {notifications.status === "error" ? (
         <Text>{notifications.errorMessage}</Text>
       ) : null}
-      {tap.status === "ready" ? (
-        <Text>
-          Tap: {tap.value.id} ({tap.value.data})
-        </Text>
-      ) : (
-        <Text>No notification tap</Text>
-      )}
-      {tap.status === "ready" ? (
-        <Button onPress={() => tap.consume()}>Consume Tap</Button>
-      ) : null}
+      {match(tap, {
+        empty: () => <Text>No notification tap</Text>,
+        ready: (result) => (
+          <Stack gap={16}>
+            <Text>
+              Tap: {result.value.id} ({result.value.data})
+            </Text>
+            <Button onPress={() => result.consume()}>Consume Tap</Button>
+          </Stack>
+        ),
+      })}
     </Screen>
   );
 }

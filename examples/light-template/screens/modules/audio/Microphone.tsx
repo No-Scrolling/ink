@@ -3,7 +3,7 @@ import {
   microphonePermission,
   pitchDetector,
 } from "@ink/audio";
-import { Button, Screen, Text } from "ink";
+import { Button, Screen, Text, match } from "ink";
 
 export default function Microphone() {
   const microphone = microphonePermission();
@@ -12,13 +12,11 @@ export default function Microphone() {
 
   return (
     <Screen title="Microphone">
-      {microphone.status === "ready" ? (
-        <Text>Permission: {microphone.value}</Text>
-      ) : microphone.status === "error" ? (
-        <Text>{microphone.error.message}</Text>
-      ) : (
-        <Text>Checking Microphone...</Text>
-      )}
+      {match(microphone, {
+        loading: () => <Text>Checking Microphone...</Text>,
+        ready: (result) => <Text>Permission: {result.value}</Text>,
+        error: (result) => <Text>{result.error.message}</Text>,
+      })}
       <Button onPress={() => microphone.request()}>Request Microphone</Button>
       <Text>Level: {level.status}</Text>
       {level.status === "error" ? (

@@ -39,6 +39,19 @@ export type AsyncResource<T, E = ResourceError> = ReloadableResource &
     | { readonly status: "error"; readonly error: E }
   );
 
+type StatusValue = { readonly status: string };
+
+type MatchCases<T extends StatusValue> = {
+  readonly [Status in T["status"]]: (
+    value: T & { readonly status: Status },
+  ) => Ink.Element;
+};
+
+export declare function match<T extends StatusValue>(
+  value: T,
+  cases: MatchCases<T>,
+): Ink.Element;
+
 /** An opaque source returned by @ink/camera and accepted only by Image. */
 export interface CameraImageSource {
   readonly __inkCameraImageSource: never;

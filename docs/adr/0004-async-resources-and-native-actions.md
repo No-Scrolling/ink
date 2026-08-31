@@ -8,6 +8,8 @@ Ink applications are synchronous descriptions compiled to Rust, while LightOS, n
 
 Native modules expose typed constructors such as `lightSdkVersion()`. A constructor returns a discriminated `AsyncResource<T>`: loading has only `status`, ready has `value`, and error has a structured `ResourceError`. Errors have a stable kind, a message and an explicit retryable flag. TypeScript narrows the available fields from the status check.
 
+`match(resource, cases)` renders mutually exclusive states without nested conditionals. Every status must have one synchronous branch, and its parameter is narrowed to that status. The compiler lowers the cases to existing conditional nodes; applications include no matcher runtime. Direct status comparisons remain available when a screen needs only a partial condition.
+
 The compiler gives every resource a dedicated `ResourceId` and attaches resources declared by screen modules to that screen. `ink-core` activates only resources owned by the visible route and tab, plus any application-owned resources. Leaving a screen cancels its active work. Returning uses a settled cached value; an explicit reload starts a fresh read.
 
 Each resource has at most one request in flight. Reloading cancels the previous request before starting the replacement, and late completions are ignored. Every operation carries a framework-defined timeout. Android cancels timed-out adapter work and returns a typed timeout error to Rust.

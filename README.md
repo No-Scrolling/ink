@@ -78,25 +78,25 @@ Native values are lazy, screen-scoped resources with typed loading, ready and er
 
 ```tsx
 import { lightSdkVersion } from "@ink/light-sdk";
-import { Button, Screen, Text } from "ink";
+import { Button, Screen, Text, match } from "ink";
 
 export default function Info() {
   const version = lightSdkVersion();
 
   return (
     <Screen title="Light SDK">
-      {version.status === "loading" ? (
-        <Text>Connecting...</Text>
-      ) : version.status === "ready" ? (
-        <Text>{version.value}</Text>
-      ) : (
-        <Text>{version.error.message}</Text>
-      )}
+      {match(version, {
+        loading: () => <Text>Connecting...</Text>,
+        ready: (result) => <Text>{result.value}</Text>,
+        error: (result) => <Text>{result.error.message}</Text>,
+      })}
       <Button onPress={() => version.reload()}>Refresh</Button>
     </Screen>
   );
 }
 ```
+
+`match` is exhaustive and narrows each branch to its status. It compiles to native conditionals and adds no runtime dependency.
 
 Permissions pair a screen-scoped resource with a native LightOS action:
 

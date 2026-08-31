@@ -26,7 +26,7 @@ use crate::{
     resolver::ModuleResolver,
 };
 
-const INK_IMPORTS: [&str; 17] = [
+const INK_IMPORTS: [&str; 18] = [
     "Button",
     "Icon",
     "Image",
@@ -41,6 +41,7 @@ const INK_IMPORTS: [&str; 17] = [
     "TextInput",
     "Toggle",
     "back",
+    "match",
     "persistedState",
     "sharedState",
     "state",
@@ -52,6 +53,7 @@ struct StateBinding {
     kind: StateShape,
 }
 
+#[derive(Clone)]
 struct ResourceBinding {
     id: ResourceId,
     shape: StateShape,
@@ -71,6 +73,7 @@ struct ResourceInitialiser {
     android_permission: Option<AndroidPermission>,
 }
 
+#[derive(Clone)]
 struct ControllerBinding {
     id: ControllerId,
     kind: NativeControllerKind,
@@ -91,7 +94,7 @@ struct ControllerInitialiser {
     shape: StateShape,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Bindings {
     states: HashMap<String, StateBinding>,
     resources: HashMap<String, ResourceBinding>,
@@ -148,6 +151,12 @@ enum NativeControllerKind {
     Scanner,
     RingtoneInstaller,
     LightPush,
+}
+
+#[derive(Clone)]
+enum MatchBinding {
+    Resource(ResourceBinding),
+    Controller(ControllerBinding),
 }
 
 #[derive(Clone, Copy)]
@@ -3275,13 +3284,227 @@ fn lower_dynamic_child(
                 alternate: alternate.map(Box::new),
             })
         }
+        Expression::CallExpression(expression) if match_call(expression, imports) => {
+            lower_match(expression, states, imports, item)
+        }
         Expression::CallExpression(expression) => {
             lower_collection(expression, states, imports, item)
         }
         _ => Err(CompileError::new(
-            "dynamic children use state.value && <Element>, a conditional, or state.value.map(...)",
+            "dynamic children use match(...), state.value && <Element>, a conditional, or state.value.map(...)",
             expression.span(),
         )),
+    }
+}
+
+fn match_call(call: &oxc::ast::ast::CallExpression<'_>, imports: &Imports) -> bool {
+    matches!(
+        &call.callee,
+        Expression::Identifier(callee)
+            if callee.name == "match" && imports.ink.contains("match")
+    )
+}
+
+fn lower_match(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &Bindings,
+    imports: &Imports,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Node, CompileError> {
+    let [value, Argument::ObjectExpression(case_object)] = call.arguments.as_slice() else {
+        return Err(CompileError::new(
+            "match() needs an Ink value and a cases object",
+            call.span,
+        ));
+    };
+    let Some(Expression::Identifier(value)) = value.as_expression() else {
+        return Err(CompileError::new(
+            "match() accepts a resource or controller variable",
+            value.span(),
+        ));
+    };
+    let binding = if let Some(resource) = states.resources.get(value.name.as_str()) {
+        MatchBinding::Resource(resource.clone())
+    } else if let Some(controller) = states.controllers.get(value.name.as_str()) {
+        MatchBinding::Controller(controller.clone())
+    } else {
+        return Err(CompileError::new(
+            "match() accepts a resource or controller variable",
+            value.span,
+        ));
+    };
+    let statuses = match_statuses(&binding);
+    let mut cases = HashMap::new();
+
+    for property in &case_object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "match cases cannot use spreads",
+                property.span(),
+            ));
+        };
+        if property.kind != PropertyKind::Init
+            || property.method
+            || property.shorthand
+            || property.computed
+        {
+            return Err(CompileError::new(
+                "match cases use named arrow functions",
+                property.span,
+            ));
+        }
+        let status = property_name(&property.key)?;
+        if !statuses.contains(&status.as_str()) {
+            return Err(CompileError::new(
+                format!("unknown match case {status:?}"),
+                property.key.span(),
+            ));
+        }
+        if cases.contains_key(&status) {
+            return Err(CompileError::new(
+                format!("match case {status:?} is declared twice"),
+                property.key.span(),
+            ));
+        }
+        let Expression::ArrowFunctionExpression(function) = &property.value else {
+            return Err(CompileError::new(
+                "match cases must be arrow functions",
+                property.value.span(),
+            ));
+        };
+        if function.r#async || function.params.rest.is_some() {
+            return Err(CompileError::new(
+                "match cases must be synchronous arrow functions",
+                function.span,
+            ));
+        }
+        let parameter = match function.params.items.as_slice() {
+            [] => None,
+            [formal] if formal.initializer.is_none() => {
+                let BindingPattern::BindingIdentifier(parameter) = &formal.pattern else {
+                    return Err(CompileError::new(
+                        "match case parameters must be identifiers",
+                        formal.pattern.span(),
+                    ));
+                };
+                Some(parameter.name.as_str())
+            }
+            _ => {
+                return Err(CompileError::new(
+                    "match cases accept zero or one parameter",
+                    function.params.span,
+                ));
+            }
+        };
+        let Some(body) = function.body.as_expression() else {
+            return Err(CompileError::new(
+                "match cases must directly return an Ink element",
+                function.body.span(),
+            ));
+        };
+        let Expression::JSXElement(element) = unparenthesised(body) else {
+            return Err(CompileError::new(
+                "match cases must directly return an Ink element",
+                body.span(),
+            ));
+        };
+        let mut branch_bindings = states.clone();
+        if let Some(parameter) = parameter {
+            branch_bindings.states.remove(parameter);
+            branch_bindings.resources.remove(parameter);
+            branch_bindings.controllers.remove(parameter);
+            match &binding {
+                MatchBinding::Resource(resource) => {
+                    branch_bindings
+                        .resources
+                        .insert(parameter.to_owned(), resource.clone());
+                }
+                MatchBinding::Controller(controller) => {
+                    branch_bindings
+                        .controllers
+                        .insert(parameter.to_owned(), controller.clone());
+                }
+            }
+        }
+        cases.insert(
+            status,
+            lower_content_node(element, &branch_bindings, imports, item)?,
+        );
+    }
+
+    let missing = statuses
+        .iter()
+        .filter(|status| !cases.contains_key(**status))
+        .copied()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(CompileError::new(
+            format!("match() is missing cases: {}", missing.join(", ")),
+            case_object.span,
+        ));
+    }
+
+    let mut statuses = statuses.iter().rev();
+    let final_status = statuses.next().expect("matchable values have statuses");
+    let mut node = cases
+        .remove(*final_status)
+        .expect("exhaustive match contains the final case");
+    for status in statuses {
+        let consequent = cases
+            .remove(*status)
+            .expect("exhaustive match contains every case");
+        node = Node::Conditional {
+            condition: match_condition(&binding, status),
+            consequent: Box::new(consequent),
+            alternate: Some(Box::new(node)),
+        };
+    }
+    Ok(node)
+}
+
+fn match_statuses(binding: &MatchBinding) -> &'static [&'static str] {
+    match binding {
+        MatchBinding::Resource(resource) => match resource.protocol {
+            ResourceProtocol::Async => &["loading", "ready", "error"],
+            ResourceProtocol::Background => &["waiting", "ready", "stale", "error"],
+        },
+        MatchBinding::Controller(controller) => match controller.kind {
+            NativeControllerKind::Level => &["idle", "listening", "active", "clipping", "error"],
+            NativeControllerKind::Pitch => &["idle", "listening", "active", "error"],
+            NativeControllerKind::Player => {
+                &["idle", "loading", "paused", "playing", "ended", "error"]
+            }
+            NativeControllerKind::Recorder => &["idle", "recording", "stopping", "ready", "error"],
+            NativeControllerKind::Notifications => &["idle", "error"],
+            NativeControllerKind::NotificationTap => &["empty", "ready"],
+            NativeControllerKind::Photo | NativeControllerKind::Scanner => {
+                &["idle", "opening", "active", "ready", "error"]
+            }
+            NativeControllerKind::RingtoneInstaller => {
+                &["idle", "installing", "installed", "error"]
+            }
+            NativeControllerKind::LightPush => {
+                &["idle", "registering", "synchronising", "ready", "error"]
+            }
+        },
+    }
+}
+
+fn match_condition(binding: &MatchBinding, status: &str) -> Condition {
+    let value = StateValue::String(status.to_owned());
+    match binding {
+        MatchBinding::Resource(resource) => Condition::ResourceEquals {
+            resource: resource.id,
+            field: ResourceField::Status,
+            value,
+            expected: true,
+        },
+        MatchBinding::Controller(controller) => Condition::ControllerEquals {
+            controller: controller.id,
+            path: vec!["status".to_owned()],
+            value,
+            expected: true,
+        },
     }
 }
 

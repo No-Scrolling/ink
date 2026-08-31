@@ -1,5 +1,5 @@
 import { json } from "@ink/network";
-import { Button, Icon, Screen, Stack, Text } from "ink";
+import { Button, Icon, Screen, Stack, Text, match } from "ink";
 
 type Forecast = {
   current: {
@@ -28,44 +28,46 @@ export default function Weather() {
 
   return (
     <Screen title="London">
-      {forecast.status === "loading" ? (
-        <Text size={18} align="center">Loading weather...</Text>
-      ) : forecast.status === "ready" ? (
-        <Stack gap={47}>
-          <Stack axis="horizontal" gap={4} align="center" justify="center">
-            <Icon name="partly_cloudy_day" size={100} />
-            <Text size={88}>{forecast.value.current.temperature_2m}°</Text>
-          </Stack>
-          <Text size={20} align="center">
-            Feels like {forecast.value.current.apparent_temperature}°
-          </Text>
-          <Stack gap={15}>
-            <Text size={20}>Seven Day Forecast</Text>
-            {forecast.value.daily.time.map((day) => (
-              <Text>{day}</Text>
-            ))}
-          </Stack>
-          <Stack axis="horizontal" gap={47} justify="center">
-            <Stack gap={15} align="center">
-              <Text size={20}>Low</Text>
-              {forecast.value.daily.temperature_2m_min.map((temperature) => (
-                <Text>{temperature}°</Text>
+      {match(forecast, {
+        loading: () => <Text size={18} align="center">Loading weather...</Text>,
+        ready: (result) => (
+          <Stack gap={47}>
+            <Stack axis="horizontal" gap={4} align="center" justify="center">
+              <Icon name="partly_cloudy_day" size={100} />
+              <Text size={88}>{result.value.current.temperature_2m}°</Text>
+            </Stack>
+            <Text size={20} align="center">
+              Feels like {result.value.current.apparent_temperature}°
+            </Text>
+            <Stack gap={15}>
+              <Text size={20}>Seven Day Forecast</Text>
+              {result.value.daily.time.map((day) => (
+                <Text>{day}</Text>
               ))}
             </Stack>
-            <Stack gap={15} align="center">
-              <Text size={20}>High</Text>
-              {forecast.value.daily.temperature_2m_max.map((temperature) => (
-                <Text>{temperature}°</Text>
-              ))}
+            <Stack axis="horizontal" gap={47} justify="center">
+              <Stack gap={15} align="center">
+                <Text size={20}>Low</Text>
+                {result.value.daily.temperature_2m_min.map((temperature) => (
+                  <Text>{temperature}°</Text>
+                ))}
+              </Stack>
+              <Stack gap={15} align="center">
+                <Text size={20}>High</Text>
+                {result.value.daily.temperature_2m_max.map((temperature) => (
+                  <Text>{temperature}°</Text>
+                ))}
+              </Stack>
             </Stack>
           </Stack>
-        </Stack>
-      ) : (
-        <Stack gap={47}>
-          <Text size={18} align="center">{forecast.error.message}</Text>
-          <Button onPress={() => forecast.reload()}>Try Again</Button>
-        </Stack>
-      )}
+        ),
+        error: (result) => (
+          <Stack gap={47}>
+            <Text size={18} align="center">{result.error.message}</Text>
+            <Button onPress={() => result.reload()}>Try Again</Button>
+          </Stack>
+        ),
+      })}
     </Screen>
   );
 }
