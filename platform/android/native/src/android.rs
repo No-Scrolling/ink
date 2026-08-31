@@ -185,12 +185,9 @@ impl AndroidEngine {
 
     fn pointer(&mut self, action: i32, x: f32, y: f32) -> bool {
         let changed = match action {
-            0 => {
-                self.engine.pointer_down(y);
-                false
-            }
+            0 => self.engine.pointer_down(x, y),
             1 => self.engine.pointer_up(x, y),
-            2 => self.engine.pointer_move(y),
+            2 => self.engine.pointer_move(x, y),
             3 => {
                 self.engine.pointer_cancel();
                 false

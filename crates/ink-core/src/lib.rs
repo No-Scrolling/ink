@@ -62,6 +62,9 @@ const SCROLL_CONTENT_INSET_END: f32 = 52.0;
 const SCROLL_TRACK_END: f32 = 34.0;
 const SCROLL_TRACK_WIDTH: f32 = 1.0;
 const SCROLL_THUMB_WIDTH: f32 = 5.0;
+const SCROLL_THUMB_TOUCH_MULTIPLIER: f32 = 6.0;
+const MIN_SCROLL_THUMB_FRACTION: f32 = 0.1;
+const MAX_SCROLL_THUMB_FRACTION: f32 = 0.85;
 const TAP_SLOP: f32 = 8.0;
 const LP3_REFERENCE_WIDTH: f32 = 1080.0;
 const LP3_REFERENCE_SCALE: f32 = 2.55;
@@ -1321,9 +1324,46 @@ pub struct ImageRun {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScrollBar {
     pub track: Rect,
-    pub track_width: f32,
     pub thumb_width: f32,
-    pub content_height: f32,
+}
+
+impl ScrollBar {
+    pub fn thumb_rect(self, scroll_offset: f32, scroll_max: f32) -> Rect {
+        let content_height = self.track.height + scroll_max;
+        let visible_fraction = self.track.height / content_height;
+        let height = self.track.height
+            * visible_fraction.clamp(MIN_SCROLL_THUMB_FRACTION, MAX_SCROLL_THUMB_FRACTION);
+        let travel = self.track.height - height;
+        let fraction = (scroll_offset / scroll_max).clamp(0.0, 1.0);
+
+        Rect {
+            x: self.track.x - (self.thumb_width - self.track.width) / 2.0,
+            y: self.track.y + fraction * travel,
+            width: self.thumb_width,
+            height,
+        }
+    }
+
+    fn contains_touch(self, x: f32, y: f32) -> bool {
+        let touch_width = self.thumb_width * SCROLL_THUMB_TOUCH_MULTIPLIER;
+        Rect {
+            x: self.track.x - (touch_width - self.track.width) / 2.0,
+            width: touch_width,
+            ..self.track
+        }
+        .contains(x, y)
+    }
+
+    fn scroll_offset_for_thumb_top(self, thumb_top: f32, scroll_max: f32) -> f32 {
+        let thumb = self.thumb_rect(0.0, scroll_max);
+        let travel = self.track.height - thumb.height;
+        ((thumb_top - self.track.y) / travel).clamp(0.0, 1.0) * scroll_max
+    }
+
+    fn scroll_offset_for_track_tap(self, y: f32, scroll_max: f32) -> f32 {
+        let thumb = self.thumb_rect(0.0, scroll_max);
+        self.scroll_offset_for_thumb_top(y - thumb.height / 2.0, scroll_max)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1359,10 +1399,20 @@ struct HitRegion {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Pointer {
-    start_y: f32,
-    start_offset: f32,
-    dragging: bool,
+enum Pointer {
+    Content {
+        start_y: f32,
+        start_offset: f32,
+        dragging: bool,
+    },
+    ScrollThumb {
+        grab_offset: f32,
+    },
+    ScrollTrack {
+        start_x: f32,
+        start_y: f32,
+        cancelled: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -2065,39 +2115,99 @@ impl Engine {
         true
     }
 
-    pub fn pointer_down(&mut self, y: f32) {
-        self.pointer = Some(Pointer {
+    pub fn pointer_down(&mut self, x: f32, y: f32) -> bool {
+        if let Some(scroll_bar) = self
+            .scene
+            .scroll_bar
+            .filter(|scroll_bar| scroll_bar.contains_touch(x, y))
+        {
+            let thumb = scroll_bar.thumb_rect(self.scroll_offset, self.scroll_max);
+            self.pointer = Some(if y >= thumb.y && y <= thumb.y + thumb.height {
+                Pointer::ScrollThumb {
+                    grab_offset: y - thumb.y,
+                }
+            } else {
+                Pointer::ScrollTrack {
+                    start_x: x,
+                    start_y: y,
+                    cancelled: false,
+                }
+            });
+            return true;
+        }
+
+        self.pointer = Some(Pointer::Content {
             start_y: y,
             start_offset: self.scroll_offset,
             dragging: false,
         });
+        false
     }
 
-    pub fn pointer_move(&mut self, y: f32) -> bool {
+    pub fn pointer_move(&mut self, x: f32, y: f32) -> bool {
         let tap_slop = self.scaled(TAP_SLOP);
         let Some(pointer) = &mut self.pointer else {
             return false;
         };
-        let delta = pointer.start_y - y;
-        if !pointer.dragging {
-            if delta.abs() <= tap_slop {
-                return false;
+
+        match pointer {
+            Pointer::Content {
+                start_y,
+                start_offset,
+                dragging,
+            } => {
+                let delta = *start_y - y;
+                if !*dragging {
+                    if delta.abs() <= tap_slop {
+                        return false;
+                    }
+                    *start_y -= delta.signum() * tap_slop;
+                    *dragging = true;
+                }
+                let next = (*start_offset + *start_y - y).clamp(0.0, self.scroll_max);
+                self.set_scroll_offset(next)
             }
-            pointer.start_y -= delta.signum() * tap_slop;
-            pointer.dragging = true;
+            Pointer::ScrollThumb { grab_offset } => {
+                let Some(scroll_bar) = self.scene.scroll_bar else {
+                    return false;
+                };
+                let next =
+                    scroll_bar.scroll_offset_for_thumb_top(y - *grab_offset, self.scroll_max);
+                self.set_scroll_offset(next)
+            }
+            Pointer::ScrollTrack {
+                start_x,
+                start_y,
+                cancelled,
+            } => {
+                if (x - *start_x).abs() > tap_slop || (y - *start_y).abs() > tap_slop {
+                    *cancelled = true;
+                }
+                false
+            }
         }
-        let next = (pointer.start_offset + pointer.start_y - y).clamp(0.0, self.scroll_max);
-        self.set_scroll_offset(next)
     }
 
     pub fn pointer_up(&mut self, x: f32, y: f32) -> bool {
         let Some(pointer) = self.pointer.take() else {
             return false;
         };
-        if !pointer.dragging {
-            return self.tap(x, y);
+
+        match pointer {
+            Pointer::Content { dragging, .. } if !dragging => self.tap(x, y),
+            Pointer::ScrollTrack { cancelled, .. } if !cancelled => {
+                let Some(scroll_bar) = self
+                    .scene
+                    .scroll_bar
+                    .filter(|scroll_bar| scroll_bar.contains_touch(x, y))
+                else {
+                    return false;
+                };
+                let next = scroll_bar.scroll_offset_for_track_tap(y, self.scroll_max);
+                self.set_scroll_offset(next)
+            }
+            _ => false,
         }
-        false
     }
 
     pub fn pointer_cancel(&mut self) {
@@ -4048,9 +4158,7 @@ impl Engine {
                     width: track_width,
                     height: content.height,
                 },
-                track_width,
                 thumb_width,
-                content_height,
             });
         }
 

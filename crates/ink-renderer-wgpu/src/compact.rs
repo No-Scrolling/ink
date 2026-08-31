@@ -1452,10 +1452,7 @@ fn push_scrollbar_vertices(scene: &Scene, vertices: &mut Vec<QuadVertex>) {
     let Some(scrollbar) = scene.scroll_bar else {
         return;
     };
-    let thumb_height = (scrollbar.track.height * scrollbar.track.height / scrollbar.content_height)
-        .clamp(scrollbar.thumb_width, scrollbar.track.height);
-    let thumb_y = scrollbar.track.y
-        + scene.scroll_offset / scene.scroll_max * (scrollbar.track.height - thumb_height);
+    let thumb = scrollbar.thumb_rect(scene.scroll_offset, scene.scroll_max);
     let clip = scene.scroll_clip.unwrap_or(scrollbar.track);
     for quad in [
         ink_core::Quad {
@@ -1465,12 +1462,7 @@ fn push_scrollbar_vertices(scene: &Scene, vertices: &mut Vec<QuadVertex>) {
             scrolling: false,
         },
         ink_core::Quad {
-            rect: Rect {
-                x: scrollbar.track.x - (scrollbar.thumb_width - scrollbar.track_width) / 2.0,
-                y: thumb_y,
-                width: scrollbar.thumb_width,
-                height: thumb_height,
-            },
+            rect: thumb,
             clip,
             colour: Colour::WHITE,
             scrolling: false,

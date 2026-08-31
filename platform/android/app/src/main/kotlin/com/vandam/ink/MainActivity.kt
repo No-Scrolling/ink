@@ -781,6 +781,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private var pendingMoveY = 0f
         private var hasPendingMove = false
         private var lastFlingY = 0
+        private var scrollBarGesture = false
         private var textCursorVisible = true
         private var velocityTracker: VelocityTracker? = null
         private val textCursorBlink = object : Runnable {
@@ -870,13 +871,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                             pendingMoveY,
                         )
                     }
-                    activated = nativePointer(
+                    val pointerResult = nativePointer(
                         engineHandle,
                         event.actionMasked,
                         event.x,
                         event.y,
                     )
-                    changed = activated || changed
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        scrollBarGesture = pointerResult
+                    } else {
+                        activated = pointerResult
+                        changed = activated || changed
+                    }
                 }
                 if (changed) {
                     requestFrame()
@@ -894,8 +900,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     syncTextInput()
                 }
             }
-            if (flingVelocity != 0) {
+            if (flingVelocity != 0 && !scrollBarGesture) {
                 startFling(flingVelocity)
+            }
+            if (
+                event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                scrollBarGesture = false
             }
             if (event.actionMasked == MotionEvent.ACTION_UP) {
                 performClick()

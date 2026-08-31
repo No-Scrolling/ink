@@ -69,6 +69,8 @@ Ink resolves packages through `node_modules` and compiles their source with the 
 
 `Screen` owns the standard Ink header, content insets, scrolling, and safe space above bottom navigation. Set `title` to show a header, or omit it for a headerless screen. `centered` centres the content in the available area.
 
+When the content is taller than the screen, Ink adds a scrollbar automatically. Drag its thumb to move through the page, or tap the track to centre the thumb at that position.
+
 `Stack` arranges children vertically by default. Set `axis="horizontal"` for a row.
 
 ```tsx
