@@ -1,4 +1,7 @@
-# Audio
+---
+title: "Audio"
+description: "Play and record audio, monitor levels, and detect monophonic pitch."
+---
 
 `@ink/audio` provides playback, recording, level metering, and monophonic pitch detection. Each controller belongs to the screen where it is declared.
 

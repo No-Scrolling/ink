@@ -1,4 +1,7 @@
-# Notifications
+---
+title: "Notifications"
+description: "Request permission, schedule reminders, and handle notification taps."
+---
 
 `@ink/notifications` provides notification permission, durable local reminders and notification-tap events.
 

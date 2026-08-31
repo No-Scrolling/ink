@@ -1,0 +1,49 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Ink",
+  "description": "Build small, fast Light Phone III apps with TypeScript.",
+  "colors": {
+    "primary": "#000000",
+    "light": "#FFFFFF",
+    "dark": "#737373"
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "fonts": {
+    "family": "Public Sans"
+  },
+  "logo": {
+    "light": "/images/title-light.png",
+    "dark": "/images/title-dark.png"
+  },
+  "favicon": {
+    "light": "/images/favicon-light.svg",
+    "dark": "/images/favicon-dark.svg"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Ink",
+        "pages": [
+          "ink",
+          "architecture",
+          "data"
+        ]
+      },
+      {
+        "group": "Modules",
+        "pages": [
+          "light-sdk",
+          "audio",
+          "background",
+          "camera",
+          "location",
+          "nfc",
+          "notifications"
+        ]
+      }
+    ]
+  }
+}

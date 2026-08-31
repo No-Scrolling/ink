@@ -1,4 +1,7 @@
-# Data and effects
+---
+title: "Data and effects"
+description: "Model typed asynchronous reads, mutations, caching, and native actions."
+---
 
 Ink represents asynchronous reads as resources and explicit writes as mutations. Both use tagged status values that TypeScript can narrow with `match`.
 

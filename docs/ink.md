@@ -1,4 +1,7 @@
-# Core Ink
+---
+title: "Core Ink"
+description: "Build interfaces with Ink's UI, navigation, state, and input APIs."
+---
 
 The `ink` package provides UI, navigation, state, and the shared types used by every optional Ink module. It is a compile-time package: your APK contains the native Ink runtime, not a JavaScript engine or a copy of this TypeScript package.
 

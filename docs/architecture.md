@@ -1,4 +1,7 @@
-# How Ink works
+---
+title: "How Ink works"
+description: "Learn how Ink compiles TypeScript and TSX into a native Android app."
+---
 
 Ink turns a focused TypeScript and TSX app into a native Android package. App code is compiled before the APK is built; it is not evaluated on the phone.
 
@@ -93,4 +96,4 @@ Ink targets portrait Android apps for the Light Phone III on API 34 or later.
 - Launcher artwork is generated from the app name.
 - Apps contain no JavaScript engine and cannot execute arbitrary JavaScript packages.
 
-Read [Core Ink](ink.md) for the authoring API and [Benchmarks](../benchmarks/README.md) for the measured LP3 results and reproduction method.
+Read [Core Ink](ink.md) for the authoring API.

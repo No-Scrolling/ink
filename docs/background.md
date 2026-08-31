@@ -1,4 +1,7 @@
-# Background work
+---
+title: "Background work"
+description: "Fetch and persist JSON periodically with Android JobScheduler."
+---
 
 `@ink/background` performs periodic HTTPS JSON reads with Android `JobScheduler`. Results are stored by the app and become available whenever the declaring screen is active.
 

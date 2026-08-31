@@ -1,4 +1,7 @@
-# NFC
+---
+title: "NFC"
+description: "Read NFC tags and NDEF records while a screen is active."
+---
 
 `@ink/nfc` reads one NFC tag while its screen is active. NFC does not use an Android runtime permission prompt.
 

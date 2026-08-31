@@ -1,4 +1,7 @@
-# LightOS
+---
+title: "LightOS"
+description: "Connect Ink apps to LightOS services and system integrations."
+---
 
 `@ink/light-sdk` connects an Ink app to LightOS. It provides service status, LightOS permissions, the dialler, ringtone installation, UnifiedPush, device-key forwarding, and host keyboard preferences.
 

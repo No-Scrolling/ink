@@ -1,4 +1,7 @@
-# Location
+---
+title: "Location"
+description: "Request permission and read a foreground location fix."
+---
 
 `@ink/location` provides one foreground location fix without bundling maps, routing, or geocoding.
 

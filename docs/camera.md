@@ -1,4 +1,7 @@
-# Camera
+---
+title: "Camera"
+description: "Request camera access, capture photos, and scan codes."
+---
 
 `@ink/camera` provides camera permission, photo capture, and code scanning. The preview uses Ink's standard `Screen` header and fills the remaining content area.
 
