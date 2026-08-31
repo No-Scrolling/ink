@@ -36,7 +36,7 @@ Ink keeps everyday UI and state in its core package. Device features live in opt
 | Capability | Import | What it provides | Docs |
 | --- | --- | --- | --- |
 | UI and navigation | `ink` | Screens, stacks, tabs, routes, conditional UI, repeated UI, and momentum scrolling. | [Core Ink](docs/ink.md) |
-| State and async work | `ink` | Shared, persisted, and computed state; typed route data; async resources and native actions. | [Core Ink](docs/ink.md) · [Data and effects](docs/data.md) |
+| State and async work | `ink` | Shared, persisted, and computed state; typed route data; async resources and native actions. | [Core Ink](docs/ink.md), [Data and effects](docs/data.md) |
 | Text, input and images | `ink` | Public Sans, Material Symbols, text input, the Ink keyboard, local and remote images, and generated app icons. | [Core Ink](docs/ink.md) |
 | LightOS | `@ink/light-sdk` | Preferences, hardware keys, permissions, dialler, ringtone, and UnifiedPush. | [LightOS](docs/light-sdk.md) |
 | Networking | `@ink/network` | Typed HTTPS reads, cached resources, and mutations. | [Data and effects](docs/data.md) |
