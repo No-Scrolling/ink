@@ -1,10 +1,15 @@
 # Data and effects
 
-Ink keeps asynchronous work explicit. Reads are resources, writes are mutations, and both are screen-scoped unless they are declared in the application root.
+Ink represents asynchronous reads as resources and explicit writes as mutations. Both use tagged status values that TypeScript can narrow with `match`.
 
-## Data types
+## Supported data types
 
-Resource and persisted-state types may contain numbers, booleans, strings, `null`, literal unions, lists and objects. Object fields may be optional.
+Resource responses, route data, and persisted state can contain:
+
+- `number`, `boolean`, `string`, and `null` values;
+- literal unions;
+- lists;
+- nested objects with required or optional fields.
 
 ```ts
 type Forecast = {
@@ -15,30 +20,29 @@ type Forecast = {
 };
 ```
 
-The compiler emits a schema from the TypeScript type and validates native or network data before it reaches the UI.
+Ink generates a schema from the TypeScript type. Native and network data must match that schema before it reaches the UI.
 
-## Cached reads
+## Read JSON
 
-`cachedJson` stores a validated response in the application's private cache. Fresh data is returned without a request. If a refresh fails, an older response remains available through the `stale` branch for the configured window.
+Use `json<T>()` for an HTTPS GET request. The resource begins loading when its screen becomes active.
 
 ```tsx
-import { cachedJson } from "@ink/network";
+import { json } from "@ink/network";
 import { Screen, Text, match } from "ink";
 
 type Weather = { temperature: number };
 
 export default function Weather() {
-  const weather = cachedJson<Weather>("https://example.com/weather", {
-    maxAgeMs: 300_000,
-    staleIfErrorMs: 86_400_000,
+  const weather = json<Weather>("https://example.com/weather", {
+    query: { city: "London" },
+    timeoutMs: 15_000,
   });
 
   return (
     <Screen title="Weather">
       {match(weather, {
-        loading: () => <Text>Loading...</Text>,
+        loading: () => <Text>Loading weather</Text>,
         ready: (result) => <Text>{result.value.temperature}</Text>,
-        stale: (result) => <Text>{result.value.temperature}</Text>,
         error: (result) => <Text>{result.error.message}</Text>,
       })}
     </Screen>
@@ -46,11 +50,36 @@ export default function Weather() {
 }
 ```
 
-Cache policy never changes an ordinary `json` read. Both APIs retain cancellation, timeout and single-flight behaviour.
+Call `reload()` to replace the current request. Ink cancels the old request and ignores any late result.
 
-## Mutations
+URLs must use HTTPS. Query values can be `string`, `number`, or `boolean` literals or scalar state values. Header values can be string literals or string state values. `timeoutMs` accepts 1,000 to 120,000 milliseconds and defaults to 15 seconds.
 
-A mutation is idle until `run()` is pressed. It is never retried automatically because Ink cannot infer whether a write is safe to repeat.
+## Cache a read
+
+Use `cachedJson<T>()` when a response can be reused across app launches.
+
+```tsx
+const weather = cachedJson<Weather>("https://example.com/weather", {
+  maxAgeMs: 300_000,
+  staleIfErrorMs: 86_400_000,
+});
+```
+
+| Option | Meaning | Default |
+| --- | --- | --- |
+| `maxAgeMs` | Return the saved value without a request while it is this fresh. | 5 minutes |
+| `staleIfErrorMs` | Keep an older value available when a refresh fails. | 1 day |
+
+A cached resource adds two fields and one status:
+
+- `updatedAtMs` records when the value was saved.
+- `stale` provides the saved `value`, `updatedAtMs`, and the latest refresh `error`.
+
+Changing the response schema invalidates an incompatible saved value. Cache settings do not change ordinary `json()` reads.
+
+## Send a mutation
+
+Use `mutation<T>()` for a `POST`, `PUT`, `PATCH`, or `DELETE` request. A mutation remains `idle` until you call `run()`.
 
 ```tsx
 import { mutation } from "@ink/network";
@@ -68,8 +97,8 @@ export default function Save() {
   return (
     <Screen title="Save">
       {match(save, {
-        idle: () => <Button onPress={() => save.run()}>Save</Button>,
-        running: () => <Text>Saving...</Text>,
+        idle: () => <Button onPress={() => save.run()}>Save location</Button>,
+        running: () => <Text>Saving location</Text>,
         ready: (result) => <Text>Saved {result.value.id}</Text>,
         error: (result) => <Text>{result.error.message}</Text>,
       })}
@@ -78,17 +107,24 @@ export default function Save() {
 }
 ```
 
-Mutation bodies are compiled JSON templates. Scalar state values are materialised at the moment the request starts.
+Mutation options accept:
 
-## Composition and computed values
+- `method` as `"POST"`, `"PUT"`, `"PATCH"`, or `"DELETE"`;
+- query values and headers from literals or compatible scalar state;
+- a JSON body containing literals and scalar state values;
+- `timeoutMs` from 1,000 to 120,000 milliseconds.
 
-`all` is a strict, fail-fast gate over ordinary async reads. It is ready only when every member is ready and exposes a typed object of their values.
+Ink materialises state values when `run()` starts. Mutations are not retried automatically because a repeated write might not be safe.
+
+## Combine resources
+
+Use `all()` when a screen needs several ordinary resources before it can render.
 
 ```tsx
 const page = all({ weather, airQuality });
 
 {match(page, {
-  loading: () => <Text>Loading...</Text>,
+  loading: () => <Text>Loading conditions</Text>,
   ready: (result) => <Text>{result.value.weather.temperature}</Text>,
   error: (result) => (
     <Text>{result.error.resource}: {result.error.error.message}</Text>
@@ -96,9 +132,11 @@ const page = all({ weather, airQuality });
 })}
 ```
 
-The error identifies the failed member and preserves its structured error value.
+The combined resource is ready only when every member is ready. Its error identifies the failed member and preserves that member's structured error.
 
-`computed` lowers a pure scalar expression into the native value graph. It supports scalar state, resource, controller and route values with `+`, `-`, `*` and `/`.
+## Compute a value
+
+Use `computed()` for a scalar value derived from state, route data, resources, or controllers.
 
 ```tsx
 const count = state(2);
@@ -107,26 +145,28 @@ const doubled = computed(() => count.value * 2);
 <Text>{doubled.value}</Text>
 ```
 
-Neither helper adds a scheduler or a JavaScript runtime.
+Computed expressions support scalar values and `+`, `-`, `*`, and `/`. Ink compiles the expression into its native value graph.
 
-## Route data
+## Pass route data
 
-Route data belongs to the navigation entry rather than global state. The compiler checks object `href` values against the target screen's declared `routeParams<T>()` contract, including across separate screen files.
+Route data belongs to a navigation entry instead of global state. Pass scalar fields in an object `href`, and declare the destination contract with `routeParams<T>()`.
 
 ```tsx
-// Sender
+// Source screen
 <Button href={{ path: "/forecast", params: { city: "London" } }}>
-  Forecast
+  London
 </Button>
 
-// /forecast screen
+// Destination screen
 const params = routeParams<{ city: string }>();
 
 <Text>{params.city}</Text>
 ```
 
-Optional fields may be omitted. Unknown, missing or incorrectly typed route fields are compile errors.
+Ink reports unknown, missing, or incorrectly typed route fields at build time.
 
-## Visibility
+## Resource lifecycle
 
-`ink info` reports the native modules, permissions, resources, controllers and state included by an application. `ink logs --resources` shows native request starts, cancellations, outcomes and elapsed time without the rest of Logcat.
+Resources declared in a screen are active only while that screen is visible. Leaving the screen cancels active work. Reloading uses single-flight ordering, so an older completion cannot replace a newer request.
+
+Errors provide `kind`, `message`, and `retryable`. Use `ink logs --resources` to inspect request starts, cancellations, results, and elapsed time. Use `ink info` to list the app's resources and native capabilities.

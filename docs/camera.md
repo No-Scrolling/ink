@@ -1,22 +1,30 @@
 # Camera
 
-Import camera capabilities from `@ink/camera`. The module keeps permission handling, CameraX lifecycle, photo storage and code decoding behind three compile-time constructors; applications do not receive an Android camera object or run JavaScript callbacks.
+`@ink/camera` provides camera permission, photo capture, and code scanning. The preview uses Ink's standard `Screen` header and fills the remaining content area.
 
 ## Permission
 
-`cameraPermission()` is a screen-scoped resource with `loading`, `ready` and `error` states. Its ready value is `"granted"`, `"denied"`, `"blocked"` or `"unknown"`.
+`cameraPermission()` returns `"granted"`, `"denied"`, `"blocked"` or `"unknown"` when ready.
 
 ```tsx
+import { cameraPermission } from "@ink/camera";
+import { Button, Text, match } from "ink";
+
 const permission = cameraPermission();
 
-<Button onPress={() => permission.request()}>Request Camera</Button>
+{match(permission, {
+  loading: () => <Text>Checking camera permission</Text>,
+  ready: (result) => <Text>{result.value}</Text>,
+  error: (result) => <Text>{result.error.message}</Text>,
+})}
+<Button onPress={() => permission.request()}>Allow camera</Button>
 ```
 
-Construction never opens a prompt. `request()` must be called by a user action. On LightOS, Ink uses the Light SDK permission activity and honours a server block without falling through to an Android prompt. On an ordinary Android development device, Ink uses the platform permission request.
+Creating the resource does not open a prompt. On a Light Phone III, Ink uses the LightOS permission screen. On an ordinary Android development device, it uses the Android permission prompt.
 
-## Photos
+## Take a photo
 
-`photoCapture()` creates a screen-scoped session. Mount `CameraPreview` as the only child of a `Screen`; entering that screen activates the session and fills the complete content area beneath Ink's standard header. Tap anywhere on the live preview to capture. Ink then renders **Retake** and **Use photo** inside the same layout node; only accepting the review produces a ready value.
+Create a session with `photoCapture()` and pass it to `CameraPreview`. The preview must be the only child of its `Screen`.
 
 ```tsx
 import { CameraPreview, photoCapture } from "@ink/camera";
@@ -33,50 +41,71 @@ export default function Photo() {
 }
 ```
 
-`CapturedPhoto` contains an opaque `source`, pixel width and height, the fixed MIME type `image/jpeg`, and `capturedAtMs`. The source is accepted only by `Image.src`; it cannot be inspected, serialised, persisted or turned into a filesystem path. Ink keeps one accepted app-private photo for each live session. Accepting another replaces it.
+Opening the screen starts the preview. Tap anywhere on the preview to capture. The preview then shows **Retake** and **Use photo**. The session becomes `ready` only after the photo is accepted.
 
-`CameraPreview` is a genuine Ink layout node, not a second screen or an Android overlay with a copied header. Ink measures the node and reports its final physical-pixel rectangle and session identity to the Android adapter. Android places only CameraX's hardware-backed `PreviewView` over that rectangle. Camera frames stay on CameraX's surface path rather than being copied through JNI and uploaded to WGPU; this avoids continuous CPU copies, allocations and GPU texture uploads on constrained hardware. Ink continues to render and own the header, navigation, review and accepted-photo states.
+The ready value contains:
 
-## Code scanning
+- `source`, an opaque image accepted by `Image.src`;
+- pixel `width` and `height`;
+- `mimeType` as `"image/jpeg"`;
+- `capturedAtMs` as Unix time in milliseconds.
 
-`codeScanner()` defaults to QR codes. An optional literal format list can enable Aztec, Data Matrix, PDF417, Codabar, Code 39/93/128, EAN-8/13, ITF and UPC-A/E.
+The source cannot be read as a filesystem path or persisted in Ink state. One accepted photo is kept for the active session; accepting another replaces it.
+
+```tsx
+import { Image } from "ink";
+
+{capture.status === "ready" ? (
+  <Image
+    src={capture.value.source}
+    width={349}
+    height={349}
+    fit="contain"
+  />
+) : null}
+```
+
+## Scan a code
+
+`codeScanner()` scans QR codes by default. Pass a literal format list to accept other code types.
 
 ```tsx
 import { CameraPreview, codeScanner } from "@ink/camera";
 import { Screen } from "ink";
 
 export default function Scan() {
-  const scanner = codeScanner({ formats: ["qr", "ean-13"] });
+  const scanner = codeScanner({ formats: ["qr", "ean-13", "code-128"] });
 
   return (
-    <Screen title="Scan Code">
+    <Screen title="Scan code">
       <CameraPreview session={scanner} />
     </Screen>
   );
 }
 ```
 
-The scanner uses the same preview seam. The first recognised result releases the camera and the node shows the decoded value. A scan that remains active for 60 seconds fails with `timeout`.
+Supported formats are QR, Aztec, Data Matrix, PDF417, Codabar, Code 39, Code 93, Code 128, EAN-8, EAN-13, ITF, UPC-A, and UPC-E.
 
-## Session semantics
+The first recognised code stops scanning. The ready value contains `text` and `format`. A scan that remains active for 60 seconds returns a timeout error.
 
-A session is `idle`, `opening`, `active`, `ready` or `error`. Errors expose a stable kind, message and retryable flag. Kinds are `permission-denied`, `permission-blocked`, `unavailable`, `busy`, `capture`, `storage`, `decoder`, `timeout`, `protocol` and `unexpected`.
+## Session states
 
-- Mounting `CameraPreview` on the active screen activates its session automatically. Navigation into that screen remains the explicit author-controlled user action.
-- `open()` remains available for an Ink control that deliberately retries or reopens a session; it never requests permission automatically.
-- Ink's standard back button, application pause and leaving the owning screen release CameraX.
-- Leaving before a result restores the previous ready value, or `idle` when none exists.
-- Photo review releases the camera; **Retake** creates a fresh preview and CameraX binding for the same Ink session.
-- Only one camera session can be open. A competing session reports `busy`.
-- Late provider, capture and decode results are ignored after close.
+A photo or scanner session is:
+
+| Status | Meaning |
+| --- | --- |
+| `idle` | The preview is not active. |
+| `opening` | The camera is starting. |
+| `active` | The preview is ready for capture or scanning. |
+| `ready` | A photo was accepted or a code was found. |
+| `error` | The session failed. |
+
+`open()` retries or reopens a session. It never requests permission.
+
+Leaving the screen, pressing the standard back button, or moving the app to the background releases the camera. Only one camera session can be open; another active session receives a `busy` error. Late capture and scan results are ignored after a session closes.
+
+Errors distinguish permission, unavailable camera, busy camera, capture, storage, decoding, timeout, protocol, and unexpected failures.
 
 ## Packaging
 
-Ink's generated Android feature flags are independent:
-
-- Permission only adds the camera manifest permission, optional hardware declaration and the small permission adapter.
-- Photo capture adds CameraX and the photo implementation, but not ZXing.
-- Code scanning adds CameraX, ZXing Core and the scanner implementation, but not photo capture code.
-- An application that does not import `@ink/camera` carries none of these sources, dependencies or manifest entries.
-
-CameraX is pinned to `1.5.0` and ZXing Core to `3.5.4`, matching the reviewed Light SDK dependency versions.
+Ink packages camera capabilities independently. Permission handling does not add capture or scanning. Photo capture does not add code decoding. An app that does not import `@ink/camera` carries no camera implementation or manifest entries.

@@ -1,9 +1,12 @@
-# Background resources
+# Background work
 
-`@ink/background` provides install-owned, periodic HTTPS JSON reads. A declaration registers one persisted Android `JobScheduler` job and exposes its latest durable result only while the declaring screen is active.
+`@ink/background` performs periodic HTTPS JSON reads with Android `JobScheduler`. Results are stored by the app and become available whenever the declaring screen is active.
+
+## Create a periodic resource
 
 ```tsx
 import { periodicJson } from "@ink/background";
+import { Screen, Text, match } from "ink";
 
 type Forecast = { temperature: number; summary: string };
 
@@ -12,12 +15,40 @@ const forecast = periodicJson<Forecast>(
   "https://example.com/forecast.json",
   { everyMinutes: 30, timeoutMs: 15_000 },
 );
+
+<Screen title="Forecast">
+  {match(forecast, {
+    waiting: () => <Text>Waiting for an update</Text>,
+    ready: (result) => <Text>{result.value.temperature}</Text>,
+    stale: (result) => <Text>{result.value.temperature}</Text>,
+    error: (result) => <Text>{result.error.message}</Text>,
+  })}
+</Screen>
 ```
 
-The resource starts as `waiting`. A successful run produces `ready` with `value` and `updatedAtMs`. A later failure preserves the last success as `stale`; a failure before any success produces `error`. Errors report `kind`, `message`, `retryable` and `attemptedAtMs`.
+The key identifies the durable value. Declarations that reuse a key must use the same URL, options and response type.
 
-Intervals are 15 to 10,080 minutes and timeouts are 1,000 to 120,000 milliseconds. URLs must use HTTPS. Query values and headers must be literals, responses are limited to 1 MiB, and decoded JSON must match the declared TypeScript data type. An app may own at most 16 background keys. Repeated declarations of one key must be identical.
+## Resource states
 
-Changing a URL, query, headers or response type invalidates the previous value. Changing only the cadence or timeout preserves it. Android controls the exact execution time according to network availability and system scheduling policy.
+| Status | Meaning |
+| --- | --- |
+| `waiting` | No background run has completed. |
+| `ready` | The latest run succeeded. `value` and `updatedAtMs` are available. |
+| `stale` | A refresh failed, but the previous value remains available. |
+| `error` | A run failed before any value was saved. |
 
-This API deliberately does not run application callbacks, mutate Ink state or post notifications. It is intended for durable polling whose result can be observed when a screen is shown.
+Errors provide `kind`, `message`, `retryable`, and `attemptedAtMs`.
+
+## Scheduling
+
+`everyMinutes` accepts 15 to 10,080 minutes. Android chooses the exact run time based on network availability, power, and system scheduling. This API is suitable for durable polling, not exact alarms.
+
+`timeoutMs` accepts 1,000 to 120,000 milliseconds. URLs must use HTTPS. Query values and headers are compile-time literals.
+
+## Validation and storage
+
+Ink validates decoded JSON against the declared TypeScript type before saving it. Responses are limited to 1 MiB, and one app can own up to 16 background keys.
+
+Changing the URL, query, headers, or response type invalidates the saved value. Changing only the interval or timeout preserves it.
+
+Background resources do not run app callbacks, mutate Ink state, or post notifications. Use [Notifications](notifications.md) when an app needs a scheduled reminder.

@@ -1,22 +1,48 @@
 # NFC
 
-`@ink/nfc` provides one-shot, screen-scoped NFC tag reading.
+`@ink/nfc` reads one NFC tag while its screen is active. NFC does not use an Android runtime permission prompt.
+
+## Read a tag
 
 ```tsx
 import { nfcTag } from "@ink/nfc";
+import { Button, Text, match } from "ink";
 
 const tag = nfcTag({ timeoutMs: 30_000 });
+
+{match(tag, {
+  loading: () => <Text>Hold a tag near the phone</Text>,
+  ready: (result) => <Text>{result.value.serialNumber}</Text>,
+  error: (result) => <Text>{result.error.message}</Text>,
+})}
+<Button onPress={() => tag.reload()}>Read another tag</Button>
 ```
 
-`nfcTag()` begins reading when its screen becomes active. It stops after finding one tag, when the resource reloads, when its screen becomes inactive or when the app leaves the foreground. An interrupted read rearms when the app resumes, while a ready or failed result remains settled until `reload()` is called. `timeoutMs` defaults to 30 seconds and accepts literal values from 1,000 to 120,000 milliseconds.
+Reading begins when the screen becomes active and stops after one tag. It also stops when the resource reloads, the screen leaves or the app enters the background.
 
-The ready value contains an uppercase hexadecimal `serialNumber`, convenience fields for the first text and URI records, and a homogeneous `records` list. Each record has the exact shape `{ kind, value, languageTag, mimeType, payloadBase64 }`:
+An interrupted read starts again when the app resumes. A ready or error result remains settled until `reload()` is called. `timeoutMs` defaults to 30 seconds and accepts 1,000 to 120,000 milliseconds.
 
-- Text records set `value` and `languageTag`.
-- URI records set `value`.
-- Binary records set `payloadBase64` and set `mimeType` for MIME records.
-- Fields which do not apply are empty strings.
+## Tag data
 
-Binary payloads use standard padded Base64 without line breaks. Tags without NDEF records still return successfully. Ink rejects NDEF messages larger than 64 KiB.
+The ready value contains:
 
-Errors distinguish unavailable hardware, disabled NFC, timeouts, invalid native data and unexpected failures. NFC has no Android runtime permission prompt. The compiler adds `android.permission.NFC`, an optional `android.hardware.nfc` feature declaration and the native reader only when `@ink/nfc` is imported.
+- an uppercase hexadecimal `serialNumber`;
+- `hasText` and `text` for the first text record;
+- `hasUri` and `uri` for the first URI record;
+- every NDEF record in `records`.
+
+Each record has `{ kind, value, languageTag, mimeType, payloadBase64 }`.
+
+| Record kind | Populated fields |
+| --- | --- |
+| `text` | `value`, `languageTag` |
+| `uri` | `value` |
+| `binary` | `payloadBase64`, and `mimeType` for MIME records |
+
+Fields that do not apply are empty strings. Binary payloads use padded Base64 without line breaks. A tag without NDEF data still succeeds with an empty `records` list. NDEF messages are limited to 64 KiB.
+
+## Errors and packaging
+
+Errors distinguish unavailable hardware, disabled NFC, timeout, invalid native data, and unexpected failures.
+
+Importing `@ink/nfc` adds the NFC permission, an optional hardware declaration and the native reader. Apps without the module carry none of them.

@@ -1,66 +1,96 @@
-# Ink architecture
+# How Ink works
 
-Ink keeps its public authoring surface small and pushes complexity into a few deep modules.
+Ink turns a focused TypeScript and TSX app into a native Android package. App code is compiled before the APK is built; it is not evaluated on the phone.
 
 ```text
-App.tsx + local or installed screen modules + extension imports
-   |
-   v
-ink-compiler: parse -> validate -> typed lowering -> app.ink
-   |
-   v
-app.ink + ink-core: state -> layout -> hit testing -> display list
-   |
-   v
-ink-renderer-wgpu: surface -> glyph/icon atlases + images -> GPU frame
-   |
-   v
-Android adapter: lifecycle, SurfaceView, input and optional native modules
+TypeScript and TSX
+        ↓
+Ink compiler
+        ↓
+app.ink + required Android capabilities
+        ↓
+Rust runtime + Vulkan renderer
+        ↓
+Android APK
 ```
 
-## Modules and interfaces
+## Build input
 
-### `crates/ink-cli`
+An app contains:
 
-The CLI module is the development interface over project discovery, compilation, conditional native modules, Gradle, signing, ADB, Logcat and file watching. Its small command vocabulary keeps those tools behind one seam. `ink info` reports state invalidation classes, list fast paths, capability causes and native costs, `app.ink` size and packaged APK sizes. Builds are cancellable when watched files change, device identity is always the ADB serial, and routine output stays quiet unless `--verbose` is requested.
+- `ink.toml` for its name, Android package, version and optional signing settings.
+- `App.tsx` as the composition root.
+- Local screen modules, bundled assets, and installed Ink packages imported by the app.
 
-### `packages/ink`
+A minimal configuration is:
 
-This is the app-author interface. It contains compile-time TypeScript declarations for Ink primitives and signals. It has no runtime implementation and contributes no JavaScript to an APK. First-party modules share `InkError`, permission and image-source types from this package so an app sees one status vocabulary across native capabilities.
+```toml
+name = "Weather"
+package = "com.example.weather"
+version = "0.1.0"
+version_code = 1
+```
 
-### `crates/ink-compiler`
+Ink supplies its runtime, Public Sans, Android project and generated resources. Apps do not need to configure source paths, generated Rust files, fonts or Android resource directories.
 
-The compiler module hides package resolution, TSX parsing, the screen-module graph, restricted-language validation, typed lowering, compact app-definition encoding, diagnostics and app branding. `App.tsx` is the composition root; local and package-exported `.tsx` modules are zero-argument screens expanded at compile time. Oxc Resolver follows normal `node_modules` lookup and the `ink` export condition behind a framework-owned resolver seam. Local state receives a linked application ID, while matching shared and persisted keys link declarations in separate screens to one slot. The compiler emits state-to-node dependencies with layout and structural invalidation classes into `app.ink`. A framework-owned module schema defines every first-party package name, API version, runtime export and base native capability; package declarations are checked against that schema when resolved. Its interface is one build input, a versioned `app.ink`, a versioned capability manifest and the Android resources used by that app.
+## Compilation
 
-### `crates/ink-core`
+The compiler resolves the complete screen and package graph from `App.tsx`. It parses TypeScript and TSX, validates the supported language, checks routes and typed data, and writes a compact `app.ink` definition.
 
-The core module decodes the versioned app definition and owns app state, persisted-state encoding and hydration, typed async resource state, screen-scoped resource activation, cancellation, single-flight request ordering, text focus and editing, typed route history, logical layout, clipping, scrolling, hit regions and input dispatch. Resource reads, explicit mutations, one-shot native actions and cancellation are distinct request kinds. Computed values and strict resource composition are compiler-lowered value and condition nodes rather than a reactive runtime. State mutations in substantial trees use the compiled dependency table to rematerialise affected retained branches while cloning untouched siblings; tiny trees rebuild directly, structural nodes rematerialise their branch, and native/resource changes keep the scene-wide correctness path. `Screen` centralises the LP3 header, insets, type rhythm and overflow behaviour, `Tabs` owns bottom navigation and its private selection state, and `Navigator` owns a compact stack over compile-time routes. Authors provide only each tab's icon and screen; the compiler creates tab-selection actions. Fixed-geometry vertical `ForEach` nodes retain row metrics and materialise only the visible range plus overscan; structurally variable templates use the exact general layout path. Header titles are centred between equal action slots, independent of the content insets below. Application data is owned by `app.ink`; the native runtime contains no app-specific generated Rust.
+The definition contains the app's:
 
-### `crates/ink-renderer-wgpu`
+- screens, layout, and navigation;
+- initial, shared, and persisted state declarations;
+- state-to-UI dependencies;
+- typed resource and native action declarations;
+- referenced text, icons, images and other assets;
+- required native capabilities.
 
-The renderer module consumes a clipped display list and owns the Vulkan surface, GPU resources, local PNG textures and text/icon caches. `wgpu`, precompiled SPIR-V shaders and the compact Public Sans glyph atlas are implementation details. Scene revisions reuse unchanged text-run geometry and write only changed vertex-buffer ranges. Scroll-only frames retain those buffers and update one transform uniform, a scissor and the scrollbar overlay. The surface permits one queued frame so work stays close to the LP3 display deadline.
+Changing ordinary app UI or data rewrites this definition. It does not generate app-specific Rust source or relink the shared native runtime.
 
-### `platform/android`
+## Native packaging
 
-Android is an adapter. It supplies a surface, lifecycle, pointer events, text edits, system-back requests, app-private persistence and native request execution through a coarse JNI seam. One Choreographer callback is the sole path that presents visual changes; requests from worker callbacks are marshalled to it and coalesced. It enforces operation timeouts, forwards cancellations into native adapters and emits concise resource transition timings for development. The network adapter owns HTTP transport and the bounded, app-private JSON cache; cache policy remains in each compiled request. Remote image decoding runs on one worker, while Rust validates tagged results, rejects stale completions and rebuilds the scene before the UI thread schedules its frame. Its internal namespace is fixed while Gradle takes the application ID, name and version from `ink.toml`, so app identity does not leak into Kotlin or native symbol names. The compiler writes an ordered capability manifest, and Gradle uses it as the authoritative input for the source sets, Cargo features, dependencies and Android manifest capabilities included in an application. The keyboard builds its `Typeface` from the same static Public Sans bytes used by the renderer, exposed as a direct buffer rather than duplicated as an Android font resource. The Light SDK adapter owns service discovery, Binder authentication, cancellation, permission activity hand-off, protocol version checks and preference translation without pulling Compose into the app. The location adapter owns cache selection and cancellable foreground GPS/network acquisition while LightOS retains permission ownership. The audio adapter owns Media3 playback, media sessions, encoded recordings and raw microphone capture; Rust owns realtime analysis and controller state. The notifications adapter owns the platform permission, a keyed AlarmManager store, notification presentation and an acknowledged tap-event FIFO; route navigation remains in core. Core remains responsible for resource state, text values, focus state and persistence.
+The capability list produced by the compiler controls what enters the APK. For example:
 
-### `examples`
+- `TextInput` adds the Ink keyboard;
+- `@ink/audio` playback adds the audio player;
+- detached playback also adds the Android media session;
+- `@ink/camera` scanning adds CameraX and code decoding;
+- modules add only the Android permissions and components they use.
 
-The counter is the smallest interactive example, exercising one state value and one action on a single screen. The light-template example keeps navigation composition in `App.tsx` and places each tab or nested page in a local screen module, while mirroring the template for deterministic visual comparisons. It imports the first-party Light SDK extension to exercise conditional native integration. The compiled app definition, capability manifest and Android resources stay in each example's ignored `.ink/` directory.
+An app that does not use a capability does not carry its native implementation. `ink info` shows the capability list and its estimated native cost before a release build.
 
-## Deliberate constraints
+## Runtime
 
-- Android only, portrait, API 34+.
-- LP3 logical units scale to 2.55 physical pixels at the device's 1080-pixel width, matching the established application density independently of Android display density.
-- Public Sans Regular is the default and only bundled font in v0.
-- Text is full-opacity, scalar left-to-right with kerning in v0. The supported 24 emoji use compact colour atlases and grapheme-safe editing; complex shaping, wrapping, general font fallback, bold and italic remain future capabilities.
-- Material Symbols are rasterised by the compiler. General interface icons use the outlined variant at weight 300 and bottom navigation icons use the filled variant at weight 400; only referenced glyph masks enter `app.ink`.
-- Images support compile-time PNG assets and HTTPS resources. Remote bytes are bounded, decoded off the render path and cached for the process lifetime.
-- No JavaScript runtime or arbitrary JavaScript packages. Installed Ink source packages are compiled under the same restricted language as application screens.
-- No idle animation loop; redraw only after invalidation or while native scrolling is active.
-- Blank black Android splash and first frame.
-- First-letter black-and-white launcher artwork generated from app metadata.
-- The keyboard is a conditional, Canvas-rendered Android adapter and is absent from apps without `TextInput`; it does not bring Compose into the application.
-- Light SDK support is another conditional Android adapter. It is absent without `@ink/light-sdk`, pins one upstream protocol version and does not become a dependency of the core module.
-- Audio is conditional. Media3 enters an APK only when a player is declared, its session module only for detached playback, and microphone capture and analysis only with `@ink/audio`.
-- Location is conditional. Its Android adapter and fine/coarse permission declarations enter an APK only with `@ink/location`; the existing Light SDK adapter owns the permission prompt.
+The Rust runtime reads `app.ink` and owns state, navigation, layout, scrolling, hit testing and async resource states. It retains the current UI tree and updates affected branches when state changes.
+
+Fixed-height vertical lists are virtualised. Text and image geometry is reused while unchanged, and scrolling updates retained content rather than rebuilding the complete screen. Ink submits no frames while the app is visually idle.
+
+The renderer turns Ink's display list into Vulkan commands. Android supplies the window, lifecycle, pointer input and native device services through a small adapter.
+
+## Native actions and resources
+
+Network responses, location fixes, permissions and other native results return through typed resource states. The runtime:
+
+- activates screen-scoped work only while its screen is visible;
+- cancels work when the screen leaves or a request reloads;
+- ignores late results from cancelled or replaced requests;
+- applies timeouts and prevents duplicate in-flight reads;
+- schedules the resulting UI change on the next display frame.
+
+Explicit mutations and native actions remain separate from reads, so an app controls when work that changes external state begins.
+
+## Platform conventions
+
+Ink targets portrait Android apps for the Light Phone III on API 34 or later.
+
+- Layout uses LP3 logical units rather than Android display-density units.
+- Public Sans Regular is the bundled text face.
+- Material Symbols are included by reference; unused symbols are omitted.
+- Text is fully opaque. Bold, italic and arbitrary fonts are not supported.
+- Local PNG and HTTPS images are supported.
+- The Android splash is blank and black.
+- Launcher artwork is generated from the app name.
+- Apps contain no JavaScript engine and cannot execute arbitrary JavaScript packages.
+
+Read [Core Ink](ink.md) for the authoring API and [Benchmarks](../benchmarks/README.md) for the measured LP3 results and reproduction method.

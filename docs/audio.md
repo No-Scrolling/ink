@@ -1,12 +1,15 @@
 # Audio
 
-Import audio capabilities from `@ink/audio`. The package is compile-time only: Ink includes each native capability only when an application declares it.
+`@ink/audio` provides playback, recording, level metering, and monophonic pitch detection. Each controller belongs to the screen where it is declared.
 
 ## Playback
 
-`audioPlayer()` creates a screen-scoped player. `usage` selects music or speech audio attributes; `playback` is `"attached"` by default or `"detached"` for playback that continues through an Android media session while the app is in the background.
+Create a player with `audioPlayer()`:
 
 ```tsx
+import { audioPlayer } from "@ink/audio";
+import { Button } from "ink";
+
 const player = audioPlayer({ usage: "music", playback: "detached" });
 
 <Button onPress={() => player.play({
@@ -18,25 +21,74 @@ const player = audioPlayer({ usage: "music", playback: "detached" });
 </Button>
 ```
 
-Sources may be relative bundled assets, HTTPS URLs or recordings produced by Ink. `setQueue(items, startIndex)` replaces the queue without starting it; call `play()` afterwards. `previous()` and `next()` move between items, while seek, skip and playback-speed operations affect the current item. Literal queue indices and speeds are checked by the compiler.
+`usage` is `"music"` by default or `"speech"` for spoken audio. `playback` is `"attached"` by default. Attached playback stops when its screen leaves; detached playback continues through an Android media session while the app is in the background.
 
-The player status is `idle`, `loading`, `paused`, `playing`, `ended` or `error`. The error branch exposes `error.kind`, `error.message` and `error.retryable`. Source, unsupported-format and audio-output failures remain distinct.
+Sources may be:
+
+- a bundled asset path;
+- an HTTPS URL;
+- the latest file saved by `audioRecorder()`.
+
+Use `setQueue(items, startIndex)` to replace the queue without starting playback. `play()` starts or resumes the current item. The player also provides pause, toggle, stop, seek, 15-second skip, previous, next, and playback-speed actions.
+
+The player status is `idle`, `loading`, `paused`, `playing`, `ended`, or `error`. It exposes the current item, queue index, position, duration, buffered position, and speed. Player errors distinguish source, unsupported-format, output, and unexpected failures.
 
 ## Recording
 
-`audioRecorder()` records mono AAC-LC audio into an app-private M4A file. `start()`, `stop()` and `cancel()` control the current recording. A successful stop replaces the previous saved recording; `delete()` removes it. The saved source can be played directly with `player.playRecording()`.
-
-The recorder reports `idle`, `recording`, `stopping`, `ready` or `error`. `durationMs` is the live duration and `recordingDurationMs` describes the saved file.
-
-## Microphone analysis
-
-`microphonePermission()` exposes the usual loading, ready and error resource states plus `request()`. Level and pitch controllers share one raw microphone capture:
+`audioRecorder()` records mono AAC audio into an app-private M4A file.
 
 ```tsx
+import { audioRecorder } from "@ink/audio";
+
+const recorder = audioRecorder();
+```
+
+- `start()` begins recording.
+- `stop()` saves the recording.
+- `cancel()` discards the active recording.
+- `delete()` removes the saved recording.
+
+A successful stop replaces the previous saved recording. Play it with `player.playRecording()`.
+
+The recorder status is `idle`, `recording`, `stopping`, `ready`, or `error`. `durationMs` tracks an active recording, and `recordingDurationMs` describes the saved file.
+
+## Microphone permission
+
+Playback does not need microphone permission. Recording, level metering and pitch detection do.
+
+```tsx
+import { microphonePermission } from "@ink/audio";
+import { Button, Text, match } from "ink";
+
+const microphone = microphonePermission();
+
+{match(microphone, {
+  loading: () => <Text>Checking microphone</Text>,
+  ready: (result) => <Text>{result.value}</Text>,
+  error: (result) => <Text>{result.error.message}</Text>,
+})}
+<Button onPress={() => microphone.request()}>Allow microphone</Button>
+```
+
+## Level and pitch
+
+Level and pitch controllers share one raw microphone capture:
+
+```tsx
+import { levelMeter, pitchDetector } from "@ink/audio";
+
 const level = levelMeter();
 const pitch = pitchDetector({ referenceHz: 440 });
 ```
 
-`levelMeter()` reports normalised RMS and peak values. `pitchDetector()` reports frequency, note, octave, cents and confidence for monophonic input. Either controller is started and stopped explicitly. Recording and realtime analysis are mutually exclusive because they own the same microphone.
+`levelMeter()` reports normalised RMS and peak values. Its status is `idle`, `listening`, `active`, `clipping` or `error`.
 
-Players and recorders are activated only while their screen is visible. Leaving a screen releases attached playback, stops active recording and capture, and ignores late controller updates. Detached playback may continue through its Android media session and reconnect when a player becomes active again. An application may declare players on separate routes, but Ink rejects layouts that could activate two players or two recorders simultaneously.
+`pitchDetector()` reports frequency, note, octave, cents, and confidence for monophonic input. Its status is `idle`, `listening`, `active`, or `error`. Set `referenceHz` from 400 to 480 Hz to change concert pitch from the default 440 Hz.
+
+Start and stop either controller explicitly. Realtime analysis and recording cannot run together because both own the microphone.
+
+## Lifecycle and packaging
+
+Leaving a screen stops attached playback, recording, and microphone analysis. Late updates from released controllers are ignored. Detached playback may continue and reconnect when its player becomes active again.
+
+Ink includes only the audio capabilities declared by the app. Media-session support, recording and microphone analysis do not enter an APK that only uses attached playback.

@@ -33,21 +33,21 @@ export default function Counter() {
 
 Ink keeps everyday UI and state in its core package. Device features live in optional modules, and apps only include the native code for modules they import.
 
-| Capability | Import | What it provides |
-| --- | --- | --- |
-| UI and navigation | `ink` | Screens, vertical and horizontal stacks, tabs, routes, conditional UI, repeated UI and momentum scrolling. |
-| State and async work | `ink` | Shared, persisted and computed state; typed route data; async resources and native actions. [Read about data and effects](docs/data.md). |
-| Text, input and images | `ink` | Public Sans, Material Symbols, text input, the Ink keyboard, local and remote images, and generated app icons. |
-| LightOS | `@ink/light-sdk` | Preferences, hardware keys, permissions, dialler, ringtone and UnifiedPush. [See LightOS capabilities](docs/light-sdk.md). |
-| Networking | `@ink/network` | Typed HTTPS reads, cached resources and mutations. [Read about data and effects](docs/data.md). |
-| Notifications | `@ink/notifications` | Local reminders, notification permission, UnifiedPush delivery and notification taps. [Read about notifications](docs/notifications.md). |
-| Background work | `@ink/background` | Typed, persisted periodic network resources. [Read about background work](docs/background.md). |
-| Audio | `@ink/audio` | Local and remote playback, recording, level metering and microphone analysis. [Read about audio](docs/audio.md). |
-| Location | `@ink/location` | Foreground location through the LightOS permission flow. [Read about location](docs/location.md). |
-| Camera | `@ink/camera` | An Ink camera preview, photo capture, and QR and barcode scanning. [Read about the camera](docs/camera.md). |
-| NFC | `@ink/nfc` | Screen-scoped NFC tag and NDEF reading. [Read about NFC](docs/nfc.md). |
+| Capability | Import | What it provides | Docs |
+| --- | --- | --- | --- |
+| UI and navigation | `ink` | Screens, stacks, tabs, routes, conditional UI, repeated UI, and momentum scrolling. | [Core Ink](docs/ink.md) |
+| State and async work | `ink` | Shared, persisted, and computed state; typed route data; async resources and native actions. | [Core Ink](docs/ink.md) · [Data and effects](docs/data.md) |
+| Text, input and images | `ink` | Public Sans, Material Symbols, text input, the Ink keyboard, local and remote images, and generated app icons. | [Core Ink](docs/ink.md) |
+| LightOS | `@ink/light-sdk` | Preferences, hardware keys, permissions, dialler, ringtone, and UnifiedPush. | [LightOS](docs/light-sdk.md) |
+| Networking | `@ink/network` | Typed HTTPS reads, cached resources, and mutations. | [Data and effects](docs/data.md) |
+| Notifications | `@ink/notifications` | Local reminders, notification permission, UnifiedPush delivery, and notification taps. | [Notifications](docs/notifications.md) |
+| Background work | `@ink/background` | Typed, persisted periodic network resources. | [Background work](docs/background.md) |
+| Audio | `@ink/audio` | Local and remote playback, recording, level metering, and microphone analysis. | [Audio](docs/audio.md) |
+| Location | `@ink/location` | Foreground location through the LightOS permission flow. | [Location](docs/location.md) |
+| Camera | `@ink/camera` | An Ink camera preview, photo capture, and QR and barcode scanning. | [Camera](docs/camera.md) |
+| NFC | `@ink/nfc` | Screen-scoped NFC tag and NDEF reading. | [NFC](docs/nfc.md) |
 
-Ink supports multi-file apps and installed UI packages. Read [how the compiler and runtime work](docs/architecture.md) or [how Ink maintains performance on the LP3](docs/performance.md).
+Ink supports multi-file apps and installed UI packages. Read [how Ink builds and runs an app](docs/architecture.md) for the underlying model.
 
 ### LightOS support
 
@@ -57,9 +57,9 @@ Enable LightOS integration with one import:
 import "@ink/light-sdk";
 ```
 
-Ink currently targets Light SDK `0.1.1`. Apps connect to `com.lightos` on a Light Phone III, while `ink dev` automatically uses the official SDK service on an Android emulator.
+Ink targets Light SDK `0.1.1`. Apps connect to `com.lightos` on a Light Phone III, while `ink dev` automatically uses the official SDK service on an Android emulator.
 
-Current support:
+Supported LightOS features:
 
 - [x] Tool discovery
 - [x] Service authentication
