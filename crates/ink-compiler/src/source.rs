@@ -468,12 +468,14 @@ impl Compiler<'_> {
                 children,
                 title,
                 centered,
+                params,
                 resources,
                 controllers,
             } => Node::Screen {
                 children: self.expand_nodes(children)?,
                 title,
                 centered,
+                params,
                 resources,
                 controllers,
             },
@@ -588,18 +590,7 @@ fn remap_node(
             }
         }
         Node::Text { parts, .. } => {
-            for part in parts {
-                match part {
-                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
-                    TextPart::Resource(resource, _) => {
-                        remap_resource(resource, resource_mapping);
-                    }
-                    TextPart::Controller(controller, _) => {
-                        remap_controller(controller, controller_mapping);
-                    }
-                    TextPart::Literal(_) | TextPart::Item(_) => {}
-                }
-            }
+            remap_text(parts, mapping, resource_mapping, controller_mapping)
         }
         Node::TextInput { state, .. } => remap(state, mapping),
         Node::Toggle { state, action, .. } => {
@@ -607,35 +598,13 @@ fn remap_node(
             remap_action(action, mapping, resource_mapping, controller_mapping);
         }
         Node::Button { label, action, .. } => {
-            for part in label {
-                match part {
-                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
-                    TextPart::Resource(resource, _) => {
-                        remap_resource(resource, resource_mapping);
-                    }
-                    TextPart::Controller(controller, _) => {
-                        remap_controller(controller, controller_mapping);
-                    }
-                    TextPart::Literal(_) | TextPart::Item(_) => {}
-                }
-            }
+            remap_text(label, mapping, resource_mapping, controller_mapping);
             if let Some(action) = action {
                 remap_action(action, mapping, resource_mapping, controller_mapping);
             }
         }
         Node::SelectorButton { value, action, .. } => {
-            for part in value {
-                match part {
-                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
-                    TextPart::Resource(resource, _) => {
-                        remap_resource(resource, resource_mapping);
-                    }
-                    TextPart::Controller(controller, _) => {
-                        remap_controller(controller, controller_mapping);
-                    }
-                    TextPart::Literal(_) | TextPart::Item(_) => {}
-                }
-            }
+            remap_text(value, mapping, resource_mapping, controller_mapping);
             if let Some(action) = action {
                 remap_action(action, mapping, resource_mapping, controller_mapping);
             }
@@ -672,19 +641,7 @@ fn remap_node(
             consequent,
             alternate,
         } => {
-            match condition {
-                Condition::Bool { state, .. }
-                | Condition::ListEmpty { state, .. }
-                | Condition::Equals { state, .. } => {
-                    remap(state, mapping);
-                }
-                Condition::ResourceEquals { resource, .. } => {
-                    remap_resource(resource, resource_mapping);
-                }
-                Condition::ControllerEquals { controller, .. } => {
-                    remap_controller(controller, controller_mapping);
-                }
-            }
+            remap_condition(condition, mapping, resource_mapping, controller_mapping);
             remap_node(consequent, mapping, resource_mapping, controller_mapping);
             if let Some(alternate) = alternate {
                 remap_node(alternate, mapping, resource_mapping, controller_mapping);
@@ -706,23 +663,53 @@ fn remap_node(
         Node::Image {
             source: ImageSource::Remote(parts) | ImageSource::Camera(parts),
             ..
-        } => {
-            for part in parts {
-                match part {
-                    TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
-                    TextPart::Resource(resource, _) => remap_resource(resource, resource_mapping),
-                    TextPart::Controller(controller, _) => {
-                        remap_controller(controller, controller_mapping);
-                    }
-                    TextPart::Literal(_) | TextPart::Item(_) => {}
-                }
-            }
-        }
+        } => remap_text(parts, mapping, resource_mapping, controller_mapping),
         Node::CameraPreview { controller, .. } => {
             remap_controller(controller, controller_mapping);
         }
         Node::Icon { .. } | Node::Image { .. } => {}
         Node::ScreenModule { .. } => {}
+    }
+}
+
+fn remap_text(
+    parts: &mut [TextPart],
+    mapping: &[StateId],
+    resource_mapping: &[ResourceId],
+    controller_mapping: &[ControllerId],
+) {
+    for part in parts {
+        match part {
+            TextPart::State(state) | TextPart::ListLength(state) => remap(state, mapping),
+            TextPart::Resource(resource, _) => remap_resource(resource, resource_mapping),
+            TextPart::Controller(controller, _) => remap_controller(controller, controller_mapping),
+            TextPart::Value(value) => {
+                remap_value(value, mapping, resource_mapping, controller_mapping)
+            }
+            TextPart::Literal(_) | TextPart::Item(_) => {}
+        }
+    }
+}
+
+fn remap_condition(
+    condition: &mut Condition,
+    mapping: &[StateId],
+    resource_mapping: &[ResourceId],
+    controller_mapping: &[ControllerId],
+) {
+    match condition {
+        Condition::ValueEquals { value, .. } => {
+            remap_value(value, mapping, resource_mapping, controller_mapping);
+        }
+        Condition::Bool { state, .. }
+        | Condition::ListEmpty { state, .. }
+        | Condition::Equals { state, .. } => remap(state, mapping),
+        Condition::ResourceEquals { resource, .. } => {
+            remap_resource(resource, resource_mapping);
+        }
+        Condition::ControllerEquals { controller, .. } => {
+            remap_controller(controller, controller_mapping);
+        }
     }
 }
 
@@ -734,17 +721,15 @@ fn remap_action(
 ) {
     match action {
         Action::Increment { state, .. }
-        | Action::SetNumber { state, .. }
-        | Action::SetBool { state, .. }
-        | Action::SetString { state, .. }
         | Action::Toggle { state }
         | Action::ClearList { state }
         | Action::RemoveListItem { state } => remap(state, mapping),
-        Action::SetList { state, value }
+        Action::SetValue { state, value }
+        | Action::SetList { state, value }
         | Action::AppendList { state, value }
         | Action::ReplaceListItem { state, value } => {
             remap(state, mapping);
-            remap_value(value, mapping);
+            remap_value(value, mapping, resource_mapping, controller_mapping);
         }
         Action::Sequence(actions) => {
             for action in actions {
@@ -771,7 +756,17 @@ fn remap_action(
                 }
             }
         }
-        Action::Navigate { .. } | Action::Back => {}
+        Action::Navigate { params, .. } => {
+            for param in params {
+                remap_value(
+                    &mut param.value,
+                    mapping,
+                    resource_mapping,
+                    controller_mapping,
+                );
+            }
+        }
+        Action::Back => {}
     }
 }
 
@@ -783,20 +778,41 @@ fn remap_controller(controller: &mut ControllerId, mapping: &[ControllerId]) {
     *controller = mapping[controller.0];
 }
 
-fn remap_value(value: &mut Value, mapping: &[StateId]) {
+fn remap_value(
+    value: &mut Value,
+    mapping: &[StateId],
+    resource_mapping: &[ResourceId],
+    controller_mapping: &[ControllerId],
+) {
     match value {
-        Value::State(state) => remap(state, mapping),
+        Value::State(state) | Value::ListLength(state) => remap(state, mapping),
+        Value::Resource(resource, _) => remap_resource(resource, resource_mapping),
+        Value::Controller(controller, _) => remap_controller(controller, controller_mapping),
+        Value::CombinedStatus(resources) => {
+            for resource in resources {
+                remap_resource(resource, resource_mapping);
+            }
+        }
+        Value::Binary { left, right, .. } => {
+            remap_value(left, mapping, resource_mapping, controller_mapping);
+            remap_value(right, mapping, resource_mapping, controller_mapping);
+        }
         Value::List(values) => {
             for value in values {
-                remap_value(value, mapping);
+                remap_value(value, mapping, resource_mapping, controller_mapping);
             }
         }
         Value::Object(fields) => {
             for (_, value) in fields {
-                remap_value(value, mapping);
+                remap_value(value, mapping, resource_mapping, controller_mapping);
             }
         }
-        Value::Number(_) | Value::Bool(_) | Value::String(_) | Value::Item(_) => {}
+        Value::Null
+        | Value::Number(_)
+        | Value::Bool(_)
+        | Value::String(_)
+        | Value::Item(_)
+        | Value::RouteParam(_) => {}
     }
 }
 

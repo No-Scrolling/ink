@@ -12,6 +12,18 @@ export interface ListSignal<T> {
   clear(): void;
 }
 
+export interface Computed<T extends Ink.Scalar> {
+  readonly value: T;
+}
+
+export declare function computed<T extends Ink.Scalar>(
+  evaluate: () => T,
+): Computed<T>;
+
+export declare function routeParams<
+  T extends Readonly<Record<string, Ink.StateScalar | undefined>>,
+>(): T;
+
 export type ResourceErrorKind =
   | "unavailable"
   | "permission-denied"
@@ -52,6 +64,26 @@ export declare function match<T extends StatusValue>(
   cases: MatchCases<T>,
 ): Ink.Element;
 
+type ReadyValue<T> = Extract<T, { readonly status: "ready" }> extends {
+  readonly value: infer Value;
+}
+  ? Value
+  : never;
+
+export type CombinedResource<
+  Resources extends Readonly<Record<string, AsyncResource<unknown, unknown>>>,
+> =
+  | { readonly status: "loading" }
+  | {
+      readonly status: "ready";
+      readonly value: { readonly [Name in keyof Resources]: ReadyValue<Resources[Name]> };
+    }
+  | { readonly status: "error" };
+
+export declare function all<
+  Resources extends Readonly<Record<string, AsyncResource<unknown, unknown>>>,
+>(resources: Resources): CombinedResource<Resources>;
+
 /** An opaque source returned by @ink/camera and accepted only by Image. */
 export interface CameraImageSource {
   readonly __inkCameraImageSource: never;
@@ -60,6 +92,7 @@ export interface CameraImageSource {
 export declare function state(initial: boolean): Signal<boolean>;
 export declare function state(initial: number): Signal<number>;
 export declare function state(initial: string): Signal<string>;
+export declare function state<T extends Ink.StateScalar>(initial: T): Signal<T>;
 export declare function state<T extends ReadonlyArray<Ink.ListItem>>(
   initial: T,
 ): ListSignal<T[number]>;
@@ -67,6 +100,10 @@ export declare function state<T extends ReadonlyArray<Ink.ListItem>>(
 export declare function sharedState(key: string, initial: boolean): Signal<boolean>;
 export declare function sharedState(key: string, initial: number): Signal<number>;
 export declare function sharedState(key: string, initial: string): Signal<string>;
+export declare function sharedState<T extends Ink.StateScalar>(
+  key: string,
+  initial: T,
+): Signal<T>;
 export declare function sharedState<T extends ReadonlyArray<Ink.ListItem>>(
   key: string,
   initial: T,
@@ -75,6 +112,10 @@ export declare function sharedState<T extends ReadonlyArray<Ink.ListItem>>(
 export declare function persistedState(key: string, initial: boolean): Signal<boolean>;
 export declare function persistedState(key: string, initial: number): Signal<number>;
 export declare function persistedState(key: string, initial: string): Signal<string>;
+export declare function persistedState<T extends Ink.StateScalar>(
+  key: string,
+  initial: T,
+): Signal<T>;
 export declare function persistedState<T extends ReadonlyArray<Ink.ListItem>>(
   key: string,
   initial: T,
@@ -99,7 +140,8 @@ export namespace Ink {
   interface Element {}
 
   type Scalar = boolean | number | string;
-  type ListItem = Scalar | { readonly [key: string]: ListItem };
+  type StateScalar = Scalar | null;
+  type ListItem = StateScalar | { readonly [key: string]: ListItem };
   type Child = Element | string | number | false | null;
   type Children = Child | ReadonlyArray<Child>;
   type TextContent = Scalar | ReadonlyArray<Scalar>;
@@ -136,7 +178,15 @@ export namespace Ink {
   }
 
   type PressProps =
-    | { href: string; onPress?: never }
+    | {
+        href:
+          | string
+          | {
+              readonly path: string;
+              readonly params?: Readonly<Record<string, StateScalar>>;
+            };
+        onPress?: never;
+      }
     | { href?: never; onPress?: () => void };
 
   type ButtonProps = {

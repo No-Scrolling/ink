@@ -58,6 +58,10 @@ pub enum InkCommand {
         /// Select a device by its serial or a unique name
         #[arg(long, value_name = "DEVICE")]
         device: Option<String>,
+
+        /// Show only native resource and action transitions
+        #[arg(long)]
+        resources: bool,
     },
 
     /// Show resolved application and build information

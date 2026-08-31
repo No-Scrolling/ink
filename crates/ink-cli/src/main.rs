@@ -58,11 +58,11 @@ fn run() -> Result<()> {
             let project = load_project(cli.directory.as_deref())?;
             develop(project, device.as_deref(), once, logs, cli.verbose)
         }
-        InkCommand::Logs { device } => {
+        InkCommand::Logs { device, resources } => {
             let project = load_project(cli.directory.as_deref())?;
             let device = android::select_device(device.as_deref())?;
             output::info(format!("Using {}", device.description()));
-            android::stream_logs(&device, project.package())
+            android::stream_logs(&device, project.package(), resources)
         }
         InkCommand::Info => {
             let project = load_project(cli.directory.as_deref())?;
@@ -161,7 +161,7 @@ fn develop_once(
     }
     android::install(device, &artifact.apk, verbose)?;
     let log_stream = logs
-        .then(|| android::LogStream::start(device, project.package()))
+        .then(|| android::LogStream::start(device, project.package(), false))
         .transpose()?;
     android::launch(device, project, verbose)?;
     output::success(format!("Launched {}", project.name()));
@@ -190,6 +190,7 @@ fn list_devices() -> Result<()> {
 }
 
 fn show_info(project: &Project) -> Result<()> {
+    let app = ink_compiler::inspect(project)?;
     output::field("Application", project.name());
     output::field("Package", project.package());
     output::field(
@@ -200,6 +201,45 @@ fn show_info(project: &Project) -> Result<()> {
     output::field("Light server", project.light_server());
     output::field("Target", "Android arm64");
     output::field("Ink", env!("CARGO_PKG_VERSION"));
+    output::field(
+        "Modules",
+        if app.modules.is_empty() {
+            "None".to_owned()
+        } else {
+            app.modules.join(", ")
+        },
+    );
+    output::field(
+        "Permissions",
+        if app.permissions.is_empty() {
+            "None".to_owned()
+        } else {
+            app.permissions.join(", ")
+        },
+    );
+    output::field(
+        "Resources",
+        if app.resources.is_empty() {
+            "None".to_owned()
+        } else {
+            app.resources.join(", ")
+        },
+    );
+    output::field(
+        "Controllers",
+        if app.controllers.is_empty() {
+            "None".to_owned()
+        } else {
+            app.controllers.join(", ")
+        },
+    );
+    output::field(
+        "State",
+        format!(
+            "{} local, {} shared, {} persisted",
+            app.local_states, app.shared_states, app.persisted_states,
+        ),
+    );
     output::field(
         "Signing",
         project

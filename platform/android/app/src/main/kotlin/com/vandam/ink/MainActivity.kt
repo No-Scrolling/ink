@@ -9,6 +9,8 @@ import android.graphics.fonts.FontFamily
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -56,6 +58,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val persistenceHandler = Handler(Looper.getMainLooper())
     private val nativeRequestHandler = Handler(Looper.getMainLooper())
     private val nativeTimeouts = mutableMapOf<Long, Runnable>()
+    private val nativeRequestStartedAt = mutableMapOf<Long, Long>()
+    private val nativeRequestLabels = mutableMapOf<Long, String>()
     private val persistenceExecutor by lazy(LazyThreadSafetyMode.NONE) {
         Executors.newSingleThreadExecutor()
     }
@@ -293,6 +297,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         cameraAdapter.stop()
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
+        nativeRequestStartedAt.clear()
+        nativeRequestLabels.clear()
         detachSurface()
         if (engineHandle != 0L) {
             nativeDestroy(engineHandle)
@@ -449,6 +455,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
             val kind = nativeRequestKind(engineHandle, requestId)
             if (kind == NATIVE_REQUEST_CANCEL) {
+                val label = nativeRequestLabels.remove(requestId).orEmpty()
+                val elapsed = nativeRequestStartedAt.remove(requestId)?.let {
+                    SystemClock.elapsedRealtime() - it
+                }
+                logResource("cancel $requestId $label ${elapsed ?: 0}ms")
                 nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
                 lightSdkAdapter.cancel(requestId)
                 networkAdapter.cancel(requestId)
@@ -464,6 +475,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val operation = nativeRequestOperation(engineHandle, requestId)
             val payload = nativeRequestPayload(engineHandle, requestId)
             val controller = nativeRequestController(engineHandle, requestId)
+            val label = "$module/$operation"
+            nativeRequestStartedAt[requestId] = SystemClock.elapsedRealtime()
+            nativeRequestLabels[requestId] = label
+            logResource("start $requestId $label")
             val lightAudioPermission = module == AUDIO_MODULE &&
                 controller < 0L &&
                 (operation == PERMISSION_STATUS_OPERATION ||
@@ -629,6 +644,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             return
         }
         nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
+        val label = nativeRequestLabels.remove(requestId).orEmpty()
+        val elapsed = nativeRequestStartedAt.remove(requestId)?.let {
+            SystemClock.elapsedRealtime() - it
+        } ?: 0L
+        val outcome = if (result is NativeResult.Failure) {
+            "error:${result.kind.name.lowercase()}"
+        } else {
+            "ready"
+        }
+        logResource("$outcome $requestId $label ${elapsed}ms")
         when (result) {
             is NativeResult.Success -> if (kind == NATIVE_REQUEST_RESOURCE) {
                 nativeCompleteString(engineHandle, requestId, result.value)
@@ -659,6 +684,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         syncCameraPortal()
         drainNativeRequests()
+    }
+
+    private fun logResource(message: String) {
+        if (BuildConfig.DEBUG) Log.d(RESOURCE_LOG_TAG, message)
     }
 
     private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
@@ -790,6 +819,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
         private const val PERSISTENCE_DELAY_MS = 250L
+        private const val RESOURCE_LOG_TAG = "InkResource"
         private const val LIGHT_SDK_MODULE = "light-sdk"
         private const val NETWORK_MODULE = "network"
         private const val AUDIO_MODULE = "audio"

@@ -98,6 +98,7 @@ impl ControllerId {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StateValue {
+    Null,
     Number(f64),
     Bool(bool),
     String(String),
@@ -105,32 +106,63 @@ pub enum StateValue {
     Object(Vec<(String, StateValue)>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StateShape {
+    Null,
     Number,
     Bool,
     String,
+    Literal(StateLiteral),
+    Optional(Box<StateShape>),
+    Union(Vec<StateShape>),
     List(Box<StateShape>),
     Object(Vec<(String, StateShape)>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum StateLiteral {
+    Number(f64),
+    Bool(bool),
+    String(String),
 }
 
 impl StateShape {
     fn accepts(&self, value: &StateValue) -> bool {
         match (self, value) {
+            (Self::Null, StateValue::Null) => true,
             (Self::Number, StateValue::Number(value)) if value.is_finite() => true,
             (Self::Bool, StateValue::Bool(_)) | (Self::String, StateValue::String(_)) => true,
+            (Self::Literal(expected), value) => expected.accepts(value),
+            (Self::Optional(_), StateValue::Null) => true,
+            (Self::Optional(shape), value) => shape.accepts(value),
+            (Self::Union(shapes), value) => shapes.iter().any(|shape| shape.accepts(value)),
             (Self::List(item), StateValue::List(values)) => {
                 values.iter().all(|value| item.accepts(value))
             }
             (Self::Object(fields), StateValue::Object(values)) => {
-                fields.len() == values.len()
+                values
+                    .iter()
+                    .all(|(name, _)| fields.iter().any(|(field_name, _)| field_name == name))
                     && fields.iter().all(|(name, shape)| {
                         values
                             .iter()
                             .find(|(value_name, _)| value_name == name)
-                            .is_some_and(|(_, value)| shape.accepts(value))
+                            .map_or(matches!(shape, StateShape::Optional(_)), |(_, value)| {
+                                shape.accepts(value)
+                            })
                     })
             }
+            _ => false,
+        }
+    }
+}
+
+impl StateLiteral {
+    fn accepts(&self, value: &StateValue) -> bool {
+        match (self, value) {
+            (Self::Number(expected), StateValue::Number(value)) => expected == value,
+            (Self::Bool(expected), StateValue::Bool(value)) => expected == value,
+            (Self::String(expected), StateValue::String(value)) => expected == value,
             _ => false,
         }
     }
@@ -139,6 +171,7 @@ impl StateShape {
 impl fmt::Display for StateValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Null => Ok(()),
             Self::Number(value) if value.fract() == 0.0 => write!(formatter, "{value:.0}"),
             Self::Number(value) => value.fmt(formatter),
             Self::Bool(value) => value.fmt(formatter),
@@ -149,26 +182,10 @@ impl fmt::Display for StateValue {
     }
 }
 
-fn shape_from_value(value: &StateValue) -> StateShape {
-    match value {
-        StateValue::Number(_) => StateShape::Number,
-        StateValue::Bool(_) => StateShape::Bool,
-        StateValue::String(_) => StateShape::String,
-        StateValue::List(values) => StateShape::List(Box::new(
-            values.first().map_or(StateShape::String, shape_from_value),
-        )),
-        StateValue::Object(fields) => StateShape::Object(
-            fields
-                .iter()
-                .map(|(name, value)| (name.clone(), shape_from_value(value)))
-                .collect(),
-        ),
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct StateDefinition {
     initial: StateValue,
+    shape: StateShape,
     persisted: Option<PersistedState>,
 }
 
@@ -249,6 +266,8 @@ pub struct ResourceDefinition {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResourceProtocol {
     Async,
+    Cached,
+    Mutation,
     Background,
 }
 
@@ -373,6 +392,12 @@ struct BackgroundError {
     attempted_at_ms: f64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct NavigationEntry {
+    route: usize,
+    params: Vec<(String, StateValue)>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResourceField {
     Status,
@@ -438,15 +463,16 @@ impl NativeRequest {
 }
 
 impl StateDefinition {
-    pub fn local(initial: StateValue) -> Self {
+    pub fn local(initial: StateValue, shape: StateShape) -> Self {
         Self {
             initial,
+            shape,
             persisted: None,
         }
     }
 
-    pub fn shared(initial: StateValue) -> Self {
-        Self::local(initial)
+    pub fn shared(initial: StateValue, shape: StateShape) -> Self {
+        Self::local(initial, shape)
     }
 
     pub fn persisted(
@@ -457,6 +483,7 @@ impl StateDefinition {
     ) -> Self {
         Self {
             initial,
+            shape: shape.clone(),
             persisted: Some(PersistedState {
                 key: key.into(),
                 schema,
@@ -466,7 +493,7 @@ impl StateDefinition {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 struct PersistedState {
     key: String,
     schema: u64,
@@ -503,17 +530,9 @@ pub enum Action {
         state: StateId,
         by: f64,
     },
-    SetNumber {
+    SetValue {
         state: StateId,
-        value: f64,
-    },
-    SetBool {
-        state: StateId,
-        value: bool,
-    },
-    SetString {
-        state: StateId,
-        value: String,
+        value: Value,
     },
     Toggle {
         state: StateId,
@@ -562,6 +581,7 @@ pub enum Action {
     },
     Navigate {
         path: String,
+        params: Vec<(String, Value)>,
     },
     Back,
     Sequence(Vec<Action>),
@@ -570,9 +590,7 @@ pub enum Action {
 fn action_state(action: &Action) -> Option<StateId> {
     match action {
         Action::Increment { state, .. }
-        | Action::SetNumber { state, .. }
-        | Action::SetBool { state, .. }
-        | Action::SetString { state, .. }
+        | Action::SetValue { state, .. }
         | Action::Toggle { state }
         | Action::SetList { state, .. }
         | Action::AppendList { state, .. }
@@ -591,7 +609,7 @@ fn action_state(action: &Action) -> Option<StateId> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TextPart {
     Literal(String),
     State(StateId),
@@ -599,6 +617,7 @@ pub enum TextPart {
     Controller(ControllerId, Vec<String>),
     ListLength(StateId),
     Item(Vec<String>),
+    Value(Value),
 }
 
 impl TextPart {
@@ -625,6 +644,11 @@ impl TextPart {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Condition {
+    ValueEquals {
+        value: Value,
+        expected: StateValue,
+        equals: bool,
+    },
     Bool {
         state: StateId,
         expected: bool,
@@ -654,13 +678,32 @@ pub enum Condition {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
+    Null,
     Number(f64),
     Bool(bool),
     String(String),
     State(StateId),
     Item(Vec<String>),
+    Resource(ResourceId, ResourceField),
+    Controller(ControllerId, Vec<String>),
+    CombinedStatus(Vec<ResourceId>),
+    ListLength(StateId),
+    Binary {
+        left: Box<Value>,
+        operator: ValueOperator,
+        right: Box<Value>,
+    },
+    RouteParam(String),
     List(Vec<Value>),
     Object(Vec<(String, Value)>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1282,7 +1325,7 @@ pub struct Engine {
     pointer: Option<Pointer>,
     focused_input: Option<StateId>,
     focused_input_action: TextInputAction,
-    navigation: Vec<usize>,
+    navigation: Vec<NavigationEntry>,
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
     resource_requests: HashMap<ResourceId, u64>,
@@ -1343,7 +1386,10 @@ impl Engine {
                     .iter()
                     .position(|route| route.path == "/")
                     .expect("navigator has a root route");
-                vec![root]
+                vec![NavigationEntry {
+                    route: root,
+                    params: Vec::new(),
+                }]
             }
             _ => Vec::new(),
         };
@@ -1461,7 +1507,10 @@ impl Engine {
             return false;
         };
         let shape = self.definition.resources[resource.0].shape.clone();
-        if self.definition.resources[resource.0].protocol == ResourceProtocol::Background {
+        if matches!(
+            self.definition.resources[resource.0].protocol,
+            ResourceProtocol::Background | ResourceProtocol::Cached
+        ) {
             let result = parse_background_state(&shape, bytes);
             let Some(pending) = self.in_flight_requests.remove(&request_id) else {
                 return false;
@@ -1495,14 +1544,14 @@ impl Engine {
         let Some(definition) = self.definition.controllers.get(controller.0) else {
             return false;
         };
-        let Some(current) = self.state.get(definition.state.0) else {
+        let Some(state) = self.definition.states.get(definition.state.0) else {
             return false;
         };
-        let shape = shape_from_value(current);
+        let shape = &state.shape;
         let Ok(json) = serde_json::from_slice(bytes) else {
             return false;
         };
-        let Ok(value) = state_from_json(&shape, &json, "$controller") else {
+        let Ok(value) = state_from_json(shape, &json, "$controller") else {
             return false;
         };
         self.update_controller(controller, value)
@@ -1515,11 +1564,10 @@ impl Engine {
         let Some(definition) = self.definition.controllers.get(controller.0) else {
             return false;
         };
-        let Some(current) = self.state.get(definition.state.0) else {
+        let Some(state) = self.definition.states.get(definition.state.0) else {
             return false;
         };
-        let shape = shape_from_value(current);
-        if !shape.accepts(&value) {
+        if !state.shape.accepts(&value) {
             return false;
         }
         if self.state[definition.state.0] == value {
@@ -1724,7 +1772,10 @@ impl Engine {
             | ResourceState::BackgroundReady { .. }
             | ResourceState::BackgroundFailed(_) => None,
         };
-        if definition.protocol == ResourceProtocol::Background {
+        if matches!(
+            definition.protocol,
+            ResourceProtocol::Background | ResourceProtocol::Cached
+        ) {
             if matches!(self.resources[resource.0], ResourceState::Inactive) {
                 self.resources[resource.0] = ResourceState::BackgroundWaiting;
             }
@@ -1920,6 +1971,7 @@ impl Engine {
     pub fn navigate(&mut self, path: &str) -> bool {
         if !self.apply(Action::Navigate {
             path: path.to_owned(),
+            params: Vec::new(),
         }) {
             return false;
         }
@@ -2015,29 +2067,35 @@ impl Engine {
                 let Some(StateValue::Number(value)) = self.state.get_mut(state.0) else {
                     return false;
                 };
-                *value += by;
+                let next = *value + by;
+                if !next.is_finite() {
+                    return false;
+                }
+                *value = next;
             }
-            Action::SetNumber { state, value } => {
-                let Some(StateValue::Number(current)) = self.state.get_mut(state.0) else {
+            Action::SetValue { state, value } => {
+                let Some(value) = self.evaluate_value(&value) else {
                     return false;
                 };
-                *current = value;
-                self.scroll_offset = 0.0;
-            }
-            Action::SetBool { state, value } => {
-                let Some(StateValue::Bool(current)) = self.state.get_mut(state.0) else {
+                if !self
+                    .definition
+                    .states
+                    .get(state.0)
+                    .is_some_and(|definition| definition.shape.accepts(&value))
+                {
                     return false;
-                };
-                *current = value;
-            }
-            Action::SetString { state, value } => {
-                let Some(StateValue::String(current)) = self.state.get_mut(state.0) else {
+                }
+                let resets_scroll = matches!(value, StateValue::Number(_));
+                let Some(current) = self.state.get_mut(state.0) else {
                     return false;
                 };
                 if *current == value {
                     return false;
                 }
                 *current = value;
+                if resets_scroll {
+                    self.scroll_offset = 0.0;
+                }
             }
             Action::Toggle { state } => {
                 let Some(StateValue::Bool(value)) = self.state.get_mut(state.0) else {
@@ -2128,17 +2186,28 @@ impl Engine {
             Action::Native { operation } => {
                 return self.queue_native_action(operation);
             }
-            Action::Navigate { path } => {
+            Action::Navigate { path, params } => {
                 let NodeKind::Navigator { routes, .. } = &self.definition.root.kind else {
                     return false;
                 };
                 let Some(route) = routes.iter().position(|route| route.path == path) else {
                     return false;
                 };
-                if self.navigation.last() == Some(&route) {
+                let Some(params) = params
+                    .iter()
+                    .map(|(name, value)| Some((name.clone(), self.evaluate_value(value)?)))
+                    .collect::<Option<Vec<_>>>()
+                else {
+                    return false;
+                };
+                if self
+                    .navigation
+                    .last()
+                    .is_some_and(|entry| entry.route == route && entry.params == params)
+                {
                     return false;
                 }
-                self.navigation.push(route);
+                self.navigation.push(NavigationEntry { route, params });
                 self.scroll_offset = 0.0;
                 self.pointer = None;
                 self.focused_input = None;
@@ -2193,11 +2262,53 @@ impl Engine {
 
     fn evaluate_value(&self, value: &Value) -> Option<StateValue> {
         match value {
+            Value::Null => Some(StateValue::Null),
             Value::Number(value) => Some(StateValue::Number(*value)),
             Value::Bool(value) => Some(StateValue::Bool(*value)),
             Value::String(value) => Some(StateValue::String(value.clone())),
             Value::State(state) => self.state.get(state.0).cloned(),
             Value::Item(_) => None,
+            Value::Resource(resource, field) => self.resource_field_value(*resource, field),
+            Value::Controller(controller, path) => self.controller_field_value(*controller, path),
+            Value::CombinedStatus(resources) => {
+                let statuses = resources
+                    .iter()
+                    .map(|resource| self.resource_field_value(*resource, &ResourceField::Status))
+                    .collect::<Option<Vec<_>>>()?;
+                let status =
+                    if statuses.iter().any(
+                        |status| matches!(status, StateValue::String(value) if value == "error"),
+                    ) {
+                        "error"
+                    } else if statuses.iter().all(
+                        |status| matches!(status, StateValue::String(value) if value == "ready"),
+                    ) {
+                        "ready"
+                    } else {
+                        "loading"
+                    };
+                Some(StateValue::String(status.to_owned()))
+            }
+            Value::ListLength(state) => match self.state.get(state.0)? {
+                StateValue::List(values) => Some(StateValue::Number(values.len() as f64)),
+                _ => None,
+            },
+            Value::Binary {
+                left,
+                operator,
+                right,
+            } => evaluate_binary(
+                self.evaluate_value(left)?,
+                *operator,
+                self.evaluate_value(right)?,
+            ),
+            Value::RouteParam(name) => self
+                .navigation
+                .last()?
+                .params
+                .iter()
+                .find(|(param, _)| param == name)
+                .map(|(_, value)| value.clone()),
             Value::List(values) => values
                 .iter()
                 .map(|value| self.evaluate_value(value))
@@ -2240,10 +2351,11 @@ impl Engine {
             .collect::<BTreeSet<_>>();
         let root = match &self.definition.root.kind {
             NodeKind::Navigator { routes, .. } => {
-                let route = *self
+                let route = self
                     .navigation
                     .last()
-                    .expect("navigator history is never empty");
+                    .expect("navigator history is never empty")
+                    .route;
                 routes[route].screen.clone()
             }
             _ => self.definition.root.clone(),
@@ -2264,7 +2376,9 @@ impl Engine {
             .collect::<Vec<_>>();
         self.active_resources = active;
         for resource in newly_active {
-            if matches!(self.resources[resource.0], ResourceState::Inactive) {
+            if self.definition.resources[resource.0].protocol != ResourceProtocol::Mutation
+                && matches!(self.resources[resource.0], ResourceState::Inactive)
+            {
                 self.queue_resource(resource);
             }
         }
@@ -2340,7 +2454,7 @@ impl Engine {
                 }
             }
             NodeKind::Navigator { routes, .. } => {
-                let route = *self.navigation.last().unwrap_or(&0);
+                let route = self.navigation.last().map_or(0, |entry| entry.route);
                 if let Some(route) = routes.get(route) {
                     self.collect_active_resources(&route.screen, active);
                 }
@@ -2402,7 +2516,7 @@ impl Engine {
                 }
             }
             NodeKind::Navigator { routes, .. } => {
-                let route = *self.navigation.last().unwrap_or(&0);
+                let route = self.navigation.last().map_or(0, |entry| entry.route);
                 if let Some(route) = routes.get(route) {
                     self.collect_active_controllers(&route.screen, active);
                 }
@@ -2437,6 +2551,11 @@ impl Engine {
 
     fn condition_enabled(&self, condition: &Condition) -> bool {
         match condition {
+            Condition::ValueEquals {
+                value,
+                expected,
+                equals,
+            } => (self.evaluate_value(value).as_ref() == Some(expected)) == *equals,
             Condition::Bool { state, expected } => {
                 matches!(self.state.get(state.0), Some(StateValue::Bool(value)) if value == expected)
             }
@@ -2490,9 +2609,27 @@ impl Engine {
         match field {
             ResourceField::Status => Some(StateValue::String(
                 match state {
+                    ResourceState::Inactive
+                        if self.definition.resources[resource.0].protocol
+                            == ResourceProtocol::Mutation =>
+                    {
+                        "idle"
+                    }
+                    ResourceState::Loading { .. }
+                        if self.definition.resources[resource.0].protocol
+                            == ResourceProtocol::Mutation =>
+                    {
+                        "running"
+                    }
                     ResourceState::Inactive | ResourceState::Loading { .. } => "loading",
                     ResourceState::Ready(_) => "ready",
                     ResourceState::Failed { .. } => "error",
+                    ResourceState::BackgroundWaiting
+                        if self.definition.resources[resource.0].protocol
+                            == ResourceProtocol::Cached =>
+                    {
+                        "loading"
+                    }
                     ResourceState::BackgroundWaiting => "waiting",
                     ResourceState::BackgroundReady { error: None, .. } => "ready",
                     ResourceState::BackgroundReady { error: Some(_), .. } => "stale",
@@ -2570,10 +2707,11 @@ impl Engine {
 
         let (root, back_icon) = match &self.definition.root.kind {
             NodeKind::Navigator { routes, back } => {
-                let route = *self
+                let route = self
                     .navigation
                     .last()
-                    .expect("navigator history is never empty");
+                    .expect("navigator history is never empty")
+                    .route;
                 (&routes[route].screen, Some(*back))
             }
             _ => (&self.definition.root, None),
@@ -3032,6 +3170,7 @@ impl Engine {
                         item_at_path(item.value, path).expect("compiled list-item path is valid");
                     TextPart::literal(value.to_string())
                 }
+                TextPart::Value(value) => TextPart::Value(self.materialise_value(value, item)),
                 part => part.clone(),
             })
             .collect()
@@ -3072,6 +3211,13 @@ impl Engine {
                     self.materialise_payload(&operation.payload, item),
                     operation.timeout_ms,
                 ),
+            },
+            Action::Navigate { path, params } => Action::Navigate {
+                path: path.clone(),
+                params: params
+                    .iter()
+                    .map(|(name, value)| (name.clone(), self.materialise_value(value, item)))
+                    .collect(),
             },
             Action::Sequence(actions) => Action::Sequence(
                 actions
@@ -3122,6 +3268,15 @@ impl Engine {
                     .map(|(name, value)| (name.clone(), self.materialise_value(value, item)))
                     .collect(),
             ),
+            Value::Binary {
+                left,
+                operator,
+                right,
+            } => Value::Binary {
+                left: Box::new(self.materialise_value(left, item)),
+                operator: *operator,
+                right: Box::new(self.materialise_value(right, item)),
+            },
             value => value.clone(),
         }
     }
@@ -3766,6 +3921,11 @@ impl Engine {
                     }
                 }
                 TextPart::Item(_) => unreachable!("list items are materialised before layout"),
+                TextPart::Value(value) => {
+                    if let Some(value) = self.evaluate_value(value) {
+                        text.push_str(&value.to_string());
+                    }
+                }
             }
         }
         text
@@ -4055,6 +4215,38 @@ impl Engine {
     }
 }
 
+fn evaluate_binary(
+    left: StateValue,
+    operator: ValueOperator,
+    right: StateValue,
+) -> Option<StateValue> {
+    match (left, operator, right) {
+        (StateValue::Number(left), ValueOperator::Add, StateValue::Number(right)) => {
+            finite_number(left + right)
+        }
+        (StateValue::Number(left), ValueOperator::Subtract, StateValue::Number(right)) => {
+            finite_number(left - right)
+        }
+        (StateValue::Number(left), ValueOperator::Multiply, StateValue::Number(right)) => {
+            finite_number(left * right)
+        }
+        (StateValue::Number(left), ValueOperator::Divide, StateValue::Number(right))
+            if right != 0.0 =>
+        {
+            finite_number(left / right)
+        }
+        (StateValue::String(mut left), ValueOperator::Add, StateValue::String(right)) => {
+            left.push_str(&right);
+            Some(StateValue::String(left))
+        }
+        _ => None,
+    }
+}
+
+fn finite_number(value: f64) -> Option<StateValue> {
+    value.is_finite().then_some(StateValue::Number(value))
+}
+
 pub fn emoji_index(grapheme: &str) -> Option<usize> {
     const EMOJI: [&str; 24] = [
         "😅", "☺️", "🙃", "😍", "😜", "😂", "😭", "😎", "🙌", "👍", "👎", "🤞", "✌️", "👌", "👋",
@@ -4090,6 +4282,7 @@ fn item_at_path<'a>(mut item: &'a StateValue, path: &[String]) -> Option<&'a Sta
 
 fn value_from_state(value: &StateValue) -> Value {
     match value {
+        StateValue::Null => Value::Null,
         StateValue::Number(value) => Value::Number(*value),
         StateValue::Bool(value) => Value::Bool(*value),
         StateValue::String(value) => Value::String(value.clone()),
@@ -4105,6 +4298,7 @@ fn value_from_state(value: &StateValue) -> Value {
 
 fn json_value(value: &StateValue) -> Option<String> {
     match value {
+        StateValue::Null => Some("null".to_owned()),
         StateValue::Number(value) if value.is_finite() => serde_json::Number::from_f64(*value)
             .map(serde_json::Value::Number)
             .map(|value| value.to_string()),
@@ -4127,6 +4321,10 @@ fn state_from_json(
         )
     };
     match shape {
+        StateShape::Null => value
+            .is_null()
+            .then_some(StateValue::Null)
+            .ok_or_else(mismatch),
         StateShape::Number => value
             .as_f64()
             .filter(|value| value.is_finite())
@@ -4136,6 +4334,32 @@ fn state_from_json(
         StateShape::String => value
             .as_str()
             .map(|value| StateValue::String(value.to_owned()))
+            .ok_or_else(mismatch),
+        StateShape::Literal(expected) => {
+            let value = match expected {
+                StateLiteral::Number(_) => value
+                    .as_f64()
+                    .filter(|value| value.is_finite())
+                    .map(StateValue::Number),
+                StateLiteral::Bool(_) => value.as_bool().map(StateValue::Bool),
+                StateLiteral::String(_) => value
+                    .as_str()
+                    .map(|value| StateValue::String(value.to_owned())),
+            };
+            value
+                .filter(|value| expected.accepts(value))
+                .ok_or_else(mismatch)
+        }
+        StateShape::Optional(shape) => {
+            if value.is_null() {
+                Ok(StateValue::Null)
+            } else {
+                state_from_json(shape, value, path)
+            }
+        }
+        StateShape::Union(shapes) => shapes
+            .iter()
+            .find_map(|shape| state_from_json(shape, value, path).ok())
             .ok_or_else(mismatch),
         StateShape::List(item_shape) => value
             .as_array()
@@ -4151,14 +4375,18 @@ fn state_from_json(
                 .iter()
                 .map(|(name, shape)| {
                     let field_path = format!("{path}.{name}");
-                    let value = object.get(name).ok_or_else(|| {
-                        ResourceError::new(
-                            ResourceErrorKind::Protocol,
-                            format!("response was missing field {field_path}"),
-                            false,
-                        )
-                    })?;
-                    Ok((name.clone(), state_from_json(shape, value, &field_path)?))
+                    let value = match object.get(name) {
+                        None if matches!(shape, StateShape::Optional(_)) => StateValue::Null,
+                        Some(value) => state_from_json(shape, value, &field_path)?,
+                        None => {
+                            return Err(ResourceError::new(
+                                ResourceErrorKind::Protocol,
+                                format!("response was missing field {field_path}"),
+                                false,
+                            ));
+                        }
+                    };
+                    Ok((name.clone(), value))
                 })
                 .collect::<Result<Vec<_>, _>>()
                 .map(StateValue::Object)
@@ -4192,6 +4420,7 @@ fn parse_background_state(shape: &StateShape, bytes: &[u8]) -> ResourceState {
         if ![
             "unavailable",
             "timeout",
+            "protocol",
             "http",
             "invalid-data",
             "storage",

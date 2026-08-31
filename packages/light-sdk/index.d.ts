@@ -39,19 +39,25 @@ export declare function openDialler(phoneNumber: string): void;
 export type RingtoneKind = "ringtone" | "notification" | "alarm";
 
 export type RingtoneErrorKind =
-  | ""
   | "source"
   | "unavailable"
   | "protocol"
   | "unexpected";
 
-export interface RingtoneInstaller {
-  readonly status: "idle" | "installing" | "installed" | "error";
-  readonly errorKind: RingtoneErrorKind;
-  readonly errorMessage: string;
-  readonly errorRetryable: boolean;
+interface RingtoneActions {
   set(source: string, kind?: RingtoneKind): void;
 }
+
+export type RingtoneInstaller = RingtoneActions &
+  (
+    | { readonly status: "idle" | "installing" | "installed" }
+    | {
+        readonly status: "error";
+        readonly errorKind: RingtoneErrorKind;
+        readonly errorMessage: string;
+        readonly errorRetryable: boolean;
+      }
+  );
 
 export interface LightPushMessage {
   readonly id: string;
@@ -63,7 +69,6 @@ export interface LightPushMessage {
 }
 
 export type LightPushErrorKind =
-  | ""
   | "no-distributor"
   | "registration"
   | "subscription"
@@ -71,26 +76,32 @@ export type LightPushErrorKind =
   | "storage"
   | "unexpected";
 
-export interface LightPush {
-  readonly status:
-    | "idle"
-    | "registering"
-    | "synchronising"
-    | "ready"
-    | "error";
+interface LightPushValue {
   readonly endpoint: string;
   readonly registeredAtMs: number;
   readonly openedKey: string;
   readonly messages: ReadonlyArray<LightPushMessage>;
-  readonly errorKind: LightPushErrorKind;
-  readonly errorMessage: string;
-  readonly errorRetryable: boolean;
+}
+
+interface LightPushActions {
   register(subscriptionBaseUrl: string, bearerToken?: string): void;
   retry(): void;
   unregister(): void;
   dismiss(groupKey: string): void;
   clear(): void;
 }
+
+export type LightPush = LightPushActions &
+  LightPushValue &
+  (
+    | { readonly status: "idle" | "registering" | "synchronising" | "ready" }
+    | {
+        readonly status: "error";
+        readonly errorKind: LightPushErrorKind;
+        readonly errorMessage: string;
+        readonly errorRetryable: boolean;
+      }
+  );
 
 export declare function ringtoneInstaller(): RingtoneInstaller;
 export declare function lightPush(): LightPush;

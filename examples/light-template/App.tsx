@@ -12,6 +12,7 @@ import LightSdk from "./screens/modules/LightSdk";
 import Location from "./screens/modules/Location";
 import Nfc from "./screens/modules/Nfc";
 import Network from "./screens/modules/Network";
+import Data from "./screens/modules/network/Data";
 import Notifications from "./screens/modules/Notifications";
 import LocalPlayback from "./screens/modules/audio/LocalPlayback";
 import Microphone from "./screens/modules/audio/Microphone";
@@ -116,6 +117,9 @@ export default function LightTemplate() {
       </Route>
       <Route path="/modules/network">
         <Network />
+      </Route>
+      <Route path="/modules/network/data">
+        <Data />
       </Route>
       <Route path="/modules/notifications">
         <Notifications />

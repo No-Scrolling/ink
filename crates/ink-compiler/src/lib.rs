@@ -8,7 +8,10 @@ mod lower;
 mod resolver;
 mod source;
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 pub use config::ReleaseSigning;
@@ -32,6 +35,17 @@ pub struct AppFeatures {
     pub background: bool,
     pub notifications: bool,
     pub notification_permission: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppInfo {
+    pub modules: Vec<String>,
+    pub permissions: Vec<String>,
+    pub resources: Vec<String>,
+    pub controllers: Vec<String>,
+    pub local_states: usize,
+    pub shared_states: usize,
+    pub persisted_states: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +121,94 @@ impl Project {
 pub fn check(project: &Project) -> Result<()> {
     generate(project)?;
     Ok(())
+}
+
+pub fn inspect(project: &Project) -> Result<AppInfo> {
+    let app = source::compile(project.root(), &project.config.source)?;
+    let mut modules = app
+        .extensions
+        .iter()
+        .map(|extension| match extension {
+            ir::Extension::LightSdk => "light-sdk",
+            ir::Extension::Network => "network",
+            ir::Extension::Audio => "audio",
+            ir::Extension::Location => "location",
+            ir::Extension::Nfc => "nfc",
+            ir::Extension::Background => "background",
+            ir::Extension::Notifications => "notifications",
+            ir::Extension::Camera => "camera",
+        })
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    modules.extend(app.resources.iter().map(|resource| resource.module.clone()));
+    modules.extend(
+        app.controllers
+            .iter()
+            .map(|controller| controller.module.clone()),
+    );
+    let permissions = app
+        .android_permissions
+        .iter()
+        .map(|permission| match permission {
+            ir::AndroidPermission::Camera => "camera",
+            ir::AndroidPermission::Microphone => "microphone",
+            ir::AndroidPermission::Location => "location",
+            ir::AndroidPermission::Nfc => "nfc",
+            ir::AndroidPermission::Notifications => "notifications",
+        })
+        .map(str::to_owned)
+        .collect();
+    let resources = summarise(
+        app.resources
+            .iter()
+            .map(|resource| format!("{}/{}", resource.module, resource.operation)),
+    );
+    let controllers = summarise(
+        app.controllers
+            .iter()
+            .map(|controller| format!("{}/{}", controller.module, controller.kind)),
+    );
+    let local_states = app
+        .states
+        .iter()
+        .filter(|state| matches!(state.lifetime, ir::StateLifetime::Local))
+        .count();
+    let shared_states = app
+        .states
+        .iter()
+        .filter(|state| matches!(state.lifetime, ir::StateLifetime::Shared(_)))
+        .count();
+    let persisted_states = app
+        .states
+        .iter()
+        .filter(|state| matches!(state.lifetime, ir::StateLifetime::Persisted(_)))
+        .count();
+    Ok(AppInfo {
+        modules: modules.into_iter().collect(),
+        permissions,
+        resources,
+        controllers,
+        local_states,
+        shared_states,
+        persisted_states,
+    })
+}
+
+fn summarise(values: impl Iterator<Item = String>) -> Vec<String> {
+    let mut counts = BTreeMap::new();
+    for value in values {
+        *counts.entry(value).or_insert(0_usize) += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(value, count)| {
+            if count == 1 {
+                value
+            } else {
+                format!("{value} ×{count}")
+            }
+        })
+        .collect()
 }
 
 pub fn compile(project: &Project) -> Result<AppFeatures> {

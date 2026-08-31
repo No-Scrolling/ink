@@ -42,7 +42,6 @@ export type LocalNotification = LocalNotificationBase &
   );
 
 export type NotificationOperationErrorKind =
-  | ""
   | "permission-denied"
   | "permission-blocked"
   | "invalid-request"
@@ -53,16 +52,23 @@ export type NotificationOperationErrorKind =
   | "protocol"
   | "unexpected";
 
-export interface LocalNotifications {
-  readonly status: "idle" | "error";
-  readonly operation: "" | "schedule" | "cancel";
-  readonly id: string;
-  readonly errorKind: NotificationOperationErrorKind;
-  readonly errorMessage: string;
-  readonly errorRetryable: boolean;
+interface LocalNotificationActions {
   schedule(notification: LocalNotification): void;
   cancel(id: string): void;
 }
+
+export type LocalNotifications = LocalNotificationActions &
+  (
+    | { readonly status: "idle" }
+    | {
+        readonly status: "error";
+        readonly operation: "schedule" | "cancel";
+        readonly id: string;
+        readonly errorKind: NotificationOperationErrorKind;
+        readonly errorMessage: string;
+        readonly errorRetryable: boolean;
+      }
+  );
 
 export type NativeEvent<T> =
   | { readonly status: "empty" }

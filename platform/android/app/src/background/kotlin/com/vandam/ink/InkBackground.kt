@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.PersistableBundle
 import android.util.AtomicFile
 import android.util.Log
-import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
@@ -382,7 +381,7 @@ private class BackgroundRunner(context: Context) {
                     }
                     val bytes = connection.inputStream.use(::readBounded)
                     val value = JSONTokener(bytes.toString(Charsets.UTF_8)).nextValue()
-                    if (!validValue(job.schema, value)) {
+                    if (!validInkJson(job.schema, value)) {
                         return FetchResult.Failed(
                             BackgroundFailure(
                                 "invalid-data",
@@ -455,20 +454,6 @@ private data class BackgroundFailure(
         .put("message", message)
         .put("retryable", retryable)
         .put("attemptedAtMs", attemptedAtMs)
-}
-
-private fun validValue(schema: Any, value: Any): Boolean = when (schema) {
-    "number" -> value is Number && value.toDouble().isFinite()
-    "boolean" -> value is Boolean
-    "string" -> value is String
-    is JSONObject -> if (schema.has("array")) {
-        value is JSONArray && (0 until value.length()).all { validValue(schema.get("array"), value.get(it)) }
-    } else {
-        value is JSONObject && schema.keys().asSequence().all { name ->
-            value.has(name) && validValue(schema.get(name), value.get(name))
-        }
-    }
-    else -> false
 }
 
 private fun readBounded(stream: java.io.InputStream): ByteArray {

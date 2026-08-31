@@ -42,6 +42,8 @@ export default function Counter() {
 - Shared and persisted state
 - Async resources and native actions
 - Typed HTTPS data resources
+- Cached reads, typed mutations and strict resource composition
+- Computed values and compiler-checked route data
 - Conditional and repeated UI
 - Momentum scrolling
 - Lightweight text input and keyboard
@@ -211,6 +213,7 @@ ink -C examples/counter dev
 - `ink build` creates an optimised, signed APK.
 - `ink devices` lists connected Android devices.
 - `ink logs` streams app and crash logs.
+- `ink logs --resources` shows native request transitions and timings.
 - `ink info` shows the resolved app and build configuration.
 - `ink doctor` checks the development environment.
 
@@ -224,6 +227,7 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Light SDK adapter](docs/adr/0003-light-sdk-adapter.md)
 - [LightOS capabilities](docs/light-sdk.md)
 - [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
+- [Data and effects](docs/data.md)
 - [Notifications](docs/notifications.md)
 - [Background resources](docs/background.md)
 - [Audio](docs/audio.md)

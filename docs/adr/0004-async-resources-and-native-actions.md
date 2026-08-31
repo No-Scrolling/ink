@@ -21,3 +21,7 @@ Permission access is the first paired capability. `lightSdkPermission("camera")`
 ## Consequences
 
 Application code stays declarative and cannot issue arbitrary native calls. New capabilities require a TypeScript declaration, compiler lowering and an Ink-owned native adapter, which is more deliberate but keeps permissions, lifecycle and compatibility review inside the framework. The runtime borrows Effect's useful semantics—typed failures, scoped lifetime and interruption—without adding Effect or a JavaScript runtime to applications. Automatic retries remain a module-level decision because only a capability knows whether an operation is safe to repeat.
+
+Network reads may opt into an app-private, OS-evictable cache with explicit fresh and stale-on-error windows. Network writes use a separate idle/running/ready/error mutation protocol, start only through `run()`, and never retry automatically.
+
+`all()` composes ordinary reads strictly and fail-fast in compiler-lowered conditions. `computed()` lowers a constrained pure scalar expression into core values. Neither API introduces an effect runtime, scheduler or hidden lifetime. Route parameters are stored on navigation entries and checked by the compiler against their target screen rather than being smuggled through shared state.

@@ -12,8 +12,8 @@ use crate::{
     ir::{
         Action, Alignment, App, Axis, CameraPreviewKind, Collection, Condition, Controller,
         ImageFit, ImageSource, Justification, NativeOperation, Node, PayloadPart, Resource,
-        ResourceField, ResourceProtocol, State, StateLifetime, StateShape, StateValue,
-        TextAlignment, TextInputAction, TextPart, Tone, Value,
+        ResourceField, ResourceProtocol, State, StateLifetime, StateLiteral, StateShape,
+        StateValue, TextAlignment, TextInputAction, TextPart, Tone, Value, ValueOperator,
     },
 };
 
@@ -50,6 +50,7 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
             ImageSource, NativeOperation,
             PayloadPart, ResourceDefinition, ResourceField, ResourceId, StateDefinition,
             StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone, Value,
+            ValueOperator,
         };
 
         pub const USES_PERSISTENCE: bool = #uses_persistence;
@@ -100,6 +101,7 @@ impl<'a> Emitter<'a> {
                 children,
                 title,
                 centered,
+                params: _,
                 resources,
                 controllers,
             } => {
@@ -451,6 +453,7 @@ impl<'a> Emitter<'a> {
 
 fn state_value(value: &StateValue) -> TokenStream {
     match value {
+        StateValue::Null => quote! { StateValue::Null },
         StateValue::Number(value) => quote! { StateValue::Number(#value) },
         StateValue::Bool(value) => quote! { StateValue::Bool(#value) },
         StateValue::String(value) => quote! { StateValue::String(#value.to_owned()) },
@@ -470,11 +473,11 @@ fn state_value(value: &StateValue) -> TokenStream {
 
 fn state_definition(state: &State) -> TokenStream {
     let initial = state_value(&state.initial);
+    let shape = state_shape(&state.shape);
     match &state.lifetime {
-        StateLifetime::Local => quote! { StateDefinition::local(#initial) },
-        StateLifetime::Shared(_) => quote! { StateDefinition::shared(#initial) },
+        StateLifetime::Local => quote! { StateDefinition::local(#initial, #shape) },
+        StateLifetime::Shared(_) => quote! { StateDefinition::shared(#initial, #shape) },
         StateLifetime::Persisted(key) => {
-            let shape = state_shape(&state.shape);
             let schema = hash_bytes(state_shape_name(&state.shape).as_bytes());
             quote! { StateDefinition::persisted(#initial, #key, #schema, #shape) }
         }
@@ -490,6 +493,8 @@ fn resource_definition(resource: &Resource) -> TokenStream {
     let shape = state_shape(&resource.shape);
     let protocol = match resource.protocol {
         ResourceProtocol::Async => quote! { ink_core::ResourceProtocol::Async },
+        ResourceProtocol::Cached => quote! { ink_core::ResourceProtocol::Cached },
+        ResourceProtocol::Mutation => quote! { ink_core::ResourceProtocol::Mutation },
         ResourceProtocol::Background => quote! { ink_core::ResourceProtocol::Background },
     };
     quote! {
@@ -514,9 +519,28 @@ fn controller_definition(controller: &Controller) -> TokenStream {
 
 fn state_shape(shape: &StateShape) -> TokenStream {
     match shape {
+        StateShape::Null => quote! { ink_core::StateShape::Null },
         StateShape::Number => quote! { ink_core::StateShape::Number },
         StateShape::Bool => quote! { ink_core::StateShape::Bool },
         StateShape::String => quote! { ink_core::StateShape::String },
+        StateShape::Literal(value) => {
+            let value = match value {
+                StateLiteral::Number(value) => quote! { ink_core::StateLiteral::Number(#value) },
+                StateLiteral::Bool(value) => quote! { ink_core::StateLiteral::Bool(#value) },
+                StateLiteral::String(value) => {
+                    quote! { ink_core::StateLiteral::String(#value.to_owned()) }
+                }
+            };
+            quote! { ink_core::StateShape::Literal(#value) }
+        }
+        StateShape::Optional(shape) => {
+            let shape = state_shape(shape);
+            quote! { ink_core::StateShape::Optional(Box::new(#shape)) }
+        }
+        StateShape::Union(shapes) => {
+            let shapes = shapes.iter().map(state_shape);
+            quote! { ink_core::StateShape::Union(vec![#(#shapes),*]) }
+        }
         StateShape::List(item) => {
             let item = state_shape(item);
             quote! { ink_core::StateShape::List(Box::new(#item)) }
@@ -533,9 +557,22 @@ fn state_shape(shape: &StateShape) -> TokenStream {
 
 fn state_shape_name(shape: &StateShape) -> String {
     match shape {
+        StateShape::Null => "null".to_owned(),
         StateShape::Number => "number".to_owned(),
         StateShape::Bool => "bool".to_owned(),
         StateShape::String => "string".to_owned(),
+        StateShape::Literal(StateLiteral::Number(value)) => format!("literal-number:{value}"),
+        StateShape::Literal(StateLiteral::Bool(value)) => format!("literal-bool:{value}"),
+        StateShape::Literal(StateLiteral::String(value)) => format!("literal-string:{value}"),
+        StateShape::Optional(shape) => format!("optional<{}>", state_shape_name(shape)),
+        StateShape::Union(shapes) => format!(
+            "union<{}>",
+            shapes
+                .iter()
+                .map(state_shape_name)
+                .collect::<Vec<_>>()
+                .join("|")
+        ),
         StateShape::List(item) => format!("list<{}>", state_shape_name(item)),
         StateShape::Object(fields) => {
             let fields = fields
@@ -573,6 +610,10 @@ fn text_part(part: &TextPart) -> TokenStream {
         TextPart::Item(path) => {
             quote! { TextPart::Item(vec![#(#path.to_owned()),*]) }
         }
+        TextPart::Value(value) => {
+            let value = value_tokens(value);
+            quote! { TextPart::Value(#value) }
+        }
     }
 }
 
@@ -582,17 +623,10 @@ fn action_tokens(action: &Action) -> TokenStream {
             let id = state.0;
             quote! { Action::Increment { state: StateId::new(#id), by: #by } }
         }
-        Action::SetNumber { state, value } => {
+        Action::SetValue { state, value } => {
             let id = state.0;
-            quote! { Action::SetNumber { state: StateId::new(#id), value: #value } }
-        }
-        Action::SetBool { state, value } => {
-            let id = state.0;
-            quote! { Action::SetBool { state: StateId::new(#id), value: #value } }
-        }
-        Action::SetString { state, value } => {
-            let id = state.0;
-            quote! { Action::SetString { state: StateId::new(#id), value: #value.to_owned() } }
+            let value = value_tokens(value);
+            quote! { Action::SetValue { state: StateId::new(#id), value: #value } }
         }
         Action::Toggle { state } => {
             let id = state.0;
@@ -649,8 +683,13 @@ fn action_tokens(action: &Action) -> TokenStream {
             let operation = native_operation_tokens(operation);
             quote! { Action::Native { operation: #operation } }
         }
-        Action::Navigate { path, .. } => {
-            quote! { Action::Navigate { path: #path.to_owned() } }
+        Action::Navigate { path, params, .. } => {
+            let params = params.iter().map(|param| {
+                let name = &param.name;
+                let value = value_tokens(&param.value);
+                quote! { (#name.to_owned(), #value) }
+            });
+            quote! { Action::Navigate { path: #path.to_owned(), params: vec![#(#params),*] } }
         }
         Action::Back => quote! { Action::Back },
         Action::Sequence(actions) => {
@@ -681,6 +720,15 @@ fn payload_part(part: &PayloadPart) -> TokenStream {
 
 fn condition_tokens(condition: &Condition) -> TokenStream {
     match condition {
+        Condition::ValueEquals {
+            value,
+            expected,
+            equals,
+        } => {
+            let value = value_tokens(value);
+            let expected = state_value(expected);
+            quote! { Condition::ValueEquals { value: #value, expected: #expected, equals: #equals } }
+        }
         Condition::Bool { state, expected } => {
             let id = state.0;
             quote! { Condition::Bool { state: StateId::new(#id), expected: #expected } }
@@ -758,6 +806,7 @@ fn resource_field_tokens(field: &ResourceField) -> TokenStream {
 
 fn value_tokens(value: &Value) -> TokenStream {
     match value {
+        Value::Null => quote! { Value::Null },
         Value::Number(value) => quote! { Value::Number(#value) },
         Value::Bool(value) => quote! { Value::Bool(#value) },
         Value::String(value) => quote! { Value::String(#value.to_owned()) },
@@ -766,6 +815,48 @@ fn value_tokens(value: &Value) -> TokenStream {
             quote! { Value::State(StateId::new(#id)) }
         }
         Value::Item(path) => quote! { Value::Item(vec![#(#path.to_owned()),*]) },
+        Value::Resource(resource, field) => {
+            let id = resource.0;
+            let field = resource_field_tokens(field);
+            quote! { Value::Resource(ResourceId::new(#id), #field) }
+        }
+        Value::Controller(controller, path) => {
+            let id = controller.0;
+            quote! { Value::Controller(ControllerId::new(#id), vec![#(#path.to_owned()),*]) }
+        }
+        Value::CombinedStatus(resources) => {
+            let resources = resources.iter().map(|resource| {
+                let id = resource.0;
+                quote! { ResourceId::new(#id) }
+            });
+            quote! { Value::CombinedStatus(vec![#(#resources),*]) }
+        }
+        Value::ListLength(state) => {
+            let id = state.0;
+            quote! { Value::ListLength(StateId::new(#id)) }
+        }
+        Value::Binary {
+            left,
+            operator,
+            right,
+        } => {
+            let left = value_tokens(left);
+            let right = value_tokens(right);
+            let operator = match operator {
+                ValueOperator::Add => quote! { ValueOperator::Add },
+                ValueOperator::Subtract => quote! { ValueOperator::Subtract },
+                ValueOperator::Multiply => quote! { ValueOperator::Multiply },
+                ValueOperator::Divide => quote! { ValueOperator::Divide },
+            };
+            quote! {
+                Value::Binary {
+                    left: Box::new(#left),
+                    operator: #operator,
+                    right: Box::new(#right),
+                }
+            }
+        }
+        Value::RouteParam(name) => quote! { Value::RouteParam(#name.to_owned()) },
         Value::List(values) => {
             let values = values.iter().map(value_tokens);
             quote! { Value::List(vec![#(#values),*]) }

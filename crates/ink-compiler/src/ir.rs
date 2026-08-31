@@ -75,6 +75,8 @@ pub struct Resource {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResourceProtocol {
     Async,
+    Cached,
+    Mutation,
     Background,
 }
 
@@ -119,17 +121,29 @@ pub enum StateLifetime {
     Persisted(String),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StateShape {
+    Null,
     Number,
     Bool,
     String,
+    Literal(StateLiteral),
+    Optional(Box<StateShape>),
+    Union(Vec<StateShape>),
     List(Box<StateShape>),
     Object(BTreeMap<String, StateShape>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum StateLiteral {
+    Number(f64),
+    Bool(bool),
+    String(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum StateValue {
+    Null,
     Number(f64),
     Bool(bool),
     String(String),
@@ -204,6 +218,7 @@ pub enum Node {
         children: Vec<Node>,
         title: Option<String>,
         centered: bool,
+        params: BTreeMap<String, StateShape>,
         resources: Vec<ResourceId>,
         controllers: Vec<ControllerId>,
     },
@@ -299,6 +314,7 @@ pub enum TextPart {
     Controller(ControllerId, Vec<String>),
     ListLength(StateId),
     Item(Vec<String>),
+    Value(Value),
 }
 
 #[derive(Clone, Debug)]
@@ -317,6 +333,11 @@ pub enum Collection {
 
 #[derive(Clone, Debug)]
 pub enum Condition {
+    ValueEquals {
+        value: Value,
+        expected: StateValue,
+        equals: bool,
+    },
     Bool {
         state: StateId,
         expected: bool,
@@ -346,13 +367,32 @@ pub enum Condition {
 
 #[derive(Clone, Debug)]
 pub enum Value {
+    Null,
     Number(f64),
     Bool(bool),
     String(String),
     State(StateId),
     Item(Vec<String>),
+    Resource(ResourceId, ResourceField),
+    Controller(ControllerId, Vec<String>),
+    CombinedStatus(Vec<ResourceId>),
+    ListLength(StateId),
+    Binary {
+        left: Box<Value>,
+        operator: ValueOperator,
+        right: Box<Value>,
+    },
+    RouteParam(String),
     List(Vec<Value>),
     Object(Vec<(String, Value)>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 
 #[derive(Clone, Debug)]
@@ -361,17 +401,9 @@ pub enum Action {
         state: StateId,
         by: f64,
     },
-    SetNumber {
+    SetValue {
         state: StateId,
-        value: f64,
-    },
-    SetBool {
-        state: StateId,
-        value: bool,
-    },
-    SetString {
-        state: StateId,
-        value: String,
+        value: Value,
     },
     Toggle {
         state: StateId,
@@ -407,8 +439,16 @@ pub enum Action {
     },
     Navigate {
         path: String,
+        params: Vec<RouteArgument>,
         source: SourceSpan,
     },
     Back,
     Sequence(Vec<Action>),
+}
+
+#[derive(Clone, Debug)]
+pub struct RouteArgument {
+    pub name: String,
+    pub value: Value,
+    pub shape: StateShape,
 }

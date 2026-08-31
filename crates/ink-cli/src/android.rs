@@ -395,8 +395,8 @@ pub fn select_device(requested: Option<&str>) -> Result<Device> {
     Ok(selected)
 }
 
-pub fn stream_logs(device: &Device, package: &str) -> Result<()> {
-    let mut logs = LogStream::start(device, package)?;
+pub fn stream_logs(device: &Device, package: &str, resources: bool) -> Result<()> {
+    let mut logs = LogStream::start(device, package, resources)?;
     output::info(format!(
         "Streaming logs for {package}. Press Ctrl-C to stop."
     ));
@@ -409,7 +409,7 @@ pub struct LogStream {
 }
 
 impl LogStream {
-    pub fn start(device: &Device, package: &str) -> Result<Self> {
+    pub fn start(device: &Device, package: &str, resources: bool) -> Result<Self> {
         let format = if std::io::stdout().is_terminal() {
             "color,threadtime"
         } else {
@@ -426,14 +426,15 @@ impl LogStream {
             "1",
             "-v",
             format,
-            "Ink:V",
-            "AndroidRuntime:E",
-            "libc:F",
-            "*:E",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+        ]);
+        if resources {
+            app.args(["InkResource:D", "*:S"]);
+        } else {
+            app.args(["Ink:V", "AndroidRuntime:E", "libc:F", "*:E"]);
+        }
+        app.stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
         let app = app.spawn().context("could not start application Logcat")?;
 
         let mut crash = adb(device);

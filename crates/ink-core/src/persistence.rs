@@ -62,6 +62,7 @@ pub(super) fn decode_persisted_state(bytes: &[u8]) -> Option<HashMap<String, (u6
 
 fn encode_value(output: &mut Vec<u8>, value: &StateValue) -> Result<(), PersistenceTooLarge> {
     match value {
+        StateValue::Null => output.push(5),
         StateValue::Number(value) => {
             output.push(0);
             output.extend_from_slice(&value.to_le_bytes());
@@ -144,6 +145,7 @@ impl Reader<'_> {
             return None;
         }
         match self.u8()? {
+            5 => Some(StateValue::Null),
             0 => {
                 let value = f64::from_le_bytes(self.take(8)?.try_into().ok()?);
                 value.is_finite().then_some(StateValue::Number(value))

@@ -8,7 +8,8 @@ use oxc::{
         Argument, ArrowFunctionBody, BindingPattern, ExportDefaultDeclarationKind, Expression,
         Function, ImportDeclarationSpecifier, JSXAttribute, JSXAttributeItem, JSXAttributeName,
         JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, ObjectPropertyKind,
-        PropertyKey, PropertyKind, Statement, TSSignature, TSType, VariableDeclarationKind,
+        PropertyKey, PropertyKind, Statement, TSLiteral, TSSignature, TSType,
+        VariableDeclarationKind,
     },
     span::{GetSpan, Span},
     syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator},
@@ -20,13 +21,13 @@ use crate::{
         Action, Alignment, AndroidPermission, App, Axis, CameraPreviewKind, Collection, Condition,
         Controller, ControllerId, Extension, ImageFit, ImageSource, Justification, NativeOperation,
         Node, PayloadPart, Resource, ResourceField, ResourceId, ResourceProtocol, Route,
-        SourceSpan, State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment,
-        TextPart, Tone, Value,
+        RouteArgument, SourceSpan, State, StateId, StateLifetime, StateLiteral, StateShape,
+        StateValue, Tab, TextAlignment, TextPart, Tone, Value, ValueOperator,
     },
     resolver::ModuleResolver,
 };
 
-const INK_IMPORTS: [&str; 18] = [
+const INK_IMPORTS: [&str; 21] = [
     "Button",
     "Icon",
     "Image",
@@ -41,13 +42,16 @@ const INK_IMPORTS: [&str; 18] = [
     "TextInput",
     "Toggle",
     "back",
+    "all",
+    "computed",
     "match",
     "persistedState",
+    "routeParams",
     "sharedState",
     "state",
 ];
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq)]
 struct StateBinding {
     id: StateId,
     kind: StateShape,
@@ -94,9 +98,28 @@ struct ControllerInitialiser {
     shape: StateShape,
 }
 
+#[derive(Clone)]
+struct ComputedBinding {
+    value: Value,
+    kind: StateShape,
+}
+
+#[derive(Clone)]
+struct CombinedBinding {
+    resources: Vec<(String, ResourceBinding)>,
+}
+
+#[derive(Clone)]
+struct RouteParamsBinding {
+    fields: BTreeMap<String, StateShape>,
+}
+
 #[derive(Clone, Default)]
 struct Bindings {
     states: HashMap<String, StateBinding>,
+    computed: HashMap<String, ComputedBinding>,
+    combined: HashMap<String, CombinedBinding>,
+    route_params: HashMap<String, RouteParamsBinding>,
     resources: HashMap<String, ResourceBinding>,
     controllers: HashMap<String, ControllerBinding>,
     extension_functions: HashMap<String, ExtensionFunction>,
@@ -117,6 +140,8 @@ enum ExtensionFunction {
     RingtoneInstaller,
     LightPush,
     Json,
+    CachedJson,
+    Mutation,
     MicrophonePermission,
     LevelMeter,
     PitchDetector,
@@ -157,6 +182,7 @@ enum NativeControllerKind {
 enum MatchBinding {
     Resource(ResourceBinding),
     Controller(ControllerBinding),
+    Combined(CombinedBinding),
 }
 
 #[derive(Clone, Copy)]
@@ -302,6 +328,8 @@ fn validate_imports(
                         }
                         (Extension::LightSdk, "lightPush") => ExtensionFunction::LightPush,
                         (Extension::Network, "json") => ExtensionFunction::Json,
+                        (Extension::Network, "cachedJson") => ExtensionFunction::CachedJson,
+                        (Extension::Network, "mutation") => ExtensionFunction::Mutation,
                         (Extension::Audio, "microphonePermission") => {
                             ExtensionFunction::MicrophonePermission
                         }
@@ -491,6 +519,36 @@ fn lower_function(
                             format!("{name} is declared twice"),
                             declarator.span,
                         ));
+                    }
+                    if let Some(params) =
+                        route_params_initialiser(declarator.init.as_ref(), imports)?
+                    {
+                        if matches!(kind, ModuleKind::App) {
+                            return Err(CompileError::new(
+                                "routeParams<T>() belongs in a screen module",
+                                declarator.span,
+                            ));
+                        }
+                        if !state_names.route_params.is_empty() {
+                            return Err(CompileError::new(
+                                "a screen declares routeParams<T>() once",
+                                declarator.span,
+                            ));
+                        }
+                        state_names.route_params.insert(name.to_owned(), params);
+                        continue;
+                    }
+                    if let Some(combined) =
+                        combined_initialiser(declarator.init.as_ref(), imports, &state_names)?
+                    {
+                        state_names.combined.insert(name.to_owned(), combined);
+                        continue;
+                    }
+                    if let Some(computed) =
+                        computed_initialiser(declarator.init.as_ref(), imports, &state_names)?
+                    {
+                        state_names.computed.insert(name.to_owned(), computed);
+                        continue;
                     }
                     if let Some(mut controller) =
                         controller_initialiser(declarator.init.as_ref(), imports)?
@@ -740,7 +798,10 @@ fn resource_initialiser(
     }
     if !matches!(
         function,
-        ExtensionFunction::Json | ExtensionFunction::PeriodicJson
+        ExtensionFunction::Json
+            | ExtensionFunction::CachedJson
+            | ExtensionFunction::Mutation
+            | ExtensionFunction::PeriodicJson
     ) && call.type_arguments.is_some()
     {
         return Err(CompileError::new(
@@ -802,7 +863,9 @@ fn resource_initialiser(
                 android_permission: Some(AndroidPermission::Camera),
             }
         }
-        ExtensionFunction::Json => network_json_resource(call, imports, states)?,
+        ExtensionFunction::Json => network_json_resource(call, imports, states, false)?,
+        ExtensionFunction::CachedJson => network_json_resource(call, imports, states, true)?,
+        ExtensionFunction::Mutation => network_mutation_resource(call, imports, states)?,
         ExtensionFunction::PeriodicJson => background_json_resource(call, imports)?,
         ExtensionFunction::MicrophonePermission => {
             if !call.arguments.is_empty() {
@@ -918,6 +981,373 @@ fn resource_initialiser(
         | ExtensionFunction::LightPush => unreachable!(),
     };
     Ok(Some(resource))
+}
+
+fn computed_initialiser(
+    initialiser: Option<&Expression<'_>>,
+    imports: &Imports,
+    bindings: &Bindings,
+) -> Result<Option<ComputedBinding>, CompileError> {
+    let Some(Expression::CallExpression(call)) = initialiser else {
+        return Ok(None);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(None);
+    };
+    if callee.name.as_str() != "computed" || !imports.ink.contains("computed") {
+        return Ok(None);
+    }
+    if call.type_arguments.is_some() {
+        return Err(CompileError::new(
+            "computed() infers its value type",
+            call.span,
+        ));
+    }
+    let [argument] = call.arguments.as_slice() else {
+        return Err(CompileError::new(
+            "computed() takes one expression function",
+            call.span,
+        ));
+    };
+    let Some(Expression::ArrowFunctionExpression(function)) = argument.as_expression() else {
+        return Err(CompileError::new(
+            "computed() takes an arrow function",
+            argument.span(),
+        ));
+    };
+    if function.r#async || !function.params.items.is_empty() || function.params.rest.is_some() {
+        return Err(CompileError::new(
+            "computed() functions must be synchronous and take no arguments",
+            function.span,
+        ));
+    }
+    let Some(expression) = function.body.as_expression() else {
+        return Err(CompileError::new(
+            "computed() directly returns one pure expression",
+            function.body.span(),
+        ));
+    };
+    let (value, kind) = computed_expression(expression, bindings)?;
+    Ok(Some(ComputedBinding { value, kind }))
+}
+
+fn combined_initialiser(
+    initialiser: Option<&Expression<'_>>,
+    imports: &Imports,
+    bindings: &Bindings,
+) -> Result<Option<CombinedBinding>, CompileError> {
+    let Some(Expression::CallExpression(call)) = initialiser else {
+        return Ok(None);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(None);
+    };
+    if callee.name.as_str() != "all" || !imports.ink.contains("all") {
+        return Ok(None);
+    }
+    if call.type_arguments.is_some() {
+        return Err(CompileError::new(
+            "all() infers its resource types",
+            call.span,
+        ));
+    }
+    let [Argument::ObjectExpression(object)] = call.arguments.as_slice() else {
+        return Err(CompileError::new(
+            "all() takes an object of async resources",
+            call.span,
+        ));
+    };
+    if object.properties.is_empty() {
+        return Err(CompileError::new(
+            "all() needs at least one resource",
+            object.span,
+        ));
+    }
+    let mut resources = Vec::new();
+    let mut names = HashSet::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "all() cannot use spreads",
+                property.span(),
+            ));
+        };
+        if property.kind != PropertyKind::Init || property.method || property.computed {
+            return Err(CompileError::new(
+                "all() uses named resource properties",
+                property.span,
+            ));
+        }
+        let name = property_name(&property.key)?;
+        if !names.insert(name.clone()) {
+            return Err(CompileError::new(
+                format!("all() resource {name:?} is declared twice"),
+                property.span,
+            ));
+        }
+        let Expression::Identifier(value) = &property.value else {
+            return Err(CompileError::new(
+                "all() property values are resource variables",
+                property.value.span(),
+            ));
+        };
+        let resource = bindings.resources.get(value.name.as_str()).ok_or_else(|| {
+            CompileError::new(
+                format!("{} is not an async resource", value.name),
+                value.span,
+            )
+        })?;
+        if resource.protocol != ResourceProtocol::Async {
+            return Err(CompileError::new(
+                "all() currently combines ordinary async resources",
+                value.span,
+            ));
+        }
+        resources.push((name, resource.clone()));
+    }
+    Ok(Some(CombinedBinding { resources }))
+}
+
+fn route_params_initialiser(
+    initialiser: Option<&Expression<'_>>,
+    imports: &Imports,
+) -> Result<Option<RouteParamsBinding>, CompileError> {
+    let Some(Expression::CallExpression(call)) = initialiser else {
+        return Ok(None);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(None);
+    };
+    if callee.name.as_str() != "routeParams" || !imports.ink.contains("routeParams") {
+        return Ok(None);
+    }
+    if !call.arguments.is_empty() {
+        return Err(CompileError::new(
+            "routeParams<T>() takes no runtime arguments",
+            call.span,
+        ));
+    }
+    let Some(arguments) = &call.type_arguments else {
+        return Err(CompileError::new(
+            "routeParams<T>() needs an object data type",
+            call.span,
+        ));
+    };
+    let [params] = arguments.params.as_slice() else {
+        return Err(CompileError::new(
+            "routeParams<T>() accepts one object data type",
+            arguments.span,
+        ));
+    };
+    let shape = match params {
+        TSType::TSTypeReference(reference) if reference.type_arguments.is_none() => {
+            let oxc::ast::ast::TSTypeName::IdentifierReference(name) = &reference.type_name else {
+                return Err(CompileError::new(
+                    "route parameters use a local type alias or inline object type",
+                    reference.span,
+                ));
+            };
+            imports
+                .type_aliases
+                .get(name.name.as_str())
+                .cloned()
+                .ok_or_else(|| {
+                    CompileError::new(
+                        format!("unknown route parameter type {}", name.name),
+                        reference.span,
+                    )
+                })?
+        }
+        params => state_kind_from_type(params)?,
+    };
+    let StateShape::Object(fields) = shape else {
+        return Err(CompileError::new(
+            "route parameters use an object data type",
+            params.span(),
+        ));
+    };
+    if fields.values().any(|shape| !scalar_kind(shape)) {
+        return Err(CompileError::new(
+            "route parameters are scalar values",
+            params.span(),
+        ));
+    }
+    Ok(Some(RouteParamsBinding { fields }))
+}
+
+fn computed_expression(
+    expression: &Expression<'_>,
+    bindings: &Bindings,
+) -> Result<(Value, StateShape), CompileError> {
+    let expression = unparenthesised(expression);
+    match expression {
+        Expression::NumericLiteral(value) if value.value.is_finite() => {
+            Ok((Value::Number(value.value), StateShape::Number))
+        }
+        Expression::StringLiteral(value) => {
+            Ok((Value::String(value.value.to_string()), StateShape::String))
+        }
+        Expression::BooleanLiteral(value) => Ok((Value::Bool(value.value), StateShape::Bool)),
+        Expression::BinaryExpression(binary) => {
+            let (left, left_kind) = computed_expression(&binary.left, bindings)?;
+            let (right, right_kind) = computed_expression(&binary.right, bindings)?;
+            let operator = match binary.operator {
+                BinaryOperator::Addition => ValueOperator::Add,
+                BinaryOperator::Subtraction => ValueOperator::Subtract,
+                BinaryOperator::Multiplication => ValueOperator::Multiply,
+                BinaryOperator::Division => ValueOperator::Divide,
+                _ => {
+                    return Err(CompileError::new(
+                        "computed() supports +, -, * and /",
+                        binary.span,
+                    ));
+                }
+            };
+            let kind = match operator {
+                ValueOperator::Add
+                    if scalar_base_kind(&left_kind) == Some(StateShape::String)
+                        && scalar_base_kind(&right_kind) == Some(StateShape::String) =>
+                {
+                    StateShape::String
+                }
+                _ if scalar_base_kind(&left_kind) == Some(StateShape::Number)
+                    && scalar_base_kind(&right_kind) == Some(StateShape::Number) =>
+                {
+                    StateShape::Number
+                }
+                _ => {
+                    return Err(CompileError::new(
+                        "computed arithmetic uses two numbers, or + with two strings",
+                        binary.span,
+                    ));
+                }
+            };
+            Ok((
+                Value::Binary {
+                    left: Box::new(left),
+                    operator,
+                    right: Box::new(right),
+                },
+                kind,
+            ))
+        }
+        _ => {
+            if let Some(value) = expression_derived_value(expression, bindings)? {
+                return Ok(value);
+            }
+            if let Ok(state) = list_length_state(expression, bindings) {
+                return Ok((Value::ListLength(state), StateShape::Number));
+            }
+            if let Some(value) = expression_controller_value(expression, bindings)?
+                && scalar_kind(&value.kind)
+            {
+                return Ok((Value::Controller(value.controller, value.path), value.kind));
+            }
+            if let Some(value) = expression_resource_value(expression, bindings)?
+                && scalar_kind(&value.kind)
+            {
+                return Ok((Value::Resource(value.resource, value.field), value.kind));
+            }
+            let value = expression_state_value(expression, bindings).map_err(|_| {
+                CompileError::new(
+                    "computed() expressions use scalar state, resource or controller values",
+                    expression.span(),
+                )
+            })?;
+            if !scalar_kind(&value.kind) {
+                return Err(CompileError::new(
+                    "computed() values must be scalar",
+                    expression.span(),
+                ));
+            }
+            Ok((Value::State(value.id), value.kind))
+        }
+    }
+}
+
+fn scalar_base_kind(shape: &StateShape) -> Option<StateShape> {
+    match shape {
+        StateShape::Number => Some(StateShape::Number),
+        StateShape::Bool => Some(StateShape::Bool),
+        StateShape::String => Some(StateShape::String),
+        StateShape::Literal(StateLiteral::Number(_)) => Some(StateShape::Number),
+        StateShape::Literal(StateLiteral::Bool(_)) => Some(StateShape::Bool),
+        StateShape::Literal(StateLiteral::String(_)) => Some(StateShape::String),
+        _ => None,
+    }
+}
+
+fn expression_computed_value(
+    expression: &Expression<'_>,
+    bindings: &Bindings,
+) -> Result<Option<ComputedBinding>, CompileError> {
+    let Some((name, path)) = member_path(expression) else {
+        return Ok(None);
+    };
+    let Some(computed) = bindings.computed.get(name) else {
+        return Ok(None);
+    };
+    if path.as_slice() != ["value"] {
+        return Err(CompileError::new(
+            "computed values expose only .value",
+            expression.span(),
+        ));
+    }
+    Ok(Some(computed.clone()))
+}
+
+fn expression_route_param(
+    expression: &Expression<'_>,
+    bindings: &Bindings,
+) -> Result<Option<(String, StateShape)>, CompileError> {
+    let Some((name, path)) = member_path(expression) else {
+        return Ok(None);
+    };
+    let Some(params) = bindings.route_params.get(name) else {
+        return Ok(None);
+    };
+    let [field] = path.as_slice() else {
+        return Err(CompileError::new(
+            "route parameters are read by field name",
+            expression.span(),
+        ));
+    };
+    let shape = params
+        .fields
+        .get(field)
+        .ok_or_else(|| CompileError::new("unknown route parameter", expression.span()))?;
+    Ok(Some((field.clone(), shape.clone())))
+}
+
+fn expression_derived_value(
+    expression: &Expression<'_>,
+    bindings: &Bindings,
+) -> Result<Option<(Value, StateShape)>, CompileError> {
+    if let Some((name, kind)) = expression_route_param(expression, bindings)? {
+        return Ok(Some((Value::RouteParam(name), kind)));
+    }
+    if let Some(computed) = expression_computed_value(expression, bindings)? {
+        return Ok(Some((computed.value, computed.kind)));
+    }
+    let Some((name, path)) = member_path(expression) else {
+        return Ok(None);
+    };
+    let Some(combined) = bindings.combined.get(name) else {
+        return Ok(None);
+    };
+    if path.as_slice() != ["status"] {
+        return Ok(None);
+    }
+    Ok(Some((
+        Value::CombinedStatus(
+            combined
+                .resources
+                .iter()
+                .map(|(_, resource)| resource.id)
+                .collect(),
+        ),
+        status_shape(&["loading", "ready", "error"]),
+    )))
 }
 
 fn location_permission_accuracy(
@@ -1192,7 +1622,10 @@ fn controller_initialiser(
                 ));
             }
             let shape = object_shape([
-                ("status", StateShape::String),
+                (
+                    "status",
+                    status_shape(&["idle", "listening", "active", "clipping", "error"]),
+                ),
                 ("rms", StateShape::Number),
                 ("peak", StateShape::Number),
                 ("error", StateShape::String),
@@ -1208,7 +1641,10 @@ fn controller_initialiser(
         ExtensionFunction::PitchDetector => {
             let reference_hz = pitch_reference(call)?;
             let shape = object_shape([
-                ("status", StateShape::String),
+                (
+                    "status",
+                    status_shape(&["idle", "listening", "active", "error"]),
+                ),
                 ("frequencyHz", StateShape::Number),
                 ("note", StateShape::String),
                 ("octave", StateShape::Number),
@@ -1235,7 +1671,10 @@ fn controller_initialiser(
         ExtensionFunction::AudioPlayer => {
             let (usage, playback) = player_options(call)?;
             let shape = object_shape([
-                ("status", StateShape::String),
+                (
+                    "status",
+                    status_shape(&["idle", "loading", "paused", "playing", "ended", "error"]),
+                ),
                 ("id", StateShape::String),
                 ("src", StateShape::String),
                 ("title", StateShape::String),
@@ -1283,7 +1722,10 @@ fn controller_initialiser(
                 ));
             }
             let shape = object_shape([
-                ("status", StateShape::String),
+                (
+                    "status",
+                    status_shape(&["idle", "recording", "stopping", "ready", "error"]),
+                ),
                 ("durationMs", StateShape::Number),
                 ("id", StateShape::String),
                 ("src", StateShape::String),
@@ -1317,7 +1759,7 @@ fn controller_initialiser(
                 ));
             }
             let shape = object_shape([
-                ("status", StateShape::String),
+                ("status", status_shape(&["idle", "error"])),
                 ("operation", StateShape::String),
                 ("id", StateShape::String),
                 ("errorKind", StateShape::String),
@@ -1347,7 +1789,7 @@ fn controller_initialiser(
                 ));
             }
             let shape = object_shape([
-                ("status", StateShape::String),
+                ("status", status_shape(&["empty", "ready"])),
                 (
                     "value",
                     object_shape([("id", StateShape::String), ("data", StateShape::String)]),
@@ -1390,7 +1832,10 @@ fn controller_initialiser(
                 ));
             }
             let shape = object_shape([
-                ("status", StateShape::String),
+                (
+                    "status",
+                    status_shape(&["idle", "installing", "installed", "error"]),
+                ),
                 ("errorKind", StateShape::String),
                 ("errorMessage", StateShape::String),
                 ("errorRetryable", StateShape::Bool),
@@ -1424,7 +1869,10 @@ fn controller_initialiser(
                 ("receivedAtMs", StateShape::Number),
             ]);
             let shape = object_shape([
-                ("status", StateShape::String),
+                (
+                    "status",
+                    status_shape(&["idle", "registering", "synchronising", "ready", "error"]),
+                ),
                 ("endpoint", StateShape::String),
                 ("registeredAtMs", StateShape::Number),
                 ("openedKey", StateShape::String),
@@ -1530,7 +1978,10 @@ fn camera_controller(
         kind,
         config,
         object_shape([
-            ("status", StateShape::String),
+            (
+                "status",
+                status_shape(&["idle", "opening", "active", "ready", "error"]),
+            ),
             ("value", value_shape),
             ("error", error_shape),
         ]),
@@ -1739,6 +2190,15 @@ fn object_shape<const N: usize>(fields: [(&str, StateShape); N]) -> StateShape {
     )
 }
 
+fn status_shape(statuses: &[&str]) -> StateShape {
+    StateShape::Union(
+        statuses
+            .iter()
+            .map(|status| StateShape::Literal(StateLiteral::String((*status).to_owned())))
+            .collect(),
+    )
+}
+
 fn object_value<const N: usize>(fields: [(&str, StateValue); N]) -> StateValue {
     StateValue::Object(
         fields
@@ -1748,28 +2208,28 @@ fn object_value<const N: usize>(fields: [(&str, StateValue); N]) -> StateValue {
     )
 }
 
-fn network_json_resource(
+fn response_shape(
     call: &oxc::ast::ast::CallExpression<'_>,
     imports: &Imports,
-    states: &Bindings,
-) -> Result<ResourceInitialiser, CompileError> {
+    function: &str,
+) -> Result<StateShape, CompileError> {
     let Some(arguments) = &call.type_arguments else {
         return Err(CompileError::new(
-            "json<T>() needs the response data type",
+            format!("{function}<T>() needs the response data type"),
             call.span,
         ));
     };
     let [response_type] = arguments.params.as_slice() else {
         return Err(CompileError::new(
-            "json<T>() accepts one response data type",
+            format!("{function}<T>() accepts one response data type"),
             arguments.span,
         ));
     };
-    let shape = match response_type {
+    match response_type {
         TSType::TSTypeReference(reference) if reference.type_arguments.is_none() => {
             let oxc::ast::ast::TSTypeName::IdentifierReference(name) = &reference.type_name else {
                 return Err(CompileError::new(
-                    "network response types use a local type alias or an inline data type",
+                    "response types use a local type alias or an inline data type",
                     reference.span,
                 ));
             };
@@ -1782,10 +2242,20 @@ fn network_json_resource(
                         format!("unknown response type {}", name.name),
                         reference.span,
                     )
-                })?
+                })
         }
-        response_type => state_kind_from_type(response_type)?,
-    };
+        response_type => state_kind_from_type(response_type),
+    }
+}
+
+fn network_json_resource(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    imports: &Imports,
+    states: &Bindings,
+    cached: bool,
+) -> Result<ResourceInitialiser, CompileError> {
+    let function_name = if cached { "cachedJson" } else { "json" };
+    let shape = response_shape(call, imports, function_name)?;
     let Some(Argument::StringLiteral(url)) = call.arguments.first() else {
         return Err(CompileError::new(
             "json<T>() starts with an HTTPS URL string",
@@ -1799,6 +2269,8 @@ fn network_json_resource(
         ));
     }
     let mut timeout_ms = 15_000;
+    let mut max_age_ms = 300_000;
+    let mut stale_if_error_ms = 86_400_000;
     let mut query = Vec::new();
     let mut headers = Vec::new();
     match call.arguments.as_slice() {
@@ -1823,22 +2295,14 @@ fn network_json_resource(
                     "query" => query = network_values(&property.value, false, states)?,
                     "headers" => headers = network_values(&property.value, true, states)?,
                     "timeoutMs" => {
-                        let Expression::NumericLiteral(value) = &property.value else {
-                            return Err(CompileError::new(
-                                "timeoutMs must be a number literal",
-                                property.value.span(),
-                            ));
-                        };
-                        timeout_ms = integer(value.value, value.span, "timeoutMs")?
-                            .try_into()
-                            .ok()
-                            .filter(|value: &u64| (1_000..=120_000).contains(value))
-                            .ok_or_else(|| {
-                                CompileError::new(
-                                    "timeoutMs must be between 1000 and 120000",
-                                    value.span,
-                                )
-                            })?;
+                        timeout_ms = duration_option(&property.value, "timeoutMs", 1_000, 120_000)?;
+                    }
+                    "maxAgeMs" if cached => {
+                        max_age_ms = duration_option(&property.value, "maxAgeMs", 0, 604_800_000)?;
+                    }
+                    "staleIfErrorMs" if cached => {
+                        stale_if_error_ms =
+                            duration_option(&property.value, "staleIfErrorMs", 0, 2_592_000_000)?;
                     }
                     _ => {
                         return Err(CompileError::new(
@@ -1851,7 +2315,7 @@ fn network_json_resource(
         }
         _ => {
             return Err(CompileError::new(
-                "json<T>() accepts a URL and optional options object",
+                format!("{function_name}<T>() accepts a URL and optional options object"),
                 call.span,
             ));
         }
@@ -1863,16 +2327,129 @@ fn network_json_resource(
     append_network_values(&mut payload, query);
     payload.push(PayloadPart::Literal(",\"headers\":{".to_owned()));
     append_network_values(&mut payload, headers);
+    if cached {
+        let schema = shape_schema(&shape);
+        payload.push(PayloadPart::Literal(format!(
+            ",\"schema\":{schema},\"maxAgeMs\":{max_age_ms},\"staleIfErrorMs\":{stale_if_error_ms}"
+        )));
+    }
     payload.push(PayloadPart::Literal("}".to_owned()));
     Ok(ResourceInitialiser {
         definition: Resource {
             module: "network".to_owned(),
-            operation: "json".to_owned(),
+            operation: if cached { "cached-json" } else { "json" }.to_owned(),
             payload,
             shape,
             timeout_ms,
             reload_on_resume: true,
-            protocol: ResourceProtocol::Async,
+            protocol: if cached {
+                ResourceProtocol::Cached
+            } else {
+                ResourceProtocol::Async
+            },
+        },
+        request: None,
+        android_permission: None,
+    })
+}
+
+fn network_mutation_resource(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    imports: &Imports,
+    states: &Bindings,
+) -> Result<ResourceInitialiser, CompileError> {
+    let shape = response_shape(call, imports, "mutation")?;
+    let [
+        Argument::StringLiteral(url),
+        Argument::ObjectExpression(options),
+    ] = call.arguments.as_slice()
+    else {
+        return Err(CompileError::new(
+            "mutation<T>() takes an HTTPS URL and options object",
+            call.span,
+        ));
+    };
+    if !url.value.as_str().starts_with("https://") {
+        return Err(CompileError::new(
+            "network requests require HTTPS",
+            url.span,
+        ));
+    }
+    let mut method = None;
+    let mut timeout_ms = 15_000;
+    let mut query = Vec::new();
+    let mut headers = Vec::new();
+    let mut body = None;
+    let mut seen = HashSet::new();
+    for property in &options.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "mutation options cannot use spreads",
+                property.span(),
+            ));
+        };
+        let name = property_name(&property.key)?;
+        if !seen.insert(name.clone()) {
+            return Err(CompileError::new(
+                format!("mutation option {name:?} is declared twice"),
+                property.span,
+            ));
+        }
+        match name.as_str() {
+            "method" => {
+                let Expression::StringLiteral(value) = &property.value else {
+                    return Err(CompileError::new(
+                        "mutation method must be POST, PUT, PATCH or DELETE",
+                        property.value.span(),
+                    ));
+                };
+                let value = value.value.as_str();
+                if !matches!(value, "POST" | "PUT" | "PATCH" | "DELETE") {
+                    return Err(CompileError::new(
+                        "mutation method must be POST, PUT, PATCH or DELETE",
+                        property.value.span(),
+                    ));
+                }
+                method = Some(value.to_owned());
+            }
+            "query" => query = network_values(&property.value, false, states)?,
+            "headers" => headers = network_values(&property.value, true, states)?,
+            "body" => body = Some(network_values(&property.value, false, states)?),
+            "timeoutMs" => {
+                timeout_ms = duration_option(&property.value, "timeoutMs", 1_000, 120_000)?;
+            }
+            _ => {
+                return Err(CompileError::new(
+                    format!("unknown mutation option {name:?}"),
+                    property.key.span(),
+                ));
+            }
+        }
+    }
+    let method = method
+        .ok_or_else(|| CompileError::new("mutation options require a method", options.span))?;
+    let mut payload = vec![PayloadPart::Literal(format!(
+        "{{\"url\":{},\"method\":{},\"query\":{{",
+        serde_json::to_string(url.value.as_str()).expect("a source string is valid JSON"),
+        serde_json::to_string(&method).expect("a network method is valid JSON"),
+    ))];
+    append_network_values(&mut payload, query);
+    payload.push(PayloadPart::Literal(",\"headers\":{".to_owned()));
+    append_network_values(&mut payload, headers);
+    if let Some(body) = body {
+        payload.push(PayloadPart::Literal(",\"body\":{".to_owned()));
+        append_network_values(&mut payload, body);
+    }
+    payload.push(PayloadPart::Literal("}".to_owned()));
+    Ok(ResourceInitialiser {
+        definition: Resource {
+            module: "network".to_owned(),
+            operation: "mutation".to_owned(),
+            payload,
+            shape,
+            timeout_ms,
+            reload_on_resume: false,
+            protocol: ResourceProtocol::Mutation,
         },
         request: None,
         android_permission: None,
@@ -1883,39 +2460,7 @@ fn background_json_resource(
     call: &oxc::ast::ast::CallExpression<'_>,
     imports: &Imports,
 ) -> Result<ResourceInitialiser, CompileError> {
-    let Some(arguments) = &call.type_arguments else {
-        return Err(CompileError::new(
-            "periodicJson<T>() needs the response data type",
-            call.span,
-        ));
-    };
-    let [response_type] = arguments.params.as_slice() else {
-        return Err(CompileError::new(
-            "periodicJson<T>() accepts one response data type",
-            arguments.span,
-        ));
-    };
-    let shape = match response_type {
-        TSType::TSTypeReference(reference) if reference.type_arguments.is_none() => {
-            let oxc::ast::ast::TSTypeName::IdentifierReference(name) = &reference.type_name else {
-                return Err(CompileError::new(
-                    "background response types use a local type alias or an inline data type",
-                    reference.span,
-                ));
-            };
-            imports
-                .type_aliases
-                .get(name.name.as_str())
-                .cloned()
-                .ok_or_else(|| {
-                    CompileError::new(
-                        format!("unknown response type {}", name.name),
-                        reference.span,
-                    )
-                })?
-        }
-        response_type => state_kind_from_type(response_type)?,
-    };
+    let shape = response_shape(call, imports, "periodicJson")?;
     let [
         Argument::StringLiteral(key),
         Argument::StringLiteral(url),
@@ -1980,19 +2525,7 @@ fn background_json_resource(
                 );
             }
             "timeoutMs" => {
-                let Expression::NumericLiteral(value) = &property.value else {
-                    return Err(CompileError::new(
-                        "timeoutMs must be a number literal",
-                        property.value.span(),
-                    ));
-                };
-                timeout_ms = integer(value.value, value.span, "timeoutMs")?
-                    .try_into()
-                    .ok()
-                    .filter(|value: &u64| (1_000..=120_000).contains(value))
-                    .ok_or_else(|| {
-                        CompileError::new("timeoutMs must be between 1000 and 120000", value.span)
-                    })?;
+                timeout_ms = duration_option(&property.value, "timeoutMs", 1_000, 120_000)?;
             }
             "query" => query = background_values(&property.value, false)?,
             "headers" => headers = background_values(&property.value, true)?,
@@ -2105,9 +2638,21 @@ fn background_values(
 
 fn shape_schema(shape: &StateShape) -> serde_json::Value {
     match shape {
+        StateShape::Null => serde_json::json!({ "null": true }),
         StateShape::Number => serde_json::Value::String("number".to_owned()),
         StateShape::Bool => serde_json::Value::String("boolean".to_owned()),
         StateShape::String => serde_json::Value::String("string".to_owned()),
+        StateShape::Literal(value) => serde_json::json!({
+            "literal": match value {
+                StateLiteral::Number(value) => serde_json::json!(value),
+                StateLiteral::Bool(value) => serde_json::json!(value),
+                StateLiteral::String(value) => serde_json::json!(value),
+            }
+        }),
+        StateShape::Optional(shape) => serde_json::json!({ "optional": shape_schema(shape) }),
+        StateShape::Union(shapes) => serde_json::json!({
+            "oneOf": shapes.iter().map(shape_schema).collect::<Vec<_>>()
+        }),
         StateShape::List(item) => serde_json::json!({ "array": shape_schema(item) }),
         StateShape::Object(fields) => serde_json::Value::Object(
             fields
@@ -2206,6 +2751,30 @@ fn append_network_values(payload: &mut Vec<PayloadPart>, values: Vec<(String, Pa
     payload.push(PayloadPart::Literal("}".to_owned()));
 }
 
+fn duration_option(
+    expression: &Expression<'_>,
+    name: &str,
+    minimum: u64,
+    maximum: u64,
+) -> Result<u64, CompileError> {
+    let Expression::NumericLiteral(value) = expression else {
+        return Err(CompileError::new(
+            format!("{name} must be a number literal"),
+            expression.span(),
+        ));
+    };
+    integer(value.value, value.span, name)?
+        .try_into()
+        .ok()
+        .filter(|value| (minimum..=maximum).contains(value))
+        .ok_or_else(|| {
+            CompileError::new(
+                format!("{name} must be between {minimum} and {maximum}"),
+                value.span,
+            )
+        })
+}
+
 fn state_initialiser(
     initialiser: Option<&Expression<'_>>,
     span: Span,
@@ -2296,7 +2865,7 @@ fn state_initialiser(
     };
     let inferred = state_kind(&value);
     let kind = match (declared, inferred) {
-        (Some(declared), Some(inferred)) if declared != inferred => {
+        (Some(declared), _) if !shape_accepts_value(&declared, &value) => {
             return Err(CompileError::new(
                 "the state type does not match its initial value",
                 call.span,
@@ -2327,6 +2896,7 @@ fn state_initialiser(
 
 fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileError> {
     match value {
+        Expression::NullLiteral(_) => Ok(StateValue::Null),
         Expression::NumericLiteral(value) if value.value.is_finite() => {
             Ok(StateValue::Number(value.value))
         }
@@ -2392,7 +2962,7 @@ fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileErro
             Ok(StateValue::Object(values))
         }
         _ => Err(CompileError::new(
-            "state values must be literal numbers, booleans, strings, objects or lists",
+            "state values must be literal nulls, numbers, booleans, strings, objects or lists",
             value.span(),
         )),
     }
@@ -2400,6 +2970,7 @@ fn literal_state_value(value: &Expression<'_>) -> Result<StateValue, CompileErro
 
 fn state_kind(value: &StateValue) -> Option<StateShape> {
     match value {
+        StateValue::Null => Some(StateShape::Null),
         StateValue::Number(_) => Some(StateShape::Number),
         StateValue::Bool(_) => Some(StateShape::Bool),
         StateValue::String(_) => Some(StateShape::String),
@@ -2419,9 +2990,50 @@ fn state_kind(value: &StateValue) -> Option<StateShape> {
 
 fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateShape, CompileError> {
     match kind {
+        TSType::TSNullKeyword(_) => Ok(StateShape::Null),
         TSType::TSNumberKeyword(_) => Ok(StateShape::Number),
         TSType::TSBooleanKeyword(_) => Ok(StateShape::Bool),
         TSType::TSStringKeyword(_) => Ok(StateShape::String),
+        TSType::TSLiteralType(literal) => match &literal.literal {
+            TSLiteral::NumericLiteral(value) if value.value.is_finite() => {
+                Ok(StateShape::Literal(StateLiteral::Number(value.value)))
+            }
+            TSLiteral::BooleanLiteral(value) => {
+                Ok(StateShape::Literal(StateLiteral::Bool(value.value)))
+            }
+            TSLiteral::StringLiteral(value) => Ok(StateShape::Literal(StateLiteral::String(
+                value.value.to_string(),
+            ))),
+            TSLiteral::UnaryExpression(value) if value.operator == UnaryOperator::UnaryNegation => {
+                let Expression::NumericLiteral(number) = &value.argument else {
+                    return Err(CompileError::new(
+                        "data types use finite literal numbers",
+                        value.span,
+                    ));
+                };
+                Ok(StateShape::Literal(StateLiteral::Number(-number.value)))
+            }
+            _ => Err(CompileError::new(
+                "data types use finite number, boolean and string literals",
+                literal.span,
+            )),
+        },
+        TSType::TSUnionType(union) => {
+            let mut shapes = Vec::new();
+            for kind in &union.types {
+                let shape = state_kind_from_type(kind)?;
+                let variants = match shape {
+                    StateShape::Union(nested) => nested,
+                    shape => vec![shape],
+                };
+                for shape in variants {
+                    if !shapes.contains(&shape) {
+                        shapes.push(shape);
+                    }
+                }
+            }
+            Ok(StateShape::Union(shapes))
+        }
         TSType::TSArrayType(array) => Ok(StateShape::List(Box::new(state_kind_from_type(
             &array.element_type,
         )?))),
@@ -2437,9 +3049,9 @@ fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateShape, CompileError> {
                         member.span(),
                     ));
                 };
-                if property.computed || property.optional {
+                if property.computed {
                     return Err(CompileError::new(
-                        "state object properties must be required names",
+                        "state object properties must use named keys",
                         property.span,
                     ));
                 }
@@ -2447,13 +3059,11 @@ fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateShape, CompileError> {
                 let annotation = property.type_annotation.as_ref().ok_or_else(|| {
                     CompileError::new("state properties need a type", property.span)
                 })?;
-                if fields
-                    .insert(
-                        name.clone(),
-                        state_kind_from_type(&annotation.type_annotation)?,
-                    )
-                    .is_some()
-                {
+                let mut shape = state_kind_from_type(&annotation.type_annotation)?;
+                if property.optional {
+                    shape = StateShape::Optional(Box::new(shape));
+                }
+                if fields.insert(name.clone(), shape).is_some() {
                     return Err(CompileError::new(
                         format!("state object property {name:?} is declared twice"),
                         property.key.span(),
@@ -2463,9 +3073,74 @@ fn state_kind_from_type(kind: &TSType<'_>) -> Result<StateShape, CompileError> {
             Ok(StateShape::Object(fields))
         }
         _ => Err(CompileError::new(
-            "state types use number, boolean, string, arrays and object literals",
+            "data types use null, finite numbers, booleans, strings, literals, arrays and object literals",
             kind.span(),
         )),
+    }
+}
+
+fn shape_accepts_value(shape: &StateShape, value: &StateValue) -> bool {
+    match (shape, value) {
+        (StateShape::Null, StateValue::Null) => true,
+        (StateShape::Number, StateValue::Number(value)) => value.is_finite(),
+        (StateShape::Bool, StateValue::Bool(_)) | (StateShape::String, StateValue::String(_)) => {
+            true
+        }
+        (StateShape::Literal(StateLiteral::Number(expected)), StateValue::Number(value)) => {
+            expected == value
+        }
+        (StateShape::Literal(StateLiteral::Bool(expected)), StateValue::Bool(value)) => {
+            expected == value
+        }
+        (StateShape::Literal(StateLiteral::String(expected)), StateValue::String(value)) => {
+            expected == value
+        }
+        (StateShape::Optional(_), StateValue::Null) => true,
+        (StateShape::Optional(shape), value) => shape_accepts_value(shape, value),
+        (StateShape::Union(shapes), value) => {
+            shapes.iter().any(|shape| shape_accepts_value(shape, value))
+        }
+        (StateShape::List(shape), StateValue::List(values)) => {
+            values.iter().all(|value| shape_accepts_value(shape, value))
+        }
+        (StateShape::Object(shapes), StateValue::Object(values)) => {
+            values.iter().all(|(name, _)| shapes.contains_key(name))
+                && shapes.iter().all(|(name, shape)| {
+                    match values.iter().find(|(value_name, _)| value_name == name) {
+                        Some((_, value)) => shape_accepts_value(shape, value),
+                        None => matches!(shape, StateShape::Optional(_)),
+                    }
+                })
+        }
+        _ => false,
+    }
+}
+
+fn shape_accepts_shape(expected: &StateShape, actual: &StateShape) -> bool {
+    if expected == actual {
+        return true;
+    }
+    if let StateShape::Union(actual) = actual {
+        return actual
+            .iter()
+            .all(|actual| shape_accepts_shape(expected, actual));
+    }
+    if let StateShape::Optional(actual) = actual {
+        return shape_accepts_shape(expected, &StateShape::Null)
+            && shape_accepts_shape(expected, actual);
+    }
+    match (expected, actual) {
+        (StateShape::Number, StateShape::Number | StateShape::Literal(StateLiteral::Number(_)))
+        | (StateShape::Bool, StateShape::Bool | StateShape::Literal(StateLiteral::Bool(_)))
+        | (StateShape::String, StateShape::String | StateShape::Literal(StateLiteral::String(_))) => {
+            true
+        }
+        (StateShape::Optional(_), StateShape::Null) => true,
+        (StateShape::Optional(expected), actual) => shape_accepts_shape(expected, actual),
+        (StateShape::Union(expected), actual) => expected
+            .iter()
+            .any(|expected| shape_accepts_shape(expected, actual)),
+        _ => false,
     }
 }
 
@@ -2560,6 +3235,12 @@ fn lower_screen(
         children: lower_element_children(element, states, imports, item, "Screen")?,
         title,
         centered,
+        params: states
+            .route_params
+            .values()
+            .next()
+            .map(|params| params.fields.clone())
+            .unwrap_or_default(),
         resources: Vec::new(),
         controllers: Vec::new(),
     })
@@ -2692,7 +3373,7 @@ fn press_action(
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Option<Action>, CompileError> {
-    let href = optional_string_attribute(element, "href")?;
+    let href = attribute(element, "href");
     if href.is_some() && attribute(element, "onPress").is_some() {
         return Err(CompileError::new(
             format!("{component} accepts either href or onPress, not both"),
@@ -2700,12 +3381,13 @@ fn press_action(
         ));
     }
     match href {
-        Some(path) => {
-            let span = attribute(element, "href")
-                .map_or(element.opening_element.span, |attribute| attribute.span);
+        Some(attribute) => {
+            let span = attribute.span;
+            let (path, params) = route_target(attribute, states, item)?;
             validate_route_path(&path, span)?;
             Ok(Some(Action::Navigate {
                 path,
+                params,
                 source: SourceSpan {
                     path: imports.source_path.clone(),
                     span,
@@ -2714,6 +3396,152 @@ fn press_action(
         }
         None => optional_button_action_attribute(element, states, imports, item),
     }
+}
+
+fn route_target(
+    attribute: &JSXAttribute<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<(String, Vec<RouteArgument>), CompileError> {
+    match &attribute.value {
+        Some(JSXAttributeValue::StringLiteral(path)) => Ok((path.value.to_string(), Vec::new())),
+        Some(JSXAttributeValue::ExpressionContainer(container)) => {
+            let Some(Expression::ObjectExpression(target)) = container.expression.as_expression()
+            else {
+                return Err(CompileError::new(
+                    "href must be a path string or { path, params }",
+                    container.span,
+                ));
+            };
+            let mut path = None;
+            let mut params = None;
+            for property in &target.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return Err(CompileError::new(
+                        "href objects cannot use spreads",
+                        property.span(),
+                    ));
+                };
+                let name = property_name(&property.key)?;
+                match name.as_str() {
+                    "path" if path.is_none() => {
+                        let Expression::StringLiteral(value) = &property.value else {
+                            return Err(CompileError::new(
+                                "href path must be a string literal",
+                                property.value.span(),
+                            ));
+                        };
+                        path = Some(value.value.to_string());
+                    }
+                    "params" if params.is_none() => {
+                        let Expression::ObjectExpression(values) = &property.value else {
+                            return Err(CompileError::new(
+                                "href params must be an object",
+                                property.value.span(),
+                            ));
+                        };
+                        params = Some(route_arguments(values, states, item)?);
+                    }
+                    "path" | "params" => {
+                        return Err(CompileError::new(
+                            format!("href field {name:?} is declared twice"),
+                            property.span,
+                        ));
+                    }
+                    _ => {
+                        return Err(CompileError::new(
+                            format!("unknown href field {name:?}"),
+                            property.key.span(),
+                        ));
+                    }
+                }
+            }
+            let path =
+                path.ok_or_else(|| CompileError::new("href objects require path", target.span))?;
+            Ok((path, params.unwrap_or_default()))
+        }
+        _ => Err(CompileError::new(
+            "href must be a path string or { path, params }",
+            attribute.span,
+        )),
+    }
+}
+
+fn route_arguments(
+    object: &oxc::ast::ast::ObjectExpression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Vec<RouteArgument>, CompileError> {
+    let mut arguments = Vec::new();
+    let mut names = HashSet::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(CompileError::new(
+                "route params cannot use spreads",
+                property.span(),
+            ));
+        };
+        let name = property_name(&property.key)?;
+        if !names.insert(name.clone()) {
+            return Err(CompileError::new(
+                format!("route param {name:?} is declared twice"),
+                property.span,
+            ));
+        }
+        let (value, shape) = route_value(&property.value, states, item)?;
+        arguments.push(RouteArgument { name, value, shape });
+    }
+    Ok(arguments)
+}
+
+fn route_value(
+    expression: &Expression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<(Value, StateShape), CompileError> {
+    let expression = unparenthesised(expression);
+    let literal = match expression {
+        Expression::NullLiteral(_) => Some((Value::Null, StateShape::Null)),
+        Expression::NumericLiteral(value) if value.value.is_finite() => {
+            Some((Value::Number(value.value), StateShape::Number))
+        }
+        Expression::BooleanLiteral(value) => Some((Value::Bool(value.value), StateShape::Bool)),
+        Expression::StringLiteral(value) => {
+            Some((Value::String(value.value.to_string()), StateShape::String))
+        }
+        _ => None,
+    };
+    if let Some(literal) = literal {
+        return Ok(literal);
+    }
+    if let Some(value) = expression_derived_value(expression, states)? {
+        return Ok(value);
+    }
+    if let Some(item) = item
+        && let Some(path) = item_path(expression, item.name)
+    {
+        let shape = kind_at_path(item.kind, &path)
+            .ok_or_else(|| CompileError::new("unknown list-item field", expression.span()))?;
+        if scalar_kind(shape) {
+            return Ok((Value::Item(path), shape.clone()));
+        }
+    }
+    if let Some(resource) = expression_resource_value(expression, states)?
+        && scalar_kind(&resource.kind)
+    {
+        return Ok((
+            Value::Resource(resource.resource, resource.field),
+            resource.kind,
+        ));
+    }
+    let state = expression_state_value(expression, states)?;
+    if !scalar_kind(&state.kind) {
+        return Err(CompileError::new(
+            "route params must be scalar values",
+            expression.span(),
+        ));
+    }
+    Ok((Value::State(state.id), state.kind))
 }
 
 fn lower_icon(element: &JSXElement<'_>) -> Result<Node, CompileError> {
@@ -3084,8 +3912,15 @@ pub fn validate_navigation(root: &Node) -> Result<(), NavigationError> {
         Node::Navigator { routes } => Some(
             routes
                 .iter()
-                .map(|route| route.path.as_str())
-                .collect::<HashSet<_>>(),
+                .map(|route| {
+                    let params = match route.screen.as_ref() {
+                        Node::Screen { params, .. } => params.clone(),
+                        Node::Tabs { .. } => BTreeMap::new(),
+                        _ => unreachable!("routes contain screens or tabs after expansion"),
+                    };
+                    (route.path.as_str(), params)
+                })
+                .collect::<HashMap<_, _>>(),
         ),
         _ => None,
     };
@@ -3094,7 +3929,7 @@ pub fn validate_navigation(root: &Node) -> Result<(), NavigationError> {
 
 fn validate_navigation_node(
     node: &Node,
-    routes: Option<&HashSet<&str>>,
+    routes: Option<&HashMap<&str, BTreeMap<String, StateShape>>>,
 ) -> Result<(), NavigationError> {
     match node {
         Node::Screen { children, .. } | Node::Stack { children, .. } => {
@@ -3103,11 +3938,21 @@ fn validate_navigation_node(
             }
         }
         Node::Button {
-            action: Some(Action::Navigate { path, source }),
+            action:
+                Some(Action::Navigate {
+                    path,
+                    params,
+                    source,
+                }),
             ..
         }
         | Node::SelectorButton {
-            action: Some(Action::Navigate { path, source }),
+            action:
+                Some(Action::Navigate {
+                    path,
+                    params,
+                    source,
+                }),
             ..
         } => {
             let Some(routes) = routes else {
@@ -3116,10 +3961,53 @@ fn validate_navigation_node(
                     error: CompileError::new("href requires a Navigator", source.span),
                 });
             };
-            if !routes.contains(path.as_str()) {
+            let Some(expected) = routes.get(path.as_str()) else {
                 return Err(NavigationError {
                     source: source.path.clone(),
                     error: CompileError::new(format!("no route matches {path:?}"), source.span),
+                });
+            };
+            let provided = params
+                .iter()
+                .map(|param| (param.name.as_str(), &param.shape))
+                .collect::<HashMap<_, _>>();
+            let missing = expected
+                .iter()
+                .filter(|(name, shape)| {
+                    !matches!(shape, StateShape::Optional(_))
+                        && !provided.contains_key(name.as_str())
+                })
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>();
+            let unknown = provided
+                .keys()
+                .filter(|name| !expected.contains_key(**name))
+                .copied()
+                .collect::<Vec<_>>();
+            let mismatched = provided.iter().find(|(name, shape)| {
+                expected
+                    .get(**name)
+                    .is_some_and(|expected| !shape_accepts_shape(expected, shape))
+            });
+            let problem = if !missing.is_empty() {
+                Some(format!(
+                    "route {path:?} is missing params: {}",
+                    missing.join(", ")
+                ))
+            } else if !unknown.is_empty() {
+                Some(format!(
+                    "route {path:?} has unknown params: {}",
+                    unknown.join(", ")
+                ))
+            } else {
+                mismatched.map(|(name, _)| {
+                    format!("route param {name:?} has the wrong type for {path:?}")
+                })
+            };
+            if let Some(problem) = problem {
+                return Err(NavigationError {
+                    source: source.path.clone(),
+                    error: CompileError::new(problem, source.span),
                 });
             }
         }
@@ -3327,6 +4215,8 @@ fn lower_match(
         MatchBinding::Resource(resource.clone())
     } else if let Some(controller) = states.controllers.get(value.name.as_str()) {
         MatchBinding::Controller(controller.clone())
+    } else if let Some(combined) = states.combined.get(value.name.as_str()) {
+        MatchBinding::Combined(combined.clone())
     } else {
         return Err(CompileError::new(
             "match() accepts a resource or controller variable",
@@ -3354,7 +4244,7 @@ fn lower_match(
             ));
         }
         let status = property_name(&property.key)?;
-        if !statuses.contains(&status.as_str()) {
+        if !statuses.contains(&status) {
             return Err(CompileError::new(
                 format!("unknown match case {status:?}"),
                 property.key.span(),
@@ -3411,6 +4301,9 @@ fn lower_match(
         let mut branch_bindings = states.clone();
         if let Some(parameter) = parameter {
             branch_bindings.states.remove(parameter);
+            branch_bindings.computed.remove(parameter);
+            branch_bindings.combined.remove(parameter);
+            branch_bindings.route_params.remove(parameter);
             branch_bindings.resources.remove(parameter);
             branch_bindings.controllers.remove(parameter);
             match &binding {
@@ -3424,6 +4317,11 @@ fn lower_match(
                         .controllers
                         .insert(parameter.to_owned(), controller.clone());
                 }
+                MatchBinding::Combined(combined) => {
+                    branch_bindings
+                        .combined
+                        .insert(parameter.to_owned(), combined.clone());
+                }
             }
         }
         cases.insert(
@@ -3434,8 +4332,8 @@ fn lower_match(
 
     let missing = statuses
         .iter()
-        .filter(|status| !cases.contains_key(**status))
-        .copied()
+        .filter(|status| !cases.contains_key(status.as_str()))
+        .cloned()
         .collect::<Vec<_>>();
     if !missing.is_empty() {
         return Err(CompileError::new(
@@ -3447,11 +4345,11 @@ fn lower_match(
     let mut statuses = statuses.iter().rev();
     let final_status = statuses.next().expect("matchable values have statuses");
     let mut node = cases
-        .remove(*final_status)
+        .remove(final_status)
         .expect("exhaustive match contains the final case");
     for status in statuses {
         let consequent = cases
-            .remove(*status)
+            .remove(status)
             .expect("exhaustive match contains every case");
         node = Node::Conditional {
             condition: match_condition(&binding, status),
@@ -3462,32 +4360,40 @@ fn lower_match(
     Ok(node)
 }
 
-fn match_statuses(binding: &MatchBinding) -> &'static [&'static str] {
+fn match_statuses(binding: &MatchBinding) -> Vec<String> {
     match binding {
         MatchBinding::Resource(resource) => match resource.protocol {
-            ResourceProtocol::Async => &["loading", "ready", "error"],
-            ResourceProtocol::Background => &["waiting", "ready", "stale", "error"],
+            ResourceProtocol::Async => vec!["loading", "ready", "error"],
+            ResourceProtocol::Cached => vec!["loading", "ready", "stale", "error"],
+            ResourceProtocol::Mutation => vec!["idle", "running", "ready", "error"],
+            ResourceProtocol::Background => vec!["waiting", "ready", "stale", "error"],
         },
-        MatchBinding::Controller(controller) => match controller.kind {
-            NativeControllerKind::Level => &["idle", "listening", "active", "clipping", "error"],
-            NativeControllerKind::Pitch => &["idle", "listening", "active", "error"],
-            NativeControllerKind::Player => {
-                &["idle", "loading", "paused", "playing", "ended", "error"]
-            }
-            NativeControllerKind::Recorder => &["idle", "recording", "stopping", "ready", "error"],
-            NativeControllerKind::Notifications => &["idle", "error"],
-            NativeControllerKind::NotificationTap => &["empty", "ready"],
-            NativeControllerKind::Photo | NativeControllerKind::Scanner => {
-                &["idle", "opening", "active", "ready", "error"]
-            }
-            NativeControllerKind::RingtoneInstaller => {
-                &["idle", "installing", "installed", "error"]
-            }
-            NativeControllerKind::LightPush => {
-                &["idle", "registering", "synchronising", "ready", "error"]
-            }
-        },
+        MatchBinding::Controller(controller) => return controller_statuses(&controller.shape),
+        MatchBinding::Combined(_) => vec!["error", "loading", "ready"],
     }
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
+}
+
+fn controller_statuses(shape: &StateShape) -> Vec<String> {
+    let StateShape::Object(fields) = shape else {
+        unreachable!("controller state is an object")
+    };
+    let (_, StateShape::Union(statuses)) = fields
+        .iter()
+        .find(|(name, _)| name.as_str() == "status")
+        .expect("controller state has a status")
+    else {
+        unreachable!("controller status is a literal union")
+    };
+    statuses
+        .iter()
+        .map(|status| match status {
+            StateShape::Literal(StateLiteral::String(status)) => status.clone(),
+            _ => unreachable!("controller statuses are string literals"),
+        })
+        .collect()
 }
 
 fn match_condition(binding: &MatchBinding, status: &str) -> Condition {
@@ -3504,6 +4410,17 @@ fn match_condition(binding: &MatchBinding, status: &str) -> Condition {
             path: vec!["status".to_owned()],
             value,
             expected: true,
+        },
+        MatchBinding::Combined(combined) => Condition::ValueEquals {
+            value: Value::CombinedStatus(
+                combined
+                    .resources
+                    .iter()
+                    .map(|(_, resource)| resource.id)
+                    .collect(),
+            ),
+            expected: value,
+            equals: true,
         },
     }
 }
@@ -3522,6 +4439,30 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
                     if member.property.name.as_str() == "length"
             );
             if !is_length {
+                if let Some((derived, kind)) = condition_value(&expression.left, states)? {
+                    let value = literal_state_value(unparenthesised(&expression.right))?;
+                    if !shape_accepts_value(&kind, &value) {
+                        return Err(CompileError::new(
+                            "the comparison value must match the computed or route value type",
+                            expression.right.span(),
+                        ));
+                    }
+                    let equals = match expression.operator {
+                        BinaryOperator::Equality | BinaryOperator::StrictEquality => true,
+                        BinaryOperator::Inequality | BinaryOperator::StrictInequality => false,
+                        _ => {
+                            return Err(CompileError::new(
+                                "computed and route comparisons use === or !==",
+                                expression.span,
+                            ));
+                        }
+                    };
+                    return Ok(Condition::ValueEquals {
+                        value: derived,
+                        expected: value,
+                        equals,
+                    });
+                }
                 if let Some(binding) = expression_controller_value(&expression.left, states)? {
                     if !scalar_kind(&binding.kind) {
                         return Err(CompileError::new(
@@ -3530,7 +4471,7 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
                         ));
                     }
                     let value = literal_state_value(unparenthesised(&expression.right))?;
-                    if state_kind(&value).as_ref() != Some(&binding.kind) {
+                    if !shape_accepts_value(&binding.kind, &value) {
                         return Err(CompileError::new(
                             "the comparison value must match the controller field type",
                             expression.right.span(),
@@ -3561,7 +4502,7 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
                         ));
                     }
                     let value = literal_state_value(unparenthesised(&expression.right))?;
-                    if state_kind(&value).as_ref() != Some(&binding.kind) {
+                    if !shape_accepts_value(&binding.kind, &value) {
                         return Err(CompileError::new(
                             "the comparison value must match the resource field type",
                             expression.right.span(),
@@ -3593,7 +4534,7 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
                     ));
                 }
                 let value = literal_state_value(unparenthesised(&expression.right))?;
-                if state_kind(&value).as_ref() != Some(&binding.kind) {
+                if !shape_accepts_value(&binding.kind, &value) {
                     return Err(CompileError::new(
                         "the comparison value must match the state type",
                         expression.right.span(),
@@ -3644,6 +4585,19 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
             Ok(Condition::ListEmpty { state, expected })
         }
         expression => {
+            if let Some((value, kind)) = condition_value(expression, states)? {
+                if scalar_base_kind(&kind) != Some(StateShape::Bool) {
+                    return Err(CompileError::new(
+                        "conditional computed or route value must be boolean",
+                        expression.span(),
+                    ));
+                }
+                return Ok(Condition::ValueEquals {
+                    value,
+                    expected: StateValue::Bool(true),
+                    equals: true,
+                });
+            }
             if let Some(binding) = expression_controller_value(expression, states)? {
                 if binding.kind != StateShape::Bool {
                     return Err(CompileError::new(
@@ -3687,8 +4641,24 @@ fn condition(expression: &Expression<'_>, states: &Bindings) -> Result<Condition
     }
 }
 
+fn condition_value(
+    expression: &Expression<'_>,
+    states: &Bindings,
+) -> Result<Option<(Value, StateShape)>, CompileError> {
+    expression_derived_value(expression, states)
+}
+
 fn invert_condition(condition: Condition) -> Condition {
     match condition {
+        Condition::ValueEquals {
+            value,
+            expected,
+            equals,
+        } => Condition::ValueEquals {
+            value,
+            expected,
+            equals: !equals,
+        },
         Condition::Bool { state, expected } => Condition::Bool {
             state,
             expected: !expected,
@@ -4130,6 +5100,14 @@ fn lower_state_action(
                 "background resources do not expose actions",
                 call.span,
             ));
+        }
+        if binding.protocol == ResourceProtocol::Mutation {
+            return match method {
+                "run" => Ok(Action::ReloadResource {
+                    resource: binding.id,
+                }),
+                _ => Err(CompileError::new("mutations expose run()", call.span)),
+            };
         }
         return match method {
             "reload" => Ok(Action::ReloadResource {
@@ -4894,24 +5872,6 @@ fn lower_scalar_set(
     states: &Bindings,
 ) -> Result<Action, CompileError> {
     match &call.arguments[0] {
-        Argument::NumericLiteral(value) if binding.kind == StateShape::Number => {
-            Ok(Action::SetNumber {
-                state: binding.id,
-                value: value.value,
-            })
-        }
-        Argument::BooleanLiteral(value) if binding.kind == StateShape::Bool => {
-            Ok(Action::SetBool {
-                state: binding.id,
-                value: value.value,
-            })
-        }
-        Argument::StringLiteral(value) if binding.kind == StateShape::String => {
-            Ok(Action::SetString {
-                state: binding.id,
-                value: value.value.to_string(),
-            })
-        }
         Argument::BinaryExpression(value) if binding.kind == StateShape::Number => {
             let read_state = expression_state_value(&value.left, states)?;
             if read_state.id != binding.id {
@@ -4954,10 +5914,19 @@ fn lower_scalar_set(
             }
             Ok(Action::Toggle { state: binding.id })
         }
-        value => Err(CompileError::new(
-            "state.set value does not match the state's type",
-            value.span(),
-        )),
+        value => {
+            let Some(value) = value.as_expression() else {
+                return Err(CompileError::new(
+                    "state.set value cannot use spread syntax",
+                    value.span(),
+                ));
+            };
+            let value = lower_value(value, &binding.kind, states, None)?;
+            Ok(Action::SetValue {
+                state: binding.id,
+                value,
+            })
+        }
     }
 }
 
@@ -4988,6 +5957,39 @@ fn lower_value(
     item: Option<ItemBinding<'_>>,
 ) -> Result<Value, CompileError> {
     let expression = unparenthesised(expression);
+    if let Some((value, kind)) = expression_derived_value(expression, states)? {
+        if shape_accepts_shape(expected, &kind) {
+            return Ok(value);
+        }
+        return Err(CompileError::new(
+            "the derived value does not match the target state type",
+            expression.span(),
+        ));
+    }
+    let literal = match expression {
+        Expression::NullLiteral(_) => Some(StateValue::Null),
+        Expression::NumericLiteral(value) if value.value.is_finite() => {
+            Some(StateValue::Number(value.value))
+        }
+        Expression::BooleanLiteral(value) => Some(StateValue::Bool(value.value)),
+        Expression::StringLiteral(value) => Some(StateValue::String(value.value.to_string())),
+        _ => None,
+    };
+    if let Some(value) = literal {
+        if !shape_accepts_value(expected, &value) {
+            return Err(CompileError::new(
+                "value does not match the declared type",
+                expression.span(),
+            ));
+        }
+        return Ok(match value {
+            StateValue::Null => Value::Null,
+            StateValue::Number(value) => Value::Number(value),
+            StateValue::Bool(value) => Value::Bool(value),
+            StateValue::String(value) => Value::String(value),
+            StateValue::List(_) | StateValue::Object(_) => unreachable!("a scalar literal"),
+        });
+    }
     if let Some(item) = item
         && let Some(path) = item_path(expression, item.name)
     {
@@ -5016,11 +6018,6 @@ fn lower_value(
         return Ok(Value::State(binding.id));
     }
     match (expression, expected) {
-        (Expression::NumericLiteral(value), StateShape::Number) => Ok(Value::Number(value.value)),
-        (Expression::BooleanLiteral(value), StateShape::Bool) => Ok(Value::Bool(value.value)),
-        (Expression::StringLiteral(value), StateShape::String) => {
-            Ok(Value::String(value.value.to_string()))
-        }
         (Expression::ArrayExpression(array), StateShape::List(item_kind)) => {
             let values = array
                 .elements
@@ -5072,7 +6069,14 @@ fn lower_value(
                 }
                 values.push((name, lower_value(&property.value, expected, states, item)?));
             }
-            if seen.len() != fields.len() {
+            for (name, shape) in fields {
+                if !seen.contains(name) && matches!(shape, StateShape::Optional(_)) {
+                    values.push((name.clone(), Value::Null));
+                }
+            }
+            if fields.iter().any(|(name, shape)| {
+                !matches!(shape, StateShape::Optional(_)) && !seen.contains(name)
+            }) {
                 return Err(CompileError::new(
                     "list item is missing a required property",
                     object.span,
@@ -5396,6 +6400,15 @@ fn expression_text_part(
     states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<TextPart, CompileError> {
+    if let Some((value, kind)) = expression_derived_value(expression, states)? {
+        if !scalar_kind(&kind) {
+            return Err(CompileError::new(
+                "Text can only display scalar derived values",
+                expression.span(),
+            ));
+        }
+        return Ok(TextPart::Value(value));
+    }
     if let Ok(state) = list_length_state(expression, states) {
         return Ok(TextPart::ListLength(state));
     }
@@ -5478,71 +6491,107 @@ fn expression_resource_value(
     let Some((name, path)) = member_path(expression) else {
         return Ok(None);
     };
+    if let Some(combined) = states.combined.get(name) {
+        let [value, resource_name, rest @ ..] = path.as_slice() else {
+            return Err(CompileError::new(
+                "combined results are read from .value.<name>",
+                expression.span(),
+            ));
+        };
+        if value != "value" {
+            return Err(CompileError::new(
+                "combined results are read from .value.<name>",
+                expression.span(),
+            ));
+        }
+        let resource = combined
+            .resources
+            .iter()
+            .find(|(name, _)| name == resource_name)
+            .map(|(_, resource)| resource)
+            .ok_or_else(|| CompileError::new("unknown combined resource", expression.span()))?;
+        let kind = kind_at_path(&resource.shape, rest).ok_or_else(|| {
+            CompileError::new("unknown combined resource value field", expression.span())
+        })?;
+        return Ok(Some(ResourceValueBinding {
+            resource: resource.id,
+            field: ResourceField::Value(rest.to_vec()),
+            kind: kind.clone(),
+        }));
+    }
     let Some(resource) = states.resources.get(name) else {
         return Ok(None);
     };
     let (field, kind) = match (resource.protocol, path.as_slice()) {
-        (ResourceProtocol::Background, [field]) if field == "status" => {
+        (ResourceProtocol::Background | ResourceProtocol::Cached, [field]) if field == "status" => {
             (ResourceField::Status, StateShape::String)
         }
-        (ResourceProtocol::Background, [field]) if field == "updatedAtMs" => {
+        (ResourceProtocol::Background | ResourceProtocol::Cached, [field])
+            if field == "updatedAtMs" =>
+        {
             (ResourceField::UpdatedAtMs, StateShape::Number)
         }
-        (ResourceProtocol::Background, [field, property])
+        (ResourceProtocol::Background | ResourceProtocol::Cached, [field, property])
             if field == "error" && property == "kind" =>
         {
             (ResourceField::ErrorKind, StateShape::String)
         }
-        (ResourceProtocol::Background, [field, property])
+        (ResourceProtocol::Background | ResourceProtocol::Cached, [field, property])
             if field == "error" && property == "message" =>
         {
             (ResourceField::ErrorMessage, StateShape::String)
         }
-        (ResourceProtocol::Background, [field, property])
+        (ResourceProtocol::Background | ResourceProtocol::Cached, [field, property])
             if field == "error" && property == "retryable" =>
         {
             (ResourceField::ErrorRetryable, StateShape::Bool)
         }
-        (ResourceProtocol::Background, [field, property])
+        (ResourceProtocol::Background | ResourceProtocol::Cached, [field, property])
             if field == "error" && property == "attemptedAtMs" =>
         {
             (ResourceField::ErrorAttemptedAtMs, StateShape::Number)
         }
-        (ResourceProtocol::Background, [field, path @ ..]) if field == "value" => {
+        (ResourceProtocol::Background | ResourceProtocol::Cached, [field, path @ ..])
+            if field == "value" =>
+        {
             let kind = kind_at_path(&resource.shape, path).ok_or_else(|| {
                 CompileError::new("unknown background value field", expression.span())
             })?;
             (ResourceField::Value(path.to_vec()), kind.clone())
         }
-        (ResourceProtocol::Background, _) => {
+        (ResourceProtocol::Background | ResourceProtocol::Cached, _) => {
             return Err(CompileError::new(
                 "background resource fields are status, value, updatedAtMs or error details",
                 expression.span(),
             ));
         }
-        (ResourceProtocol::Async, [field]) if field == "status" => {
+        (ResourceProtocol::Async | ResourceProtocol::Mutation, [field]) if field == "status" => {
             (ResourceField::Status, StateShape::String)
         }
-        (ResourceProtocol::Async, [field, property]) if field == "error" && property == "kind" => {
+        (ResourceProtocol::Async | ResourceProtocol::Mutation, [field, property])
+            if field == "error" && property == "kind" =>
+        {
             (ResourceField::ErrorKind, StateShape::String)
         }
-        (ResourceProtocol::Async, [field, property])
+        (ResourceProtocol::Async | ResourceProtocol::Mutation, [field, property])
             if field == "error" && property == "message" =>
         {
             (ResourceField::ErrorMessage, StateShape::String)
         }
-        (ResourceProtocol::Async, [field, property])
+        (ResourceProtocol::Async | ResourceProtocol::Mutation, [field, property])
             if field == "error" && property == "retryable" =>
         {
             (ResourceField::ErrorRetryable, StateShape::Bool)
         }
-        (ResourceProtocol::Async, [field, path @ ..]) if field == "value" => {
+        (ResourceProtocol::Async | ResourceProtocol::Mutation, [field, path @ ..])
+            if field == "value" =>
+        {
             let kind = kind_at_path(&resource.shape, path).ok_or_else(|| {
                 CompileError::new("unknown resource value field", expression.span())
             })?;
             (ResourceField::Value(path.to_vec()), kind.clone())
         }
-        (ResourceProtocol::Async, _) => {
+        (ResourceProtocol::Async | ResourceProtocol::Mutation, _) => {
             return Err(CompileError::new(
                 "resource fields are status, value, or error details",
                 expression.span(),
@@ -5577,7 +6626,11 @@ fn validate_resource_comparison(
         return Ok(());
     };
     let allowed = match field {
-        ResourceField::Status => Some(&["loading", "waiting", "ready", "stale", "error"][..]),
+        ResourceField::Status => Some(
+            &[
+                "idle", "loading", "running", "waiting", "ready", "stale", "error",
+            ][..],
+        ),
         ResourceField::ErrorKind => Some(
             &[
                 "unavailable",
@@ -5619,6 +6672,9 @@ fn item_path(expression: &Expression<'_>, name: &str) -> Option<Vec<String>> {
 
 fn kind_at_path<'a>(mut kind: &'a StateShape, path: &[String]) -> Option<&'a StateShape> {
     for field in path {
+        while let StateShape::Optional(inner) = kind {
+            kind = inner;
+        }
         let StateShape::Object(fields) = kind else {
             return None;
         };
@@ -5627,11 +6683,17 @@ fn kind_at_path<'a>(mut kind: &'a StateShape, path: &[String]) -> Option<&'a Sta
     Some(kind)
 }
 
-const fn scalar_kind(kind: &StateShape) -> bool {
-    matches!(
-        kind,
-        StateShape::Number | StateShape::Bool | StateShape::String
-    )
+fn scalar_kind(kind: &StateShape) -> bool {
+    match kind {
+        StateShape::Null
+        | StateShape::Number
+        | StateShape::Bool
+        | StateShape::String
+        | StateShape::Literal(_) => true,
+        StateShape::Optional(kind) => scalar_kind(kind),
+        StateShape::Union(kinds) => kinds.iter().all(scalar_kind),
+        StateShape::List(_) | StateShape::Object(_) => false,
+    }
 }
 
 fn reject_other_attributes(element: &JSXElement<'_>, allowed: &[&str]) -> Result<(), CompileError> {
