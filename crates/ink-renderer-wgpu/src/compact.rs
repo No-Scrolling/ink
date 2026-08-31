@@ -834,6 +834,19 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.quad_buffer.slice(..));
                 pass.draw(0..quads.len() as u32, 0..1);
             }
+            if !images.is_empty() {
+                pass.set_pipeline(&self.image_pipeline);
+                pass.set_vertex_buffer(0, self.image_buffer.slice(..));
+                for draw in &image_draws {
+                    let image = self
+                        .image_cache
+                        .images
+                        .get(&draw.id)
+                        .expect("prepared image stays cached");
+                    pass.set_bind_group(0, &image.bind_group, &[]);
+                    pass.draw(draw.vertices.clone(), 0..1);
+                }
+            }
             if !text.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
                 pass.set_bind_group(0, &self.glyph_atlas.bind_group, &[]);
@@ -841,37 +854,6 @@ impl Renderer {
                 pass.draw(0..text.len() as u32, 0..1);
             }
         }
-        if !images.is_empty() {
-            // Android's Vulkan driver can lose the glyph binding after switching image pipelines.
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Ink images"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(&self.image_pipeline);
-            pass.set_vertex_buffer(0, self.image_buffer.slice(..));
-            for draw in &image_draws {
-                let image = self
-                    .image_cache
-                    .images
-                    .get(&draw.id)
-                    .expect("prepared image stays cached");
-                pass.set_bind_group(0, &image.bind_group, &[]);
-                pass.draw(draw.vertices.clone(), 0..1);
-            }
-        }
-
         self.queue.submit(Some(encoder.finish()));
         self.queue.present(frame);
         Ok(RenderOutcome::Presented)

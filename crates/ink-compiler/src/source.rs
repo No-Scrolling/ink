@@ -176,6 +176,7 @@ fn max_active_controllers(node: &Node, controllers: &[crate::ir::Controller], ki
         | Node::SelectorButton { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
+        | Node::CameraPreview { .. }
         | Node::Toggle { .. }
         | Node::ScreenModule { .. } => 0,
     }
@@ -229,6 +230,7 @@ fn bundle_node_assets(node: &mut Node, directory: &Path) -> Result<()> {
         | Node::TextInput { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
+        | Node::CameraPreview { .. }
         | Node::ScreenModule { .. } => {}
     }
     Ok(())
@@ -532,6 +534,7 @@ impl Compiler<'_> {
             | Node::SelectorButton { .. }
             | Node::Icon { .. }
             | Node::Image { .. }
+            | Node::CameraPreview { .. }
             | Node::Toggle { .. }) => node,
         })
     }
@@ -693,7 +696,7 @@ fn remap_node(
             remap_node(template, mapping, resource_mapping, controller_mapping);
         }
         Node::Image {
-            source: ImageSource::Remote(parts),
+            source: ImageSource::Remote(parts) | ImageSource::Camera(parts),
             ..
         } => {
             for part in parts {
@@ -706,6 +709,9 @@ fn remap_node(
                     TextPart::Literal(_) | TextPart::Item(_) => {}
                 }
             }
+        }
+        Node::CameraPreview { controller, .. } => {
+            remap_controller(controller, controller_mapping);
         }
         Node::Icon { .. } | Node::Image { .. } => {}
         Node::ScreenModule { .. } => {}

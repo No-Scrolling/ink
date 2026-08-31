@@ -1,18 +1,18 @@
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 use std::ffi::c_void;
 use std::ffi::{CString, c_char, c_int};
 use std::io::Write;
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex, Once};
 
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 use ink_core::ImageFit;
 use ink_core::{
-    ControllerId, Engine, Hydration, NativeRequestKind, PUBLIC_SANS, ResourceError,
-    ResourceErrorKind, StateValue, TextEdit, TextInputAction,
+    CameraPreviewKind, ControllerId, Engine, Hydration, NativeRequestKind, PUBLIC_SANS,
+    ResourceError, ResourceErrorKind, StateValue, TextEdit, TextInputAction,
 };
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
@@ -30,9 +30,9 @@ const ANDROID_LOG_WARN: c_int = 5;
 const ANDROID_LOG_ERROR: c_int = 6;
 const LOG_TAG: &[u8] = b"Ink\0";
 static PANIC_HOOK: Once = Once::new();
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 const IMAGE_DECODER_SUCCESS: c_int = 0;
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 const BITMAP_FORMAT_RGBA_8888: c_int = 1;
 
 #[link(name = "log")]
@@ -40,12 +40,12 @@ unsafe extern "C" {
     fn __android_log_write(priority: c_int, tag: *const c_char, text: *const c_char) -> c_int;
 }
 
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 enum AImageDecoder {}
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 enum AImageDecoderHeaderInfo {}
 
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 #[link(name = "jnigraphics")]
 unsafe extern "C" {
     fn AImageDecoder_createFromFd(fd: c_int, decoder: *mut *mut AImageDecoder) -> c_int;
@@ -273,7 +273,7 @@ impl AndroidEngine {
         true
     }
 
-    #[cfg(feature = "network")]
+    #[cfg(feature = "image")]
     fn complete_native_image(
         &mut self,
         request_id: u64,
@@ -371,6 +371,63 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePublicSans<'local>
         env.new_direct_byte_buffer(PUBLIC_SANS.as_ptr().cast_mut(), PUBLIC_SANS.len())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JString<'local> {
+    let value = engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|engine| engine.engine.scene().camera_portal)
+        .map_or_else(String::new, |portal| {
+            let kind = match portal.kind {
+                CameraPreviewKind::Photo => "photo",
+                CameraPreviewKind::Scanner => "scanner",
+            };
+            let left = portal.rect.x.round() as i32;
+            let top = portal.rect.y.round() as i32;
+            let right = (portal.rect.x + portal.rect.width).round() as i32;
+            let bottom = (portal.rect.y + portal.rect.height).round() as i32;
+            format!(
+                "{{\"controller\":{},\"kind\":\"{}\",\"x\":{},\"y\":{},\"width\":{},\"height\":{}}}",
+                portal.controller.index(),
+                kind,
+                left,
+                top,
+                (right - left).max(1),
+                (bottom - top).max(1),
+            )
+        });
+    env.with_env(|env| env.new_string(value))
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetCameraReview(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    controller: jlong,
+    source: JString<'_>,
+) -> jboolean {
+    let source = env
+        .with_env(|env| source.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| {
+            let changed = engine.engine.set_camera_review(
+                ControllerId::new(controller as usize),
+                (!source.is_empty()).then_some(source),
+            );
+            if changed {
+                engine.render();
+            }
+            changed
+        }) as jboolean
 }
 
 #[unsafe(no_mangle)]
@@ -683,7 +740,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteBytes(
         as jboolean
 }
 
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
     mut env: EnvUnowned<'_>,
@@ -936,7 +993,7 @@ fn persist(engine: &Mutex<AndroidEngine>) {
     }
 }
 
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 fn decode_image(
     path: &str,
     target_width: u32,
@@ -1032,10 +1089,10 @@ fn decode_image(
     Ok((width, height, pixels))
 }
 
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 struct ImageDecoder(NonNull<AImageDecoder>);
 
-#[cfg(feature = "network")]
+#[cfg(feature = "image")]
 impl Drop for ImageDecoder {
     fn drop(&mut self) {
         unsafe { AImageDecoder_delete(self.0.as_ptr()) };

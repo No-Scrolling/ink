@@ -41,6 +41,7 @@ pub enum Extension {
     Nfc,
     Background,
     Notifications,
+    Camera,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -191,6 +192,12 @@ pub enum ImageFit {
     Contain,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CameraPreviewKind {
+    Photo,
+    Scanner,
+}
+
 #[derive(Debug)]
 pub enum Node {
     Screen {
@@ -240,6 +247,10 @@ pub enum Node {
         width: f32,
         height: f32,
         fit: ImageFit,
+    },
+    CameraPreview {
+        controller: ControllerId,
+        kind: CameraPreviewKind,
     },
     Toggle {
         label: String,
@@ -294,6 +305,7 @@ pub enum TextPart {
 pub enum ImageSource {
     Local(String),
     Remote(Vec<TextPart>),
+    Camera(Vec<TextPart>),
 }
 
 #[derive(Clone, Debug)]

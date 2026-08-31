@@ -50,6 +50,7 @@ export default function Counter() {
 - Foreground device location through LightOS permissions
 - Screen-scoped NFC tag and NDEF reading
 - Durable local notifications and route-aware notification taps
+- In-screen photo capture and QR/barcode scanning
 - Multi-file apps and installed UI packages
 - Android development, signing and device tooling through the `ink` CLI
 
@@ -61,7 +62,7 @@ export default function Counter() {
 - `@ink/notifications` — local reminders, permission and durable tap events
 - `@ink/audio` — Playback, recording and microphone analysis
 - `@ink/location` — Foreground device location
-- `@ink/camera` — Camera and code scanning (planned)
+- `@ink/camera` — Camera permission, photo capture and code scanning
 - `@ink/nfc` — NFC tag and NDEF reading
 - `@ink/notifications` — Local notifications (planned)
 - `@ink/background` — Typed, persisted periodic JSON resources
@@ -174,6 +175,27 @@ const tag = nfcTag({ timeoutMs: 30_000 });
 
 The result includes the tag serial number and normalised text, URI and binary NDEF records. A tag without NDEF data still succeeds with an empty record list. Apps that do not import the module carry neither its native adapter nor NFC manifest declarations.
 
+## Camera
+
+`@ink/camera` provides an Ink-owned camera preview for reviewed JPEG capture and ZXing code scanning:
+
+```tsx
+import { CameraPreview, photoCapture } from "@ink/camera";
+import { Screen } from "ink";
+
+export default function Photo() {
+  const capture = photoCapture();
+
+  return (
+    <Screen title="Photo">
+      <CameraPreview session={capture} />
+    </Screen>
+  );
+}
+```
+
+Camera permission, photo capture and scanning are packaged independently, so applications pay only for the capabilities they declare. See [Camera](docs/camera.md) for session and lifecycle semantics.
+
 ## Development
 
 Check the local toolchain and run the counter example:
@@ -206,3 +228,4 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Audio](docs/audio.md)
 - [Location](docs/location.md)
 - [NFC](docs/nfc.md)
+- [Camera](docs/camera.md)

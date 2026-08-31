@@ -46,6 +46,7 @@ const HEADER_BACK_ICON_SIZE: f32 = 28.0;
 const HEADER_BACK_OFFSET_X: f32 = -7.0;
 const HEADER_BACK_OFFSET_Y: f32 = 11.0;
 const HEADER_CONTENT_TOP: f32 = 6.0;
+const CAMERA_REVIEW_ACTION_HEIGHT: f32 = 64.0;
 const NAV_HEIGHT: f32 = 70.0;
 const NAV_ICON_SIZE: f32 = 52.0;
 const NAV_VERTICAL_INSET: f32 = 10.0;
@@ -756,6 +757,7 @@ impl ImageData {
 pub enum ImageSource {
     Asset(ImageAsset),
     Remote(Vec<TextPart>),
+    Native(String, Vec<TextPart>),
 }
 
 impl ImageAsset {
@@ -774,6 +776,12 @@ pub enum ImageFit {
     #[default]
     Cover,
     Contain,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CameraPreviewKind {
+    Photo,
+    Scanner,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -830,6 +838,10 @@ enum NodeKind {
         width: f32,
         height: f32,
         fit: ImageFit,
+    },
+    CameraPreview {
+        controller: ControllerId,
+        kind: CameraPreviewKind,
     },
     Toggle {
         label: String,
@@ -977,6 +989,12 @@ impl Node {
                 height,
                 fit,
             },
+        }
+    }
+
+    pub const fn camera_preview(controller: ControllerId, kind: CameraPreviewKind) -> Self {
+        Self {
+            kind: NodeKind::CameraPreview { controller, kind },
         }
     }
 
@@ -1175,6 +1193,13 @@ pub struct ImageRun {
     pub fit: ImageFit,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CameraPortal {
+    pub controller: ControllerId,
+    pub kind: CameraPreviewKind,
+    pub rect: Rect,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     pub width: u32,
@@ -1183,6 +1208,7 @@ pub struct Scene {
     pub text: Vec<TextRun>,
     pub masks: Vec<MaskRun>,
     pub images: Vec<ImageRun>,
+    pub camera_portal: Option<CameraPortal>,
 }
 
 #[derive(Clone, Debug)]
@@ -1218,6 +1244,7 @@ enum RequestOwner {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct RemoteImageKey {
+    module: String,
     url: String,
     width: u32,
     height: u32,
@@ -1259,6 +1286,7 @@ pub struct Engine {
     in_flight_requests: HashMap<u64, PendingRequest>,
     resource_requests: HashMap<ResourceId, u64>,
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
+    camera_reviews: HashMap<ControllerId, String>,
     visible_images: BTreeSet<RemoteImageKey>,
     last_native_request: Option<NativeRequest>,
     next_request_id: u64,
@@ -1342,6 +1370,7 @@ impl Engine {
             in_flight_requests: HashMap::new(),
             resource_requests: HashMap::new(),
             remote_images: HashMap::new(),
+            camera_reviews: HashMap::new(),
             visible_images: BTreeSet::new(),
             last_native_request: None,
             next_request_id: 1,
@@ -1498,6 +1527,27 @@ impl Engine {
         self.state[definition.state.0] = value;
         self.rebuild_scene();
         true
+    }
+
+    pub fn set_camera_review(&mut self, controller: ControllerId, source: Option<String>) -> bool {
+        if !self.active_controllers.contains(&controller) {
+            return false;
+        }
+        let changed = match source {
+            Some(source) => {
+                if self.camera_reviews.get(&controller) == Some(&source) {
+                    false
+                } else {
+                    self.camera_reviews.insert(controller, source);
+                    true
+                }
+            }
+            None => self.camera_reviews.remove(&controller).is_some(),
+        };
+        if changed {
+            self.rebuild_scene();
+        }
+        changed
     }
 
     pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit)> {
@@ -1704,14 +1754,26 @@ impl Engine {
             return;
         }
         let request_id = self.next_request_id();
-        let payload = format!(
-            "{{\"url\":{},\"headers\":{{}}}}",
-            serde_json::to_string(&key.url).expect("a Rust string is valid JSON"),
-        );
+        let payload = if key.module == "network" {
+            format!(
+                "{{\"url\":{},\"headers\":{{}}}}",
+                serde_json::to_string(&key.url).expect("a Rust string is valid JSON"),
+            )
+        } else {
+            format!(
+                "{{\"source\":{}}}",
+                serde_json::to_string(&key.url).expect("a Rust string is valid JSON"),
+            )
+        };
         let request = NativeRequest {
             id: request_id,
             kind: NativeRequestKind::Image,
-            operation: Some(NativeOperation::new("network", "image", "", 20_000)),
+            operation: Some(NativeOperation::new(
+                key.module.clone(),
+                "image",
+                "",
+                20_000,
+            )),
             payload,
             controller: None,
         };
@@ -2223,6 +2285,7 @@ impl Engine {
             .copied()
             .collect::<Vec<_>>();
         for controller in inactive {
+            self.camera_reviews.remove(&controller);
             self.queue_controller(
                 controller,
                 "deactivate",
@@ -2304,6 +2367,7 @@ impl Engine {
             | NodeKind::SelectorButton { .. }
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
+            | NodeKind::CameraPreview { .. }
             | NodeKind::Toggle { .. } => {}
         }
     }
@@ -2365,6 +2429,7 @@ impl Engine {
             | NodeKind::SelectorButton { .. }
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
+            | NodeKind::CameraPreview { .. }
             | NodeKind::Toggle { .. } => {}
         }
     }
@@ -2530,6 +2595,7 @@ impl Engine {
         self.scene.text.clear();
         self.scene.masks.clear();
         self.scene.images.clear();
+        self.scene.camera_portal = None;
         self.hit_regions.clear();
         self.visible_images.clear();
         self.scroll_max = 0.0;
@@ -2672,6 +2738,14 @@ impl Engine {
                     },
                 }
             }
+            NodeKind::CameraPreview { .. } => MeasuredSize {
+                width: available.width,
+                height: if available.height.is_finite() {
+                    available.height
+                } else {
+                    0.0
+                },
+            },
             NodeKind::Toggle { .. } => MeasuredSize {
                 width: available.width,
                 height: self.scaled(TOGGLE_HEIGHT).min(available.height),
@@ -2758,6 +2832,9 @@ impl Engine {
                 fit,
                 ..
             } => self.layout_image(source, *fallback, *fit, rect),
+            NodeKind::CameraPreview { controller, kind } => {
+                self.layout_camera_preview(*controller, *kind, rect)
+            }
             NodeKind::Toggle {
                 label,
                 state,
@@ -2832,6 +2909,9 @@ impl Engine {
                     ImageSource::Remote(parts) => {
                         ImageSource::Remote(self.materialise_text(parts, item))
                     }
+                    ImageSource::Native(module, parts) => {
+                        ImageSource::Native(module.clone(), self.materialise_text(parts, item))
+                    }
                 },
                 *fallback,
                 *bleed,
@@ -2839,6 +2919,9 @@ impl Engine {
                 *height,
                 *fit,
             ),
+            NodeKind::CameraPreview { controller, kind } => {
+                Node::camera_preview(*controller, *kind)
+            }
             NodeKind::SelectorButton {
                 label,
                 value,
@@ -3086,17 +3169,26 @@ impl Engine {
             });
         }
 
-        let inset_start = self.scaled(CONTENT_INSET_START);
-        let inset_end = self.scaled(CONTENT_INSET_END);
+        let fills_remaining = children.len() == 1 && camera_preview(&children[0]);
+        let inset_start = if fills_remaining {
+            0.0
+        } else {
+            self.scaled(CONTENT_INSET_START)
+        };
+        let inset_end = if fills_remaining {
+            0.0
+        } else {
+            self.scaled(CONTENT_INSET_END)
+        };
         let first_child_is_full_bleed = children.first().is_some_and(full_bleed_image);
-        let inset_top = if first_child_is_full_bleed {
+        let inset_top = if fills_remaining || first_child_is_full_bleed {
             0.0
         } else if has_header {
             self.scaled(HEADER_CONTENT_TOP)
         } else {
             self.scaled(CONTENT_TOP)
         };
-        let requested_bottom_inset = if bottom_inset {
+        let requested_bottom_inset = if bottom_inset && !fills_remaining {
             self.scaled(CONTENT_BOTTOM)
         } else {
             0.0
@@ -3105,9 +3197,17 @@ impl Engine {
             x: rect.x + inset_start,
             y: rect.y + header_height + inset_top,
             width: (rect.width - inset_start - inset_end).max(0.0),
-            height: f32::INFINITY,
+            height: if fills_remaining {
+                (rect.height - header_height).max(0.0)
+            } else {
+                f32::INFINITY
+            },
         };
-        let gap = self.scaled(CONTENT_GAP);
+        let gap = if fills_remaining {
+            0.0
+        } else {
+            self.scaled(CONTENT_GAP)
+        };
         let sizes = children
             .iter()
             .map(|child| self.measure(child, unbounded_content))
@@ -3683,7 +3783,33 @@ impl Engine {
                     fallback.map(ImageData::Asset)
                 } else {
                     let key = RemoteImageKey {
+                        module: "network".to_owned(),
                         url,
+                        width: rect.width.ceil().max(1.0) as u32,
+                        height: rect.height.ceil().max(1.0) as u32,
+                        fit,
+                    };
+                    self.visible_images.insert(key.clone());
+                    let loaded = match self.remote_images.get(&key) {
+                        Some(RemoteImageState::Ready(image)) => {
+                            Some(ImageData::Remote(image.clone()))
+                        }
+                        _ => None,
+                    };
+                    if loaded.is_none() {
+                        self.queue_remote_image(key);
+                    }
+                    loaded.or_else(|| fallback.map(ImageData::Asset))
+                }
+            }
+            ImageSource::Native(module, parts) => {
+                let source = self.resolve_text(parts);
+                if source.is_empty() {
+                    fallback.map(ImageData::Asset)
+                } else {
+                    let key = RemoteImageKey {
+                        module: module.clone(),
+                        url: source,
                         width: rect.width.ceil().max(1.0) as u32,
                         height: rect.height.ceil().max(1.0) as u32,
                         fit,
@@ -3708,6 +3834,157 @@ impl Engine {
                 rect,
                 clip: self.clip,
                 fit,
+            });
+        }
+    }
+
+    fn layout_camera_preview(
+        &mut self,
+        controller: ControllerId,
+        kind: CameraPreviewKind,
+        rect: Rect,
+    ) {
+        self.scene.quads.push(Quad {
+            rect,
+            clip: self.clip,
+            colour: Colour::BLACK,
+        });
+        if let Some(source) = self.camera_reviews.get(&controller).cloned() {
+            let action_height = self.scaled(CAMERA_REVIEW_ACTION_HEIGHT).min(rect.height);
+            self.layout_image(
+                &ImageSource::Native("camera".to_owned(), vec![TextPart::Literal(source)]),
+                None,
+                ImageFit::Contain,
+                Rect {
+                    height: (rect.height - action_height).max(0.0),
+                    ..rect
+                },
+            );
+            let actions = Rect {
+                y: rect.y + rect.height - action_height,
+                height: action_height,
+                ..rect
+            };
+            let half = actions.width / 2.0;
+            for (label, operation, action_rect) in [
+                (
+                    "Retake",
+                    "retake",
+                    Rect {
+                        width: half,
+                        ..actions
+                    },
+                ),
+                (
+                    "Use photo",
+                    "use-photo",
+                    Rect {
+                        x: actions.x + half,
+                        width: actions.width - half,
+                        ..actions
+                    },
+                ),
+            ] {
+                self.scene.text.push(TextRun {
+                    text: label.to_owned(),
+                    rect: action_rect,
+                    clip: self.clip,
+                    font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
+                    colour: Colour::WHITE,
+                    align: TextAlign::Centre,
+                });
+                self.push_hit_region(
+                    action_rect,
+                    Action::Controller {
+                        controller,
+                        operation: operation.to_owned(),
+                        payload: Vec::new(),
+                    },
+                );
+            }
+            return;
+        }
+
+        let status = self
+            .controller_field_value(controller, &["status".to_owned()])
+            .and_then(|value| match value {
+                StateValue::String(value) => Some(value),
+                _ => None,
+            })
+            .unwrap_or_else(|| "idle".to_owned());
+        if status == "ready" {
+            match kind {
+                CameraPreviewKind::Photo => {
+                    if let Some(StateValue::String(source)) = self.controller_field_value(
+                        controller,
+                        &["value".to_owned(), "source".to_owned()],
+                    ) {
+                        self.layout_image(
+                            &ImageSource::Native(
+                                "camera".to_owned(),
+                                vec![TextPart::Literal(source)],
+                            ),
+                            None,
+                            ImageFit::Contain,
+                            rect,
+                        );
+                    }
+                }
+                CameraPreviewKind::Scanner => {
+                    let text = self
+                        .controller_field_value(
+                            controller,
+                            &["value".to_owned(), "text".to_owned()],
+                        )
+                        .map_or_else(String::new, |value| value.to_string());
+                    self.scene.text.push(TextRun {
+                        text,
+                        rect,
+                        clip: self.clip,
+                        font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
+                        colour: Colour::WHITE,
+                        align: TextAlign::Centre,
+                    });
+                }
+            }
+            self.push_hit_region(
+                rect,
+                Action::Controller {
+                    controller,
+                    operation: "open".to_owned(),
+                    payload: Vec::new(),
+                },
+            );
+        } else if status == "error" {
+            let message = self
+                .controller_field_value(controller, &["error".to_owned(), "message".to_owned()])
+                .map_or_else(String::new, |value| value.to_string());
+            self.scene.text.push(TextRun {
+                text: message,
+                rect,
+                clip: self.clip,
+                font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
+                colour: Colour::WHITE,
+                align: TextAlign::Centre,
+            });
+            let retryable = self
+                .controller_field_value(controller, &["error".to_owned(), "retryable".to_owned()])
+                .is_some_and(|value| matches!(value, StateValue::Bool(true)));
+            if retryable {
+                self.push_hit_region(
+                    rect,
+                    Action::Controller {
+                        controller,
+                        operation: "open".to_owned(),
+                        payload: Vec::new(),
+                    },
+                );
+            }
+        } else {
+            self.scene.camera_portal = Some(CameraPortal {
+                controller,
+                kind,
+                rect,
             });
         }
     }
@@ -3983,12 +4260,17 @@ fn stretchable(node: &Node) -> bool {
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
             | NodeKind::SelectorButton { .. }
+            | NodeKind::CameraPreview { .. }
             | NodeKind::Toggle { .. }
     )
 }
 
 fn full_bleed_image(node: &Node) -> bool {
     matches!(&node.kind, NodeKind::Image { bleed: true, .. })
+}
+
+fn camera_preview(node: &Node) -> bool {
+    matches!(&node.kind, NodeKind::CameraPreview { .. })
 }
 
 fn cross_position(origin: f32, available: f32, size: f32, align: Alignment) -> f32 {

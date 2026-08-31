@@ -17,11 +17,11 @@ use oxc::{
 use crate::{
     diagnostic::CompileError,
     ir::{
-        Action, Alignment, AndroidPermission, App, Axis, Collection, Condition, Controller,
-        ControllerId, Extension, ImageFit, ImageSource, Justification, NativeOperation, Node,
-        PayloadPart, Resource, ResourceField, ResourceId, ResourceProtocol, Route, SourceSpan,
-        State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment, TextPart, Tone,
-        Value,
+        Action, Alignment, AndroidPermission, App, Axis, CameraPreviewKind, Collection, Condition,
+        Controller, ControllerId, Extension, ImageFit, ImageSource, Justification, NativeOperation,
+        Node, PayloadPart, Resource, ResourceField, ResourceId, ResourceProtocol, Route,
+        SourceSpan, State, StateId, StateLifetime, StateShape, StateValue, Tab, TextAlignment,
+        TextPart, Tone, Value,
     },
     resolver::ModuleResolver,
 };
@@ -81,6 +81,7 @@ struct ControllerValueBinding {
     controller: ControllerId,
     path: Vec<String>,
     kind: StateShape,
+    controller_kind: NativeControllerKind,
 }
 
 struct ControllerInitialiser {
@@ -121,6 +122,14 @@ enum ExtensionFunction {
     NotificationPermission,
     LocalNotifications,
     NotificationTap,
+    CameraPermission,
+    PhotoCapture,
+    CodeScanner,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExtensionElement {
+    CameraPreview,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -131,6 +140,8 @@ enum NativeControllerKind {
     Recorder,
     Notifications,
     NotificationTap,
+    Photo,
+    Scanner,
 }
 
 #[derive(Clone, Copy)]
@@ -153,6 +164,7 @@ pub enum ModuleKind {
 struct Imports {
     extensions: BTreeSet<Extension>,
     extension_functions: HashMap<String, ExtensionFunction>,
+    extension_elements: HashMap<String, ExtensionElement>,
     ink: HashSet<String>,
     screens: HashMap<String, PathBuf>,
     type_aliases: HashMap<String, StateShape>,
@@ -178,6 +190,7 @@ fn validate_imports(
     let allowed = HashSet::from(INK_IMPORTS);
     let mut extensions = BTreeSet::new();
     let mut extension_functions = HashMap::new();
+    let mut extension_elements = HashMap::new();
     let mut ink = HashSet::new();
     let mut screens = HashMap::new();
     let mut type_aliases = HashMap::new();
@@ -214,7 +227,11 @@ fn validate_imports(
                 specifiers.as_slice()
             {
                 let local = specifier.local.name.as_str();
-                if ink.contains(local) || screens.contains_key(local) {
+                if ink.contains(local)
+                    || screens.contains_key(local)
+                    || extension_functions.contains_key(local)
+                    || extension_elements.contains_key(local)
+                {
                     return Err(CompileError::new(
                         format!("{local} is imported twice"),
                         specifier.span,
@@ -240,6 +257,22 @@ fn validate_imports(
                             "aliased Ink extension imports are not supported yet",
                             specifier.span,
                         ));
+                    }
+                    if (extension, imported.as_str()) == (Extension::Camera, "CameraPreview") {
+                        let local = specifier.local.name.to_string();
+                        if ink.contains(&local)
+                            || screens.contains_key(&local)
+                            || extension_functions.contains_key(&local)
+                            || extension_elements
+                                .insert(local.clone(), ExtensionElement::CameraPreview)
+                                .is_some()
+                        {
+                            return Err(CompileError::new(
+                                format!("{local} is imported twice"),
+                                specifier.span,
+                            ));
+                        }
+                        continue;
                     }
                     let function = match (extension, imported.as_str()) {
                         (Extension::LightSdk, "lightSdkVersion") => {
@@ -273,6 +306,11 @@ fn validate_imports(
                         (Extension::Notifications, "notificationTap") => {
                             ExtensionFunction::NotificationTap
                         }
+                        (Extension::Camera, "cameraPermission") => {
+                            ExtensionFunction::CameraPermission
+                        }
+                        (Extension::Camera, "photoCapture") => ExtensionFunction::PhotoCapture,
+                        (Extension::Camera, "codeScanner") => ExtensionFunction::CodeScanner,
                         _ => {
                             return Err(CompileError::new(
                                 format!("{imported} is not exported by this Ink extension"),
@@ -283,6 +321,7 @@ fn validate_imports(
                     let local = specifier.local.name.to_string();
                     if ink.contains(&local)
                         || screens.contains_key(&local)
+                        || extension_elements.contains_key(&local)
                         || extension_functions
                             .insert(local.clone(), function)
                             .is_some()
@@ -320,7 +359,11 @@ fn validate_imports(
                     specifier.span,
                 ));
             }
-            if screens.contains_key(local_name) || !ink.insert(imported_name.to_owned()) {
+            if screens.contains_key(local_name)
+                || extension_functions.contains_key(local_name)
+                || extension_elements.contains_key(local_name)
+                || !ink.insert(imported_name.to_owned())
+            {
                 return Err(CompileError::new(
                     format!("{local_name} is imported twice"),
                     specifier.span,
@@ -332,6 +375,7 @@ fn validate_imports(
     Ok(Imports {
         extensions,
         extension_functions,
+        extension_elements,
         ink,
         screens,
         type_aliases,
@@ -440,6 +484,12 @@ fn lower_function(
                                 | NativeControllerKind::Recorder
                         ) {
                             android_permissions.insert(AndroidPermission::Microphone);
+                        }
+                        if matches!(
+                            controller.kind,
+                            NativeControllerKind::Photo | NativeControllerKind::Scanner
+                        ) {
+                            android_permissions.insert(AndroidPermission::Camera);
                         }
                         state_names.controllers.insert(
                             name.to_owned(),
@@ -795,12 +845,40 @@ fn resource_initialiser(
                 android_permission: Some(AndroidPermission::Notifications),
             }
         }
+        ExtensionFunction::CameraPermission => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "cameraPermission() takes no arguments",
+                    call.span,
+                ));
+            }
+            ResourceInitialiser {
+                definition: Resource {
+                    module: "camera".to_owned(),
+                    operation: "permission-status".to_owned(),
+                    payload: vec![PayloadPart::Literal(String::new())],
+                    shape: StateShape::String,
+                    timeout_ms: 10_000,
+                    reload_on_resume: true,
+                    protocol: ResourceProtocol::Async,
+                },
+                request: Some(NativeOperation {
+                    module: "camera".to_owned(),
+                    operation: "request-permission".to_owned(),
+                    payload: vec![PayloadPart::Literal(String::new())],
+                    timeout_ms: 10_000,
+                }),
+                android_permission: Some(AndroidPermission::Camera),
+            }
+        }
         ExtensionFunction::LevelMeter
         | ExtensionFunction::PitchDetector
         | ExtensionFunction::AudioPlayer
         | ExtensionFunction::AudioRecorder
         | ExtensionFunction::LocalNotifications
-        | ExtensionFunction::NotificationTap => unreachable!(),
+        | ExtensionFunction::NotificationTap
+        | ExtensionFunction::PhotoCapture
+        | ExtensionFunction::CodeScanner => unreachable!(),
     };
     Ok(Some(resource))
 }
@@ -1054,6 +1132,8 @@ fn controller_initialiser(
             | ExtensionFunction::AudioRecorder
             | ExtensionFunction::LocalNotifications
             | ExtensionFunction::NotificationTap
+            | ExtensionFunction::PhotoCapture
+            | ExtensionFunction::CodeScanner
     ) {
         return Ok(None);
     }
@@ -1251,18 +1331,29 @@ fn controller_initialiser(
                 initial,
             )
         }
+        ExtensionFunction::PhotoCapture => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "photoCapture() takes no arguments",
+                    call.span,
+                ));
+            }
+            camera_controller(NativeControllerKind::Photo, "{}".to_owned())
+        }
+        ExtensionFunction::CodeScanner => {
+            camera_controller(NativeControllerKind::Scanner, scanner_config(call)?)
+        }
         _ => unreachable!(),
     };
     Ok(Some(ControllerInitialiser {
         definition: Controller {
             state: StateId(0),
-            module: if matches!(
-                kind,
-                NativeControllerKind::Notifications | NativeControllerKind::NotificationTap
-            ) {
-                "notifications"
-            } else {
-                "audio"
+            module: match kind {
+                NativeControllerKind::Notifications | NativeControllerKind::NotificationTap => {
+                    "notifications"
+                }
+                NativeControllerKind::Photo | NativeControllerKind::Scanner => "camera",
+                _ => "audio",
             }
             .to_owned(),
             kind: match kind {
@@ -1272,6 +1363,8 @@ fn controller_initialiser(
                 NativeControllerKind::Recorder => "recorder",
                 NativeControllerKind::Notifications => "local-notifications",
                 NativeControllerKind::NotificationTap => "notification-tap",
+                NativeControllerKind::Photo => "photo",
+                NativeControllerKind::Scanner => "scanner",
             }
             .to_owned(),
             config,
@@ -1280,6 +1373,147 @@ fn controller_initialiser(
         initial,
         shape,
     }))
+}
+
+fn camera_controller(
+    kind: NativeControllerKind,
+    config: String,
+) -> (NativeControllerKind, String, StateShape, StateValue) {
+    let value_shape = match kind {
+        NativeControllerKind::Photo => object_shape([
+            ("source", StateShape::String),
+            ("width", StateShape::Number),
+            ("height", StateShape::Number),
+            ("mimeType", StateShape::String),
+            ("capturedAtMs", StateShape::Number),
+        ]),
+        NativeControllerKind::Scanner => {
+            object_shape([("text", StateShape::String), ("format", StateShape::String)])
+        }
+        _ => unreachable!(),
+    };
+    let value = match kind {
+        NativeControllerKind::Photo => object_value([
+            ("source", StateValue::String(String::new())),
+            ("width", StateValue::Number(0.0)),
+            ("height", StateValue::Number(0.0)),
+            ("mimeType", StateValue::String("image/jpeg".to_owned())),
+            ("capturedAtMs", StateValue::Number(0.0)),
+        ]),
+        NativeControllerKind::Scanner => object_value([
+            ("text", StateValue::String(String::new())),
+            ("format", StateValue::String("qr".to_owned())),
+        ]),
+        _ => unreachable!(),
+    };
+    let error_shape = object_shape([
+        ("kind", StateShape::String),
+        ("message", StateShape::String),
+        ("retryable", StateShape::Bool),
+    ]);
+    let error = object_value([
+        ("kind", StateValue::String("unexpected".to_owned())),
+        ("message", StateValue::String(String::new())),
+        ("retryable", StateValue::Bool(false)),
+    ]);
+    (
+        kind,
+        config,
+        object_shape([
+            ("status", StateShape::String),
+            ("value", value_shape),
+            ("error", error_shape),
+        ]),
+        object_value([
+            ("status", StateValue::String("idle".to_owned())),
+            ("value", value),
+            ("error", error),
+        ]),
+    )
+}
+
+fn scanner_config(call: &oxc::ast::ast::CallExpression<'_>) -> Result<String, CompileError> {
+    const FORMATS: [&str; 13] = [
+        "qr",
+        "aztec",
+        "data-matrix",
+        "pdf417",
+        "codabar",
+        "code-39",
+        "code-93",
+        "code-128",
+        "ean-8",
+        "ean-13",
+        "itf",
+        "upc-a",
+        "upc-e",
+    ];
+    let formats = match call.arguments.as_slice() {
+        [] => vec!["qr".to_owned()],
+        [Argument::ObjectExpression(options)] => match options.properties.as_slice() {
+            [] => vec!["qr".to_owned()],
+            [ObjectPropertyKind::ObjectProperty(property)] => {
+                if property_name(&property.key)? != "formats" {
+                    return Err(CompileError::new(
+                        "codeScanner() accepts only formats",
+                        property.key.span(),
+                    ));
+                }
+                let Expression::ArrayExpression(values) = &property.value else {
+                    return Err(CompileError::new(
+                        "scanner formats must be an array literal",
+                        property.value.span(),
+                    ));
+                };
+                if values.elements.is_empty() {
+                    return Err(CompileError::new(
+                        "scanner formats must not be empty",
+                        values.span,
+                    ));
+                }
+                let mut seen = HashSet::new();
+                values
+                    .elements
+                    .iter()
+                    .map(|element| {
+                        let Some(Expression::StringLiteral(value)) = element.as_expression() else {
+                            return Err(CompileError::new(
+                                "scanner formats must be string literals",
+                                element.span(),
+                            ));
+                        };
+                        let format = value.value.as_str();
+                        if !FORMATS.contains(&format) {
+                            return Err(CompileError::new(
+                                format!("unknown scanner format {format:?}"),
+                                value.span,
+                            ));
+                        }
+                        if !seen.insert(format) {
+                            return Err(CompileError::new(
+                                format!("scanner format {format:?} is declared twice"),
+                                value.span,
+                            ));
+                        }
+                        Ok(format.to_owned())
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+            _ => {
+                return Err(CompileError::new(
+                    "codeScanner() accepts only { formats }",
+                    options.span,
+                ));
+            }
+        },
+        _ => {
+            return Err(CompileError::new(
+                "codeScanner() accepts an optional { formats } object",
+                call.span,
+            ));
+        }
+    };
+    Ok(serde_json::json!({ "formats": formats }).to_string())
 }
 
 fn player_options(
@@ -2153,6 +2387,9 @@ fn lower_node(
         }
         return Ok(Node::ScreenModule { path: path.clone() });
     }
+    if imports.extension_elements.get(name) == Some(&ExtensionElement::CameraPreview) {
+        return lower_camera_preview(element, states);
+    }
     require_import(imports, name, element.opening_element.name.span())?;
     match name {
         "Screen" => lower_screen(element, states, imports, item),
@@ -2406,7 +2643,19 @@ fn lower_image(
                     container.span,
                 ));
             };
-            ImageSource::Remote(vec![image_source_part(expression, states, item)?])
+            if let Some(binding) = expression_controller_value(expression, states)? {
+                if binding.controller_kind != NativeControllerKind::Photo
+                    || binding.path != ["value", "source"]
+                {
+                    return Err(CompileError::new(
+                        "Image accepts a camera source only from photoCapture().value.source",
+                        expression.span(),
+                    ));
+                }
+                ImageSource::Camera(vec![TextPart::Controller(binding.controller, binding.path)])
+            } else {
+                ImageSource::Remote(vec![image_source_part(expression, states, item)?])
+            }
         }
         _ => {
             return Err(CompileError::new(
@@ -2458,6 +2707,63 @@ fn lower_image(
         width,
         height,
         fit,
+    })
+}
+
+fn lower_camera_preview(element: &JSXElement<'_>, states: &Bindings) -> Result<Node, CompileError> {
+    let session = attribute(element, "session").ok_or_else(|| {
+        CompileError::new(
+            "CameraPreview requires session",
+            element.opening_element.span,
+        )
+    })?;
+    let Some(JSXAttributeValue::ExpressionContainer(container)) = &session.value else {
+        return Err(CompileError::new(
+            "CameraPreview session must be a photoCapture() or codeScanner() value",
+            session.span,
+        ));
+    };
+    let Some(expression) = container.expression.as_expression() else {
+        return Err(CompileError::new(
+            "CameraPreview session cannot be empty",
+            container.span,
+        ));
+    };
+    let Expression::Identifier(identifier) = unparenthesised(expression) else {
+        return Err(CompileError::new(
+            "CameraPreview session must name a camera session",
+            expression.span(),
+        ));
+    };
+    let controller = states
+        .controllers
+        .get(identifier.name.as_str())
+        .ok_or_else(|| {
+            CompileError::new(
+                "CameraPreview session must come from photoCapture() or codeScanner()",
+                identifier.span,
+            )
+        })?;
+    let kind = match controller.kind {
+        NativeControllerKind::Photo => CameraPreviewKind::Photo,
+        NativeControllerKind::Scanner => CameraPreviewKind::Scanner,
+        _ => {
+            return Err(CompileError::new(
+                "CameraPreview session must come from photoCapture() or codeScanner()",
+                identifier.span,
+            ));
+        }
+    };
+    reject_other_attributes(element, &["session"])?;
+    if !element_children(element)?.is_empty() {
+        return Err(CompileError::new(
+            "CameraPreview cannot have children",
+            element.span,
+        ));
+    }
+    Ok(Node::CameraPreview {
+        controller: controller.id,
+        kind,
     })
 }
 
@@ -2734,6 +3040,7 @@ fn validate_navigation_node(
         | Node::SelectorButton { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
+        | Node::CameraPreview { .. }
         | Node::Toggle { .. } => {}
         Node::ScreenModule { .. } => unreachable!("screen modules are expanded before validation"),
     }
@@ -2761,7 +3068,7 @@ fn lower_element_children(
     item: Option<ItemBinding<'_>>,
     parent: &str,
 ) -> Result<Vec<Node>, CompileError> {
-    element_children(element)?
+    let children = element_children(element)?
         .into_iter()
         .map(|child| match child {
             JSXChild::Element(child) => lower_content_node(child, states, imports, item),
@@ -2779,7 +3086,48 @@ fn lower_element_children(
                 child.span(),
             )),
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    if children.iter().any(contains_camera_preview)
+        && (parent != "Screen"
+            || children.len() != 1
+            || !matches!(children[0], Node::CameraPreview { .. }))
+    {
+        return Err(CompileError::new(
+            "CameraPreview must be the only direct child of Screen",
+            element.span,
+        ));
+    }
+    Ok(children)
+}
+
+fn contains_camera_preview(node: &Node) -> bool {
+    match node {
+        Node::CameraPreview { .. } => true,
+        Node::Screen { children, .. } | Node::Stack { children, .. } => {
+            children.iter().any(contains_camera_preview)
+        }
+        Node::Tabs { tabs, .. } => tabs.iter().any(|tab| contains_camera_preview(&tab.screen)),
+        Node::Navigator { routes } => routes
+            .iter()
+            .any(|route| contains_camera_preview(&route.screen)),
+        Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            contains_camera_preview(consequent)
+                || alternate.as_deref().is_some_and(contains_camera_preview)
+        }
+        Node::ForEach { template, .. } => contains_camera_preview(template),
+        Node::Text { .. }
+        | Node::TextInput { .. }
+        | Node::Button { .. }
+        | Node::SelectorButton { .. }
+        | Node::Icon { .. }
+        | Node::Image { .. }
+        | Node::Toggle { .. }
+        | Node::ScreenModule { .. } => false,
+    }
 }
 
 fn lower_dynamic_child(
@@ -3587,6 +3935,15 @@ fn lower_controller_action(
             if method != "consume" || !call.arguments.is_empty() {
                 return Err(CompileError::new(
                     "notificationTap supports consume()",
+                    call.span,
+                ));
+            }
+            Ok(vec![PayloadPart::Literal("{}".to_owned())])
+        }
+        NativeControllerKind::Photo | NativeControllerKind::Scanner => {
+            if method != "open" || !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "camera sessions support open()",
                     call.span,
                 ));
             }
@@ -4589,16 +4946,17 @@ fn expression_controller_value(
     };
     if path.is_empty() {
         return Err(CompileError::new(
-            "use a field from the audio controller",
+            "use a field from the controller",
             expression.span(),
         ));
     }
     let kind = kind_at_path(&controller.shape, &path)
-        .ok_or_else(|| CompileError::new("unknown audio controller field", expression.span()))?;
+        .ok_or_else(|| CompileError::new("unknown controller field", expression.span()))?;
     Ok(Some(ControllerValueBinding {
         controller: controller.id,
         path,
         kind: kind.clone(),
+        controller_kind: controller.kind,
     }))
 }
 

@@ -29,6 +29,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import org.json.JSONObject
 
 class MainActivity : Activity(), SurfaceHolder.Callback {
     internal val publicSansTypeface: Typeface by lazy(LazyThreadSafetyMode.NONE) {
@@ -37,12 +38,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         ).build()
     }
     private lateinit var inkView: InkSurfaceView
+    private lateinit var root: FrameLayout
     private lateinit var lightSdkAdapter: LightSdkAdapter
     private lateinit var networkAdapter: NetworkAdapter
     private lateinit var audioAdapter: AudioAdapter
     private lateinit var locationAdapter: LocationAdapter
     private lateinit var nfcAdapter: NfcAdapter
     private lateinit var backgroundAdapter: BackgroundAdapter
+    private lateinit var cameraAdapter: CameraAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private lateinit var notificationsAdapter: NotificationsAdapter
     private var engineHandle = 0L
@@ -73,6 +76,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (engineHandle == 0L || !nativeBack(engineHandle)) {
             finish()
         } else {
+            syncCameraPortal()
             drainNativeRequests()
         }
     }
@@ -93,7 +97,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             holder.setFormat(PixelFormat.RGBA_8888)
             holder.addCallback(this@MainActivity)
         }
-        val root = FrameLayout(this).apply {
+        root = FrameLayout(this).apply {
             addView(
                 inkView,
                 FrameLayout.LayoutParams(
@@ -108,6 +112,35 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         locationAdapter = createLocationAdapter(this)
         nfcAdapter = createNfcAdapter(this)
         backgroundAdapter = createBackgroundAdapter(this)
+        cameraAdapter = createCameraAdapter(
+            this,
+            root,
+            { controller, value ->
+                if (
+                    engineHandle != 0L &&
+                    nativeUpdateController(engineHandle, controller, value)
+                ) {
+                    syncCameraPortal()
+                    drainNativeRequests()
+                }
+            },
+            { controller, source ->
+                if (
+                    engineHandle != 0L &&
+                    nativeSetCameraReview(engineHandle, controller, source.orEmpty())
+                ) {
+                    syncCameraPortal()
+                    drainNativeRequests()
+                }
+            },
+            { controller ->
+                openCameraController(
+                    automaticCameraRequestId(controller),
+                    controller,
+                    "{}",
+                ) {}
+            },
+        )
         audioAdapter = createAudioAdapter(
             this,
             { samples, sampleRate ->
@@ -177,8 +210,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         lightSdkAdapter.refresh()
         backgroundAdapter.reconcile()
         if (resumedOnce && engineHandle != 0L && nativeResume(engineHandle)) {
+            syncCameraPortal()
             drainNativeRequests()
         }
+        cameraAdapter.resume()
+        syncCameraPortal()
         resumedOnce = true
         nfcAdapter.resume()
         notificationsAdapter.refreshEvents()
@@ -191,6 +227,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (engineHandle != 0L && nativeResume(engineHandle)) {
+            syncCameraPortal()
             drainNativeRequests()
         }
     }
@@ -208,6 +245,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             frame.height().coerceAtLeast(1),
         )
         surfaceAttached = true
+        syncCameraPortal()
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -216,6 +254,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         nativeResize(engineHandle, width, height)
+        syncCameraPortal()
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -234,6 +273,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         locationAdapter.stop()
         nfcAdapter.stop()
         backgroundAdapter.stop()
+        cameraAdapter.stop()
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
         detachSurface()
@@ -248,6 +288,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         persistNow()
         audioAdapter.pause()
         nfcAdapter.pause()
+        cameraAdapter.pause()
         super.onPause()
     }
 
@@ -316,6 +357,73 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         )
     }
 
+    private fun syncCameraPortal() {
+        if (engineHandle == 0L) {
+            return
+        }
+        val encoded = nativeCameraPortal(engineHandle)
+        val portal = if (encoded.isEmpty()) {
+            null
+        } else {
+            runCatching {
+                val value = JSONObject(encoded)
+                CameraPortal(
+                    controller = value.getLong("controller"),
+                    kind = value.getString("kind"),
+                    x = value.getInt("x"),
+                    y = value.getInt("y"),
+                    width = value.getInt("width"),
+                    height = value.getInt("height"),
+                )
+            }.getOrNull()
+        }
+        cameraAdapter.syncPortal(portal)
+    }
+
+    private fun openCameraController(
+        requestId: Long,
+        controller: Long,
+        payload: String,
+        complete: NativeResultHandler,
+    ) {
+        lightSdkAdapter.execute(
+            requestId,
+            PERMISSION_STATUS_OPERATION,
+            CAMERA_PERMISSION,
+        ) { result ->
+            runOnUiThread {
+                when {
+                    result is NativeResult.Failure &&
+                        result.kind == NativeErrorKind.UNAVAILABLE ->
+                        cameraAdapter.executeController(
+                            requestId,
+                            controller,
+                            OPEN_OPERATION,
+                            payload,
+                            complete,
+                        )
+                    result is NativeResult.Success && result.value == GRANTED_PERMISSION ->
+                        cameraAdapter.executeController(
+                            requestId,
+                            controller,
+                            OPEN_OPERATION,
+                            payload,
+                            complete,
+                        )
+                    result is NativeResult.Success -> cameraAdapter.permissionDenied(
+                        requestId,
+                        controller,
+                        result.value == BLOCKED_PERMISSION,
+                        complete,
+                    )
+                    else -> complete(result)
+                }
+            }
+        }
+    }
+
+    private fun automaticCameraRequestId(controller: Long): Long = -(controller + 1L)
+
     private fun drainNativeRequests() {
         while (engineHandle != 0L) {
             val requestId = nativeNextRequest(engineHandle)
@@ -332,6 +440,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 nfcAdapter.cancel(requestId)
                 backgroundAdapter.cancel(requestId)
                 notificationsAdapter.cancel(requestId)
+                cameraAdapter.cancel(requestId)
                 continue
             }
             val module = nativeRequestModule(engineHandle, requestId)
@@ -339,6 +448,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val payload = nativeRequestPayload(engineHandle, requestId)
             val controller = nativeRequestController(engineHandle, requestId)
             val lightAudioPermission = module == AUDIO_MODULE &&
+                controller < 0L &&
+                (operation == PERMISSION_STATUS_OPERATION ||
+                    operation == REQUEST_PERMISSION_OPERATION)
+            val lightCameraPermission = module == CAMERA_MODULE &&
                 controller < 0L &&
                 (operation == PERMISSION_STATUS_OPERATION ||
                     operation == REQUEST_PERMISSION_OPERATION)
@@ -350,6 +463,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 NFC_MODULE -> nfcAdapter
                 BACKGROUND_MODULE -> backgroundAdapter
                 NOTIFICATIONS_MODULE -> notificationsAdapter
+                CAMERA_MODULE -> cameraAdapter
                 else -> null
             }
             if (adapter == null) {
@@ -366,6 +480,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
             val timeout = Runnable {
                 adapter.cancel(requestId)
+                if (module == CAMERA_MODULE) {
+                    lightSdkAdapter.cancel(requestId)
+                }
                 completeNativeRequest(
                     requestId,
                     kind,
@@ -384,7 +501,19 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val execute = { result: NativeResult ->
                 runOnUiThread { completeNativeRequest(requestId, kind, result) }
             }
-            if (lightAudioPermission) {
+            if (lightCameraPermission) {
+                lightSdkAdapter.execute(requestId, operation, CAMERA_PERMISSION) { result ->
+                    if (result is NativeResult.Failure &&
+                        result.kind == NativeErrorKind.UNAVAILABLE
+                    ) {
+                        runOnUiThread {
+                            cameraAdapter.execute(requestId, operation, payload, execute)
+                        }
+                    } else {
+                        execute(result)
+                    }
+                }
+            } else if (lightAudioPermission) {
                 lightSdkAdapter.execute(requestId, operation, MICROPHONE_PERMISSION) { result ->
                     if (result is NativeResult.Failure &&
                         result.kind == NativeErrorKind.UNAVAILABLE
@@ -400,6 +529,23 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 audioAdapter.executeController(controller, operation, payload, execute)
             } else if (controller >= 0L && adapter === notificationsAdapter) {
                 notificationsAdapter.executeController(controller, operation, payload, execute)
+            } else if (controller >= 0L && adapter === cameraAdapter) {
+                if (operation != OPEN_OPERATION) {
+                    cameraAdapter.executeController(
+                        requestId,
+                        controller,
+                        operation,
+                        payload,
+                        execute,
+                    )
+                } else {
+                    openCameraController(
+                        requestId,
+                        controller,
+                        payload,
+                        execute,
+                    )
+                }
             } else if (adapter === locationAdapter) {
                 locationAdapter.execute(requestId, operation, payload) { result ->
                     val permission = if (
@@ -467,7 +613,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             is NativeResult.File -> try {
                 nativeCompleteFile(engineHandle, requestId, result.path)
             } finally {
-                File(result.path).delete()
+                if (result.deleteAfterRead) {
+                    File(result.path).delete()
+                }
             }
             is NativeResult.Failure -> if (
                 kind == NATIVE_REQUEST_RESOURCE || kind == NATIVE_REQUEST_IMAGE
@@ -483,6 +631,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 nativeCompleteAction(engineHandle, requestId)
             }
         }
+        syncCameraPortal()
         drainNativeRequests()
     }
 
@@ -547,6 +696,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 val changed = nativePointer(engineHandle, event.actionMasked, event.x, event.y)
                 if (changed) {
                     schedulePersistence()
+                    syncCameraPortal()
                 }
                 drainNativeRequests()
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
@@ -621,10 +771,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val NFC_MODULE = "nfc"
         private const val BACKGROUND_MODULE = "background"
         private const val NOTIFICATIONS_MODULE = "notifications"
+        private const val CAMERA_MODULE = "camera"
         private const val PERMISSION_STATUS_OPERATION = "permission-status"
         private const val REQUEST_PERMISSION_OPERATION = "request-permission"
         private const val MICROPHONE_PERMISSION = "microphone"
+        private const val CAMERA_PERMISSION = "camera"
+        private const val GRANTED_PERMISSION = "granted"
         private const val BLOCKED_PERMISSION = "blocked"
+        private const val OPEN_OPERATION = "open"
         private const val NATIVE_REQUEST_RESOURCE = 0
         private const val NATIVE_REQUEST_CANCEL = 2
         private const val NATIVE_REQUEST_IMAGE = 3
@@ -678,6 +832,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeNavigate(handle: Long, path: String): Boolean
+
+        @JvmStatic
+        private external fun nativeCameraPortal(handle: Long): String
+
+        @JvmStatic
+        private external fun nativeSetCameraReview(
+            handle: Long,
+            controller: Long,
+            source: String,
+        ): Boolean
 
         @JvmStatic
         private external fun nativeResume(handle: Long): Boolean

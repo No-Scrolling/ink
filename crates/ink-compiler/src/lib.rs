@@ -19,6 +19,8 @@ pub struct AppFeatures {
     pub network: bool,
     pub text_input: bool,
     pub camera_permission: bool,
+    pub photo_capture: bool,
+    pub code_scanner: bool,
     pub audio: bool,
     pub audio_playback: bool,
     pub audio_detached: bool,
@@ -131,10 +133,19 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
     let audio_detached = app.controllers.iter().any(|controller| {
         controller.kind == "player" && controller.config.contains("\"playback\":\"detached\"")
     });
+    let photo_capture = app
+        .controllers
+        .iter()
+        .any(|controller| controller.module == "camera" && controller.kind == "photo");
+    let code_scanner = app
+        .controllers
+        .iter()
+        .any(|controller| controller.module == "camera" && controller.kind == "scanner");
     Ok(GeneratedApp {
         features: AppFeatures {
             light_sdk: app.extensions.contains(&ir::Extension::LightSdk)
-                || app.extensions.contains(&ir::Extension::Location),
+                || app.extensions.contains(&ir::Extension::Location)
+                || app.extensions.contains(&ir::Extension::Camera),
             network: app.extensions.contains(&ir::Extension::Network)
                 || uses_remote_image(&app.root)
                 || audio_playback,
@@ -142,6 +153,8 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
             camera_permission: app
                 .android_permissions
                 .contains(&ir::AndroidPermission::Camera),
+            photo_capture,
+            code_scanner,
             audio: app.extensions.contains(&ir::Extension::Audio),
             audio_playback,
             audio_detached,
@@ -216,6 +229,7 @@ fn uses_remote_image(node: &ir::Node) -> bool {
         | ir::Node::SelectorButton { .. }
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
+        | ir::Node::CameraPreview { .. }
         | ir::Node::Toggle { .. } => false,
         ir::Node::ScreenModule { .. } => {
             unreachable!("screen modules are expanded before feature detection")
@@ -242,6 +256,7 @@ fn uses_text_input(node: &ir::Node) -> bool {
         | ir::Node::SelectorButton { .. }
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
+        | ir::Node::CameraPreview { .. }
         | ir::Node::Toggle { .. } => false,
         ir::Node::ScreenModule { .. } => {
             unreachable!("screen modules are expanded before feature detection")

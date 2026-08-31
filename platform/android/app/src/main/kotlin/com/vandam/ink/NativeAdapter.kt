@@ -17,7 +17,7 @@ internal sealed interface NativeResult {
 
     data class Bytes(val value: ByteArray) : NativeResult
 
-    data class File(val path: String) : NativeResult
+    data class File(val path: String, val deleteAfterRead: Boolean = true) : NativeResult
 
     data class Failure(
         val kind: NativeErrorKind,

@@ -7,6 +7,7 @@
       "dependencies": {
         "@ink/audio": "file:../../packages/audio",
         "@ink/background": "file:../../packages/background",
+        "@ink/camera": "file:../../packages/camera",
         "@ink/light-sdk": "file:../../packages/light-sdk",
         "@ink/location": "file:../../packages/location",
         "@ink/network": "file:../../packages/network",
@@ -24,6 +25,8 @@
 
     "@ink/background": ["@ink/background@file:../../packages/background", {}],
 
+    "@ink/camera": ["@ink/camera@file:../../packages/camera", {}],
+
     "@ink/light-sdk": ["@ink/light-sdk@file:../../packages/light-sdk", {}],
 
     "@ink/location": ["@ink/location@file:../../packages/location", {}],
@@ -31,6 +34,7 @@
     "@ink/network": ["@ink/network@file:../../packages/network", {}],
 
     "@ink/nfc": ["@ink/nfc@file:../../packages/nfc", {}],
+
     "@ink/notifications": ["@ink/notifications@file:../../packages/notifications", {}],
 
     "@typescript/typescript-aix-ppc64": ["@typescript/typescript-aix-ppc64@7.0.2", "", { "os": "aix", "cpu": "ppc64" }, "sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ=="],

@@ -10,10 +10,10 @@ use quote::{format_ident, quote};
 use crate::{
     icons,
     ir::{
-        Action, Alignment, App, Axis, Collection, Condition, Controller, ImageFit, ImageSource,
-        Justification, NativeOperation, Node, PayloadPart, Resource, ResourceField,
-        ResourceProtocol, State, StateLifetime, StateShape, StateValue, TextAlignment,
-        TextInputAction, TextPart, Tone, Value,
+        Action, Alignment, App, Axis, CameraPreviewKind, Collection, Condition, Controller,
+        ImageFit, ImageSource, Justification, NativeOperation, Node, PayloadPart, Resource,
+        ResourceField, ResourceProtocol, State, StateLifetime, StateShape, StateValue,
+        TextAlignment, TextInputAction, TextPart, Tone, Value,
     },
 };
 
@@ -45,8 +45,9 @@ pub fn generate(app: &App, root: &Path) -> Result<String> {
     let tokens = quote! {
         #[allow(unused_imports)]
         use ink_core::{
-            Action, Alignment, AppDefinition, Axis, Condition, ControllerDefinition, ControllerId,
-            Justification, Mask, Node, StateId, Collection, ImageSource, NativeOperation,
+            Action, Alignment, AppDefinition, Axis, CameraPreviewKind, Condition,
+            ControllerDefinition, ControllerId, Justification, Mask, Node, StateId, Collection,
+            ImageSource, NativeOperation,
             PayloadPart, ResourceDefinition, ResourceField, ResourceId, StateDefinition,
             StateValue, Route, Tab, TextAlign, TextInputAction, TextPart, Tone, Value,
         };
@@ -220,6 +221,10 @@ impl<'a> Emitter<'a> {
                         let parts = parts.iter().map(text_part);
                         quote! { ImageSource::Remote(vec![#(#parts),*]) }
                     }
+                    ImageSource::Camera(parts) => {
+                        let parts = parts.iter().map(text_part);
+                        quote! { ImageSource::Native("camera".to_owned(), vec![#(#parts),*]) }
+                    }
                 };
                 let fallback = match fallback {
                     Some(source) => {
@@ -230,6 +235,14 @@ impl<'a> Emitter<'a> {
                 };
                 let fit = image_fit_tokens(*fit);
                 quote! { Node::image(#source, #fallback, #bleed, #width, #height, #fit) }
+            }
+            Node::CameraPreview { controller, kind } => {
+                let controller = controller.0;
+                let kind = match kind {
+                    CameraPreviewKind::Photo => quote! { CameraPreviewKind::Photo },
+                    CameraPreviewKind::Scanner => quote! { CameraPreviewKind::Scanner },
+                };
+                quote! { Node::camera_preview(ControllerId::new(#controller), #kind) }
             }
             Node::Toggle {
                 label,

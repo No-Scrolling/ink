@@ -23,6 +23,8 @@ val inkUsesAudio = providers.gradleProperty("inkUsesAudio").orElse("false")
 val inkUsesAudioPlayback = providers.gradleProperty("inkUsesAudioPlayback").orElse("false")
 val inkUsesDetachedAudio = providers.gradleProperty("inkUsesDetachedAudio").orElse("false")
 val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission").orElse("false")
+val inkUsesPhotoCapture = providers.gradleProperty("inkUsesPhotoCapture").orElse("false")
+val inkUsesCodeScanner = providers.gradleProperty("inkUsesCodeScanner").orElse("false")
 val inkUsesMicrophonePermission = providers.gradleProperty("inkUsesMicrophonePermission").orElse("false")
 val inkUsesLocation = providers.gradleProperty("inkUsesLocation").orElse("false")
 val inkUsesNfc = providers.gradleProperty("inkUsesNfc").orElse("false")
@@ -79,9 +81,15 @@ val inkPermissions = buildList {
         add("android.permission.RECEIVE_BOOT_COMPLETED")
     }
 }
+val inkFeatures = buildList {
+    if (inkUsesCameraPermission.get().toBoolean()) {
+        add("android.hardware.camera")
+    }
+}
 val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
 val generateInkPermissionManifest by tasks.registering {
     inputs.property("permissions", inkPermissions.joinToString())
+    inputs.property("features", inkFeatures.joinToString())
     inputs.property("nfc", inkUsesNfc)
     inputs.property("background", inkUsesBackground)
     inputs.property("notifications", inkUsesNotifications)
@@ -94,6 +102,9 @@ val generateInkPermissionManifest by tasks.registering {
             appendLine("<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">")
             inkPermissions.forEach { permission ->
                 appendLine("    <uses-permission android:name=\"$permission\" />")
+            }
+            inkFeatures.forEach { feature ->
+                appendLine("    <uses-feature android:name=\"$feature\" android:required=\"false\" />")
             }
             if (inkUsesNfc.get().toBoolean()) {
                 appendLine(
@@ -250,6 +261,31 @@ android {
                 "src/noBackground/kotlin"
             },
         )
+        getByName("main").java.srcDir(
+            if (inkUsesPhotoCapture.get().toBoolean() || inkUsesCodeScanner.get().toBoolean()) {
+                "src/cameraSession/kotlin"
+            } else if (inkUsesCameraPermission.get().toBoolean()) {
+                "src/cameraPermission/kotlin"
+            } else {
+                "src/noCamera/kotlin"
+            },
+        )
+        if (inkUsesPhotoCapture.get().toBoolean() || inkUsesCodeScanner.get().toBoolean()) {
+            getByName("main").java.srcDir(
+                if (inkUsesPhotoCapture.get().toBoolean()) {
+                    "src/photoCapture/kotlin"
+                } else {
+                    "src/noPhotoCapture/kotlin"
+                },
+            )
+            getByName("main").java.srcDir(
+                if (inkUsesCodeScanner.get().toBoolean()) {
+                    "src/codeScanner/kotlin"
+                } else {
+                    "src/noCodeScanner/kotlin"
+                },
+            )
+        }
         if (inkUsesTextInput.get().toBoolean()) {
             getByName("main").res.srcDir("src/textInput/res")
         }
@@ -339,6 +375,9 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
         if (inkUsesBackground.get().toBoolean()) {
             addAll(listOf("--features", "background"))
         }
+        if (inkUsesPhotoCapture.get().toBoolean()) {
+            addAll(listOf("--features", "camera-photo"))
+        }
     })
     environment("INK_APP_RS", inkGeneratedSource.get())
 }
@@ -371,6 +410,9 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
         if (inkUsesBackground.get().toBoolean()) {
             addAll(listOf("--features", "background"))
         }
+        if (inkUsesPhotoCapture.get().toBoolean()) {
+            addAll(listOf("--features", "camera-photo"))
+        }
     })
     environment("INK_APP_RS", inkGeneratedSource.get())
 }
@@ -391,5 +433,14 @@ dependencies {
     }
     if (inkUsesDetachedAudio.get().toBoolean()) {
         implementation("androidx.media3:media3-session:1.10.1")
+    }
+    if (inkUsesPhotoCapture.get().toBoolean() || inkUsesCodeScanner.get().toBoolean()) {
+        implementation("androidx.camera:camera-core:1.5.0")
+        implementation("androidx.camera:camera-camera2:1.5.0")
+        implementation("androidx.camera:camera-lifecycle:1.5.0")
+        implementation("androidx.camera:camera-view:1.5.0")
+    }
+    if (inkUsesCodeScanner.get().toBoolean()) {
+        implementation("com.google.zxing:core:3.5.4")
     }
 }

@@ -222,6 +222,8 @@ fn gradle_command(
             "-PinkUsesCameraPermission={}",
             features.camera_permission
         ))
+        .arg(format!("-PinkUsesPhotoCapture={}", features.photo_capture))
+        .arg(format!("-PinkUsesCodeScanner={}", features.code_scanner))
         .arg(format!(
             "-PinkUsesMicrophonePermission={}",
             features.microphone_permission

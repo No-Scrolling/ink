@@ -7,6 +7,7 @@ import Search from "./screens/Search";
 import Settings from "./screens/Settings";
 import Audio from "./screens/modules/Audio";
 import Background from "./screens/modules/Background";
+import Camera from "./screens/modules/Camera";
 import LightSdk from "./screens/modules/LightSdk";
 import Location from "./screens/modules/Location";
 import Nfc from "./screens/modules/Nfc";
@@ -16,6 +17,8 @@ import LocalPlayback from "./screens/modules/audio/LocalPlayback";
 import Microphone from "./screens/modules/audio/Microphone";
 import Recording from "./screens/modules/audio/Recording";
 import RemotePlayback from "./screens/modules/audio/RemotePlayback";
+import Photo from "./screens/modules/camera/Photo";
+import Scan from "./screens/modules/camera/Scan";
 import RemoteImage from "./screens/modules/network/RemoteImage";
 import Customise from "./screens/settings/Customise";
 import CustomiseInterface from "./screens/settings/CustomiseInterface";
@@ -76,6 +79,15 @@ export default function LightTemplate() {
       </Route>
       <Route path="/modules/audio/microphone">
         <Microphone />
+      </Route>
+      <Route path="/modules/camera">
+        <Camera />
+      </Route>
+      <Route path="/modules/camera/photo">
+        <Photo />
+      </Route>
+      <Route path="/modules/camera/scan">
+        <Scan />
       </Route>
       <Route path="/modules/light-sdk">
         <LightSdk />

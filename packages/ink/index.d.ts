@@ -39,6 +39,11 @@ export type AsyncResource<T, E = ResourceError> = ReloadableResource &
     | { readonly status: "error"; readonly error: E }
   );
 
+/** An opaque source returned by @ink/camera and accepted only by Image. */
+export interface CameraImageSource {
+  readonly __inkCameraImageSource: never;
+}
+
 export declare function state(initial: boolean): Signal<boolean>;
 export declare function state(initial: number): Signal<number>;
 export declare function state(initial: string): Signal<string>;
@@ -139,7 +144,7 @@ export namespace Ink {
   }
 
   interface ImageProps {
-    src: string;
+    src: string | CameraImageSource;
     fallback?: string;
     bleed?: boolean;
     width: number;
