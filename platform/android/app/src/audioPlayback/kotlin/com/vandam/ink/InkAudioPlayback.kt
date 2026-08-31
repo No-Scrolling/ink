@@ -305,9 +305,14 @@ private class InkAudioPlayback(
             .put("durationMs", player?.duration?.validTime() ?: 0)
             .put("bufferedMs", player?.bufferedPosition?.coerceAtLeast(0) ?: 0)
             .put("speed", player?.playbackParameters?.speed ?: 1f)
-            .put("errorKind", failure?.kind.orEmpty())
-            .put("errorMessage", failure?.message.orEmpty())
-            .put("errorRetryable", failure?.retryable ?: false)
+            .put(
+                "error",
+                inkError(
+                    failure?.kind ?: "unexpected",
+                    failure?.message.orEmpty(),
+                    failure?.retryable ?: false,
+                ),
+            )
         updateController(controller, state.toString())
     }
 

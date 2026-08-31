@@ -1,0 +1,10 @@
+round,stack,scenario,kind,seconds
+1,Ink,Counter,clean,1.487
+1,Ink,Scroll,clean,3.323
+1,Ink,Scroll,noop,1.089
+2,Ink,Counter,clean,1.259
+2,Ink,Scroll,clean,1.216
+2,Ink,Scroll,noop,1.080
+3,Ink,Counter,clean,1.220
+3,Ink,Scroll,clean,1.213
+3,Ink,Scroll,noop,1.077

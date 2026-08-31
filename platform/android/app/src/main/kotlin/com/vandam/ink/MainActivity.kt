@@ -54,7 +54,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var engineHandle = 0L
     private var surfaceAttached = false
     private var resumedOnce = false
-    private val usesPersistence = nativeUsesPersistence()
+    private var usesPersistence = false
     private val persistenceHandler = Handler(Looper.getMainLooper())
     private val nativeRequestHandler = Handler(Looper.getMainLooper())
     private val nativeTimeouts = mutableMapOf<Long, Runnable>()
@@ -104,9 +104,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 
-        engineHandle = nativeCreate(File(noBackupFilesDir, "ink-state-v1").absolutePath)
+        val appDefinition = assets.open("app.ink").use { it.readBytes() }
+        engineHandle = nativeCreate(
+            File(noBackupFilesDir, "ink-state-v1").absolutePath,
+            appDefinition,
+        )
+        check(engineHandle != 0L) { "Ink could not load the application definition" }
+        usesPersistence = nativeUsesPersistence(engineHandle)
         inkView = InkSurfaceView().apply {
-            holder.setFormat(PixelFormat.RGBA_8888)
+            holder.setFormat(PixelFormat.OPAQUE)
             holder.addCallback(this@MainActivity)
         }
         root = FrameLayout(this).apply {
@@ -700,22 +706,43 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private val scroller = OverScroller(this@MainActivity)
         private var downY = 0f
         private var framePosted = false
+        private var renderPending = false
+        private var pendingMoveX = 0f
+        private var pendingMoveY = 0f
+        private var hasPendingMove = false
         private var lastFlingY = 0
         private var velocityTracker: VelocityTracker? = null
         private val frameCallback = Choreographer.FrameCallback {
             framePosted = false
-            if (!surfaceAttached || engineHandle == 0L || !scroller.computeScrollOffset()) {
+            if (!surfaceAttached || engineHandle == 0L) {
                 return@FrameCallback
             }
 
-            val y = scroller.currY
-            val delta = y - lastFlingY
-            lastFlingY = y
-            if (delta != 0 && !nativeScrollBy(engineHandle, delta.toFloat())) {
-                scroller.abortAnimation()
-                return@FrameCallback
+            var changed = renderPending
+            renderPending = false
+            if (hasPendingMove) {
+                hasPendingMove = false
+                changed = nativePointer(
+                    engineHandle,
+                    MotionEvent.ACTION_MOVE,
+                    pendingMoveX,
+                    pendingMoveY,
+                ) || changed
             }
-            postFlingFrame()
+            if (scroller.computeScrollOffset()) {
+                val y = scroller.currY
+                val delta = y - lastFlingY
+                lastFlingY = y
+                if (delta != 0) {
+                    if (nativeScrollBy(engineHandle, delta.toFloat())) {
+                        changed = true
+                    } else {
+                        scroller.abortAnimation()
+                    }
+                }
+            }
+            if (changed) nativeRender(engineHandle)
+            postFrame()
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -748,14 +775,42 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             }
             if (engineHandle != 0L && surfaceAttached) {
-                val changed = nativePointer(engineHandle, event.actionMasked, event.x, event.y)
+                var changed = false
+                var activated = false
+                if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                    pendingMoveX = event.x
+                    pendingMoveY = event.y
+                    hasPendingMove = true
+                    postFrame()
+                } else {
+                    if (hasPendingMove) {
+                        hasPendingMove = false
+                        changed = nativePointer(
+                            engineHandle,
+                            MotionEvent.ACTION_MOVE,
+                            pendingMoveX,
+                            pendingMoveY,
+                        )
+                    }
+                    activated = nativePointer(
+                        engineHandle,
+                        event.actionMasked,
+                        event.x,
+                        event.y,
+                    )
+                    changed = activated || changed
+                }
                 if (changed) {
+                    renderPending = true
                     schedulePersistence()
                     syncCameraPortal()
                 }
-                drainNativeRequests()
+                if (activated) {
+                    drainNativeRequests()
+                }
+                postFrame()
                 if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    if (changed) {
+                    if (activated) {
                         lightSdkAdapter.performHaptic(this)
                     }
                     syncTextInput()
@@ -789,11 +844,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 0,
                 nativeScrollMaximum(engineHandle).roundToInt(),
             )
-            postFlingFrame()
+            postFrame()
         }
 
-        private fun postFlingFrame() {
-            if (!framePosted && !scroller.isFinished) {
+        private fun postFrame() {
+            if (
+                !framePosted &&
+                (renderPending || hasPendingMove || !scroller.isFinished)
+            ) {
                 framePosted = true
                 choreographer.postFrameCallback(frameCallback)
             }
@@ -801,6 +859,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         private fun stopFling() {
             scroller.abortAnimation()
+            hasPendingMove = false
             if (framePosted) {
                 choreographer.removeFrameCallback(frameCallback)
                 framePosted = false
@@ -844,10 +903,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         @JvmStatic
-        private external fun nativeCreate(statePath: String): Long
+        private external fun nativeCreate(statePath: String, app: ByteArray): Long
 
         @JvmStatic
-        private external fun nativeUsesPersistence(): Boolean
+        private external fun nativeUsesPersistence(handle: Long): Boolean
 
         @JvmStatic
         private external fun nativePersist(handle: Long)
@@ -882,6 +941,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeScrollMaximum(handle: Long): Float
+
+        @JvmStatic
+        private external fun nativeRender(handle: Long)
 
         @JvmStatic
         private external fun nativeBack(handle: Long): Boolean

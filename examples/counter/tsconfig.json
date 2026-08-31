@@ -5,6 +5,7 @@
     "module": "Preserve",
     "moduleResolution": "bundler",
     "noEmit": true,
+    "preserveSymlinks": true,
     "strict": true,
     "target": "ESNext"
   },

@@ -8,7 +8,7 @@ export default function RemotePlayback() {
     <Screen title="Remote Playback">
       <Text>Status: {player.status}</Text>
       {player.status === "error" ? (
-        <Text>{player.errorMessage}</Text>
+        <Text>{player.error.message}</Text>
       ) : (
         <Text>{player.title}</Text>
       )}

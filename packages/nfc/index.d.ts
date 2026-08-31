@@ -1,28 +1,4 @@
-// TODO: Import these from "ink" once local file packages resolve sibling types correctly.
-type ResourceErrorKind =
-  | "unavailable"
-  | "permission-denied"
-  | "permission-blocked"
-  | "location-disabled"
-  | "nfc-disabled"
-  | "timeout"
-  | "protocol"
-  | "unexpected";
-
-interface ResourceError {
-  readonly kind: ResourceErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-type AsyncResource<T> = {
-  reload(): void;
-} &
-  (
-    | { readonly status: "loading" }
-    | { readonly status: "ready"; readonly value: T }
-    | { readonly status: "error"; readonly error: ResourceError }
-  );
+import type { AsyncResource } from "ink";
 
 export interface NfcTagOptions {
   readonly timeoutMs?: number;

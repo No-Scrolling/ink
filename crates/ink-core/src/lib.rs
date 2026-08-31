@@ -8,8 +8,10 @@ use std::{
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use unicode_segmentation::UnicodeSegmentation;
 
+mod definition;
 mod persistence;
 
+pub use definition::AppDefinitionError;
 pub use persistence::PersistenceTooLarge;
 use persistence::{decode_persisted_state, encode_persisted_state};
 
@@ -687,6 +689,8 @@ pub enum Value {
     Resource(ResourceId, ResourceField),
     Controller(ControllerId, Vec<String>),
     CombinedStatus(Vec<ResourceId>),
+    CombinedErrorResource(Vec<(String, ResourceId)>),
+    CombinedErrorField(Vec<ResourceId>, ResourceField),
     ListLength(StateId),
     Binary {
         left: Box<Value>,
@@ -746,12 +750,12 @@ pub enum Tone {
     Muted,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mask {
     pub id: u64,
     pub width: u16,
     pub height: u16,
-    pub pixels: &'static [u8],
+    pub pixels: AssetBytes,
 }
 
 impl Mask {
@@ -760,17 +764,41 @@ impl Mask {
             id,
             width,
             height,
-            pixels,
+            pixels: AssetBytes::Static(pixels),
+        }
+    }
+
+    fn owned(id: u64, width: u16, height: u16, pixels: Vec<u8>) -> Self {
+        Self {
+            id,
+            width,
+            height,
+            pixels: AssetBytes::Owned(pixels.into()),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImageAsset {
     pub id: u64,
     pub width: u32,
     pub height: u32,
-    pub compressed_pixels: &'static [u8],
+    pub compressed_pixels: AssetBytes,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AssetBytes {
+    Static(&'static [u8]),
+    Owned(Arc<[u8]>),
+}
+
+impl AsRef<[u8]> for AssetBytes {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::Static(bytes) => bytes,
+            Self::Owned(bytes) => bytes,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -809,7 +837,16 @@ impl ImageAsset {
             id,
             width,
             height,
-            compressed_pixels,
+            compressed_pixels: AssetBytes::Static(compressed_pixels),
+        }
+    }
+
+    fn owned(id: u64, width: u32, height: u32, compressed_pixels: Vec<u8>) -> Self {
+        Self {
+            id,
+            width,
+            height,
+            compressed_pixels: AssetBytes::Owned(compressed_pixels.into()),
         }
     }
 }
@@ -829,8 +866,12 @@ pub enum CameraPreviewKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
+    identity: NodeIdentity,
     kind: NodeKind,
 }
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
@@ -928,6 +969,7 @@ impl Node {
         controllers: Vec<ControllerId>,
     ) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Screen {
                 children,
                 title,
@@ -946,6 +988,7 @@ impl Node {
         justify: Justification,
     ) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Stack {
                 children,
                 axis,
@@ -958,6 +1001,7 @@ impl Node {
 
     pub fn text(parts: Vec<TextPart>, font_size: Option<f32>, align: TextAlign) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Text {
                 parts,
                 font_size,
@@ -972,6 +1016,7 @@ impl Node {
         action: TextInputAction,
     ) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::TextInput {
                 placeholder: placeholder.into(),
                 state,
@@ -987,6 +1032,7 @@ impl Node {
         action: Option<Action>,
     ) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Button {
                 label,
                 icon,
@@ -1002,6 +1048,7 @@ impl Node {
         action: Option<Action>,
     ) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::SelectorButton {
                 label: label.into(),
                 value,
@@ -1012,6 +1059,7 @@ impl Node {
 
     pub const fn icon(mask: Mask, size: f32, tone: Tone) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Icon { mask, size, tone },
         }
     }
@@ -1025,6 +1073,7 @@ impl Node {
         fit: ImageFit,
     ) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Image {
                 source,
                 fallback,
@@ -1038,6 +1087,7 @@ impl Node {
 
     pub const fn camera_preview(controller: ControllerId, kind: CameraPreviewKind) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::CameraPreview { controller, kind },
         }
     }
@@ -1050,6 +1100,7 @@ impl Node {
         on: Mask,
     ) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Toggle {
                 label: label.into(),
                 state,
@@ -1062,18 +1113,21 @@ impl Node {
 
     pub fn tabs(state: StateId, tabs: Vec<Tab>) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Tabs { state, tabs },
         }
     }
 
     pub fn navigator(routes: Vec<Route>, back: Mask) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Navigator { routes, back },
         }
     }
 
     pub fn conditional(condition: Condition, consequent: Self, alternate: Option<Self>) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::Conditional {
                 condition,
                 consequent: Box::new(consequent),
@@ -1084,6 +1138,7 @@ impl Node {
 
     pub fn for_each(collection: Collection, template: Self) -> Self {
         Self {
+            identity: NodeIdentity(0),
             kind: NodeKind::ForEach {
                 collection,
                 template: Box::new(template),
@@ -1152,6 +1207,14 @@ impl AppDefinition {
             root,
         }
     }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, AppDefinitionError> {
+        definition::decode(bytes)
+    }
+
+    pub fn uses_persistence(&self) -> bool {
+        self.states.iter().any(|state| state.persisted.is_some())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -1209,6 +1272,7 @@ pub struct Quad {
     pub rect: Rect,
     pub clip: Rect,
     pub colour: Colour,
+    pub scrolling: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1219,14 +1283,16 @@ pub struct TextRun {
     pub font_size: f32,
     pub colour: Colour,
     pub align: TextAlign,
+    pub scrolling: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MaskRun {
     pub mask: Mask,
     pub rect: Rect,
     pub clip: Rect,
     pub colour: Colour,
+    pub scrolling: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1235,6 +1301,15 @@ pub struct ImageRun {
     pub rect: Rect,
     pub clip: Rect,
     pub fit: ImageFit,
+    pub scrolling: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollBar {
+    pub track: Rect,
+    pub track_width: f32,
+    pub thumb_width: f32,
+    pub content_height: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1246,6 +1321,7 @@ pub struct CameraPortal {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
+    pub revision: u64,
     pub width: u32,
     pub height: u32,
     pub quads: Vec<Quad>,
@@ -1253,12 +1329,18 @@ pub struct Scene {
     pub masks: Vec<MaskRun>,
     pub images: Vec<ImageRun>,
     pub camera_portal: Option<CameraPortal>,
+    pub scroll_origin: f32,
+    pub scroll_offset: f32,
+    pub scroll_max: f32,
+    pub scroll_clip: Option<Rect>,
+    pub scroll_bar: Option<ScrollBar>,
 }
 
 #[derive(Clone, Debug)]
 struct HitRegion {
     rect: Rect,
     action: Action,
+    scrolling: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1271,6 +1353,20 @@ struct Pointer {
 struct MaterialisedItem<'a> {
     value: &'a StateValue,
     index: usize,
+}
+
+#[derive(Clone, Copy)]
+struct VerticalMeasure {
+    size: MeasuredSize,
+    entries: usize,
+}
+
+#[derive(Clone, Copy)]
+struct VirtualListLayout {
+    item_count: usize,
+    available_width: u32,
+    row_width: f32,
+    row_height: f32,
 }
 
 #[derive(Clone)]
@@ -1318,8 +1414,11 @@ pub struct Engine {
     viewport: Viewport,
     scene: Scene,
     materialised_root: Option<Node>,
+    virtual_lists: HashMap<NodeIdentity, VirtualListLayout>,
     hit_regions: Vec<HitRegion>,
     clip: Rect,
+    scrolling: bool,
+    scroll_origin: f32,
     scroll_offset: f32,
     scroll_max: f32,
     pointer: Option<Pointer>,
@@ -1354,7 +1453,9 @@ impl Engine {
         Self::from_state(definition, Some(bytes))
     }
 
-    fn from_state(definition: AppDefinition, bytes: Option<&[u8]>) -> (Self, Hydration) {
+    fn from_state(mut definition: AppDefinition, bytes: Option<&[u8]>) -> (Self, Hydration) {
+        let mut next_node_identity = 1;
+        assign_node_identities(&mut definition.root, &mut next_node_identity);
         let mut state = definition
             .states
             .iter()
@@ -1405,8 +1506,11 @@ impl Engine {
             viewport: Viewport::default(),
             scene: Scene::default(),
             materialised_root: None,
+            virtual_lists: HashMap::new(),
             hit_regions: Vec::new(),
             clip: Rect::default(),
+            scrolling: false,
+            scroll_origin: 0.0,
             scroll_offset: 0.0,
             scroll_max: 0.0,
             pointer: None,
@@ -1906,7 +2010,22 @@ impl Engine {
             .hit_regions
             .iter()
             .rev()
-            .find(|region| region.rect.contains(x, y))
+            .find(|region| {
+                if region.scrolling
+                    && !self
+                        .scene
+                        .scroll_clip
+                        .is_some_and(|clip| clip.contains(x, y))
+                {
+                    return false;
+                }
+                let y = if region.scrolling {
+                    y + self.scroll_offset - self.scroll_origin
+                } else {
+                    y
+                };
+                region.rect.contains(x, y)
+            })
             .map(|region| region.action.clone());
         let blurred = self.focused_input.is_some()
             && !matches!(action.as_ref(), Some(Action::FocusTextInput { .. }));
@@ -2289,6 +2408,15 @@ impl Engine {
                     };
                 Some(StateValue::String(status.to_owned()))
             }
+            Value::CombinedErrorResource(resources) => resources
+                .iter()
+                .find(|(_, resource)| self.resource_has_failed(*resource))
+                .map(|(name, _)| StateValue::String(name.clone())),
+            Value::CombinedErrorField(resources, field) => resources
+                .iter()
+                .copied()
+                .find(|resource| self.resource_has_failed(*resource))
+                .and_then(|resource| self.resource_field_value(resource, field)),
             Value::ListLength(state) => match self.state.get(state.0)? {
                 StateValue::List(values) => Some(StateValue::Number(values.len() as f64)),
                 _ => None,
@@ -2338,7 +2466,14 @@ impl Engine {
             return false;
         }
         self.scroll_offset = offset;
-        self.relayout_scene();
+        self.scene.scroll_offset = offset;
+        let window = self
+            .scene
+            .scroll_clip
+            .map_or(0.0, |clip| clip.height * 0.75);
+        if (self.scroll_offset - self.scroll_origin).abs() > window {
+            self.relayout_scene();
+        }
         true
     }
 
@@ -2697,8 +2832,16 @@ impl Engine {
         }
     }
 
+    fn resource_has_failed(&self, resource: ResourceId) -> bool {
+        matches!(
+            self.resources.get(resource.0),
+            Some(ResourceState::Failed { .. } | ResourceState::BackgroundFailed(_))
+        )
+    }
+
     fn rebuild_scene(&mut self) {
         self.sync_active_resources();
+        self.virtual_lists.clear();
         if self.viewport.width == 0 || self.viewport.height == 0 {
             self.materialised_root = None;
             self.relayout_scene();
@@ -2712,7 +2855,7 @@ impl Engine {
                     .last()
                     .expect("navigator history is never empty")
                     .route;
-                (&routes[route].screen, Some(*back))
+                (&routes[route].screen, Some(back.clone()))
             }
             _ => (&self.definition.root, None),
         };
@@ -2728,6 +2871,7 @@ impl Engine {
     }
 
     fn relayout_scene(&mut self) {
+        self.scene.revision = self.scene.revision.wrapping_add(1);
         self.scene.width = self.viewport.width;
         self.scene.height = self.viewport.height;
         self.scene.quads.clear();
@@ -2735,9 +2879,16 @@ impl Engine {
         self.scene.masks.clear();
         self.scene.images.clear();
         self.scene.camera_portal = None;
+        self.scroll_origin = self.scroll_offset;
+        self.scene.scroll_origin = self.scroll_origin;
+        self.scene.scroll_offset = self.scroll_offset;
+        self.scene.scroll_clip = None;
+        self.scene.scroll_bar = None;
         self.hit_regions.clear();
         self.visible_images.clear();
         self.scroll_max = 0.0;
+        self.scene.scroll_max = 0.0;
+        self.scrolling = false;
 
         if self.viewport.width == 0 || self.viewport.height == 0 {
             return;
@@ -2765,7 +2916,7 @@ impl Engine {
         self.sync_visible_images();
     }
 
-    fn measure(&self, node: &Node, available: Rect) -> MeasuredSize {
+    fn measure(&mut self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
             NodeKind::Screen { .. } | NodeKind::Tabs { .. } | NodeKind::Navigator { .. } => {
                 MeasuredSize {
@@ -2780,31 +2931,43 @@ impl Engine {
                 ..
             } => {
                 let gap = self.scaled(gap.unwrap_or_default());
-                let measured: Vec<_> = children
-                    .iter()
-                    .map(|child| self.measure(child, available))
-                    .collect();
                 match axis {
-                    Axis::Vertical => MeasuredSize {
-                        width: measured
+                    Axis::Vertical => {
+                        let measured = self.measure_vertical_children(children, available);
+                        let entries = measured
                             .iter()
-                            .map(|size| size.width)
-                            .fold(0.0, f32::max)
-                            .min(available.width),
-                        height: (measured.iter().map(|size| size.height).sum::<f32>()
-                            + gap * children.len().saturating_sub(1) as f32)
-                            .min(available.height),
-                    },
-                    Axis::Horizontal => MeasuredSize {
-                        width: (measured.iter().map(|size| size.width).sum::<f32>()
-                            + gap * children.len().saturating_sub(1) as f32)
-                            .min(available.width),
-                        height: measured
+                            .map(|measure| measure.entries)
+                            .sum::<usize>();
+                        MeasuredSize {
+                            width: measured
+                                .iter()
+                                .map(|measure| measure.size.width)
+                                .fold(0.0, f32::max)
+                                .min(available.width),
+                            height: (measured
+                                .iter()
+                                .map(|measure| measure.size.height)
+                                .sum::<f32>()
+                                + gap * entries.saturating_sub(1) as f32)
+                                .min(available.height),
+                        }
+                    }
+                    Axis::Horizontal => {
+                        let measured: Vec<_> = children
                             .iter()
-                            .map(|size| size.height)
-                            .fold(0.0, f32::max)
-                            .min(available.height),
-                    },
+                            .map(|child| self.measure(child, available))
+                            .collect();
+                        MeasuredSize {
+                            width: (measured.iter().map(|size| size.width).sum::<f32>()
+                                + gap * children.len().saturating_sub(1) as f32)
+                                .min(available.width),
+                            height: measured
+                                .iter()
+                                .map(|size| size.height)
+                                .fold(0.0, f32::max)
+                                .min(available.height),
+                        }
+                    }
                 }
             }
             NodeKind::Text {
@@ -2827,6 +2990,7 @@ impl Engine {
                 let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
                 let label = self.resolve_text(label);
                 let icon_width = icon
+                    .as_ref()
                     .map(|_| self.scaled(BUTTON_ICON_SIZE + BUTTON_ICON_GAP))
                     .unwrap_or_default();
                 MeasuredSize {
@@ -2889,9 +3053,113 @@ impl Engine {
                 width: available.width,
                 height: self.scaled(TOGGLE_HEIGHT).min(available.height),
             },
-            NodeKind::Conditional { .. } | NodeKind::ForEach { .. } => {
+            NodeKind::ForEach { .. } => self.measure_virtual_list(node, available).size,
+            NodeKind::Conditional { .. } => {
                 unreachable!("dynamic nodes are materialised before layout")
             }
+        }
+    }
+
+    fn measure_vertical_children(
+        &mut self,
+        children: &[Node],
+        available: Rect,
+    ) -> Vec<VerticalMeasure> {
+        children
+            .iter()
+            .map(|child| match &child.kind {
+                NodeKind::ForEach { .. } => self.measure_virtual_list(child, available),
+                _ => VerticalMeasure {
+                    size: self.measure(child, available),
+                    entries: 1,
+                },
+            })
+            .collect()
+    }
+
+    fn measure_virtual_list(&mut self, node: &Node, available: Rect) -> VerticalMeasure {
+        let NodeKind::ForEach {
+            collection,
+            template,
+        } = &node.kind
+        else {
+            unreachable!("only list nodes have virtual list geometry")
+        };
+        let item_count = self
+            .collection_items(collection)
+            .map_or(0, <[StateValue]>::len);
+        if item_count == 0 {
+            return VerticalMeasure {
+                size: MeasuredSize::default(),
+                entries: 0,
+            };
+        }
+        let available_width = available.width.to_bits();
+        if let Some(layout) = self.virtual_lists.get(&node.identity).copied()
+            && layout.item_count == item_count
+            && layout.available_width == available_width
+        {
+            return VerticalMeasure {
+                size: MeasuredSize {
+                    width: layout.row_width,
+                    height: layout.row_height * item_count as f32,
+                },
+                entries: item_count,
+            };
+        }
+
+        let item = self
+            .collection_items(collection)
+            .and_then(|items| items.first())
+            .cloned()
+            .expect("a non-empty virtual list has a first item");
+        let mut row = self.materialise(
+            template,
+            Some(MaterialisedItem {
+                value: &item,
+                index: 0,
+            }),
+        );
+        assert_eq!(row.len(), 1, "a virtual list template has one root");
+        let size = self.measure(&row.remove(0), available);
+        self.virtual_lists.insert(
+            node.identity,
+            VirtualListLayout {
+                item_count,
+                available_width,
+                row_width: size.width,
+                row_height: size.height,
+            },
+        );
+        VerticalMeasure {
+            size: MeasuredSize {
+                width: size.width,
+                height: size.height * item_count as f32,
+            },
+            entries: item_count,
+        }
+    }
+
+    fn collection_items(&self, collection: &Collection) -> Option<&[StateValue]> {
+        let value = match collection {
+            Collection::State(state) => self.state.get(state.0)?,
+            Collection::Resource(resource, path) => {
+                let value = match self.resources.get(resource.0)? {
+                    ResourceState::Ready(value) | ResourceState::BackgroundReady { value, .. } => {
+                        value
+                    }
+                    _ => return None,
+                };
+                item_at_path(value, path)?
+            }
+            Collection::Controller(controller, path) => {
+                let definition = self.definition.controllers.get(controller.0)?;
+                item_at_path(self.state.get(definition.state.0)?, path)?
+            }
+        };
+        match value {
+            StateValue::List(items) => Some(items),
+            _ => None,
         }
     }
 
@@ -2900,6 +3168,16 @@ impl Engine {
     }
 
     fn layout_node(&mut self, node: &Node, rect: Rect, screen_bottom_inset: bool) {
+        let visible = rect.intersection(self.clip);
+        if self.scrolling
+            && !matches!(
+                &node.kind,
+                NodeKind::Screen { .. } | NodeKind::Stack { .. } | NodeKind::Tabs { .. }
+            )
+            && (visible.width == 0.0 || visible.height == 0.0)
+        {
+            return;
+        }
         match &node.kind {
             NodeKind::Screen {
                 children,
@@ -2941,6 +3219,7 @@ impl Engine {
                     font_size,
                     colour: Colour::WHITE,
                     align: *align,
+                    scrolling: self.scrolling,
                 });
             }
             NodeKind::TextInput {
@@ -2953,24 +3232,25 @@ impl Engine {
                 icon,
                 underline,
                 action,
-            } => self.layout_button(label, *icon, *underline, action, rect),
+            } => self.layout_button(label, icon.clone(), *underline, action, rect),
             NodeKind::SelectorButton {
                 label,
                 value,
                 action,
             } => self.layout_selector_button(label, value, action, rect),
             NodeKind::Icon { mask, tone, .. } => self.scene.masks.push(MaskRun {
-                mask: *mask,
+                mask: mask.clone(),
                 rect,
                 clip: self.clip,
                 colour: tone_colour(*tone),
+                scrolling: self.scrolling,
             }),
             NodeKind::Image {
                 source,
                 fallback,
                 fit,
                 ..
-            } => self.layout_image(source, *fallback, *fit, rect),
+            } => self.layout_image(source, fallback.as_ref(), *fit, rect),
             NodeKind::CameraPreview { controller, kind } => {
                 self.layout_camera_preview(*controller, *kind, rect)
             }
@@ -2980,7 +3260,7 @@ impl Engine {
                 action,
                 off,
                 on,
-            } => self.layout_toggle(label, *state, action, *off, *on, rect),
+            } => self.layout_toggle(label, *state, action, off.clone(), on.clone(), rect),
             NodeKind::Tabs { state, tabs } => self.layout_tabs(*state, tabs, rect),
             NodeKind::Navigator { .. } => unreachable!("navigator is resolved before layout"),
             NodeKind::Conditional { .. } | NodeKind::ForEach { .. } => {
@@ -2990,6 +3270,7 @@ impl Engine {
     }
 
     fn materialise(&self, node: &Node, item: Option<MaterialisedItem<'_>>) -> Vec<Node> {
+        let identity = node.identity;
         let node = match &node.kind {
             NodeKind::Screen {
                 children,
@@ -2998,7 +3279,7 @@ impl Engine {
                 resources,
                 controllers,
             } => Node::screen(
-                self.materialise_children(children, item),
+                self.materialise_vertical_children(children, item),
                 title.clone(),
                 *centred,
                 resources.clone(),
@@ -3011,7 +3292,11 @@ impl Engine {
                 align,
                 justify,
             } => Node::stack(
-                self.materialise_children(children, item),
+                if *axis == Axis::Vertical {
+                    self.materialise_vertical_children(children, item)
+                } else {
+                    self.materialise_children(children, item)
+                },
                 *axis,
                 *gap,
                 *align,
@@ -3029,7 +3314,7 @@ impl Engine {
                 action,
             } => Node::button(
                 self.materialise_text(label, item),
-                *icon,
+                icon.clone(),
                 *underline,
                 action
                     .as_ref()
@@ -3044,7 +3329,7 @@ impl Engine {
                 fit,
             } => Node::image(
                 match source {
-                    ImageSource::Asset(asset) => ImageSource::Asset(*asset),
+                    ImageSource::Asset(asset) => ImageSource::Asset(asset.clone()),
                     ImageSource::Remote(parts) => {
                         ImageSource::Remote(self.materialise_text(parts, item))
                     }
@@ -3052,7 +3337,7 @@ impl Engine {
                         ImageSource::Native(module.clone(), self.materialise_text(parts, item))
                     }
                 },
-                *fallback,
+                fallback.clone(),
                 *bleed,
                 *width,
                 *height,
@@ -3078,7 +3363,7 @@ impl Engine {
                     .map(|tab| {
                         let mut screens = self.materialise(&tab.screen, item);
                         assert_eq!(screens.len(), 1, "a tab has exactly one screen");
-                        Tab::new(tab.icon, tab.action.clone(), screens.remove(0))
+                        Tab::new(tab.icon.clone(), tab.action.clone(), screens.remove(0))
                     })
                     .collect(),
             ),
@@ -3091,7 +3376,7 @@ impl Engine {
                         Route::new(route.path.clone(), screens.remove(0))
                     })
                     .collect(),
-                *back,
+                back.clone(),
             ),
             NodeKind::Conditional {
                 condition,
@@ -3142,7 +3427,28 @@ impl Engine {
             }
             _ => node.clone(),
         };
+        let mut node = node;
+        node.identity = identity;
         vec![node]
+    }
+
+    fn materialise_vertical_children(
+        &self,
+        children: &[Node],
+        item: Option<MaterialisedItem<'_>>,
+    ) -> Vec<Node> {
+        children
+            .iter()
+            .flat_map(|child| {
+                if let NodeKind::ForEach { template, .. } = &child.kind
+                    && virtualisable_template(template)
+                {
+                    vec![child.clone()]
+                } else {
+                    self.materialise(child, item)
+                }
+            })
+            .collect()
     }
 
     fn materialise_children(
@@ -3328,6 +3634,7 @@ impl Engine {
                 font_size: self.scaled_font(HEADER_TEXT_SIZE),
                 colour: Colour::WHITE,
                 align: TextAlign::Centre,
+                scrolling: self.scrolling,
             });
         }
 
@@ -3370,12 +3677,10 @@ impl Engine {
         } else {
             self.scaled(CONTENT_GAP)
         };
-        let sizes = children
-            .iter()
-            .map(|child| self.measure(child, unbounded_content))
-            .collect::<Vec<_>>();
-        let content_height = sizes.iter().map(|size| size.height).sum::<f32>()
-            + gap * children.len().saturating_sub(1) as f32;
+        let sizes = self.measure_vertical_children(children, unbounded_content);
+        let entries = sizes.iter().map(|measure| measure.entries).sum::<usize>();
+        let content_height = sizes.iter().map(|measure| measure.size.height).sum::<f32>()
+            + gap * entries.saturating_sub(1) as f32;
         let inset_bottom = if first_child_is_full_bleed {
             requested_bottom_inset
                 .min((rect.height - header_height - inset_top - content_height).max(0.0))
@@ -3388,6 +3693,10 @@ impl Engine {
         };
         self.scroll_max = (content_height - content.height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, self.scroll_max);
+        self.scroll_origin = self.scroll_offset;
+        self.scene.scroll_origin = self.scroll_origin;
+        self.scene.scroll_offset = self.scroll_offset;
+        self.scene.scroll_max = self.scroll_max;
 
         let scroll_clip = Rect {
             x: rect.x,
@@ -3395,8 +3704,14 @@ impl Engine {
             width: rect.width,
             height: content.height,
         };
+        self.scene.scroll_clip = Some(scroll_clip);
         let previous_clip = self.clip;
-        self.clip = self.clip.intersection(scroll_clip);
+        self.clip = Rect {
+            y: scroll_clip.y - scroll_clip.height,
+            height: scroll_clip.height * 3.0,
+            ..scroll_clip
+        };
+        self.scrolling = true;
         self.layout_vertical_children_with_sizes(
             children,
             sizes,
@@ -3408,48 +3723,35 @@ impl Engine {
                 Justification::Start
             },
             Rect {
-                y: content.y - self.scroll_offset,
+                y: content.y - self.scroll_origin,
                 height: content.height.max(content_height),
                 ..content
             },
         );
+        self.scrolling = false;
         self.clip = previous_clip;
 
         if self.scroll_max > 0.0 {
             let track_width = self.scaled(SCROLL_TRACK_WIDTH);
             let thumb_width = self.scaled(SCROLL_THUMB_WIDTH);
             let track_x = rect.x + rect.width - self.scaled(SCROLL_TRACK_END);
-            let thumb_height = (content.height * content.height / content_height)
-                .clamp(thumb_width, content.height);
-            let thumb_y =
-                content.y + self.scroll_offset / self.scroll_max * (content.height - thumb_height);
-            let clip = previous_clip.intersection(scroll_clip);
-            self.scene.quads.push(Quad {
-                rect: Rect {
+            self.scene.scroll_bar = Some(ScrollBar {
+                track: Rect {
                     x: track_x,
                     y: content.y,
                     width: track_width,
                     height: content.height,
                 },
-                clip,
-                colour: Colour::WHITE,
-            });
-            self.scene.quads.push(Quad {
-                rect: Rect {
-                    x: track_x - (thumb_width - track_width) / 2.0,
-                    y: thumb_y,
-                    width: thumb_width,
-                    height: thumb_height,
-                },
-                clip,
-                colour: Colour::WHITE,
+                track_width,
+                thumb_width,
+                content_height,
             });
         }
 
-        if let Some(back) = self.back_icon {
+        if let Some(back) = &self.back_icon {
             let icon_size = self.scaled(HEADER_BACK_ICON_SIZE);
             self.scene.masks.push(MaskRun {
-                mask: back,
+                mask: back.clone(),
                 rect: Rect {
                     x: rect.x + header_inset + self.scaled(HEADER_BACK_OFFSET_X),
                     y: rect.y + self.scaled(HEADER_BACK_OFFSET_Y),
@@ -3458,6 +3760,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
         }
     }
@@ -3487,33 +3790,34 @@ impl Engine {
         justify: Justification,
         rect: Rect,
     ) {
-        let sizes: Vec<_> = children
-            .iter()
-            .map(|child| self.measure(child, rect))
-            .collect();
+        let sizes = self.measure_vertical_children(children, rect);
         self.layout_vertical_children_with_sizes(children, sizes, gap, align, justify, rect);
     }
 
     fn layout_vertical_children_with_sizes(
         &mut self,
         children: &[Node],
-        sizes: Vec<MeasuredSize>,
+        sizes: Vec<VerticalMeasure>,
         gap: f32,
         align: Alignment,
         justify: Justification,
         rect: Rect,
     ) {
-        let content_height = sizes.iter().map(|size| size.height).sum::<f32>()
-            + gap * children.len().saturating_sub(1) as f32;
-        let (mut cursor, actual_gap) = distribution(
-            rect.y,
-            rect.height,
-            content_height,
-            gap,
-            children.len(),
-            justify,
-        );
-        for (child, size) in children.iter().zip(sizes) {
+        let entries = sizes.iter().map(|measure| measure.entries).sum::<usize>();
+        let content_height = sizes.iter().map(|measure| measure.size.height).sum::<f32>()
+            + gap * entries.saturating_sub(1) as f32;
+        let (mut cursor, actual_gap) =
+            distribution(rect.y, rect.height, content_height, gap, entries, justify);
+        for (child, measure) in children.iter().zip(sizes) {
+            if measure.entries == 0 {
+                continue;
+            }
+            let size = measure.size;
+            if matches!(&child.kind, NodeKind::ForEach { .. }) {
+                self.layout_virtual_list(child, cursor, actual_gap, align, rect);
+                cursor += size.height + actual_gap * measure.entries as f32;
+                continue;
+            }
             let bleed = full_bleed_image(child);
             let width = if bleed {
                 self.viewport.width as f32
@@ -3537,6 +3841,87 @@ impl Engine {
                 },
             );
             cursor += size.height + actual_gap;
+        }
+    }
+
+    fn layout_virtual_list(
+        &mut self,
+        node: &Node,
+        top: f32,
+        gap: f32,
+        align: Alignment,
+        available: Rect,
+    ) {
+        let NodeKind::ForEach {
+            collection,
+            template,
+        } = &node.kind
+        else {
+            unreachable!("only list nodes have virtual list layout")
+        };
+        let Some(layout) = self.virtual_lists.get(&node.identity).copied() else {
+            return;
+        };
+        let stride = layout.row_height + gap;
+        if layout.item_count == 0 || stride <= 0.0 {
+            return;
+        }
+        let overscan = 1.0;
+        let first = (((self.clip.y - top) / stride).floor() - overscan)
+            .max(0.0)
+            .min(layout.item_count as f32) as usize;
+        let last = ((((self.clip.y + self.clip.height - top) / stride).ceil() + overscan)
+            .max(0.0)
+            .min(layout.item_count as f32)) as usize;
+
+        for index in first..last {
+            let Some(item) = self
+                .collection_items(collection)
+                .and_then(|items| items.get(index))
+                .cloned()
+            else {
+                break;
+            };
+            let mut row = self.materialise(
+                template,
+                Some(MaterialisedItem {
+                    value: &item,
+                    index,
+                }),
+            );
+            assert_eq!(row.len(), 1, "a virtual list template has one root");
+            let row = row.remove(0);
+            let row_y = top + stride * index as f32;
+            let size = self.measure(
+                &row,
+                Rect {
+                    y: row_y,
+                    height: layout.row_height,
+                    ..available
+                },
+            );
+            let bleed = full_bleed_image(&row);
+            let width = if bleed {
+                self.viewport.width as f32
+            } else if align == Alignment::Stretch && stretchable(&row) {
+                available.width
+            } else {
+                size.width.min(available.width)
+            };
+            let x = if bleed {
+                0.0
+            } else {
+                cross_position(available.x, available.width, width, align)
+            };
+            self.layout(
+                &row,
+                Rect {
+                    x,
+                    y: row_y,
+                    width,
+                    height: layout.row_height,
+                },
+            );
         }
     }
 
@@ -3603,6 +3988,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
             text_x += size + self.scaled(BUTTON_ICON_GAP);
         }
@@ -3624,6 +4010,7 @@ impl Engine {
             font_size,
             colour: Colour::WHITE,
             align: TextAlign::Start,
+            scrolling: self.scrolling,
         });
         if underline {
             let underline_height = self.control_line_height();
@@ -3636,6 +4023,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
         }
         if let Some(action) = action {
@@ -3661,6 +4049,7 @@ impl Engine {
             font_size: self.scaled_font(SELECTOR_LABEL_SIZE),
             colour: Colour::WHITE,
             align: TextAlign::Start,
+            scrolling: self.scrolling,
         });
         self.layout_button(
             value,
@@ -3708,6 +4097,7 @@ impl Engine {
             font_size,
             colour: Colour::WHITE,
             align: TextAlign::Start,
+            scrolling: self.scrolling,
         });
         if focused && !value.is_empty() {
             self.scene.quads.push(Quad {
@@ -3719,6 +4109,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
         }
         let underline_height = self.control_line_height();
@@ -3731,6 +4122,7 @@ impl Engine {
             },
             clip: self.clip,
             colour: Colour::WHITE,
+            scrolling: self.scrolling,
         });
         self.push_hit_region(rect, Action::FocusTextInput { state, action });
     }
@@ -3763,6 +4155,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
             x += line_width;
             self.scene.masks.push(MaskRun {
@@ -3775,6 +4168,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
         } else {
             self.scene.masks.push(MaskRun {
@@ -3787,6 +4181,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
             x += icon_size;
             self.scene.quads.push(Quad {
@@ -3798,6 +4193,7 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: Colour::WHITE,
+                scrolling: self.scrolling,
             });
         }
 
@@ -3815,6 +4211,7 @@ impl Engine {
             font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
             colour: Colour::WHITE,
             align: TextAlign::Start,
+            scrolling: self.scrolling,
         });
         self.push_hit_region(rect, action.clone());
     }
@@ -3877,7 +4274,7 @@ impl Engine {
                 height: nav_height,
             };
             self.scene.masks.push(MaskRun {
-                mask: tab.icon,
+                mask: tab.icon.clone(),
                 rect: Rect {
                     x: centres[index] - icon_size / 2.0,
                     y: icon_y,
@@ -3890,6 +4287,7 @@ impl Engine {
                 } else {
                     Colour::MUTED
                 },
+                scrolling: self.scrolling,
             });
             self.push_hit_region(slot, tab.action.clone());
         }
@@ -3934,7 +4332,7 @@ impl Engine {
     fn layout_image(
         &mut self,
         source: &ImageSource,
-        fallback: Option<ImageAsset>,
+        fallback: Option<&ImageAsset>,
         fit: ImageFit,
         rect: Rect,
     ) {
@@ -3943,11 +4341,11 @@ impl Engine {
             return;
         }
         let image = match source {
-            ImageSource::Asset(asset) => Some(ImageData::Asset(*asset)),
+            ImageSource::Asset(asset) => Some(ImageData::Asset(asset.clone())),
             ImageSource::Remote(parts) => {
                 let url = self.resolve_text(parts);
                 if url.is_empty() {
-                    fallback.map(ImageData::Asset)
+                    fallback.cloned().map(ImageData::Asset)
                 } else {
                     let key = RemoteImageKey {
                         module: "network".to_owned(),
@@ -3966,13 +4364,13 @@ impl Engine {
                     if loaded.is_none() {
                         self.queue_remote_image(key);
                     }
-                    loaded.or_else(|| fallback.map(ImageData::Asset))
+                    loaded.or_else(|| fallback.cloned().map(ImageData::Asset))
                 }
             }
             ImageSource::Native(module, parts) => {
                 let source = self.resolve_text(parts);
                 if source.is_empty() {
-                    fallback.map(ImageData::Asset)
+                    fallback.cloned().map(ImageData::Asset)
                 } else {
                     let key = RemoteImageKey {
                         module: module.clone(),
@@ -3991,7 +4389,7 @@ impl Engine {
                     if loaded.is_none() {
                         self.queue_remote_image(key);
                     }
-                    loaded.or_else(|| fallback.map(ImageData::Asset))
+                    loaded.or_else(|| fallback.cloned().map(ImageData::Asset))
                 }
             }
         };
@@ -4001,6 +4399,7 @@ impl Engine {
                 rect,
                 clip: self.clip,
                 fit,
+                scrolling: self.scrolling,
             });
         }
     }
@@ -4015,6 +4414,7 @@ impl Engine {
             rect,
             clip: self.clip,
             colour: Colour::BLACK,
+            scrolling: self.scrolling,
         });
         if let Some(source) = self.camera_reviews.get(&controller).cloned() {
             let action_height = self.scaled(CAMERA_REVIEW_ACTION_HEIGHT).min(rect.height);
@@ -4059,6 +4459,7 @@ impl Engine {
                     font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
                     colour: Colour::WHITE,
                     align: TextAlign::Centre,
+                    scrolling: self.scrolling,
                 });
                 self.push_hit_region(
                     action_rect,
@@ -4111,6 +4512,7 @@ impl Engine {
                         font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
                         colour: Colour::WHITE,
                         align: TextAlign::Centre,
+                        scrolling: self.scrolling,
                     });
                 }
             }
@@ -4133,6 +4535,7 @@ impl Engine {
                 font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
                 colour: Colour::WHITE,
                 align: TextAlign::Centre,
+                scrolling: self.scrolling,
             });
             let retryable = self
                 .controller_field_value(controller, &["error".to_owned(), "retryable".to_owned()])
@@ -4210,7 +4613,11 @@ impl Engine {
     fn push_hit_region(&mut self, rect: Rect, action: Action) {
         let rect = rect.intersection(self.clip);
         if rect.width > 0.0 && rect.height > 0.0 {
-            self.hit_regions.push(HitRegion { rect, action });
+            self.hit_regions.push(HitRegion {
+                rect,
+                action,
+                scrolling: self.scrolling,
+            });
         }
     }
 }
@@ -4259,6 +4666,66 @@ pub fn emoji_index(grapheme: &str) -> Option<usize> {
 struct MeasuredSize {
     width: f32,
     height: f32,
+}
+
+fn assign_node_identities(node: &mut Node, next: &mut usize) {
+    node.identity = NodeIdentity(*next);
+    *next = next.checked_add(1).expect("an app has too many nodes");
+    match &mut node.kind {
+        NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => {
+            for child in children {
+                assign_node_identities(child, next);
+            }
+        }
+        NodeKind::Tabs { tabs, .. } => {
+            for tab in tabs {
+                assign_node_identities(&mut tab.screen, next);
+            }
+        }
+        NodeKind::Navigator { routes, .. } => {
+            for route in routes {
+                assign_node_identities(&mut route.screen, next);
+            }
+        }
+        NodeKind::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            assign_node_identities(consequent, next);
+            if let Some(alternate) = alternate {
+                assign_node_identities(alternate, next);
+            }
+        }
+        NodeKind::ForEach { template, .. } => assign_node_identities(template, next),
+        NodeKind::Text { .. }
+        | NodeKind::TextInput { .. }
+        | NodeKind::Button { .. }
+        | NodeKind::SelectorButton { .. }
+        | NodeKind::Icon { .. }
+        | NodeKind::Image { .. }
+        | NodeKind::CameraPreview { .. }
+        | NodeKind::Toggle { .. } => {}
+    }
+}
+
+fn virtualisable_template(node: &Node) -> bool {
+    match &node.kind {
+        NodeKind::Stack { children, .. } => children.iter().all(virtualisable_template),
+        NodeKind::Text { .. }
+        | NodeKind::TextInput { .. }
+        | NodeKind::Button { .. }
+        | NodeKind::SelectorButton { .. }
+        | NodeKind::Icon { .. }
+        | NodeKind::Image { .. }
+        | NodeKind::Toggle { .. } => true,
+        NodeKind::Screen { .. }
+        | NodeKind::CameraPreview { .. }
+        | NodeKind::Tabs { .. }
+        | NodeKind::Navigator { .. }
+        | NodeKind::Conditional { .. }
+        | NodeKind::ForEach { .. } => false,
+    }
 }
 
 fn tone_colour(tone: Tone) -> Colour {
@@ -4502,7 +4969,11 @@ fn stretchable(node: &Node) -> bool {
 }
 
 fn full_bleed_image(node: &Node) -> bool {
-    matches!(&node.kind, NodeKind::Image { bleed: true, .. })
+    match &node.kind {
+        NodeKind::Image { bleed: true, .. } => true,
+        NodeKind::ForEach { template, .. } => full_bleed_image(template),
+        _ => false,
+    }
 }
 
 fn camera_preview(node: &Node) -> bool {

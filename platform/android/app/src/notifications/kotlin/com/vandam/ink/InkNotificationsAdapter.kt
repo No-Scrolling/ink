@@ -183,9 +183,14 @@ private class InkNotificationsAdapter(
                 .put("status", if (error == null) "idle" else "error")
                 .put("operation", operation)
                 .put("id", id)
-                .put("errorKind", error?.kind.orEmpty())
-                .put("errorMessage", error?.message.orEmpty())
-                .put("errorRetryable", error?.retryable ?: false)
+                .put(
+                    "error",
+                    inkError(
+                        error?.kind ?: "unexpected",
+                        error?.message.orEmpty(),
+                        error?.retryable ?: false,
+                    ),
+                )
                 .toString(),
         )
     }

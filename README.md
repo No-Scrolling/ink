@@ -6,7 +6,7 @@
 <br><br>
 <p>An experimental TypeScript framework for small, native Light Phone III apps.</p>
 
-Ink compiles a restricted TypeScript and TSX dialect ahead of time into Rust. Apps use a native Vulkan renderer and do not include a JavaScript runtime.
+Ink compiles a restricted TypeScript and TSX dialect ahead of time into a compact native app definition. Apps use a native Rust/Vulkan runtime and do not include a JavaScript runtime.
 
 > [!NOTE]
 > Ink is an early experiment and is not ready for production apps.
@@ -35,7 +35,7 @@ export default function Counter() {
 ## Features
 
 - TypeScript and TSX authoring
-- Ahead-of-time Rust compilation
+- Ahead-of-time compilation to a compact native app definition
 - Native Vulkan rendering with `wgpu`
 - Public Sans and Material Symbols
 - Tabs and stack navigation
@@ -67,6 +67,28 @@ export default function Counter() {
 - `@ink/camera` — Permission, photo capture and code scanning
 - `@ink/nfc` — NFC tag and NDEF reading
 - `@ink/background` — Typed, persisted periodic JSON resources
+
+## Benchmarks
+
+Six equivalent arm64 release applications were measured on the same Android 14 emulator. Values are medians; start-up also shows p95.
+
+| Counter | Ink | Expo | Light SDK |
+| --- | ---: | ---: | ---: |
+| APK | **3.06 MB** | 26.30 MB | 25.83 MB |
+| Clean release build | **1.26 s** | 53.59 s | 46.07 s |
+| Cold start | **181 / 206 ms** | 204 / 267 ms | 1,156 / 1,177 ms |
+| Idle PSS / RSS | **25.0 / 135.7 MB** | 61.9 / 179.7 MB | 25.3 / 142.5 MB |
+| CPU for 100 taps | **220 ms** | 400 ms | 310 ms |
+
+| 1,000-row scroll | Ink | Expo | Light SDK |
+| --- | ---: | ---: | ---: |
+| APK | **3.06 MB** | 26.30 MB | 25.93 MB |
+| Idle PSS / RSS | **25.2 / 135.8 MB** | 110.4 / 229.1 MB | 40.9 / 158.7 MB |
+| CPU for 12 swipes | **680 ms** | 850 ms | 980 ms |
+| Average compositor cadence | 57.0 fps | 54.8 fps | **57.6 fps** |
+| p95 presented-frame interval | 22 ms | **17 ms** | 21 ms |
+
+Ink retains its size, build and memory advantages while using the least process CPU in the scrolling workload. See the [full protocol, raw results and design](benchmarks/README.md).
 
 ## LightOS support
 
@@ -234,3 +256,4 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Location](docs/location.md)
 - [NFC](docs/nfc.md)
 - [Camera](docs/camera.md)
+- [Performance](docs/performance.md)

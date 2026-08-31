@@ -1,0 +1,34 @@
+{
+  "environment": {
+    "sdk": 34,
+    "abi": "arm64-v8a",
+    "width": 1080,
+    "height": 1240,
+    "refreshRate": 60
+  },
+  "counter": {
+    "apkBytes": 3100000,
+    "startupMedianMs": 325,
+    "startupP95Ms": 360,
+    "idlePssKb": 20000,
+    "idleRssKb": 145000,
+    "threads": 26,
+    "workloadCpuMs": 900
+  },
+  "scroll": {
+    "apkBytes": 3200000,
+    "startupMedianMs": 325,
+    "startupP95Ms": 360,
+    "idlePssKb": 20000,
+    "idleRssKb": 145000,
+    "threads": 26,
+    "workloadCpuMs": 1200,
+    "averageFps": 60,
+    "presentP95Ms": 17
+  },
+  "build": {
+    "counterCleanSeconds": 18,
+    "scrollCleanSeconds": 18,
+    "scrollNoopSeconds": 2
+  }
+}

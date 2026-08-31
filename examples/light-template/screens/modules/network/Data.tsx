@@ -29,7 +29,9 @@ export default function Data() {
       {match(page, {
         loading: () => <Text>Loading resources...</Text>,
         ready: (result) => <Text>{result.value.first.title}</Text>,
-        error: () => <Text>Resources unavailable</Text>,
+        error: (result) => (
+          <Text>{result.error.resource}: {result.error.error.message}</Text>
+        ),
       })}
       {match(cached, {
         loading: () => <Text>Loading cache...</Text>,

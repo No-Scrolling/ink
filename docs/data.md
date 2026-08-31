@@ -90,9 +90,13 @@ const page = all({ weather, airQuality });
 {match(page, {
   loading: () => <Text>Loading...</Text>,
   ready: (result) => <Text>{result.value.weather.temperature}</Text>,
-  error: () => <Text>Could not load this page</Text>,
+  error: (result) => (
+    <Text>{result.error.resource}: {result.error.error.message}</Text>
+  ),
 })}
 ```
+
+The error identifies the failed member and preserves its structured error value.
 
 `computed` lowers a pure scalar expression into the native value graph. It supports scalar state, resource, controller and route values with `+`, `-`, `*` and `/`.
 

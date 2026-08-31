@@ -45,7 +45,7 @@ Adopt these ideas:
 
 - Add a dedicated `ink-cli` binary crate using `clap` derive; keep compilation as a library call rather than spawning the current compiler executable.
 - Keep the initial interface deliberately small: `ink check`, `ink build`, `ink dev` and `ink doctor`, plus `-C <DIR>`, `--verbose` and `--version` where useful.
-- Discover `ink.toml` from the working directory and keep generated Rust, Gradle paths and ADB details behind the CLI interface.
+- Discover `ink.toml` from the working directory and keep compiled app artefacts, Gradle paths and ADB details behind the CLI interface.
 - Build one small output module with TTY-aware colour, plain CI output, diagnostic text on stderr and machine-meaningful results on stdout.
 - Show quiet phase lines or a spinner for slow builds, clear it before streaming an underlying failure, and expose full Cargo/Gradle/ADB output through `--verbose`.
 - Write intentional, grouped help instead of accepting `clap`'s default layout. Ink only has a few commands, so this should be tens of lines rather than a reusable rendering framework.

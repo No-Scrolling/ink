@@ -1,35 +1,12 @@
-// TODO: Import these from "ink" once local file packages resolve sibling types correctly.
-export type ResourceErrorKind =
-  | "unavailable"
-  | "permission-denied"
-  | "permission-blocked"
-  | "location-disabled"
-  | "nfc-disabled"
-  | "timeout"
-  | "protocol"
-  | "unexpected";
+import type {
+  AsyncResource,
+  InkError,
+  PermissionResource,
+  PermissionStatus,
+} from "ink";
 
-export interface ResourceError {
-  readonly kind: ResourceErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-export type AsyncResource<T> = { reload(): void } & (
-  | { readonly status: "loading" }
-  | { readonly status: "ready"; readonly value: T }
-  | { readonly status: "error"; readonly error: ResourceError }
-);
-
-export type LightSdkPermissionStatus =
-  | "granted"
-  | "denied"
-  | "blocked"
-  | "unknown";
-
-export type LightSdkPermission = AsyncResource<LightSdkPermissionStatus> & {
-  request(): void;
-};
+export type LightSdkPermissionStatus = PermissionStatus;
+export type LightSdkPermission = PermissionResource;
 
 export declare function lightSdkVersion(): AsyncResource<string>;
 export declare function lightSdkPermission(permission: "camera"): LightSdkPermission;
@@ -53,9 +30,7 @@ export type RingtoneInstaller = RingtoneActions &
     | { readonly status: "idle" | "installing" | "installed" }
     | {
         readonly status: "error";
-        readonly errorKind: RingtoneErrorKind;
-        readonly errorMessage: string;
-        readonly errorRetryable: boolean;
+        readonly error: InkError<RingtoneErrorKind>;
       }
   );
 
@@ -97,9 +72,7 @@ export type LightPush = LightPushActions &
     | { readonly status: "idle" | "registering" | "synchronising" | "ready" }
     | {
         readonly status: "error";
-        readonly errorKind: LightPushErrorKind;
-        readonly errorMessage: string;
-        readonly errorRetryable: boolean;
+        readonly error: InkError<LightPushErrorKind>;
       }
   );
 

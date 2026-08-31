@@ -43,7 +43,6 @@ pub(crate) struct ResolvedConfig {
     pub(crate) version: String,
     pub(crate) version_code: u32,
     pub(crate) source: PathBuf,
-    pub(crate) generated: PathBuf,
     pub(crate) android_resources: PathBuf,
     pub(crate) signing: Option<ReleaseSigning>,
     pub(crate) light_server: String,
@@ -64,7 +63,6 @@ impl ResolvedConfig {
             version: config.version,
             version_code: config.version_code,
             source: directory.join("App.tsx"),
-            generated: directory.join(".ink/generated/app.rs"),
             android_resources: directory.join(".ink/android/res"),
             signing: config.signing.map(|signing| ReleaseSigning {
                 keystore: directory.join(signing.keystore),

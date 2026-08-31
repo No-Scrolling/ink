@@ -60,7 +60,7 @@ impl AudioProcessor for LevelProcessor {
             ),
             ("rms", StateValue::Number(rms)),
             ("peak", StateValue::Number(peak)),
-            ("error", StateValue::String(String::new())),
+            ("error", error_value()),
         ]))
     }
 
@@ -225,7 +225,15 @@ fn pitch_value(
         ("octave", StateValue::Number(f64::from(octave))),
         ("cents", StateValue::Number(cents)),
         ("confidence", StateValue::Number(confidence)),
-        ("error", StateValue::String(String::new())),
+        ("error", error_value()),
+    ])
+}
+
+fn error_value() -> StateValue {
+    object([
+        ("kind", StateValue::String("unexpected".to_owned())),
+        ("message", StateValue::String(String::new())),
+        ("retryable", StateValue::Bool(false)),
     ])
 }
 

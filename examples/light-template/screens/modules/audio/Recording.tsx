@@ -8,7 +8,7 @@ export default function Recording() {
     <Screen title="Recording">
       <Text>Status: {recorder.status}</Text>
       {recorder.status === "error" ? (
-        <Text>{recorder.errorMessage}</Text>
+        <Text>{recorder.error.message}</Text>
       ) : recorder.status === "ready" ? (
         <Text>Saved: {recorder.recordingDurationMs} ms</Text>
       ) : (

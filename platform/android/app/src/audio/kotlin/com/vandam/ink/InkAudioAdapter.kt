@@ -263,7 +263,10 @@ private class InkAudioAdapter(
             return
         }
         if (mediaRecorder != null) {
-            updateController(controller, error(kind, "Microphone is being used by the recorder"))
+            updateController(
+                controller,
+                error(kind, "unavailable", "Microphone is being used by the recorder"),
+            )
             complete(
                 NativeResult.Failure(
                     NativeErrorKind.UNAVAILABLE,
@@ -277,7 +280,10 @@ private class InkAudioAdapter(
             activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            updateController(controller, error(kind, "Microphone permission is not granted"))
+            updateController(
+                controller,
+                error(kind, "permission-denied", "Microphone permission is not granted"),
+            )
             complete(
                 NativeResult.Failure(
                     NativeErrorKind.PERMISSION_DENIED,
@@ -296,7 +302,7 @@ private class InkAudioAdapter(
         if (!startCapture()) {
             enabled -= controller
             setProcessorEnabled(controller, false)
-            updateController(controller, error(kind, "Microphone is unavailable"))
+            updateController(controller, error(kind, "unavailable", "Microphone is unavailable"))
             complete(
                 NativeResult.Failure(
                     NativeErrorKind.UNAVAILABLE,
@@ -453,18 +459,14 @@ private class InkAudioAdapter(
             controller,
             recorderState(
                 status = "error",
-                errorKind = kind,
-                errorMessage = message,
-                errorRetryable = retryable,
+                error = inkError(kind, message, retryable),
             ),
         )
     }
 
     private fun recorderState(
         status: String,
-        errorKind: String = "",
-        errorMessage: String = "",
-        errorRetryable: Boolean = false,
+        error: JSONObject = inkError(),
     ): String {
         val recording = lastRecording
         val duration = if (status == "recording" || status == "stopping") {
@@ -478,9 +480,7 @@ private class InkAudioAdapter(
             .put("id", recording?.id.orEmpty())
             .put("src", recording?.let { "$RECORDING_PREFIX${it.id}" }.orEmpty())
             .put("recordingDurationMs", recording?.durationMs ?: 0)
-            .put("errorKind", errorKind)
-            .put("errorMessage", errorMessage)
-            .put("errorRetryable", errorRetryable)
+            .put("error", error)
             .toString()
     }
 
@@ -558,7 +558,7 @@ private class InkAudioAdapter(
         active.forEach { controller ->
             setProcessorEnabled(controller, false)
             controllers[controller]?.let {
-                updateController(controller, error(it, "Microphone capture failed"))
+                updateController(controller, error(it, "input", "Microphone capture failed"))
             }
         }
         stopCapture()
@@ -616,9 +616,10 @@ private class InkAudioAdapter(
 
         private fun listening(kind: String) = state(kind, "listening")
 
-        private fun error(kind: String, message: String) = state(kind, "error", message)
+        private fun error(kind: String, errorKind: String, message: String) =
+            state(kind, "error", inkError(errorKind, message, true))
 
-        private fun state(kind: String, status: String, error: String = ""): String =
+        private fun state(kind: String, status: String, error: JSONObject = inkError()): String =
             if (kind == "level") {
                 JSONObject()
                     .put("status", status)

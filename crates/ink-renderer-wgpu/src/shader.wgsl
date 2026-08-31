@@ -3,13 +3,20 @@ struct QuadOutput {
     @location(0) colour: vec4<f32>,
 }
 
+struct Transform {
+    translation: vec4<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> transform: Transform;
+
 @vertex
 fn quad_vertex(
     @location(0) position: vec2<f32>,
     @location(1) colour: vec4<f32>,
 ) -> QuadOutput {
     var output: QuadOutput;
-    output.position = vec4<f32>(position, 0.0, 1.0);
+    output.position = vec4<f32>(position + transform.translation.xy, 0.0, 1.0);
     output.colour = colour;
     return output;
 }
@@ -32,16 +39,16 @@ fn text_vertex(
     @location(2) colour: vec4<f32>,
 ) -> TextOutput {
     var output: TextOutput;
-    output.position = vec4<f32>(position, 0.0, 1.0);
+    output.position = vec4<f32>(position + transform.translation.xy, 0.0, 1.0);
     output.uv = uv;
     output.colour = colour;
     return output;
 }
 
-@group(0) @binding(0)
+@group(1) @binding(0)
 var glyph_atlas: texture_2d<f32>;
 
-@group(0) @binding(1)
+@group(1) @binding(1)
 var glyph_sampler: sampler;
 
 @fragment

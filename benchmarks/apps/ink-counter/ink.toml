@@ -1,0 +1,8 @@
+name = "Ink Counter Benchmark"
+package = "com.vandam.benchmark.ink.counter"
+version = "1.0.0"
+version_code = 1
+
+[signing]
+keystore = ".benchmark/debug.keystore"
+key_alias = "androiddebugkey"

@@ -1,11 +1,14 @@
-mod codegen;
+mod bundle;
+mod capability;
 mod config;
+mod design;
 mod diagnostic;
 mod icon;
 mod icons;
 mod ir;
 mod lower;
 mod resolver;
+mod schema;
 mod source;
 
 use std::{
@@ -14,31 +17,13 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+pub use capability::{Capabilities, Capability};
 pub use config::ReleaseSigning;
 use config::ResolvedConfig;
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct AppFeatures {
-    pub light_sdk: bool,
-    pub light_sdk_ringtone: bool,
-    pub light_sdk_push: bool,
-    pub network: bool,
-    pub text_input: bool,
-    pub camera_permission: bool,
-    pub photo_capture: bool,
-    pub code_scanner: bool,
-    pub audio: bool,
-    pub audio_playback: bool,
-    pub audio_detached: bool,
-    pub microphone_permission: bool,
-    pub location: bool,
-    pub nfc: bool,
-    pub background: bool,
-    pub notifications: bool,
-    pub notification_permission: bool,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppInfo {
+    pub capabilities: Vec<String>,
     pub modules: Vec<String>,
     pub permissions: Vec<String>,
     pub resources: Vec<String>,
@@ -105,16 +90,20 @@ impl Project {
         &self.config.source
     }
 
-    pub fn generated_source_path(&self) -> &Path {
-        &self.config.generated
-    }
-
     pub fn android_resources_path(&self) -> &Path {
         &self.config.android_resources
     }
 
     pub fn android_assets_path(&self) -> PathBuf {
         self.root().join(".ink/android/assets")
+    }
+
+    pub fn app_definition_path(&self) -> PathBuf {
+        self.android_assets_path().join(ink_app_format::ASSET_NAME)
+    }
+
+    pub fn capability_manifest_path(&self) -> PathBuf {
+        self.android_assets_path().join(capability::MANIFEST_NAME)
     }
 }
 
@@ -125,6 +114,11 @@ pub fn check(project: &Project) -> Result<()> {
 
 pub fn inspect(project: &Project) -> Result<AppInfo> {
     let app = source::compile(project.root(), &project.config.source)?;
+    let capabilities = detect_capabilities(&app)
+        .iter()
+        .map(Capability::name)
+        .map(str::to_owned)
+        .collect();
     let mut modules = app
         .extensions
         .iter()
@@ -184,6 +178,7 @@ pub fn inspect(project: &Project) -> Result<AppInfo> {
         .filter(|state| matches!(state.lifetime, ir::StateLifetime::Persisted(_)))
         .count();
     Ok(AppInfo {
+        capabilities,
         modules: modules.into_iter().collect(),
         permissions,
         resources,
@@ -211,11 +206,17 @@ fn summarise(values: impl Iterator<Item = String>) -> Vec<String> {
         .collect()
 }
 
-pub fn compile(project: &Project) -> Result<AppFeatures> {
+pub fn compile(project: &Project) -> Result<Capabilities> {
     let generated = generate(project)?;
-    write_if_changed(&project.config.generated, generated.source.as_bytes())?;
+    remove_obsolete_output(&project.root().join(".ink/generated/app.rs"))?;
+    remove_obsolete_output(&project.android_assets_path().join("ink-app-v1.bin"))?;
+    write_if_changed(&project.app_definition_path(), &generated.bundle)?;
+    write_if_changed(
+        &project.capability_manifest_path(),
+        &generated.capabilities.encode()?,
+    )?;
     icon::generate(&project.config.name, &project.config.android_resources)?;
-    Ok(generated.features)
+    Ok(generated.capabilities)
 }
 
 pub fn generate_icon(project: &Project) -> Result<()> {
@@ -223,13 +224,20 @@ pub fn generate_icon(project: &Project) -> Result<()> {
 }
 
 struct GeneratedApp {
-    source: String,
-    features: AppFeatures,
+    bundle: Vec<u8>,
+    capabilities: Capabilities,
 }
 
 fn generate(project: &Project) -> Result<GeneratedApp> {
     let app = source::compile(project.root(), &project.config.source)?;
     write_background_registry(project, &app)?;
+    Ok(GeneratedApp {
+        capabilities: detect_capabilities(&app),
+        bundle: bundle::generate(&app, project.root())?,
+    })
+}
+
+fn detect_capabilities(app: &ir::App) -> Capabilities {
     let audio_playback = app
         .controllers
         .iter()
@@ -253,38 +261,67 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
         .controllers
         .iter()
         .any(|controller| controller.kind == "light-push");
-    Ok(GeneratedApp {
-        features: AppFeatures {
-            light_sdk: app.extensions.contains(&ir::Extension::LightSdk)
-                || app.extensions.contains(&ir::Extension::Location)
-                || app.extensions.contains(&ir::Extension::Camera),
-            light_sdk_ringtone,
-            light_sdk_push,
-            network: app.extensions.contains(&ir::Extension::Network)
-                || uses_remote_image(&app.root)
-                || audio_playback,
-            text_input: uses_text_input(&app.root),
-            camera_permission: app
-                .android_permissions
-                .contains(&ir::AndroidPermission::Camera),
-            photo_capture,
-            code_scanner,
-            audio: app.extensions.contains(&ir::Extension::Audio),
-            audio_playback,
-            audio_detached,
-            microphone_permission: app
-                .android_permissions
-                .contains(&ir::AndroidPermission::Microphone),
-            location: app.extensions.contains(&ir::Extension::Location),
-            nfc: app.extensions.contains(&ir::Extension::Nfc),
-            background: app.extensions.contains(&ir::Extension::Background),
-            notifications: app.extensions.contains(&ir::Extension::Notifications),
-            notification_permission: app
-                .android_permissions
-                .contains(&ir::AndroidPermission::Notifications),
-        },
-        source: codegen::generate(&app, project.root())?,
-    })
+    let mut capabilities = Capabilities::default();
+    let mut include = |condition, capability| {
+        if condition {
+            capabilities.insert(capability);
+        }
+    };
+    include(
+        app.extensions.contains(&ir::Extension::LightSdk)
+            || app.extensions.contains(&ir::Extension::Location)
+            || app.extensions.contains(&ir::Extension::Camera),
+        Capability::LightSdk,
+    );
+    include(light_sdk_ringtone, Capability::LightSdkRingtone);
+    include(light_sdk_push, Capability::LightSdkPush);
+    include(
+        app.extensions.contains(&ir::Extension::Network)
+            || uses_remote_image(&app.root)
+            || audio_playback,
+        Capability::Network,
+    );
+    include(uses_text_input(&app.root), Capability::TextInput);
+    include(
+        app.android_permissions
+            .contains(&ir::AndroidPermission::Camera),
+        Capability::CameraPermission,
+    );
+    include(photo_capture, Capability::PhotoCapture);
+    include(code_scanner, Capability::CodeScanner);
+    include(
+        app.extensions.contains(&ir::Extension::Audio),
+        Capability::Audio,
+    );
+    include(audio_playback, Capability::AudioPlayback);
+    include(audio_detached, Capability::AudioDetached);
+    include(
+        app.android_permissions
+            .contains(&ir::AndroidPermission::Microphone),
+        Capability::MicrophonePermission,
+    );
+    include(
+        app.extensions.contains(&ir::Extension::Location),
+        Capability::Location,
+    );
+    include(
+        app.extensions.contains(&ir::Extension::Nfc),
+        Capability::Nfc,
+    );
+    include(
+        app.extensions.contains(&ir::Extension::Background),
+        Capability::Background,
+    );
+    include(
+        app.extensions.contains(&ir::Extension::Notifications),
+        Capability::Notifications,
+    );
+    include(
+        app.android_permissions
+            .contains(&ir::AndroidPermission::Notifications),
+        Capability::NotificationPermission,
+    );
+    capabilities
 }
 
 fn write_background_registry(project: &Project, app: &ir::App) -> Result<()> {
@@ -387,4 +424,12 @@ fn write_if_changed(path: &Path, contents: &[u8]) -> Result<()> {
             .with_context(|| format!("could not create {}", directory.display()))?;
     }
     std::fs::write(path, contents).with_context(|| format!("could not write {}", path.display()))
+}
+
+fn remove_obsolete_output(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("could not remove {}", path.display())),
+    }
 }

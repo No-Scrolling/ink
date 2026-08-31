@@ -10,7 +10,7 @@ export default function Ringtone() {
         idle: () => <Text>Ready to install</Text>,
         installing: () => <Text>Installing...</Text>,
         installed: () => <Text>Installed</Text>,
-        error: (result) => <Text>{result.errorMessage}</Text>,
+        error: (result) => <Text>{result.error.message}</Text>,
       })}
       <Button
         onPress={() =>

@@ -10,6 +10,8 @@ Native Android integrations have a different trust and build model from declarat
 
 An Ink source package is an ordinary installed package with public TSX entries in `package.json` `exports`. It uses an `ink` condition, with `types` before it when the same source also supplies TypeScript declarations. Applications add `ink` to `compilerOptions.customConditions` so TypeScript and Ink agree on the public entry.
 
+First-party native extension packages declare `ink` as a peer and import their shared resource, permission, error and opaque-value types from it. Linked packages require `preserveSymlinks` in the application TypeScript configuration so those imports resolve through the application's installed Ink package rather than the extension's source checkout.
+
 `ink-compiler` owns one resolver adapter over Oxc Resolver. It accepts extensionless relative imports and bare package specifiers, selects only the `ink` condition, and compiles resolved `.tsx` screens through the existing restricted language. Resolved paths use their canonical identity for cycle detection. Relative imports cannot leave the importing package, and bare imports must resolve inside an installed package. URLs, absolute paths, queries, fragments, JavaScript and JSON are rejected.
 
 No package source is evaluated. A package changes the APK only through the native Ink nodes and assets generated from the screens actually imported by the application.

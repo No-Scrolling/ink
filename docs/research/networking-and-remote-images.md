@@ -100,7 +100,7 @@ A plain string remains the common interface: a local path is a compile-time asse
 
 ### Data model and compile-time schema
 
-`http.json<T>()` is not an unvalidated cast. The compiler resolves `T` and lowers it to a data schema alongside the generated Rust application. The supported model should be deliberately data-only:
+`http.json<T>()` is not an unvalidated cast. The compiler resolves `T` and lowers it to a data schema inside the versioned app definition. The supported model should be deliberately data-only:
 
 - `string`, finite `number`, `boolean` and `null`;
 - readonly objects and arrays;

@@ -1,3 +1,5 @@
+import type { InkError } from "ink";
+
 export type BackgroundErrorKind =
   | "unavailable"
   | "timeout"
@@ -7,10 +9,7 @@ export type BackgroundErrorKind =
   | "scheduler"
   | "unexpected";
 
-export interface BackgroundError {
-  readonly kind: BackgroundErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
+export interface BackgroundError extends InkError<BackgroundErrorKind> {
   readonly attemptedAtMs: number;
 }
 

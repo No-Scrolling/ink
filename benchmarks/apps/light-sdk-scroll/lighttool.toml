@@ -1,0 +1,7 @@
+[tool]
+id = "com.vandam.benchmark.lightsdk.scroll"
+label = "Light SDK Scroll Benchmark"
+versionCode = 1
+versionName = "1.0.0"
+permissions = []
+serverPackage = "com.lightos"

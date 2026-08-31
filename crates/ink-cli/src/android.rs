@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use ink_compiler::{AppFeatures, Project};
+use ink_compiler::Project;
 
 use crate::{output, process, watch};
 
@@ -133,8 +133,8 @@ fn build_with_light_server(
     verbose: bool,
     light_server: &str,
 ) -> Result<BuildArtifact> {
-    let features = compile(project)?;
-    let mut gradle = gradle_command(project, profile, features, light_server)?;
+    compile(project)?;
+    let mut gradle = gradle_command(project, profile, light_server)?;
     let message = format!("Building {} APK", profile.label());
     let duration = process::run(&mut gradle, &message, verbose)?;
     build_artifact(profile, duration, verbose)
@@ -147,11 +147,10 @@ pub fn build_watched(
     baseline: &watch::Snapshot,
     device: &Device,
 ) -> Result<BuildOutcome> {
-    let features = compile(project)?;
+    compile(project)?;
     let mut gradle = gradle_command(
         project,
         profile,
-        features,
         device.light_server(project.light_server()),
     )?;
     if watch::changed(project.root(), baseline)? {
@@ -169,12 +168,7 @@ pub fn build_watched(
     )?))
 }
 
-fn gradle_command(
-    project: &Project,
-    profile: Profile,
-    features: AppFeatures,
-    light_server: &str,
-) -> Result<Command> {
+fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Result<Command> {
     let release_signing = if profile == Profile::Release {
         let signing = project.release_signing().context(
             "release signing is not configured; add [signing] with keystore and key_alias to ink.toml",
@@ -207,46 +201,11 @@ fn gradle_command(
         .arg(format!("-PinkApplicationId={}", project.package()))
         .arg(format!("-PinkVersionName={}", project.version()))
         .arg(format!("-PinkVersionCode={}", project.version_code()))
-        .arg(format!("-PinkUsesLightSdk={}", features.light_sdk))
         .arg(format!(
-            "-PinkUsesLightSdkRingtone={}",
-            features.light_sdk_ringtone
-        ))
-        .arg(format!("-PinkUsesLightSdkPush={}", features.light_sdk_push))
-        .arg(format!("-PinkUsesNetwork={}", features.network))
-        .arg(format!("-PinkUsesAudio={}", features.audio))
-        .arg(format!(
-            "-PinkUsesAudioPlayback={}",
-            features.audio_playback
-        ))
-        .arg(format!(
-            "-PinkUsesDetachedAudio={}",
-            features.audio_detached
-        ))
-        .arg(format!(
-            "-PinkUsesCameraPermission={}",
-            features.camera_permission
-        ))
-        .arg(format!("-PinkUsesPhotoCapture={}", features.photo_capture))
-        .arg(format!("-PinkUsesCodeScanner={}", features.code_scanner))
-        .arg(format!(
-            "-PinkUsesMicrophonePermission={}",
-            features.microphone_permission
-        ))
-        .arg(format!("-PinkUsesLocation={}", features.location))
-        .arg(format!("-PinkUsesNfc={}", features.nfc))
-        .arg(format!("-PinkUsesBackground={}", features.background))
-        .arg(format!("-PinkUsesNotifications={}", features.notifications))
-        .arg(format!(
-            "-PinkUsesNotificationPermission={}",
-            features.notification_permission
+            "-PinkCapabilitiesManifest={}",
+            project.capability_manifest_path().display()
         ))
         .arg(format!("-PinkLightServerPackage={light_server}"))
-        .arg(format!("-PinkUsesTextInput={}", features.text_input))
-        .arg(format!(
-            "-PinkGeneratedSource={}",
-            project.generated_source_path().display()
-        ))
         .arg(format!(
             "-PinkAndroidResources={}",
             project.android_resources_path().display()
@@ -266,10 +225,10 @@ fn gradle_command(
     Ok(gradle)
 }
 
-fn compile(project: &Project) -> Result<AppFeatures> {
-    let features = ink_compiler::compile(project)?;
+fn compile(project: &Project) -> Result<()> {
+    ink_compiler::compile(project)?;
     output::success(format!("Compiled {}", project.source_path().display()));
-    Ok(features)
+    Ok(())
 }
 
 fn build_artifact(profile: Profile, duration: Duration, verbose: bool) -> Result<BuildArtifact> {

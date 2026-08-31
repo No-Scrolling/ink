@@ -634,9 +634,7 @@ private data class PushState(
         .put("registeredAtMs", registeredAtMs)
         .put("openedKey", openedKey)
         .put("messages", JSONArray().also { values -> messages.forEach { values.put(it.json()) } })
-        .put("errorKind", errorKind)
-        .put("errorMessage", errorMessage)
-        .put("errorRetryable", errorRetryable)
+        .put("error", inkError(errorKind.ifEmpty { "unexpected" }, errorMessage, errorRetryable))
 
     fun json(): JSONObject = controllerJson()
         .put("version", STORE_VERSION)
@@ -651,6 +649,7 @@ private data class PushState(
         fun fromJson(root: JSONObject): PushState {
             val messages = root.optJSONArray("messages") ?: JSONArray()
             val recent = root.optJSONArray("recentIds") ?: JSONArray()
+            val error = root.optJSONObject("error")
             return PushState(
                 installationId = root.getString("installationId"),
                 generation = root.optLong("generation"),
@@ -660,9 +659,10 @@ private data class PushState(
                 endpoint = root.optString("endpoint"),
                 registeredAtMs = root.optLong("registeredAtMs"),
                 status = root.optString("status", "idle"),
-                errorKind = root.optString("errorKind"),
-                errorMessage = root.optString("errorMessage"),
-                errorRetryable = root.optBoolean("errorRetryable"),
+                errorKind = error?.optString("kind") ?: root.optString("errorKind"),
+                errorMessage = error?.optString("message") ?: root.optString("errorMessage"),
+                errorRetryable = error?.optBoolean("retryable")
+                    ?: root.optBoolean("errorRetryable"),
                 openedKey = root.optString("openedKey"),
                 messages = MutableList(messages.length().coerceAtMost(MAX_MESSAGES)) {
                     LightPushRecord.fromJson(messages.getJSONObject(it))

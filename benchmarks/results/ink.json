@@ -1,0 +1,327 @@
+{
+  "environment": {
+    "capturedAt": "2026-08-31T09:48:46.413Z",
+    "device": "sdk_phone64_arm64",
+    "model": "Android SDK built for arm64",
+    "android": "14",
+    "sdk": 34,
+    "abi": "arm64-v8a",
+    "resolution": "Physical size: 1080x1240",
+    "density": "Physical density: 480",
+    "refreshRate": 60,
+    "clockTicksPerSecond": 100,
+    "thermalStatusStart": 0,
+    "thermalStatusEnd": 0
+  },
+  "protocol": {
+    "stacks": [
+      "ink"
+    ],
+    "scenarios": [
+      "Counter",
+      "Scroll"
+    ],
+    "startupRuns": 15,
+    "idleRuns": 5,
+    "workloadRuns": 5,
+    "counterTaps": 100,
+    "scrollSwipesEachDirection": 6,
+    "swipeDurationMs": 350
+  },
+  "results": [
+    {
+      "key": "ink",
+      "stack": "Ink",
+      "scenario": "Counter",
+      "packageName": "com.vandam.benchmark.ink.counter",
+      "component": "com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity",
+      "apk": {
+        "bytes": 3058060,
+        "uncompressedBytes": 3085743,
+        "dex": 39548,
+        "native": 2981504,
+        "resources": 6276,
+        "assets": 123,
+        "other": 58292
+      },
+      "startup": {
+        "samplesMs": [
+          170,
+          188,
+          182,
+          200,
+          158,
+          178,
+          155,
+          178,
+          190,
+          174,
+          178,
+          181,
+          182,
+          191,
+          206
+        ],
+        "medianMs": 181,
+        "p95Ms": 206
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 24963,
+            "rssKb": 135772,
+            "threads": 30
+          },
+          {
+            "pssKb": 25078,
+            "rssKb": 135652,
+            "threads": 29
+          },
+          {
+            "pssKb": 24989,
+            "rssKb": 135576,
+            "threads": 30
+          },
+          {
+            "pssKb": 24984,
+            "rssKb": 135524,
+            "threads": 30
+          },
+          {
+            "pssKb": 25073,
+            "rssKb": 135660,
+            "threads": 29
+          }
+        ],
+        "medianPssKb": 24989,
+        "medianRssKb": 135652,
+        "medianThreads": 30
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 210,
+            "elapsedMs": 3086.099540999996,
+            "cpuPercent": 6.804705979508141,
+            "frames": 98,
+            "droppedFrames": 0,
+            "averageFps": 43.907,
+            "presentP95Ms": 38,
+            "compositorP95Ms": 5,
+            "pssKb": 25985,
+            "rssKb": 137296,
+            "threads": 26
+          },
+          {
+            "cpuMs": 220,
+            "elapsedMs": 3106.8911249999946,
+            "cpuPercent": 7.081033455911667,
+            "frames": 98,
+            "droppedFrames": 0,
+            "averageFps": 43.305,
+            "presentP95Ms": 34,
+            "compositorP95Ms": 3,
+            "pssKb": 25939,
+            "rssKb": 137284,
+            "threads": 26
+          },
+          {
+            "cpuMs": 220,
+            "elapsedMs": 3087.623250000004,
+            "cpuPercent": 7.125221640949869,
+            "frames": 98,
+            "droppedFrames": 0,
+            "averageFps": 43.986,
+            "presentP95Ms": 34,
+            "compositorP95Ms": 3,
+            "pssKb": 25932,
+            "rssKb": 137284,
+            "threads": 25
+          },
+          {
+            "cpuMs": 220,
+            "elapsedMs": 3098.7156669999968,
+            "cpuPercent": 7.099715612597386,
+            "frames": 98,
+            "droppedFrames": 0,
+            "averageFps": 43.633,
+            "presentP95Ms": 34,
+            "compositorP95Ms": 1,
+            "pssKb": 25879,
+            "rssKb": 137200,
+            "threads": 25
+          },
+          {
+            "cpuMs": 230,
+            "elapsedMs": 3139.7388749999955,
+            "cpuPercent": 7.325449954815122,
+            "frames": 98,
+            "droppedFrames": 0,
+            "averageFps": 42.757,
+            "presentP95Ms": 34,
+            "compositorP95Ms": 1,
+            "pssKb": 25934,
+            "rssKb": 137308,
+            "threads": 25
+          }
+        ],
+        "medianCpuMs": 220,
+        "medianCpuPercent": 7.099715612597386,
+        "medianFrames": 98,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 43.633,
+        "medianPresentP95Ms": 34,
+        "medianCompositorP95Ms": 3,
+        "medianPssKb": 25934,
+        "medianRssKb": 137284
+      }
+    },
+    {
+      "key": "ink",
+      "stack": "Ink",
+      "scenario": "Scroll",
+      "packageName": "com.vandam.benchmark.ink.scroll",
+      "component": "com.vandam.benchmark.ink.scroll/com.vandam.ink.MainActivity",
+      "apk": {
+        "bytes": 3059916,
+        "uncompressedBytes": 3095590,
+        "dex": 39548,
+        "native": 2981504,
+        "resources": 6276,
+        "assets": 9974,
+        "other": 58288
+      },
+      "startup": {
+        "samplesMs": [
+          171,
+          149,
+          176,
+          185,
+          187,
+          175,
+          185,
+          165,
+          196,
+          159,
+          200,
+          183,
+          180,
+          194,
+          180
+        ],
+        "medianMs": 180,
+        "p95Ms": 200
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 25229,
+            "rssKb": 135932,
+            "threads": 30
+          },
+          {
+            "pssKb": 25250,
+            "rssKb": 135992,
+            "threads": 30
+          },
+          {
+            "pssKb": 25104,
+            "rssKb": 135648,
+            "threads": 29
+          },
+          {
+            "pssKb": 25213,
+            "rssKb": 135784,
+            "threads": 29
+          },
+          {
+            "pssKb": 25166,
+            "rssKb": 135700,
+            "threads": 29
+          }
+        ],
+        "medianPssKb": 25213,
+        "medianRssKb": 135784,
+        "medianThreads": 29
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 650,
+            "elapsedMs": 5360.494957999996,
+            "cpuPercent": 12.125745944969891,
+            "frames": 253,
+            "droppedFrames": 0,
+            "averageFps": 56.982,
+            "presentP95Ms": 29,
+            "compositorP95Ms": 4,
+            "pssKb": 26441,
+            "rssKb": 137772,
+            "threads": 25
+          },
+          {
+            "cpuMs": 670,
+            "elapsedMs": 5364.548624999996,
+            "cpuPercent": 12.489401193562683,
+            "frames": 251,
+            "droppedFrames": 0,
+            "averageFps": 56.865,
+            "presentP95Ms": 23,
+            "compositorP95Ms": 3,
+            "pssKb": 26408,
+            "rssKb": 137756,
+            "threads": 26
+          },
+          {
+            "cpuMs": 680,
+            "elapsedMs": 5371.094375000001,
+            "cpuPercent": 12.660362163157856,
+            "frames": 252,
+            "droppedFrames": 0,
+            "averageFps": 57.001,
+            "presentP95Ms": 22,
+            "compositorP95Ms": 3,
+            "pssKb": 26417,
+            "rssKb": 137768,
+            "threads": 25
+          },
+          {
+            "cpuMs": 690,
+            "elapsedMs": 5375.974333000006,
+            "cpuPercent": 12.834882707019041,
+            "frames": 256,
+            "droppedFrames": 0,
+            "averageFps": 57.373,
+            "presentP95Ms": 22,
+            "compositorP95Ms": 3,
+            "pssKb": 26493,
+            "rssKb": 137840,
+            "threads": 25
+          },
+          {
+            "cpuMs": 690,
+            "elapsedMs": 5367.940959,
+            "cpuPercent": 12.854090707594908,
+            "frames": 251,
+            "droppedFrames": 0,
+            "averageFps": 57.136,
+            "presentP95Ms": 21,
+            "compositorP95Ms": 2,
+            "pssKb": 26434,
+            "rssKb": 137740,
+            "threads": 26
+          }
+        ],
+        "medianCpuMs": 680,
+        "medianCpuPercent": 12.660362163157856,
+        "medianFrames": 252,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 57.001,
+        "medianPresentP95Ms": 22,
+        "medianCompositorP95Ms": 3,
+        "medianPssKb": 26434,
+        "medianRssKb": 137768
+      }
+    }
+  ]
+}

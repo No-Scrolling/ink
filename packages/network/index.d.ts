@@ -1,29 +1,6 @@
-// TODO: Import these from "ink" once local file packages resolve sibling types correctly.
+import type { AsyncResource, ResourceError } from "ink";
+
 // TODO: Add uploads, streaming and WebSockets as apps need them.
-type ResourceErrorKind =
-  | "unavailable"
-  | "permission-denied"
-  | "permission-blocked"
-  | "location-disabled"
-  | "nfc-disabled"
-  | "timeout"
-  | "protocol"
-  | "unexpected";
-
-interface ResourceError {
-  readonly kind: ResourceErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-type AsyncResource<T, E> = {
-  reload(): void;
-} &
-  (
-    | { readonly status: "loading" }
-    | { readonly status: "ready"; readonly value: T }
-    | { readonly status: "error"; readonly error: E }
-  );
 
 export interface JsonOptions {
   readonly query?: Readonly<Record<string, string | number | boolean>>;

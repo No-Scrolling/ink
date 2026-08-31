@@ -1,5 +1,5 @@
 import "@ink/light-sdk";
-import { Navigator, Route, Tab, Tabs, state } from "ink";
+import { Navigator, Route, Tab, Tabs } from "ink";
 import Confirm from "./screens/Confirm";
 import Home from "./screens/Home";
 import Modules from "./screens/Modules";
@@ -32,22 +32,20 @@ import TemperatureUnit from "./screens/settings/TemperatureUnit";
 import TextInputExample from "./screens/settings/TextInputExample";
 
 export default function LightTemplate() {
-  const tab = state(0);
-
   return (
     <Navigator>
       <Route path="/">
-        <Tabs value={tab.value}>
-          <Tab icon="home" onPress={() => tab.set(0)}>
+        <Tabs>
+          <Tab icon="home">
             <Home />
           </Tab>
-          <Tab icon="search" onPress={() => tab.set(1)}>
+          <Tab icon="search">
             <Search />
           </Tab>
-          <Tab icon="widgets" onPress={() => tab.set(2)}>
+          <Tab icon="widgets">
             <Modules />
           </Tab>
-          <Tab icon="settings" onPress={() => tab.set(3)}>
+          <Tab icon="settings">
             <Settings />
           </Tab>
         </Tabs>

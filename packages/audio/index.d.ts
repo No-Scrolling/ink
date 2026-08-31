@@ -1,34 +1,12 @@
-// TODO: Import AsyncResource from "ink" once local file packages resolve sibling types correctly.
-type ResourceErrorKind =
-  | "unavailable"
+import type { InkError, PermissionResource } from "ink";
+
+export type MicrophonePermission = PermissionResource;
+
+export type AudioCaptureErrorKind =
   | "permission-denied"
-  | "permission-blocked"
-  | "location-disabled"
-  | "nfc-disabled"
-  | "timeout"
-  | "protocol"
+  | "unavailable"
+  | "input"
   | "unexpected";
-
-interface ResourceError {
-  readonly kind: ResourceErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-type AsyncResource<T> = {
-  reload(): void;
-} &
-  (
-    | { readonly status: "loading" }
-    | { readonly status: "ready"; readonly value: T }
-    | { readonly status: "error"; readonly error: ResourceError }
-  );
-
-export type MicrophonePermission = AsyncResource<
-  "granted" | "denied" | "blocked" | "unknown"
-> & {
-  request(): void;
-};
 
 interface LevelMeterValue {
   readonly rms: number;
@@ -44,7 +22,10 @@ export type LevelMeter = LevelMeterActions &
   LevelMeterValue &
   (
     | { readonly status: "idle" | "listening" | "active" | "clipping" }
-    | { readonly status: "error"; readonly error: string }
+    | {
+        readonly status: "error";
+        readonly error: InkError<AudioCaptureErrorKind>;
+      }
   );
 
 interface PitchDetectorValue {
@@ -64,7 +45,10 @@ export type PitchDetector = PitchDetectorActions &
   PitchDetectorValue &
   (
     | { readonly status: "idle" | "listening" | "active" }
-    | { readonly status: "error"; readonly error: string }
+    | {
+        readonly status: "error";
+        readonly error: InkError<AudioCaptureErrorKind>;
+      }
   );
 
 export interface PitchDetectorOptions {
@@ -112,15 +96,19 @@ interface AudioPlayerActions {
   setSpeed(speed: number): void;
 }
 
+export type AudioPlayerErrorKind =
+  | "source"
+  | "unsupported"
+  | "output"
+  | "unexpected";
+
 export type AudioPlayer = AudioPlayerActions &
   AudioPlayerValue &
   (
     | { readonly status: "idle" | "loading" | "paused" | "playing" | "ended" }
     | {
         readonly status: "error";
-        readonly errorKind: "source" | "unsupported" | "output" | "unexpected";
-        readonly errorMessage: string;
-        readonly errorRetryable: boolean;
+        readonly error: InkError<AudioPlayerErrorKind>;
       }
   );
 
@@ -143,19 +131,19 @@ interface AudioRecorderActions {
   delete(): void;
 }
 
+export type AudioRecorderErrorKind =
+  | "permission-denied"
+  | "unavailable"
+  | "output"
+  | "unexpected";
+
 export type AudioRecorder = AudioRecorderActions &
   AudioRecorderValue &
   (
     | { readonly status: "idle" | "recording" | "stopping" | "ready" }
     | {
         readonly status: "error";
-        readonly errorKind:
-          | "permission-denied"
-          | "unavailable"
-          | "output"
-          | "unexpected";
-        readonly errorMessage: string;
-        readonly errorRetryable: boolean;
+        readonly error: InkError<AudioRecorderErrorKind>;
       }
   );
 

@@ -8,7 +8,7 @@ export default function LocalPlayback() {
     <Screen title="Local Playback">
       <Text>Status: {player.status}</Text>
       {player.status === "error" ? (
-        <Text>{player.errorMessage}</Text>
+        <Text>{player.error.message}</Text>
       ) : player.status === "idle" ? (
         <Text>No Track</Text>
       ) : (

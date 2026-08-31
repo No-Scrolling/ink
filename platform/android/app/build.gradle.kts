@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import org.gradle.api.tasks.Exec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -14,85 +15,121 @@ val inkApplicationId = providers.gradleProperty("inkApplicationId").orElse("com.
 val inkVersionName = providers.gradleProperty("inkVersionName").orElse("0.1.0")
 val inkVersionCode = providers.gradleProperty("inkVersionCode").orElse("1")
 val inkSigning = providers.gradleProperty("inkSigning").orElse("development")
-val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
 val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
 val inkAndroidAssets = providers.gradleProperty("inkAndroidAssets")
-val inkUsesLightSdk = providers.gradleProperty("inkUsesLightSdk").orElse("false")
-val inkUsesLightSdkRingtone = providers.gradleProperty("inkUsesLightSdkRingtone").orElse("false")
-val inkUsesLightSdkPush = providers.gradleProperty("inkUsesLightSdkPush").orElse("false")
-val inkUsesNetwork = providers.gradleProperty("inkUsesNetwork").orElse("false")
-val inkUsesAudio = providers.gradleProperty("inkUsesAudio").orElse("false")
-val inkUsesAudioPlayback = providers.gradleProperty("inkUsesAudioPlayback").orElse("false")
-val inkUsesDetachedAudio = providers.gradleProperty("inkUsesDetachedAudio").orElse("false")
-val inkUsesCameraPermission = providers.gradleProperty("inkUsesCameraPermission").orElse("false")
-val inkUsesPhotoCapture = providers.gradleProperty("inkUsesPhotoCapture").orElse("false")
-val inkUsesCodeScanner = providers.gradleProperty("inkUsesCodeScanner").orElse("false")
-val inkUsesMicrophonePermission = providers.gradleProperty("inkUsesMicrophonePermission").orElse("false")
-val inkUsesLocation = providers.gradleProperty("inkUsesLocation").orElse("false")
-val inkUsesNfc = providers.gradleProperty("inkUsesNfc").orElse("false")
-val inkUsesBackground = providers.gradleProperty("inkUsesBackground").orElse("false")
-val inkUsesNotifications = providers.gradleProperty("inkUsesNotifications").orElse("false")
-val inkUsesNotificationPermission = providers.gradleProperty("inkUsesNotificationPermission").orElse("false")
-val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
-val inkUsesTextInput = providers.gradleProperty("inkUsesTextInput").orElse("false")
-val inkLightSdkVersion = "0.1.1"
-val inkConditionalSources = providers.provider {
-    listOf(
-        inkUsesTextInput.get(),
-        inkUsesAudio.get(),
-        inkUsesAudioPlayback.get(),
-        inkUsesDetachedAudio.get(),
-        inkUsesNetwork.get(),
-        inkUsesLightSdk.get(),
-        inkUsesLightSdkRingtone.get(),
-        inkUsesLightSdkPush.get(),
-        inkUsesLocation.get(),
-        inkUsesNfc.get(),
-        inkUsesBackground.get(),
-        inkUsesNotifications.get(),
-    ).joinToString(",")
+val inkCapabilitiesManifest = providers.gradleProperty("inkCapabilitiesManifest")
+val inkCapabilitiesFile = inkCapabilitiesManifest.map(::file)
+val supportedInkCapabilities = setOf(
+    "audio",
+    "audio-detached",
+    "audio-playback",
+    "background",
+    "camera-permission",
+    "code-scanner",
+    "light-sdk",
+    "light-sdk-push",
+    "light-sdk-ringtone",
+    "location",
+    "microphone-permission",
+    "network",
+    "nfc",
+    "notification-permission",
+    "notifications",
+    "photo-capture",
+    "text-input",
+)
+val inkCapabilities = providers.provider {
+    val source = inkCapabilitiesFile.get()
+    if (!source.isFile) {
+        error("Ink capability manifest does not exist: $source")
+    }
+    val manifest = JsonSlurper().parse(source) as? Map<*, *>
+        ?: error("Ink capability manifest must be a JSON object")
+    if (manifest.keys != setOf("version", "capabilities")) {
+        error("Ink capability manifest has unknown fields")
+    }
+    val version = (manifest["version"] as? Number)?.toInt()
+        ?: error("Ink capability manifest version must be a number")
+    if (version != 1) {
+        error("Ink capability manifest version $version is unsupported; expected 1")
+    }
+    val values = manifest["capabilities"] as? List<*>
+        ?: error("Ink capability manifest capabilities must be a list")
+    val names = values.map { value ->
+        value as? String ?: error("Ink capabilities must be strings")
+    }
+    if (names != names.sorted() || names.size != names.distinct().size) {
+        error("Ink capabilities must be sorted and unique")
+    }
+    val unknown = names.filterNot(supportedInkCapabilities::contains)
+    if (unknown.isNotEmpty()) {
+        error("Unknown Ink capabilities: ${unknown.joinToString(", ")}")
+    }
+    names.toSet()
 }
+fun inkUses(capability: String) = inkCapabilities.map { capability in it }
+val inkUsesLightSdk = inkUses("light-sdk")
+val inkUsesLightSdkRingtone = inkUses("light-sdk-ringtone")
+val inkUsesLightSdkPush = inkUses("light-sdk-push")
+val inkUsesNetwork = inkUses("network")
+val inkUsesAudio = inkUses("audio")
+val inkUsesAudioPlayback = inkUses("audio-playback")
+val inkUsesDetachedAudio = inkUses("audio-detached")
+val inkUsesCameraPermission = inkUses("camera-permission")
+val inkUsesPhotoCapture = inkUses("photo-capture")
+val inkUsesCodeScanner = inkUses("code-scanner")
+val inkUsesMicrophonePermission = inkUses("microphone-permission")
+val inkUsesLocation = inkUses("location")
+val inkUsesNfc = inkUses("nfc")
+val inkUsesBackground = inkUses("background")
+val inkUsesNotifications = inkUses("notifications")
+val inkUsesNotificationPermission = inkUses("notification-permission")
+val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
+val inkUsesTextInput = inkUses("text-input")
+val inkLightSdkVersion = "0.1.1"
+val inkCapabilityFingerprint = inkCapabilities.map { it.sorted().joinToString(",") }
 val inkPermissions = buildList {
     if (
-        inkUsesNetwork.get().toBoolean() ||
-        inkUsesDetachedAudio.get().toBoolean() ||
-        inkUsesBackground.get().toBoolean() ||
-        inkUsesLightSdkPush.get().toBoolean()
+        inkUsesNetwork.get() ||
+        inkUsesDetachedAudio.get() ||
+        inkUsesBackground.get() ||
+        inkUsesLightSdkPush.get()
     ) {
         add("android.permission.ACCESS_NETWORK_STATE")
         add("android.permission.INTERNET")
     }
-    if (inkUsesDetachedAudio.get().toBoolean()) {
+    if (inkUsesDetachedAudio.get()) {
         add("android.permission.FOREGROUND_SERVICE")
         add("android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK")
     }
-    if (inkUsesCameraPermission.get().toBoolean()) {
+    if (inkUsesCameraPermission.get()) {
         add("android.permission.CAMERA")
     }
-    if (inkUsesMicrophonePermission.get().toBoolean()) {
+    if (inkUsesMicrophonePermission.get()) {
         add("android.permission.RECORD_AUDIO")
     }
-    if (inkUsesLocation.get().toBoolean()) {
+    if (inkUsesLocation.get()) {
         add("android.permission.ACCESS_COARSE_LOCATION")
         add("android.permission.ACCESS_FINE_LOCATION")
     }
-    if (inkUsesNfc.get().toBoolean()) {
+    if (inkUsesNfc.get()) {
         add("android.permission.NFC")
     }
-    if (inkUsesNotificationPermission.get().toBoolean() || inkUsesLightSdkPush.get().toBoolean()) {
+    if (inkUsesNotificationPermission.get() || inkUsesLightSdkPush.get()) {
         add("android.permission.POST_NOTIFICATIONS")
     }
-    if (inkUsesBackground.get().toBoolean() || inkUsesNotifications.get().toBoolean()) {
+    if (inkUsesBackground.get() || inkUsesNotifications.get()) {
         add("android.permission.RECEIVE_BOOT_COMPLETED")
     }
 }
 val inkFeatures = buildList {
-    if (inkUsesCameraPermission.get().toBoolean()) {
+    if (inkUsesCameraPermission.get()) {
         add("android.hardware.camera")
     }
 }
 val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
 val generateInkPermissionManifest by tasks.registering {
+    inputs.file(inkCapabilitiesFile)
     inputs.property("permissions", inkPermissions.joinToString())
     inputs.property("features", inkFeatures.joinToString())
     inputs.property("nfc", inkUsesNfc)
@@ -118,29 +155,29 @@ val generateInkPermissionManifest by tasks.registering {
             inkFeatures.forEach { feature ->
                 appendLine("    <uses-feature android:name=\"$feature\" android:required=\"false\" />")
             }
-            if (inkUsesNfc.get().toBoolean()) {
+            if (inkUsesNfc.get()) {
                 appendLine(
                     "    <uses-feature android:name=\"android.hardware.nfc\" android:required=\"false\" />",
                 )
             }
-            val hasInkComponents = inkUsesBackground.get().toBoolean() ||
-                inkUsesNotifications.get().toBoolean() ||
-                inkUsesLightSdkRingtone.get().toBoolean() || inkUsesLightSdkPush.get().toBoolean()
+            val hasInkComponents = inkUsesBackground.get() ||
+                inkUsesNotifications.get() ||
+                inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get()
             if (hasInkComponents) {
-                val networkSecurity = if (inkUsesLightSdkPush.get().toBoolean()) {
+                val networkSecurity = if (inkUsesLightSdkPush.get()) {
                     " android:networkSecurityConfig=\"@xml/ink_light_push_network_security\""
                 } else {
                     ""
                 }
                 appendLine("    <application$networkSecurity>")
             }
-            if (inkUsesBackground.get().toBoolean()) {
+            if (inkUsesBackground.get()) {
                 appendLine("        <service")
                 appendLine("            android:name=\".InkBackgroundJobService\"")
                 appendLine("            android:exported=\"true\"")
                 appendLine("            android:permission=\"android.permission.BIND_JOB_SERVICE\" />")
             }
-            if (inkUsesNotifications.get().toBoolean()) {
+            if (inkUsesNotifications.get()) {
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationAlarmReceiver\" android:exported=\"false\" />")
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationDismissReceiver\" android:exported=\"false\" />")
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationBootReceiver\" android:exported=\"true\">")
@@ -149,10 +186,10 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine("            </intent-filter>")
                 appendLine("        </receiver>")
             }
-            if (inkUsesLightSdkRingtone.get().toBoolean()) {
+            if (inkUsesLightSdkRingtone.get()) {
                 appendLine("        <provider android:name=\"com.vandam.ink.InkLightFileProvider\" android:authorities=\"${inkApplicationId.get()}.lightfiles\" android:exported=\"true\" />")
             }
-            if (inkUsesLightSdkPush.get().toBoolean()) {
+            if (inkUsesLightSdkPush.get()) {
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkLightPushReceiver\" android:enabled=\"true\" android:exported=\"true\">")
                 appendLine("            <intent-filter>")
                 appendLine("                <action android:name=\"org.unifiedpush.android.connector.MESSAGE\" />")
@@ -171,7 +208,7 @@ val generateInkPermissionManifest by tasks.registering {
         })
     }
 }
-val inkLightSdkMarkerAction = if (inkUsesLightSdk.get().toBoolean()) {
+val inkLightSdkMarkerAction = if (inkUsesLightSdk.get()) {
     "com.thelightphone.sdk.ACTION_SDK_MARKER"
 } else {
     "com.vandam.ink.NO_LIGHT_SDK"
@@ -226,118 +263,118 @@ android {
         getByName("debug").manifest.srcFile(inkPermissionManifest)
         getByName("release").manifest.srcFile(inkPermissionManifest)
         getByName("main").java.srcDir(
-            if (inkUsesTextInput.get().toBoolean()) {
+            if (inkUsesTextInput.get()) {
                 "src/textInput/kotlin"
             } else {
                 "src/noTextInput/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesNotifications.get().toBoolean() || inkUsesLightSdkPush.get().toBoolean()) {
+            if (inkUsesNotifications.get() || inkUsesLightSdkPush.get()) {
                 "src/notifications/kotlin"
             } else {
                 "src/noNotifications/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesAudio.get().toBoolean()) {
+            if (inkUsesAudio.get()) {
                 "src/audio/kotlin"
             } else {
                 "src/noAudio/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesLightSdkRingtone.get().toBoolean()) {
+            if (inkUsesLightSdkRingtone.get()) {
                 "src/lightSdkRingtone/kotlin"
             } else {
                 "src/noLightSdkRingtone/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesLightSdkPush.get().toBoolean()) {
+            if (inkUsesLightSdkPush.get()) {
                 "src/lightSdkPush/kotlin"
             } else {
                 "src/noLightSdkPush/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesAudioPlayback.get().toBoolean()) {
+            if (inkUsesAudioPlayback.get()) {
                 "src/audioPlayback/kotlin"
             } else {
                 "src/noAudioPlayback/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesDetachedAudio.get().toBoolean()) {
+            if (inkUsesDetachedAudio.get()) {
                 "src/audioDetached/kotlin"
             } else {
                 "src/noAudioDetached/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesNetwork.get().toBoolean()) {
+            if (inkUsesNetwork.get()) {
                 "src/network/kotlin"
             } else {
                 "src/noNetwork/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesLightSdk.get().toBoolean()) {
+            if (inkUsesLightSdk.get()) {
                 "src/lightSdk/kotlin"
             } else {
                 "src/noLightSdk/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesLocation.get().toBoolean()) {
+            if (inkUsesLocation.get()) {
                 "src/location/kotlin"
             } else {
                 "src/noLocation/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesNfc.get().toBoolean()) {
+            if (inkUsesNfc.get()) {
                 "src/nfc/kotlin"
             } else {
                 "src/noNfc/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesBackground.get().toBoolean()) {
+            if (inkUsesBackground.get()) {
                 "src/background/kotlin"
             } else {
                 "src/noBackground/kotlin"
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesPhotoCapture.get().toBoolean() || inkUsesCodeScanner.get().toBoolean()) {
+            if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
                 "src/cameraSession/kotlin"
-            } else if (inkUsesCameraPermission.get().toBoolean()) {
+            } else if (inkUsesCameraPermission.get()) {
                 "src/cameraPermission/kotlin"
             } else {
                 "src/noCamera/kotlin"
             },
         )
-        if (inkUsesPhotoCapture.get().toBoolean() || inkUsesCodeScanner.get().toBoolean()) {
+        if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
             getByName("main").java.srcDir(
-                if (inkUsesPhotoCapture.get().toBoolean()) {
+                if (inkUsesPhotoCapture.get()) {
                     "src/photoCapture/kotlin"
                 } else {
                     "src/noPhotoCapture/kotlin"
                 },
             )
             getByName("main").java.srcDir(
-                if (inkUsesCodeScanner.get().toBoolean()) {
+                if (inkUsesCodeScanner.get()) {
                     "src/codeScanner/kotlin"
                 } else {
                     "src/noCodeScanner/kotlin"
                 },
             )
         }
-        if (inkUsesTextInput.get().toBoolean()) {
+        if (inkUsesTextInput.get()) {
             getByName("main").res.srcDir("src/textInput/res")
         }
-        if (inkUsesLightSdkPush.get().toBoolean()) {
+        if (inkUsesLightSdkPush.get()) {
             getByName("main").res.srcDir("src/lightSdkPush/res")
         }
         getByName("debug").jniLibs.srcDir(generatedJniRoot.map { it.dir("debug") })
@@ -384,11 +421,11 @@ kotlin {
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-    inputs.property("inkConditionalSources", inkConditionalSources)
+    inputs.property("inkCapabilityFingerprint", inkCapabilityFingerprint)
     val marker = layout.buildDirectory.file("ink-source-features/$name.txt")
     doFirst {
         val file = marker.get().asFile
-        val fingerprint = inkConditionalSources.get()
+        val fingerprint = inkCapabilityFingerprint.get()
         if (!file.isFile || file.readText() != fingerprint) {
             project.delete(destinationDirectory)
         }
@@ -417,20 +454,19 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
                 "ink-dev",
             ),
         )
-        if (inkUsesNetwork.get().toBoolean()) {
+        if (inkUsesNetwork.get()) {
             addAll(listOf("--features", "network"))
         }
-        if (inkUsesAudio.get().toBoolean()) {
+        if (inkUsesAudio.get()) {
             addAll(listOf("--features", "audio"))
         }
-        if (inkUsesBackground.get().toBoolean()) {
+        if (inkUsesBackground.get()) {
             addAll(listOf("--features", "background"))
         }
-        if (inkUsesPhotoCapture.get().toBoolean()) {
+        if (inkUsesPhotoCapture.get()) {
             addAll(listOf("--features", "camera-photo"))
         }
     })
-    environment("INK_APP_RS", inkGeneratedSource.get())
 }
 
 val cargoBuildRelease by tasks.registering(Exec::class) {
@@ -452,20 +488,19 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
                 "--release",
             ),
         )
-        if (inkUsesNetwork.get().toBoolean()) {
+        if (inkUsesNetwork.get()) {
             addAll(listOf("--features", "network"))
         }
-        if (inkUsesAudio.get().toBoolean()) {
+        if (inkUsesAudio.get()) {
             addAll(listOf("--features", "audio"))
         }
-        if (inkUsesBackground.get().toBoolean()) {
+        if (inkUsesBackground.get()) {
             addAll(listOf("--features", "background"))
         }
-        if (inkUsesPhotoCapture.get().toBoolean()) {
+        if (inkUsesPhotoCapture.get()) {
             addAll(listOf("--features", "camera-photo"))
         }
     })
-    environment("INK_APP_RS", inkGeneratedSource.get())
 }
 
 tasks.configureEach {
@@ -479,22 +514,22 @@ tasks.configureEach {
 
 dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
-    if (inkUsesLightSdkPush.get().toBoolean()) {
+    if (inkUsesLightSdkPush.get()) {
         implementation("org.unifiedpush.android:connector:3.3.2")
     }
-    if (inkUsesAudioPlayback.get().toBoolean()) {
+    if (inkUsesAudioPlayback.get()) {
         implementation("androidx.media3:media3-exoplayer:1.10.1")
     }
-    if (inkUsesDetachedAudio.get().toBoolean()) {
+    if (inkUsesDetachedAudio.get()) {
         implementation("androidx.media3:media3-session:1.10.1")
     }
-    if (inkUsesPhotoCapture.get().toBoolean() || inkUsesCodeScanner.get().toBoolean()) {
+    if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
         implementation("androidx.camera:camera-core:1.5.0")
         implementation("androidx.camera:camera-camera2:1.5.0")
         implementation("androidx.camera:camera-lifecycle:1.5.0")
         implementation("androidx.camera:camera-view:1.5.0")
     }
-    if (inkUsesCodeScanner.get().toBoolean()) {
+    if (inkUsesCodeScanner.get()) {
         implementation("com.google.zxing:core:3.5.4")
     }
 }

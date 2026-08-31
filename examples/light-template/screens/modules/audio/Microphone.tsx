@@ -20,7 +20,7 @@ export default function Microphone() {
       <Button onPress={() => microphone.request()}>Request Microphone</Button>
       <Text>Level: {level.status}</Text>
       {level.status === "error" ? (
-        <Text>{level.error}</Text>
+        <Text>{level.error.message}</Text>
       ) : (
         <Text>RMS: {level.rms} Peak: {level.peak}</Text>
       )}
@@ -28,7 +28,7 @@ export default function Microphone() {
       <Button onPress={() => level.stop()}>Stop Meter</Button>
       <Text>Pitch: {pitch.status}</Text>
       {pitch.status === "error" ? (
-        <Text>{pitch.error}</Text>
+        <Text>{pitch.error.message}</Text>
       ) : (
         <Text>{pitch.note}{pitch.octave} {pitch.frequencyHz} Hz {pitch.cents} cents</Text>
       )}

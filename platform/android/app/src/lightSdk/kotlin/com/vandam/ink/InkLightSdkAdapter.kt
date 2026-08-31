@@ -503,9 +503,7 @@ private class InkLightSdkAdapter(
     ) {
         val value = JSONObject()
             .put("status", status)
-            .put("errorKind", errorKind)
-            .put("errorMessage", errorMessage)
-            .put("errorRetryable", retryable)
+            .put("error", inkError(errorKind.ifEmpty { "unexpected" }, errorMessage, retryable))
             .toString()
         activity.runOnUiThread { updateController(controller, value) }
     }

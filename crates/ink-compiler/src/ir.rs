@@ -376,6 +376,8 @@ pub enum Value {
     Resource(ResourceId, ResourceField),
     Controller(ControllerId, Vec<String>),
     CombinedStatus(Vec<ResourceId>),
+    CombinedErrorResource(Vec<(String, ResourceId)>),
+    CombinedErrorField(Vec<ResourceId>, ResourceField),
     ListLength(StateId),
     Binary {
         left: Box<Value>,

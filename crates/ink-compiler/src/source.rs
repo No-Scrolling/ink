@@ -793,6 +793,16 @@ fn remap_value(
                 remap_resource(resource, resource_mapping);
             }
         }
+        Value::CombinedErrorResource(resources) => {
+            for (_, resource) in resources {
+                remap_resource(resource, resource_mapping);
+            }
+        }
+        Value::CombinedErrorField(resources, _) => {
+            for resource in resources {
+                remap_resource(resource, resource_mapping);
+            }
+        }
         Value::Binary { left, right, .. } => {
             remap_value(left, mapping, resource_mapping, controller_mapping);
             remap_value(right, mapping, resource_mapping, controller_mapping);

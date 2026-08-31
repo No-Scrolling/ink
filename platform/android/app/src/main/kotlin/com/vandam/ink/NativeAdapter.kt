@@ -1,5 +1,7 @@
 package com.vandam.ink
 
+import org.json.JSONObject
+
 internal typealias NativeResultHandler = (NativeResult) -> Unit
 
 internal interface NativeAdapter {
@@ -36,6 +38,15 @@ internal enum class NativeErrorKind(val code: Int) {
     LOCATION_DISABLED(6),
     NFC_DISABLED(7),
 }
+
+internal fun inkError(
+    kind: String = "unexpected",
+    message: String = "",
+    retryable: Boolean = false,
+): JSONObject = JSONObject()
+    .put("kind", kind)
+    .put("message", message)
+    .put("retryable", retryable)
 
 internal interface NotificationsAdapter : NativeAdapter {
     fun start()

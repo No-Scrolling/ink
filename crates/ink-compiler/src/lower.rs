@@ -686,6 +686,7 @@ fn lower_function(
         ),
         ModuleKind::Screen => CompileError::new("a screen module must return <Screen>", body.span),
     })?;
+    assign_tab_states(&mut root, &mut states, &imports.source_path, function.span);
     let scoped_resources = (0..resources.len()).map(ResourceId).collect::<Vec<_>>();
     let scoped_controllers = (0..controllers.len())
         .map(ControllerId)
@@ -1335,19 +1336,44 @@ fn expression_derived_value(
     let Some(combined) = bindings.combined.get(name) else {
         return Ok(None);
     };
-    if path.as_slice() != ["status"] {
-        return Ok(None);
+    let ids = || {
+        combined
+            .resources
+            .iter()
+            .map(|(_, resource)| resource.id)
+            .collect()
+    };
+    match path.as_slice() {
+        [status] if status == "status" => Ok(Some((
+            Value::CombinedStatus(ids()),
+            status_shape(&["loading", "ready", "error"]),
+        ))),
+        [error, resource] if error == "error" && resource == "resource" => Ok(Some((
+            Value::CombinedErrorResource(
+                combined
+                    .resources
+                    .iter()
+                    .map(|(name, resource)| (name.clone(), resource.id))
+                    .collect(),
+            ),
+            StateShape::String,
+        ))),
+        [outer, inner, field] if outer == "error" && inner == "error" => {
+            let (field, shape) = match field.as_str() {
+                "kind" => (ResourceField::ErrorKind, StateShape::String),
+                "message" => (ResourceField::ErrorMessage, StateShape::String),
+                "retryable" => (ResourceField::ErrorRetryable, StateShape::Bool),
+                _ => {
+                    return Err(CompileError::new(
+                        "combined errors expose kind, message and retryable",
+                        expression.span(),
+                    ));
+                }
+            };
+            Ok(Some((Value::CombinedErrorField(ids(), field), shape)))
+        }
+        _ => Ok(None),
     }
-    Ok(Some((
-        Value::CombinedStatus(
-            combined
-                .resources
-                .iter()
-                .map(|(_, resource)| resource.id)
-                .collect(),
-        ),
-        status_shape(&["loading", "ready", "error"]),
-    )))
 }
 
 fn location_permission_accuracy(
@@ -1628,13 +1654,13 @@ fn controller_initialiser(
                 ),
                 ("rms", StateShape::Number),
                 ("peak", StateShape::Number),
-                ("error", StateShape::String),
+                ("error", ink_error_shape()),
             ]);
             let initial = object_value([
                 ("status", StateValue::String("idle".to_owned())),
                 ("rms", StateValue::Number(0.0)),
                 ("peak", StateValue::Number(0.0)),
-                ("error", StateValue::String(String::new())),
+                ("error", ink_error_value()),
             ]);
             (NativeControllerKind::Level, "{}".to_owned(), shape, initial)
         }
@@ -1650,7 +1676,7 @@ fn controller_initialiser(
                 ("octave", StateShape::Number),
                 ("cents", StateShape::Number),
                 ("confidence", StateShape::Number),
-                ("error", StateShape::String),
+                ("error", ink_error_shape()),
             ]);
             let initial = object_value([
                 ("status", StateValue::String("idle".to_owned())),
@@ -1659,7 +1685,7 @@ fn controller_initialiser(
                 ("octave", StateValue::Number(0.0)),
                 ("cents", StateValue::Number(0.0)),
                 ("confidence", StateValue::Number(0.0)),
-                ("error", StateValue::String(String::new())),
+                ("error", ink_error_value()),
             ]);
             (
                 NativeControllerKind::Pitch,
@@ -1686,9 +1712,7 @@ fn controller_initialiser(
                 ("durationMs", StateShape::Number),
                 ("bufferedMs", StateShape::Number),
                 ("speed", StateShape::Number),
-                ("errorKind", StateShape::String),
-                ("errorMessage", StateShape::String),
-                ("errorRetryable", StateShape::Bool),
+                ("error", ink_error_shape()),
             ]);
             let initial = object_value([
                 ("status", StateValue::String("idle".to_owned())),
@@ -1703,9 +1727,7 @@ fn controller_initialiser(
                 ("durationMs", StateValue::Number(0.0)),
                 ("bufferedMs", StateValue::Number(0.0)),
                 ("speed", StateValue::Number(1.0)),
-                ("errorKind", StateValue::String(String::new())),
-                ("errorMessage", StateValue::String(String::new())),
-                ("errorRetryable", StateValue::Bool(false)),
+                ("error", ink_error_value()),
             ]);
             (
                 NativeControllerKind::Player,
@@ -1730,9 +1752,7 @@ fn controller_initialiser(
                 ("id", StateShape::String),
                 ("src", StateShape::String),
                 ("recordingDurationMs", StateShape::Number),
-                ("errorKind", StateShape::String),
-                ("errorMessage", StateShape::String),
-                ("errorRetryable", StateShape::Bool),
+                ("error", ink_error_shape()),
             ]);
             let initial = object_value([
                 ("status", StateValue::String("idle".to_owned())),
@@ -1740,9 +1760,7 @@ fn controller_initialiser(
                 ("id", StateValue::String(String::new())),
                 ("src", StateValue::String(String::new())),
                 ("recordingDurationMs", StateValue::Number(0.0)),
-                ("errorKind", StateValue::String(String::new())),
-                ("errorMessage", StateValue::String(String::new())),
-                ("errorRetryable", StateValue::Bool(false)),
+                ("error", ink_error_value()),
             ]);
             (
                 NativeControllerKind::Recorder,
@@ -1762,17 +1780,13 @@ fn controller_initialiser(
                 ("status", status_shape(&["idle", "error"])),
                 ("operation", StateShape::String),
                 ("id", StateShape::String),
-                ("errorKind", StateShape::String),
-                ("errorMessage", StateShape::String),
-                ("errorRetryable", StateShape::Bool),
+                ("error", ink_error_shape()),
             ]);
             let initial = object_value([
                 ("status", StateValue::String("idle".to_owned())),
                 ("operation", StateValue::String(String::new())),
                 ("id", StateValue::String(String::new())),
-                ("errorKind", StateValue::String(String::new())),
-                ("errorMessage", StateValue::String(String::new())),
-                ("errorRetryable", StateValue::Bool(false)),
+                ("error", ink_error_value()),
             ]);
             (
                 NativeControllerKind::Notifications,
@@ -1836,15 +1850,11 @@ fn controller_initialiser(
                     "status",
                     status_shape(&["idle", "installing", "installed", "error"]),
                 ),
-                ("errorKind", StateShape::String),
-                ("errorMessage", StateShape::String),
-                ("errorRetryable", StateShape::Bool),
+                ("error", ink_error_shape()),
             ]);
             let initial = object_value([
                 ("status", StateValue::String("idle".to_owned())),
-                ("errorKind", StateValue::String(String::new())),
-                ("errorMessage", StateValue::String(String::new())),
-                ("errorRetryable", StateValue::Bool(false)),
+                ("error", ink_error_value()),
             ]);
             (
                 NativeControllerKind::RingtoneInstaller,
@@ -1877,9 +1887,7 @@ fn controller_initialiser(
                 ("registeredAtMs", StateShape::Number),
                 ("openedKey", StateShape::String),
                 ("messages", StateShape::List(Box::new(message))),
-                ("errorKind", StateShape::String),
-                ("errorMessage", StateShape::String),
-                ("errorRetryable", StateShape::Bool),
+                ("error", ink_error_shape()),
             ]);
             let initial = object_value([
                 ("status", StateValue::String("idle".to_owned())),
@@ -1887,9 +1895,7 @@ fn controller_initialiser(
                 ("registeredAtMs", StateValue::Number(0.0)),
                 ("openedKey", StateValue::String(String::new())),
                 ("messages", StateValue::List(Vec::new())),
-                ("errorKind", StateValue::String(String::new())),
-                ("errorMessage", StateValue::String(String::new())),
-                ("errorRetryable", StateValue::Bool(false)),
+                ("error", ink_error_value()),
             ]);
             (
                 NativeControllerKind::LightPush,
@@ -1964,16 +1970,6 @@ fn camera_controller(
         ]),
         _ => unreachable!(),
     };
-    let error_shape = object_shape([
-        ("kind", StateShape::String),
-        ("message", StateShape::String),
-        ("retryable", StateShape::Bool),
-    ]);
-    let error = object_value([
-        ("kind", StateValue::String("unexpected".to_owned())),
-        ("message", StateValue::String(String::new())),
-        ("retryable", StateValue::Bool(false)),
-    ]);
     (
         kind,
         config,
@@ -1983,14 +1979,30 @@ fn camera_controller(
                 status_shape(&["idle", "opening", "active", "ready", "error"]),
             ),
             ("value", value_shape),
-            ("error", error_shape),
+            ("error", ink_error_shape()),
         ]),
         object_value([
             ("status", StateValue::String("idle".to_owned())),
             ("value", value),
-            ("error", error),
+            ("error", ink_error_value()),
         ]),
     )
+}
+
+fn ink_error_shape() -> StateShape {
+    object_shape([
+        ("kind", StateShape::String),
+        ("message", StateShape::String),
+        ("retryable", StateShape::Bool),
+    ])
+}
+
+fn ink_error_value() -> StateValue {
+    object_value([
+        ("kind", StateValue::String("unexpected".to_owned())),
+        ("message", StateValue::String(String::new())),
+        ("retryable", StateValue::Bool(false)),
+    ])
 }
 
 fn scanner_config(call: &oxc::ast::ast::CallExpression<'_>) -> Result<String, CompileError> {
@@ -3763,8 +3775,7 @@ fn lower_tabs(
     states: &Bindings,
     imports: &Imports,
 ) -> Result<Node, CompileError> {
-    let state = state_attribute(element, "value", states, StateShape::Number)?;
-    reject_other_attributes(element, &["value"])?;
+    reject_other_attributes(element, &[])?;
     require_import(imports, "Tab", element.span)?;
     let mut tabs = Vec::new();
     for child in element_children(element)? {
@@ -3783,9 +3794,60 @@ fn lower_tabs(
         ));
     }
     Ok(Node::Tabs {
-        state: state.id,
+        state: UNASSIGNED_TAB_STATE,
         tabs,
     })
+}
+
+const UNASSIGNED_TAB_STATE: StateId = StateId(usize::MAX);
+
+fn assign_tab_states(node: &mut Node, states: &mut Vec<State>, source_path: &Path, span: Span) {
+    match node {
+        Node::Tabs { state, tabs } => {
+            let id = StateId(states.len());
+            states.push(State {
+                initial: StateValue::Number(0.0),
+                shape: StateShape::Number,
+                lifetime: StateLifetime::Local,
+                source: SourceSpan {
+                    path: source_path.to_owned(),
+                    span,
+                },
+            });
+            *state = id;
+            for (index, tab) in tabs.iter_mut().enumerate() {
+                tab.action = Action::SetValue {
+                    state: id,
+                    value: Value::Number(index as f64),
+                };
+                assign_tab_states(&mut tab.screen, states, source_path, span);
+            }
+        }
+        Node::Screen { children, .. } | Node::Stack { children, .. } => {
+            for child in children {
+                assign_tab_states(child, states, source_path, span);
+            }
+        }
+        Node::Navigator { routes } => {
+            for route in routes {
+                assign_tab_states(&mut route.screen, states, source_path, span);
+            }
+        }
+        Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            assign_tab_states(consequent, states, source_path, span);
+            if let Some(alternate) = alternate {
+                assign_tab_states(alternate, states, source_path, span);
+            }
+        }
+        Node::ForEach { template, .. } => {
+            assign_tab_states(template, states, source_path, span);
+        }
+        _ => {}
+    }
 }
 
 fn lower_navigator(
@@ -3864,8 +3926,7 @@ fn lower_tab(
 ) -> Result<Tab, CompileError> {
     expect_element(element, "Tab")?;
     let icon = required_icon_attribute(element, "icon")?;
-    let action = action_attribute(element, "onPress", states, None)?;
-    reject_other_attributes(element, &["icon", "onPress"])?;
+    reject_other_attributes(element, &["icon"])?;
     let children = element_children(element)?;
     if children.len() != 1 {
         return Err(CompileError::new(
@@ -3888,7 +3949,7 @@ fn lower_tab(
     }
     Ok(Tab {
         icon,
-        action,
+        action: Action::Sequence(Vec::new()),
         screen: Box::new(screen),
     })
 }

@@ -1,34 +1,13 @@
-export type CameraPermissionStatus =
-  | "granted"
-  | "denied"
-  | "blocked"
-  | "unknown";
+import type {
+  ImageSource,
+  Ink,
+  InkError,
+  PermissionResource,
+  PermissionStatus,
+} from "ink";
 
-type ResourceErrorKind =
-  | "unavailable"
-  | "permission-denied"
-  | "permission-blocked"
-  | "location-disabled"
-  | "timeout"
-  | "protocol"
-  | "unexpected";
-
-interface ResourceError {
-  readonly kind: ResourceErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-type AsyncResource<T> = { reload(): void } &
-  (
-    | { readonly status: "loading" }
-    | { readonly status: "ready"; readonly value: T }
-    | { readonly status: "error"; readonly error: ResourceError }
-  );
-
-export type CameraPermission = AsyncResource<CameraPermissionStatus> & {
-  request(): void;
-};
+export type CameraPermissionStatus = PermissionStatus;
+export type CameraPermission = PermissionResource;
 
 export type CameraErrorKind =
   | "permission-denied"
@@ -42,11 +21,7 @@ export type CameraErrorKind =
   | "protocol"
   | "unexpected";
 
-export interface CameraError {
-  readonly kind: CameraErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
+export type CameraError = InkError<CameraErrorKind>;
 
 export type CameraSession<T> = { open(): void } &
   (
@@ -55,12 +30,8 @@ export type CameraSession<T> = { open(): void } &
     | { readonly status: "error"; readonly error: CameraError }
   );
 
-export interface CameraImageSource {
-  readonly __inkCameraImageSource: never;
-}
-
 export interface CapturedPhoto {
-  readonly source: CameraImageSource;
+  readonly source: ImageSource;
   readonly width: number;
   readonly height: number;
   readonly mimeType: "image/jpeg";
@@ -96,7 +67,7 @@ export interface CameraPreviewProps {
 }
 
 /** Reserves an Ink-owned camera surface inside the current Screen. */
-export declare function CameraPreview(props: CameraPreviewProps): object;
+export declare function CameraPreview(props: CameraPreviewProps): Ink.Element;
 
 /** Reads and requests the camera permission shared by capture and scanning. */
 export declare function cameraPermission(): CameraPermission;

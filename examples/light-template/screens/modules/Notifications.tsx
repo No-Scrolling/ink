@@ -50,7 +50,7 @@ export default function Notifications() {
         Cancel Reminder
       </Button>
       {notifications.status === "error" ? (
-        <Text>{notifications.errorMessage}</Text>
+        <Text>{notifications.error.message}</Text>
       ) : null}
       {match(tap, {
         empty: () => <Text>No notification tap</Text>,

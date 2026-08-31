@@ -34,11 +34,13 @@ export type ResourceErrorKind =
   | "protocol"
   | "unexpected";
 
-export interface ResourceError {
-  readonly kind: ResourceErrorKind;
+export interface InkError<Kind extends string = ResourceErrorKind> {
+  readonly kind: Kind;
   readonly message: string;
   readonly retryable: boolean;
 }
+
+export type ResourceError = InkError<ResourceErrorKind>;
 
 interface ReloadableResource {
   reload(): void;
@@ -70,6 +72,21 @@ type ReadyValue<T> = Extract<T, { readonly status: "ready" }> extends {
   ? Value
   : never;
 
+type ErrorValue<T> = Extract<T, { readonly status: "error" }> extends {
+  readonly error: infer Error;
+}
+  ? Error
+  : never;
+
+type CombinedResourceError<
+  Resources extends Readonly<Record<string, AsyncResource<unknown, unknown>>>,
+> = {
+  readonly [Name in keyof Resources]: {
+    readonly resource: Name;
+    readonly error: ErrorValue<Resources[Name]>;
+  };
+}[keyof Resources];
+
 export type CombinedResource<
   Resources extends Readonly<Record<string, AsyncResource<unknown, unknown>>>,
 > =
@@ -78,15 +95,21 @@ export type CombinedResource<
       readonly status: "ready";
       readonly value: { readonly [Name in keyof Resources]: ReadyValue<Resources[Name]> };
     }
-  | { readonly status: "error" };
+  | { readonly status: "error"; readonly error: CombinedResourceError<Resources> };
 
 export declare function all<
   Resources extends Readonly<Record<string, AsyncResource<unknown, unknown>>>,
 >(resources: Resources): CombinedResource<Resources>;
 
-/** An opaque source returned by @ink/camera and accepted only by Image. */
-export interface CameraImageSource {
-  readonly __inkCameraImageSource: never;
+export type PermissionStatus = "granted" | "denied" | "blocked" | "unknown";
+
+export type PermissionResource = AsyncResource<PermissionStatus> & {
+  request(): void;
+};
+
+/** An opaque native image accepted only by Image. */
+export interface ImageSource {
+  readonly __inkImageSource: never;
 }
 
 export declare function state(initial: boolean): Signal<boolean>;
@@ -207,7 +230,7 @@ export namespace Ink {
   }
 
   interface ImageProps {
-    src: string | CameraImageSource;
+    src: string | ImageSource;
     fallback?: string;
     bleed?: boolean;
     width: number;
@@ -223,13 +246,11 @@ export namespace Ink {
 
   interface TabsProps {
     children: Element | ReadonlyArray<Element>;
-    value: number;
   }
 
   interface TabProps {
     children: Element;
     icon: string;
-    onPress: () => void;
   }
 
   interface NavigatorProps {

@@ -1,0 +1,7 @@
+{
+  "name": "ink-counter-benchmark",
+  "private": true,
+  "dependencies": {
+    "ink": "file:../../../packages/ink"
+  }
+}

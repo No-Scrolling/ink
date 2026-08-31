@@ -16,7 +16,7 @@ const ringtone = ringtoneInstaller();
 </Button>
 ```
 
-The source must be a local string literal. Ink bundles it, stages a private read-only copy and gives only the system LightOS process access through a conditional content provider. `kind` is `"ringtone"`, `"notification"` or `"alarm"` and defaults to `"ringtone"`. The controller moves through `idle`, `installing`, `installed` or `error`; errors expose `errorKind`, `errorMessage` and `errorRetryable`. Ink deliberately has no general shared-files interface.
+The source must be a local string literal. Ink bundles it, stages a private read-only copy and gives only the system LightOS process access through a conditional content provider. `kind` is `"ringtone"`, `"notification"` or `"alarm"` and defaults to `"ringtone"`. The controller moves through `idle`, `installing`, `installed` or `error`; the error branch exposes the same `error.kind`, `error.message` and `error.retryable` shape as every Ink module. Ink deliberately has no general shared-files interface.
 
 ## UnifiedPush
 

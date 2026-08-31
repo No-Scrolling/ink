@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
+    marker::PhantomData,
     ops::Range,
 };
 
@@ -32,6 +33,51 @@ struct TextVertex {
     position: [f32; 2],
     uv: [f32; 2],
     colour: [f32; 4],
+}
+
+#[derive(Clone, Copy, Pod, Zeroable)]
+#[repr(C)]
+struct TransformUniform {
+    translation: [f32; 4],
+}
+
+struct VertexBuffer<T> {
+    buffer: wgpu::Buffer,
+    capacity: usize,
+    label: &'static str,
+    marker: PhantomData<T>,
+}
+
+impl<T: Pod> VertexBuffer<T> {
+    fn new(device: &wgpu::Device, label: &'static str, capacity: usize) -> Self {
+        Self {
+            buffer: raw_vertex_buffer::<T>(device, label, capacity),
+            capacity,
+            label,
+            marker: PhantomData,
+        }
+    }
+
+    fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, vertices: &[T]) {
+        if vertices.len() > self.capacity {
+            self.capacity = vertices.len().next_power_of_two();
+            self.buffer = raw_vertex_buffer::<T>(device, self.label, self.capacity);
+        }
+        if !vertices.is_empty() {
+            queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(vertices));
+        }
+    }
+}
+
+#[derive(Default)]
+struct PreparedScene {
+    revision: u64,
+    ready: bool,
+    quad_fixed: Range<u32>,
+    quad_scroll: Range<u32>,
+    text_fixed: Range<u32>,
+    text_scroll: Range<u32>,
+    image_draws: Vec<ImageDraw>,
 }
 
 #[derive(Clone, Copy)]
@@ -87,10 +133,12 @@ impl ImageCache {
             let (pixels, width, height) = match image {
                 ImageData::Asset(asset) => (
                     Cow::Owned(
-                        miniz_oxide::inflate::decompress_to_vec_zlib(asset.compressed_pixels)
-                            .map_err(|error| {
-                                anyhow!("an Ink image could not be decompressed: {error:?}")
-                            })?,
+                        miniz_oxide::inflate::decompress_to_vec_zlib(
+                            asset.compressed_pixels.as_ref(),
+                        )
+                        .map_err(|error| {
+                            anyhow!("an Ink image could not be decompressed: {error:?}")
+                        })?,
                     ),
                     asset.width,
                     asset.height,
@@ -209,6 +257,7 @@ impl ImageCache {
 struct ImageDraw {
     id: u64,
     vertices: Range<u32>,
+    scrolling: bool,
 }
 
 struct GlyphAtlas {
@@ -350,14 +399,14 @@ impl GlyphAtlas {
         Ok(Some(glyph))
     }
 
-    fn mask(&mut self, queue: &wgpu::Queue, mask: Mask) -> Result<CachedMask> {
+    fn mask(&mut self, queue: &wgpu::Queue, mask: &Mask) -> Result<CachedMask> {
         if let Some(mask) = self.masks.get(&mask.id) {
             return Ok(*mask);
         }
 
         let width = u32::from(mask.width);
         let height = u32::from(mask.height);
-        if mask.pixels.len() != (width * height) as usize {
+        if mask.pixels.as_ref().len() != (width * height) as usize {
             return Err(anyhow!("an Ink mask has invalid dimensions"));
         }
         let padded_width = width + ATLAS_PADDING * 2;
@@ -385,7 +434,7 @@ impl GlyphAtlas {
                 },
                 aspect: wgpu::TextureAspect::All,
             },
-            mask.pixels,
+            mask.pixels.as_ref(),
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(width),
@@ -424,14 +473,20 @@ pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    fixed_transform: wgpu::BindGroup,
+    scroll_transform: wgpu::BindGroup,
+    scroll_transform_buffer: wgpu::Buffer,
     quad_pipeline: wgpu::RenderPipeline,
-    quad_buffer: wgpu::Buffer,
+    quad_buffer: VertexBuffer<QuadVertex>,
+    overlay_buffer: VertexBuffer<QuadVertex>,
+    overlay_vertices: Vec<QuadVertex>,
     text_pipeline: wgpu::RenderPipeline,
-    text_buffer: wgpu::Buffer,
+    text_buffer: VertexBuffer<TextVertex>,
     image_pipeline: wgpu::RenderPipeline,
-    image_buffer: wgpu::Buffer,
+    image_buffer: VertexBuffer<TextVertex>,
     image_cache: ImageCache,
     glyph_atlas: GlyphAtlas,
+    prepared: PreparedScene,
 }
 
 impl Renderer {
@@ -526,6 +581,19 @@ impl Renderer {
             "image_fragment",
             include_bytes!(concat!(env!("OUT_DIR"), "/image_fragment.spv")),
         );
+        let transform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Ink transform bind group layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
         let glyph_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Ink glyph bind group layout"),
@@ -550,7 +618,7 @@ impl Renderer {
             });
         let quad_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Ink quad pipeline layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[Some(&transform_layout)],
             immediate_size: 0,
         });
         let quad_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -591,7 +659,7 @@ impl Renderer {
         });
         let text_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Ink text pipeline layout"),
-            bind_group_layouts: &[Some(&glyph_bind_group_layout)],
+            bind_group_layouts: &[Some(&transform_layout), Some(&glyph_bind_group_layout)],
             immediate_size: 0,
         });
         let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -659,7 +727,7 @@ impl Renderer {
             });
         let image_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Ink image pipeline layout"),
-            bind_group_layouts: &[Some(&image_bind_group_layout)],
+            bind_group_layouts: &[Some(&transform_layout), Some(&image_bind_group_layout)],
             immediate_size: 0,
         });
         let image_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -703,9 +771,31 @@ impl Renderer {
             multiview_mask: None,
             cache: None,
         });
-        let quad_buffer = vertex_buffer::<QuadVertex>(&device, "Ink quad vertices", MAX_QUADS);
-        let text_buffer = vertex_buffer::<TextVertex>(&device, "Ink text vertices", MAX_GLYPHS);
-        let image_buffer = vertex_buffer::<TextVertex>(&device, "Ink image vertices", MAX_QUADS);
+        let fixed_transform_buffer = transform_buffer(&device, "Ink fixed transform");
+        let scroll_transform_buffer = transform_buffer(&device, "Ink scroll transform");
+        let fixed_transform = transform_bind_group(
+            &device,
+            &transform_layout,
+            &fixed_transform_buffer,
+            "Ink fixed transform",
+        );
+        let scroll_transform = transform_bind_group(
+            &device,
+            &transform_layout,
+            &scroll_transform_buffer,
+            "Ink scroll transform",
+        );
+        queue.write_buffer(
+            &fixed_transform_buffer,
+            0,
+            bytemuck::bytes_of(&TransformUniform {
+                translation: [0.0; 4],
+            }),
+        );
+        let quad_buffer = VertexBuffer::new(&device, "Ink quad vertices", MAX_QUADS * 6);
+        let overlay_buffer = VertexBuffer::new(&device, "Ink overlay vertices", 12);
+        let text_buffer = VertexBuffer::new(&device, "Ink text vertices", MAX_GLYPHS * 6);
+        let image_buffer = VertexBuffer::new(&device, "Ink image vertices", MAX_QUADS * 6);
         let image_cache = ImageCache::new(image_bind_group_layout);
         let glyph_atlas = GlyphAtlas::new(&device, &glyph_bind_group_layout)?;
 
@@ -715,14 +805,20 @@ impl Renderer {
             device,
             queue,
             config,
+            fixed_transform,
+            scroll_transform,
+            scroll_transform_buffer,
             quad_pipeline,
             quad_buffer,
+            overlay_buffer,
+            overlay_vertices: Vec::with_capacity(12),
             text_pipeline,
             text_buffer,
             image_pipeline,
             image_buffer,
             image_cache,
             glyph_atlas,
+            prepared: PreparedScene::default(),
         })
     }
 
@@ -742,49 +838,24 @@ impl Renderer {
         if self.config.width != scene.width || self.config.height != scene.height {
             self.resize(scene.width, scene.height);
         }
-
-        let quads = quad_vertices(scene);
-        if quads.len() > MAX_QUADS * 6 {
-            return Err(anyhow!("scene exceeds the prototype quad budget"));
+        if !self.prepared.ready || self.prepared.revision != scene.revision {
+            self.prepare(scene)?;
         }
-        let (mut text, emoji) = self.text_vertices(scene)?;
-        text.extend(self.mask_vertices(scene)?);
-        self.image_cache.begin_frame();
-        let (mut images, mut image_draws) = self.image_vertices(scene)?;
-        if !emoji.is_empty() {
-            self.image_cache.prepare(
-                &self.device,
-                &self.queue,
-                &ImageData::Asset(APPLE_EMOJI_ATLAS),
-            )?;
-            let start = images.len() as u32;
-            images.extend(emoji);
-            image_draws.push(ImageDraw {
-                id: APPLE_EMOJI_ATLAS.id,
-                vertices: start..images.len() as u32,
-            });
-        }
-        self.image_cache.trim(
-            &image_draws
-                .iter()
-                .map(|draw| draw.id)
-                .collect::<HashSet<_>>(),
+        let scroll_y = if scene.height == 0 {
+            0.0
+        } else {
+            (scene.scroll_offset - scene.scroll_origin) * 2.0 / scene.height as f32
+        };
+        self.queue.write_buffer(
+            &self.scroll_transform_buffer,
+            0,
+            bytemuck::bytes_of(&TransformUniform {
+                translation: [0.0, scroll_y, 0.0, 0.0],
+            }),
         );
-        if text.len() > MAX_GLYPHS * 6 {
-            return Err(anyhow!("scene exceeds the prototype glyph budget"));
-        }
-        if !quads.is_empty() {
-            self.queue
-                .write_buffer(&self.quad_buffer, 0, bytemuck::cast_slice(&quads));
-        }
-        if !text.is_empty() {
-            self.queue
-                .write_buffer(&self.text_buffer, 0, bytemuck::cast_slice(&text));
-        }
-        if !images.is_empty() {
-            self.queue
-                .write_buffer(&self.image_buffer, 0, bytemuck::cast_slice(&images));
-        }
+        scrollbar_vertices(scene, &mut self.overlay_vertices);
+        self.overlay_buffer
+            .write(&self.device, &self.queue, &self.overlay_vertices);
 
         let mut retried_outdated_surface = false;
         let frame = loop {
@@ -829,29 +900,69 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if !quads.is_empty() {
+            if !self.prepared.quad_fixed.is_empty() {
                 pass.set_pipeline(&self.quad_pipeline);
-                pass.set_vertex_buffer(0, self.quad_buffer.slice(..));
-                pass.draw(0..quads.len() as u32, 0..1);
+                pass.set_bind_group(0, &self.fixed_transform, &[]);
+                pass.set_vertex_buffer(0, self.quad_buffer.buffer.slice(..));
+                pass.draw(self.prepared.quad_fixed.clone(), 0..1);
             }
-            if !images.is_empty() {
+            if !self.prepared.quad_scroll.is_empty() {
+                pass.set_pipeline(&self.quad_pipeline);
+                pass.set_bind_group(0, &self.scroll_transform, &[]);
+                pass.set_vertex_buffer(0, self.quad_buffer.buffer.slice(..));
+                set_scroll_scissor(&mut pass, scene);
+                pass.draw(self.prepared.quad_scroll.clone(), 0..1);
+                reset_scissor(&mut pass, scene);
+            }
+            if !self.prepared.image_draws.is_empty() {
                 pass.set_pipeline(&self.image_pipeline);
-                pass.set_vertex_buffer(0, self.image_buffer.slice(..));
-                for draw in &image_draws {
+                pass.set_vertex_buffer(0, self.image_buffer.buffer.slice(..));
+                for draw in &self.prepared.image_draws {
                     let image = self
                         .image_cache
                         .images
                         .get(&draw.id)
                         .expect("prepared image stays cached");
-                    pass.set_bind_group(0, &image.bind_group, &[]);
+                    pass.set_bind_group(
+                        0,
+                        if draw.scrolling {
+                            &self.scroll_transform
+                        } else {
+                            &self.fixed_transform
+                        },
+                        &[],
+                    );
+                    pass.set_bind_group(1, &image.bind_group, &[]);
+                    if draw.scrolling {
+                        set_scroll_scissor(&mut pass, scene);
+                    } else {
+                        reset_scissor(&mut pass, scene);
+                    }
                     pass.draw(draw.vertices.clone(), 0..1);
                 }
+                reset_scissor(&mut pass, scene);
             }
-            if !text.is_empty() {
+            if !self.prepared.text_fixed.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
-                pass.set_bind_group(0, &self.glyph_atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.text_buffer.slice(..));
-                pass.draw(0..text.len() as u32, 0..1);
+                pass.set_bind_group(0, &self.fixed_transform, &[]);
+                pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.text_buffer.buffer.slice(..));
+                pass.draw(self.prepared.text_fixed.clone(), 0..1);
+            }
+            if !self.prepared.text_scroll.is_empty() {
+                pass.set_pipeline(&self.text_pipeline);
+                pass.set_bind_group(0, &self.scroll_transform, &[]);
+                pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
+                pass.set_vertex_buffer(0, self.text_buffer.buffer.slice(..));
+                set_scroll_scissor(&mut pass, scene);
+                pass.draw(self.prepared.text_scroll.clone(), 0..1);
+                reset_scissor(&mut pass, scene);
+            }
+            if !self.overlay_vertices.is_empty() {
+                pass.set_pipeline(&self.quad_pipeline);
+                pass.set_bind_group(0, &self.fixed_transform, &[]);
+                pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
+                pass.draw(0..self.overlay_vertices.len() as u32, 0..1);
             }
         }
         self.queue.submit(Some(encoder.finish()));
@@ -859,11 +970,78 @@ impl Renderer {
         Ok(RenderOutcome::Presented)
     }
 
-    fn text_vertices(&mut self, scene: &Scene) -> Result<(Vec<TextVertex>, Vec<TextVertex>)> {
+    fn prepare(&mut self, scene: &Scene) -> Result<()> {
+        let mut quads = quad_vertices(scene, false);
+        let quad_fixed_end = quads.len() as u32;
+        quads.extend(quad_vertices(scene, true));
+
+        let (mut text, fixed_emoji) = self.text_vertices(scene, false)?;
+        text.extend(self.mask_vertices(scene, false)?);
+        let text_fixed_end = text.len() as u32;
+        let (scroll_text, scroll_emoji) = self.text_vertices(scene, true)?;
+        text.extend(scroll_text);
+        text.extend(self.mask_vertices(scene, true)?);
+
+        self.image_cache.begin_frame();
+        let (mut images, mut image_draws) = self.image_vertices(scene, false)?;
+        let (scroll_images, mut scroll_draws) = self.image_vertices(scene, true)?;
+        let scroll_start = images.len() as u32;
+        images.extend(scroll_images);
+        for draw in &mut scroll_draws {
+            draw.vertices.start += scroll_start;
+            draw.vertices.end += scroll_start;
+        }
+        image_draws.extend(scroll_draws);
+        if !fixed_emoji.is_empty() || !scroll_emoji.is_empty() {
+            self.image_cache.prepare(
+                &self.device,
+                &self.queue,
+                &ImageData::Asset(APPLE_EMOJI_ATLAS.clone()),
+            )?;
+        }
+        for (vertices, scrolling) in [(fixed_emoji, false), (scroll_emoji, true)] {
+            if vertices.is_empty() {
+                continue;
+            }
+            let start = images.len() as u32;
+            images.extend(vertices);
+            image_draws.push(ImageDraw {
+                id: APPLE_EMOJI_ATLAS.id,
+                vertices: start..images.len() as u32,
+                scrolling,
+            });
+        }
+        self.image_cache.trim(
+            &image_draws
+                .iter()
+                .map(|draw| draw.id)
+                .collect::<HashSet<_>>(),
+        );
+
+        self.quad_buffer.write(&self.device, &self.queue, &quads);
+        self.text_buffer.write(&self.device, &self.queue, &text);
+        self.image_buffer.write(&self.device, &self.queue, &images);
+        self.prepared = PreparedScene {
+            revision: scene.revision,
+            ready: true,
+            quad_fixed: 0..quad_fixed_end,
+            quad_scroll: quad_fixed_end..quads.len() as u32,
+            text_fixed: 0..text_fixed_end,
+            text_scroll: text_fixed_end..text.len() as u32,
+            image_draws,
+        };
+        Ok(())
+    }
+
+    fn text_vertices(
+        &mut self,
+        scene: &Scene,
+        scrolling: bool,
+    ) -> Result<(Vec<TextVertex>, Vec<TextVertex>)> {
         let font = self.glyph_atlas.font.clone();
         let mut vertices = Vec::new();
         let mut emoji = Vec::new();
-        for run in &scene.text {
+        for run in scene.text.iter().filter(|run| run.scrolling == scrolling) {
             let clip = intersect(run.rect, run.clip);
             if clip.width <= 0.0 || clip.height <= 0.0 {
                 continue;
@@ -930,19 +1108,23 @@ impl Renderer {
         Ok((vertices, emoji))
     }
 
-    fn mask_vertices(&mut self, scene: &Scene) -> Result<Vec<TextVertex>> {
+    fn mask_vertices(&mut self, scene: &Scene, scrolling: bool) -> Result<Vec<TextVertex>> {
         let mut vertices = Vec::with_capacity(scene.masks.len() * 6);
-        for run in &scene.masks {
-            let mask = self.glyph_atlas.mask(&self.queue, run.mask)?;
+        for run in scene.masks.iter().filter(|run| run.scrolling == scrolling) {
+            let mask = self.glyph_atlas.mask(&self.queue, &run.mask)?;
             push_mask_quad(&mut vertices, scene, run.rect, run.clip, mask, run.colour);
         }
         Ok(vertices)
     }
 
-    fn image_vertices(&mut self, scene: &Scene) -> Result<(Vec<TextVertex>, Vec<ImageDraw>)> {
+    fn image_vertices(
+        &mut self,
+        scene: &Scene,
+        scrolling: bool,
+    ) -> Result<(Vec<TextVertex>, Vec<ImageDraw>)> {
         let mut vertices = Vec::with_capacity(scene.images.len() * 6);
         let mut draws = Vec::with_capacity(scene.images.len());
-        for run in &scene.images {
+        for run in scene.images.iter().filter(|run| run.scrolling == scrolling) {
             let image = self
                 .image_cache
                 .prepare(&self.device, &self.queue, &run.image)?;
@@ -959,6 +1141,7 @@ impl Renderer {
             draws.push(ImageDraw {
                 id: run.image.id(),
                 vertices: start..vertices.len() as u32,
+                scrolling,
             });
         }
         Ok((vertices, draws))
@@ -1016,53 +1199,144 @@ fn spirv_shader(
     }
 }
 
-fn vertex_buffer<T>(device: &wgpu::Device, label: &'static str, primitives: usize) -> wgpu::Buffer {
+fn raw_vertex_buffer<T>(
+    device: &wgpu::Device,
+    label: &'static str,
+    vertices: usize,
+) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some(label),
-        size: (primitives * 6 * size_of::<T>()) as u64,
+        size: (vertices.max(1) * size_of::<T>()) as u64,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     })
 }
 
-fn quad_vertices(scene: &Scene) -> Vec<QuadVertex> {
+fn transform_buffer(device: &wgpu::Device, label: &'static str) -> wgpu::Buffer {
+    device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some(label),
+        size: size_of::<TransformUniform>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    })
+}
+
+fn transform_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    buffer: &wgpu::Buffer,
+    label: &'static str,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(label),
+        layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
+    })
+}
+
+fn quad_vertices(scene: &Scene, scrolling: bool) -> Vec<QuadVertex> {
     let mut vertices = Vec::with_capacity(scene.quads.len() * 6);
-    for quad in &scene.quads {
-        let rect = intersect(quad.rect, quad.clip);
-        if rect.width <= 0.0 || rect.height <= 0.0 {
-            continue;
-        }
-        let [left, top] = position(scene, rect.x, rect.y);
-        let [right, bottom] = position(scene, rect.x + rect.width, rect.y + rect.height);
-        let colour = colour(quad.colour);
-        vertices.extend_from_slice(&[
-            QuadVertex {
-                position: [left, top],
-                colour,
-            },
-            QuadVertex {
-                position: [left, bottom],
-                colour,
-            },
-            QuadVertex {
-                position: [right, bottom],
-                colour,
-            },
-            QuadVertex {
-                position: [left, top],
-                colour,
-            },
-            QuadVertex {
-                position: [right, bottom],
-                colour,
-            },
-            QuadVertex {
-                position: [right, top],
-                colour,
-            },
-        ]);
+    for quad in scene
+        .quads
+        .iter()
+        .filter(|quad| quad.scrolling == scrolling)
+    {
+        push_quad_vertices(&mut vertices, scene, quad);
     }
     vertices
+}
+
+fn push_quad_vertices(vertices: &mut Vec<QuadVertex>, scene: &Scene, quad: &ink_core::Quad) {
+    let rect = intersect(quad.rect, quad.clip);
+    if rect.width <= 0.0 || rect.height <= 0.0 {
+        return;
+    }
+    let [left, top] = position(scene, rect.x, rect.y);
+    let [right, bottom] = position(scene, rect.x + rect.width, rect.y + rect.height);
+    let colour = colour(quad.colour);
+    vertices.extend_from_slice(&[
+        QuadVertex {
+            position: [left, top],
+            colour,
+        },
+        QuadVertex {
+            position: [left, bottom],
+            colour,
+        },
+        QuadVertex {
+            position: [right, bottom],
+            colour,
+        },
+        QuadVertex {
+            position: [left, top],
+            colour,
+        },
+        QuadVertex {
+            position: [right, bottom],
+            colour,
+        },
+        QuadVertex {
+            position: [right, top],
+            colour,
+        },
+    ]);
+}
+
+fn scrollbar_vertices(scene: &Scene, vertices: &mut Vec<QuadVertex>) {
+    vertices.clear();
+    let Some(scrollbar) = scene.scroll_bar else {
+        return;
+    };
+    let thumb_height = (scrollbar.track.height * scrollbar.track.height / scrollbar.content_height)
+        .clamp(scrollbar.thumb_width, scrollbar.track.height);
+    let thumb_y = scrollbar.track.y
+        + scene.scroll_offset / scene.scroll_max * (scrollbar.track.height - thumb_height);
+    let clip = scene.scroll_clip.unwrap_or(scrollbar.track);
+    for quad in [
+        ink_core::Quad {
+            rect: scrollbar.track,
+            clip,
+            colour: Colour::WHITE,
+            scrolling: false,
+        },
+        ink_core::Quad {
+            rect: Rect {
+                x: scrollbar.track.x - (scrollbar.thumb_width - scrollbar.track_width) / 2.0,
+                y: thumb_y,
+                width: scrollbar.thumb_width,
+                height: thumb_height,
+            },
+            clip,
+            colour: Colour::WHITE,
+            scrolling: false,
+        },
+    ] {
+        push_quad_vertices(vertices, scene, &quad);
+    }
+}
+
+fn set_scroll_scissor(pass: &mut wgpu::RenderPass<'_>, scene: &Scene) {
+    let Some(clip) = scene.scroll_clip else {
+        return;
+    };
+    let x = clip.x.max(0.0).floor() as u32;
+    let y = clip.y.max(0.0).floor() as u32;
+    let right = (clip.x + clip.width)
+        .min(scene.width as f32)
+        .ceil()
+        .max(x as f32) as u32;
+    let bottom = (clip.y + clip.height)
+        .min(scene.height as f32)
+        .ceil()
+        .max(y as f32) as u32;
+    pass.set_scissor_rect(x, y, right - x, bottom - y);
+}
+
+fn reset_scissor(pass: &mut wgpu::RenderPass<'_>, scene: &Scene) {
+    pass.set_scissor_rect(0, 0, scene.width, scene.height);
 }
 
 fn push_text_quad(

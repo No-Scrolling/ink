@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex, Once};
 #[cfg(feature = "image")]
 use ink_core::ImageFit;
 use ink_core::{
-    CameraPreviewKind, ControllerId, Engine, Hydration, NativeRequestKind, PUBLIC_SANS,
-    ResourceError, ResourceErrorKind, StateValue, TextEdit, TextInputAction,
+    AppDefinition, CameraPreviewKind, ControllerId, Engine, Hydration, NativeRequestKind,
+    PUBLIC_SANS, ResourceError, ResourceErrorKind, StateValue, TextEdit, TextInputAction,
 };
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
@@ -22,8 +22,6 @@ use jni::objects::JShortArray;
 use jni::objects::{JByteBuffer, JClass, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use ndk::native_window::NativeWindow;
-
-use crate::generated_app;
 
 const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_WARN: c_int = 5;
@@ -67,6 +65,7 @@ unsafe extern "C" {
 
 struct AndroidEngine {
     engine: Engine,
+    uses_persistence: bool,
     state_path: PathBuf,
     surface: Option<AttachedSurface>,
     #[cfg(feature = "audio")]
@@ -93,21 +92,22 @@ impl wgpu::rwh::HasDisplayHandle for AndroidWindow {
 }
 
 impl AndroidEngine {
-    fn new(state_path: PathBuf) -> Self {
-        let (engine, hydration) = if !generated_app::USES_PERSISTENCE {
-            (Engine::new(generated_app::app()), Hydration::Empty)
+    fn new(definition: AppDefinition, state_path: PathBuf) -> Self {
+        let uses_persistence = definition.uses_persistence();
+        let (engine, hydration) = if !uses_persistence {
+            (Engine::new(definition), Hydration::Empty)
         } else {
             match std::fs::read(&state_path) {
-                Ok(bytes) => Engine::hydrate(generated_app::app(), &bytes),
+                Ok(bytes) => Engine::hydrate(definition, &bytes),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    (Engine::new(generated_app::app()), Hydration::Empty)
+                    (Engine::new(definition), Hydration::Empty)
                 }
                 Err(error) => {
                     android_log(
                         ANDROID_LOG_WARN,
                         &format!("could not read persisted state: {error}"),
                     );
-                    (Engine::new(generated_app::app()), Hydration::Empty)
+                    (Engine::new(definition), Hydration::Empty)
                 }
             }
         };
@@ -119,6 +119,7 @@ impl AndroidEngine {
         }
         Self {
             engine,
+            uses_persistence,
             state_path,
             surface: None,
             #[cfg(feature = "audio")]
@@ -139,7 +140,7 @@ impl AndroidEngine {
         let window = Arc::new(window);
         let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
         descriptor.backends = wgpu::Backends::VULKAN;
-        descriptor.flags = wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL;
+        descriptor.flags = wgpu::InstanceFlags::empty();
         let instance = wgpu::Instance::new(descriptor);
         let wgpu_surface = match instance.create_surface(AndroidWindow(window.clone())) {
             Ok(surface) => surface,
@@ -198,9 +199,6 @@ impl AndroidEngine {
             }
             _ => false,
         };
-        if changed {
-            self.render();
-        }
         changed
     }
 
@@ -208,7 +206,6 @@ impl AndroidEngine {
         if !self.engine.scroll_by(delta) {
             return false;
         }
-        self.render();
         true
     }
 
@@ -327,6 +324,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     state_path: JString<'_>,
+    app: JByteArray<'_>,
 ) -> jlong {
     PANIC_HOOK.call_once(|| {
         std::panic::set_hook(Box::new(|panic| {
@@ -336,18 +334,35 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
     let state_path = env
         .with_env(|env| state_path.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
+    let bytes = env
+        .with_env(|env| env.convert_byte_array(&app))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    let definition = match AppDefinition::decode(&bytes) {
+        Ok(definition) => definition,
+        Err(error) => {
+            android_log(
+                ANDROID_LOG_ERROR,
+                &format!("could not load app.ink: {error}"),
+            );
+            return 0;
+        }
+    };
     android_log(ANDROID_LOG_INFO, "created Ink engine");
-    Box::into_raw(Box::new(Mutex::new(AndroidEngine::new(PathBuf::from(
-        state_path,
-    ))))) as jlong
+    Box::into_raw(Box::new(Mutex::new(AndroidEngine::new(
+        definition,
+        PathBuf::from(state_path),
+    )))) as jlong
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeUsesPersistence(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
+    handle: jlong,
 ) -> jboolean {
-    generated_app::USES_PERSISTENCE as jboolean
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|engine| engine.uses_persistence) as jboolean
 }
 
 #[unsafe(no_mangle)]
@@ -511,6 +526,19 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollMaximum(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .map_or(0.0, |engine| engine.engine.scroll_max())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) {
+    if let Some(engine) = engine(handle)
+        && let Ok(mut engine) = engine.lock()
+    {
+        engine.render();
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -956,13 +984,13 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDestroy(
 }
 
 fn persist(engine: &Mutex<AndroidEngine>) {
-    if !generated_app::USES_PERSISTENCE {
-        return;
-    }
     let (path, revision, bytes) = {
         let Ok(engine) = engine.lock() else {
             return;
         };
+        if !engine.uses_persistence {
+            return;
+        }
         let snapshot = match engine.engine.persisted_snapshot() {
             Ok(Some(snapshot)) => snapshot,
             Ok(None) => return,

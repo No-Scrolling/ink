@@ -8,6 +8,8 @@ node_modules/
 # Ink applications
 **/.ink/
 /examples/**/dist/
+/benchmarks/apps/**/.benchmark/
+/benchmarks/apps/light-sdk-*/build/
 *.apk
 *.aab
 

@@ -8,6 +8,8 @@ Ink applications are synchronous descriptions compiled to Rust, while LightOS, n
 
 Native modules expose typed constructors such as `lightSdkVersion()`. A constructor returns a discriminated `AsyncResource<T>`: loading has only `status`, ready has `value`, and error has a structured `ResourceError`. Errors have a stable kind, a message and an explicit retryable flag. TypeScript narrows the available fields from the status check.
 
+Resources, actions and long-lived controllers may have different lifecycle statuses, but every failure is exposed as `error.kind`, `error.message` and `error.retryable`. Permission resources also share one status vocabulary and request interface across modules. Native image-producing modules return Ink's opaque `ImageSource`, so the core image element does not depend on camera terminology.
+
 `match(resource, cases)` renders mutually exclusive states without nested conditionals. Every status must have one synchronous branch, and its parameter is narrowed to that status. The compiler lowers the cases to existing conditional nodes; applications include no matcher runtime. Direct status comparisons remain available when a screen needs only a partial condition.
 
 The compiler gives every resource a dedicated `ResourceId` and attaches resources declared by screen modules to that screen. `ink-core` activates only resources owned by the visible route and tab, plus any application-owned resources. Leaving a screen cancels its active work. Returning uses a settled cached value; an explicit reload starts a fresh read.
@@ -24,4 +26,4 @@ Application code stays declarative and cannot issue arbitrary native calls. New 
 
 Network reads may opt into an app-private, OS-evictable cache with explicit fresh and stale-on-error windows. Network writes use a separate idle/running/ready/error mutation protocol, start only through `run()`, and never retry automatically.
 
-`all()` composes ordinary reads strictly and fail-fast in compiler-lowered conditions. `computed()` lowers a constrained pure scalar expression into core values. Neither API introduces an effect runtime, scheduler or hidden lifetime. Route parameters are stored on navigation entries and checked by the compiler against their target screen rather than being smuggled through shared state.
+`all()` composes ordinary reads strictly and fail-fast in compiler-lowered conditions. Its error branch identifies the failed member and retains that resource's structured error. `computed()` lowers a constrained pure scalar expression into core values. Neither API introduces an effect runtime, scheduler or hidden lifetime. Route parameters are stored on navigation entries and checked by the compiler against their target screen rather than being smuggled through shared state.

@@ -20,7 +20,7 @@ const player = audioPlayer({ usage: "music", playback: "detached" });
 
 Sources may be relative bundled assets, HTTPS URLs or recordings produced by Ink. `setQueue(items, startIndex)` replaces the queue without starting it; call `play()` afterwards. `previous()` and `next()` move between items, while seek, skip and playback-speed operations affect the current item. Literal queue indices and speeds are checked by the compiler.
 
-The player status is `idle`, `loading`, `paused`, `playing`, `ended` or `error`. An error exposes a stable `errorKind`, message and retryable flag. Source, unsupported-format and audio-output failures remain distinct.
+The player status is `idle`, `loading`, `paused`, `playing`, `ended` or `error`. The error branch exposes `error.kind`, `error.message` and `error.retryable`. Source, unsupported-format and audio-output failures remain distinct.
 
 ## Recording
 

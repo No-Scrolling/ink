@@ -1,31 +1,6 @@
-type ResourceErrorKind =
-  | "unavailable"
-  | "permission-denied"
-  | "permission-blocked"
-  | "timeout"
-  | "protocol"
-  | "unexpected";
+import type { InkError, PermissionResource } from "ink";
 
-interface ResourceError {
-  readonly kind: ResourceErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-type AsyncResource<T> = {
-  reload(): void;
-} &
-  (
-    | { readonly status: "loading" }
-    | { readonly status: "ready"; readonly value: T }
-    | { readonly status: "error"; readonly error: ResourceError }
-  );
-
-export type NotificationPermission = AsyncResource<
-  "granted" | "denied" | "blocked"
-> & {
-  request(): void;
-};
+export type NotificationPermission = PermissionResource;
 
 interface LocalNotificationBase {
   readonly id: string;
@@ -64,9 +39,7 @@ export type LocalNotifications = LocalNotificationActions &
         readonly status: "error";
         readonly operation: "schedule" | "cancel";
         readonly id: string;
-        readonly errorKind: NotificationOperationErrorKind;
-        readonly errorMessage: string;
-        readonly errorRetryable: boolean;
+        readonly error: InkError<NotificationOperationErrorKind>;
       }
   );
 

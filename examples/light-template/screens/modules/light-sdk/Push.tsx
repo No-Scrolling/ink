@@ -8,7 +8,7 @@ export default function Push() {
     <Screen title="Push">
       <Text>Status: {push.status}</Text>
       {push.endpoint === "" ? null : <Text>Endpoint: {push.endpoint}</Text>}
-      {push.status === "error" ? <Text>{push.errorMessage}</Text> : null}
+      {push.status === "error" ? <Text>{push.error.message}</Text> : null}
       <Button
         onPress={() =>
           push.register("http://127.0.0.1:18080/v1/push/subscriptions")

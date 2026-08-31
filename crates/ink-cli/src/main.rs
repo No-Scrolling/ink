@@ -202,6 +202,14 @@ fn show_info(project: &Project) -> Result<()> {
     output::field("Target", "Android arm64");
     output::field("Ink", env!("CARGO_PKG_VERSION"));
     output::field(
+        "Capabilities",
+        if app.capabilities.is_empty() {
+            "None".to_owned()
+        } else {
+            app.capabilities.join(", ")
+        },
+    );
+    output::field(
         "Modules",
         if app.modules.is_empty() {
             "None".to_owned()

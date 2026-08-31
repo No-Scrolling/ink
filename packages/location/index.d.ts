@@ -1,40 +1,13 @@
-// TODO: Import these from "ink" once local file packages resolve sibling types correctly.
-type ResourceErrorKind =
-  | "unavailable"
-  | "permission-denied"
-  | "permission-blocked"
-  | "location-disabled"
-  | "nfc-disabled"
-  | "timeout"
-  | "protocol"
-  | "unexpected";
-
-interface ResourceError {
-  readonly kind: ResourceErrorKind;
-  readonly message: string;
-  readonly retryable: boolean;
-}
-
-type AsyncResource<T> = {
-  reload(): void;
-} &
-  (
-    | { readonly status: "loading" }
-    | { readonly status: "ready"; readonly value: T }
-    | { readonly status: "error"; readonly error: ResourceError }
-  );
+import type {
+  AsyncResource,
+  PermissionResource,
+  PermissionStatus,
+} from "ink";
 
 export type LocationAccuracy = "approximate" | "precise";
 
-export type LocationPermissionStatus =
-  | "granted"
-  | "denied"
-  | "blocked"
-  | "unknown";
-
-export type LocationPermission = AsyncResource<LocationPermissionStatus> & {
-  request(): void;
-};
+export type LocationPermissionStatus = PermissionStatus;
+export type LocationPermission = PermissionResource;
 
 export interface CurrentLocationOptions {
   readonly accuracy?: LocationAccuracy;
