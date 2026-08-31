@@ -199,6 +199,7 @@ export namespace Ink {
     value: string;
     onChange(value: string): void;
     action?: "search" | "return" | "done";
+    autoFocus?: boolean;
   }
 
   type PressProps =

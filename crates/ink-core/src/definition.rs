@@ -123,7 +123,13 @@ impl Converter {
                 placeholder,
                 state,
                 action,
-            } => Node::text_input(placeholder, state_id(state), text_input_action(action)),
+                auto_focus,
+            } => Node::text_input(
+                placeholder,
+                state_id(state),
+                text_input_action(action),
+                auto_focus,
+            ),
             wire::Node::Button {
                 label,
                 icon,

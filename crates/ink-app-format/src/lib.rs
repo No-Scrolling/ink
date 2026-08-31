@@ -214,6 +214,7 @@ pub enum Node {
         placeholder: String,
         state: StateId,
         action: TextInputAction,
+        auto_focus: bool,
     },
     Button {
         label: Vec<TextPart>,

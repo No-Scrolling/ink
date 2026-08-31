@@ -6,6 +6,7 @@ export default function TextInputExample() {
   return (
     <Screen title="Text Input">
       <TextInput
+        autoFocus
         placeholder="Name..."
         value={name.value}
         onChange={(value) => name.set(value)}

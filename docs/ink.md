@@ -147,6 +147,8 @@ const query = state("");
 
 `action` controls the bottom-right keyboard key and accepts `"search"`, `"return"`, or `"done"`. The emoji keyboard uses the same system emoji as app text and follows the configured LightOS emoji list when LightOS integration is enabled. Apps without `TextInput` do not include the keyboard.
 
+Add `autoFocus` to select an input and open the keyboard when its screen becomes active. It focuses once per screen visit, so dismissing the keyboard does not immediately reopen it.
+
 ## Images
 
 `Image` requires a width and height in Ink logical units. `fit="cover"` fills the bounds and may crop the source; `fit="contain"` keeps the complete source visible. Use `bleed` when an image should extend through the normal horizontal content inset.

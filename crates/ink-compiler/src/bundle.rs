@@ -122,10 +122,12 @@ impl<'a> Emitter<'a> {
                 placeholder,
                 state,
                 action,
+                auto_focus,
             } => format::Node::TextInput {
                 placeholder: placeholder.clone(),
                 state: state_id(*state)?,
                 action: text_input_action(*action),
+                auto_focus: *auto_focus,
             },
             ir::Node::Button {
                 label,

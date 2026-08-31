@@ -901,6 +901,7 @@ enum NodeKind {
         placeholder: String,
         state: StateId,
         action: TextInputAction,
+        auto_focus: bool,
     },
     Button {
         label: Vec<TextPart>,
@@ -1023,6 +1024,7 @@ impl Node {
         placeholder: impl Into<String>,
         state: StateId,
         action: TextInputAction,
+        auto_focus: bool,
     ) -> Self {
         Self {
             identity: NodeIdentity(0),
@@ -1030,6 +1032,7 @@ impl Node {
                 placeholder: placeholder.into(),
                 state,
                 action,
+                auto_focus,
             },
         }
     }
@@ -1345,6 +1348,7 @@ pub struct Scene {
     pub scroll_max: f32,
     pub scroll_clip: Option<Rect>,
     pub scroll_bar: Option<ScrollBar>,
+    pub text_cursor: Option<Quad>,
 }
 
 #[derive(Clone, Debug)]
@@ -1436,6 +1440,7 @@ pub struct Engine {
     pointer: Option<Pointer>,
     focused_input: Option<StateId>,
     focused_input_action: TextInputAction,
+    auto_focus_node: Option<NodeIdentity>,
     navigation: Vec<NavigationEntry>,
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
@@ -1528,6 +1533,7 @@ impl Engine {
             pointer: None,
             focused_input: None,
             focused_input_action: TextInputAction::default(),
+            auto_focus_node: None,
             navigation,
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
@@ -3090,6 +3096,7 @@ impl Engine {
         self.scene.scroll_offset = self.scroll_offset;
         self.scene.scroll_clip = None;
         self.scene.scroll_bar = None;
+        self.scene.text_cursor = None;
         self.hit_regions.clear();
         self.visible_images.clear();
         self.scroll_max = 0.0;
@@ -3103,6 +3110,15 @@ impl Engine {
         let Some(root) = self.materialised_root.take() else {
             return;
         };
+        let auto_focus = self.auto_focus(&root);
+        let auto_focus_node = auto_focus.map(|(node, _, _)| node);
+        if auto_focus_node != self.auto_focus_node {
+            self.auto_focus_node = auto_focus_node;
+            self.focused_input = auto_focus.map(|(_, state, _)| state);
+            if let Some((_, _, action)) = auto_focus {
+                self.focused_input_action = action;
+            }
+        }
         self.clip = Rect {
             x: 0.0,
             y: 0.0,
@@ -3120,6 +3136,34 @@ impl Engine {
         );
         self.materialised_root = Some(root);
         self.sync_visible_images();
+    }
+
+    fn auto_focus(&self, node: &Node) -> Option<(NodeIdentity, StateId, TextInputAction)> {
+        match &node.kind {
+            NodeKind::TextInput {
+                state,
+                action,
+                auto_focus: true,
+                ..
+            } => Some((node.identity, *state, *action)),
+            NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => {
+                children.iter().find_map(|child| self.auto_focus(child))
+            }
+            NodeKind::Tabs { state, tabs } => self
+                .active_tab_index(*state, tabs.len())
+                .and_then(|active| self.auto_focus(&tabs[active].screen)),
+            NodeKind::Navigator { .. }
+            | NodeKind::Conditional { .. }
+            | NodeKind::ForEach { .. }
+            | NodeKind::Text { .. }
+            | NodeKind::TextInput { .. }
+            | NodeKind::Button { .. }
+            | NodeKind::Field { .. }
+            | NodeKind::Icon { .. }
+            | NodeKind::Image { .. }
+            | NodeKind::CameraPreview { .. }
+            | NodeKind::Toggle { .. } => None,
+        }
     }
 
     fn measure(&mut self, node: &Node, available: Rect) -> MeasuredSize {
@@ -3466,6 +3510,7 @@ impl Engine {
                 placeholder,
                 state,
                 action,
+                ..
             } => self.layout_text_input(placeholder, *state, *action, rect),
             NodeKind::Button {
                 label,
@@ -4354,7 +4399,7 @@ impl Engine {
             _ => String::new(),
         };
         let focused = self.focused_input == Some(state);
-        let text = if value.is_empty() {
+        let text = if value.is_empty() && !focused {
             placeholder
         } else {
             &value
@@ -4374,8 +4419,8 @@ impl Engine {
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
-        if focused && !value.is_empty() {
-            self.scene.quads.push(Quad {
+        if focused {
+            self.scene.text_cursor = Some(Quad {
                 rect: Rect {
                     x: rect.x + self.text_width(&visible_text, font_size),
                     y: rect.y + self.scaled(2.0),
@@ -4499,13 +4544,7 @@ impl Engine {
             height: (rect.height - nav_height).max(0.0),
             ..rect
         };
-        let active = match self.state.get(state.0) {
-            Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
-                *value as usize
-            }
-            _ => 0,
-        }
-        .min(tabs.len().saturating_sub(1));
+        let active = self.active_tab_index(state, tabs.len()).unwrap_or(0);
         if let Some(tab) = tabs.get(active) {
             self.layout_node(&tab.screen, content, false);
         }
@@ -4568,6 +4607,19 @@ impl Engine {
             });
             self.push_hit_region(slot, tab.action.clone());
         }
+    }
+
+    fn active_tab_index(&self, state: StateId, tab_count: usize) -> Option<usize> {
+        if tab_count == 0 {
+            return None;
+        }
+        let active = match self.state.get(state.0) {
+            Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
+                *value as usize
+            }
+            _ => 0,
+        };
+        Some(active.min(tab_count - 1))
     }
 
     fn resolve_text(&self, parts: &[TextPart]) -> String {

@@ -118,7 +118,7 @@ internal class InkKeyboardView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                pressed = keys.lastOrNull { it.bounds.contains(event.x, event.y) }
+                pressed = keys.lastOrNull { it.hitTest(event.x, event.y) }
                 pressed?.let { key ->
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     if (key.key.command == KeyboardCommand.Backspace) {
@@ -129,13 +129,13 @@ internal class InkKeyboardView @JvmOverloads constructor(
                 invalidate()
             }
             MotionEvent.ACTION_MOVE -> {
-                val current = keys.lastOrNull { it.bounds.contains(event.x, event.y) }
+                val current = keys.lastOrNull { it.hitTest(event.x, event.y) }
                 if (current != pressed) {
                     cancelPress()
                 }
             }
             MotionEvent.ACTION_UP -> {
-                val released = pressed?.takeIf { it.bounds.contains(event.x, event.y) }
+                val released = pressed?.takeIf { it.hitTest(event.x, event.y) }
                 repeatHandler.removeCallbacks(repeatBackspace)
                 pressed = null
                 released?.key?.let(::release)
@@ -175,6 +175,11 @@ internal class InkKeyboardView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         repeatHandler.removeCallbacks(repeatBackspace)
         super.onDetachedFromWindow()
+    }
+
+    fun reset() {
+        show(KeyboardMode.Letters)
+        cancelPress()
     }
 
     private fun drawLayout(canvas: Canvas, layout: KeyboardLayout) {
@@ -283,8 +288,18 @@ internal class InkKeyboardView @JvmOverloads constructor(
     }
 
     private fun drawDismiss(canvas: Canvas) {
-        val bounds = RectF(0f, dp(KEYBOARD_HEIGHT_DP), width.toFloat(), height.toFloat())
-        val key = KeyboardKey.Command(KeyboardCommand.Dismiss, widthDp = width / resources.displayMetrics.density)
+        val size = dp(DISMISS_HIT_SIZE_DP)
+        val centreY = (dp(KEYBOARD_HEIGHT_DP) + height) / 2f
+        val bounds = RectF(
+            (width - size) / 2f,
+            centreY - size / 2f,
+            (width + size) / 2f,
+            centreY + size / 2f,
+        )
+        val key = KeyboardKey.Command(
+            KeyboardCommand.Dismiss,
+            widthDp = DISMISS_HIT_SIZE_DP,
+        )
         val placed = PlacedKey(key, bounds)
         keys += placed
         drawCommand(canvas, placed, key)
@@ -341,6 +356,12 @@ internal class InkKeyboardView @JvmOverloads constructor(
     private val KeyboardKey.command: KeyboardCommand?
         get() = (this as? KeyboardKey.Command)?.command
 
+    private fun PlacedKey.hitTest(x: Float, y: Float): Boolean =
+        bounds.contains(x, y) ||
+            key.command == KeyboardCommand.Space &&
+            x >= bounds.left && x < bounds.right &&
+            y >= bounds.bottom && y < bounds.bottom + dp(SPACE_HIT_EXTENSION_DP)
+
     private val KeyboardAction.icon: KeyboardIcon
         get() = when (this) {
             KeyboardAction.Return -> KeyboardIcon.KeyboardReturn
@@ -356,6 +377,8 @@ internal class InkKeyboardView @JvmOverloads constructor(
     private companion object {
         private const val KEYBOARD_TOP_PADDING_DP = 4f
         private const val CONTENT_EDGE_OFFSET_DP = 18f
+        private const val DISMISS_HIT_SIZE_DP = 36f
+        private const val SPACE_HIT_EXTENSION_DP = 8f
         private const val BACKSPACE_DELAY_MS = 350L
         private const val BACKSPACE_REPEAT_MS = 65L
     }

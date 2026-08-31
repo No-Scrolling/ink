@@ -843,7 +843,7 @@ impl Renderer {
             }),
         );
         let quad_buffer = VertexBuffer::new(&device, "Ink quad vertices", MAX_QUADS * 6);
-        let overlay_buffer = VertexBuffer::new(&device, "Ink overlay vertices", 12);
+        let overlay_buffer = VertexBuffer::new(&device, "Ink overlay vertices", 18);
         let text_buffer = VertexBuffer::new(&device, "Ink text vertices", MAX_GLYPHS * 6);
         let image_buffer = VertexBuffer::new(&device, "Ink image vertices", MAX_QUADS * 6);
         let system_glyph_atlas = SystemGlyphAtlas::new(image_bind_group_layout.clone());
@@ -886,7 +886,7 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn render(&mut self, scene: &Scene) -> Result<RenderOutcome> {
+    pub fn render(&mut self, scene: &Scene, text_cursor_visible: bool) -> Result<RenderOutcome> {
         if scene.width == 0 || scene.height == 0 {
             return Ok(RenderOutcome::Skipped);
         }
@@ -911,7 +911,13 @@ impl Renderer {
                 translation: [0.0, scroll_y, 0.0, 0.0],
             }),
         );
-        scrollbar_vertices(scene, &mut self.overlay_vertices);
+        self.overlay_vertices.clear();
+        if text_cursor_visible && let Some(cursor) = &scene.text_cursor {
+            push_quad_vertices(&mut self.overlay_vertices, scene, cursor);
+        }
+        let cursor_end = self.overlay_vertices.len() as u32;
+        push_scrollbar_vertices(scene, &mut self.overlay_vertices);
+        let overlay_end = self.overlay_vertices.len() as u32;
         self.overlay_buffer
             .write(&self.device, &self.queue, &self.overlay_vertices);
 
@@ -1039,11 +1045,35 @@ impl Renderer {
                 pass.draw(self.prepared.text_scroll.clone(), 0..1);
                 reset_scissor(&mut pass, scene);
             }
-            if !self.overlay_vertices.is_empty() {
+            if cursor_end > 0 {
+                pass.set_pipeline(&self.quad_pipeline);
+                let scrolling = scene
+                    .text_cursor
+                    .as_ref()
+                    .is_some_and(|cursor| cursor.scrolling);
+                pass.set_bind_group(
+                    0,
+                    if scrolling {
+                        &self.scroll_transform
+                    } else {
+                        &self.fixed_transform
+                    },
+                    &[],
+                );
+                pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
+                if scrolling {
+                    set_scroll_scissor(&mut pass, scene);
+                }
+                pass.draw(0..cursor_end, 0..1);
+                if scrolling {
+                    reset_scissor(&mut pass, scene);
+                }
+            }
+            if cursor_end < overlay_end {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
                 pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
-                pass.draw(0..self.overlay_vertices.len() as u32, 0..1);
+                pass.draw(cursor_end..overlay_end, 0..1);
             }
         }
         self.queue.submit(Some(encoder.finish()));
@@ -1418,8 +1448,7 @@ fn push_quad_vertices(vertices: &mut Vec<QuadVertex>, scene: &Scene, quad: &ink_
     ]);
 }
 
-fn scrollbar_vertices(scene: &Scene, vertices: &mut Vec<QuadVertex>) {
-    vertices.clear();
+fn push_scrollbar_vertices(scene: &Scene, vertices: &mut Vec<QuadVertex>) {
     let Some(scrollbar) = scene.scroll_bar else {
         return;
     };

@@ -43,6 +43,9 @@ private class InkKeyboardAdapter(
             2 -> KeyboardAction.Done
             else -> KeyboardAction.Search
         }
+        if (active && keyboard.visibility != View.VISIBLE) {
+            keyboard.reset()
+        }
         keyboard.visibility = if (active) View.VISIBLE else View.GONE
         if (active) {
             keyboard.requestFocus()

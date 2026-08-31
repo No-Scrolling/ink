@@ -3241,6 +3241,7 @@ fn lower_text(
 
 fn lower_text_input(element: &JSXElement<'_>, states: &Bindings) -> Result<Node, CompileError> {
     let placeholder = required_string_attribute(element, "placeholder")?;
+    let auto_focus = boolean_attribute(element, "autoFocus")?;
     let action = match optional_string_attribute(element, "action")?.as_deref() {
         None | Some("search") => crate::ir::TextInputAction::Search,
         Some("return") => crate::ir::TextInputAction::Return,
@@ -3249,7 +3250,10 @@ fn lower_text_input(element: &JSXElement<'_>, states: &Bindings) -> Result<Node,
     };
     let state = state_attribute(element, "value", states, StateShape::String)?;
     text_change_attribute(element, "onChange", &state, states)?;
-    reject_other_attributes(element, &["placeholder", "value", "onChange", "action"])?;
+    reject_other_attributes(
+        element,
+        &["placeholder", "value", "onChange", "action", "autoFocus"],
+    )?;
     if !element_children(element)?.is_empty() {
         return Err(CompileError::new(
             "TextInput cannot have children",
@@ -3260,6 +3264,7 @@ fn lower_text_input(element: &JSXElement<'_>, states: &Bindings) -> Result<Node,
         placeholder,
         state: state.id,
         action,
+        auto_focus,
     })
 }
 

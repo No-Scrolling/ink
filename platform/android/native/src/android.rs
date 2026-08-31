@@ -253,11 +253,17 @@ impl AndroidEngine {
         self.engine.fail_native(request_id, error)
     }
 
-    fn render(&mut self) -> Option<ink_renderer_wgpu::SystemGlyphRequest> {
+    fn render(
+        &mut self,
+        text_cursor_visible: bool,
+    ) -> Option<ink_renderer_wgpu::SystemGlyphRequest> {
         let Some(surface) = &mut self.surface else {
             return None;
         };
-        match surface.renderer.render(self.engine.scene()) {
+        match surface
+            .renderer
+            .render(self.engine.scene(), text_cursor_visible)
+        {
             Ok(RenderOutcome::Presented) => {}
             Ok(RenderOutcome::Skipped) => {
                 android_log(ANDROID_LOG_WARN, "surface skipped dirty frame");
@@ -503,11 +509,12 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
+    text_cursor_visible: jboolean,
 ) -> JString<'local> {
     let request = if let Some(engine) = engine(handle)
         && let Ok(mut engine) = engine.lock()
     {
-        engine.render()
+        engine.render(text_cursor_visible)
     } else {
         None
     };

@@ -265,6 +265,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         resumedOnce = true
         nfcAdapter.resume()
         notificationsAdapter.refreshEvents()
+        syncTextInput()
     }
 
     override fun onRequestPermissionsResult(
@@ -340,6 +341,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onPause() {
+        inkView.setTextCursorActive(false)
         persistNow()
         audioAdapter.pause()
         nfcAdapter.pause()
@@ -407,10 +409,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun syncTextInput() {
-        textInputAdapter.sync(
-            nativeTextInputActive(engineHandle),
-            nativeTextInputAction(engineHandle),
-        )
+        val active = nativeTextInputActive(engineHandle)
+        textInputAdapter.sync(active, nativeTextInputAction(engineHandle))
+        inkView.setTextCursorActive(active)
     }
 
     private fun syncCameraPortal() {
@@ -737,7 +738,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun renderFrame() {
         while (true) {
-            val request = nativeRender(engineHandle)
+            val request = nativeRender(engineHandle, inkView.isTextCursorVisible())
             if (request.isEmpty()) return
 
             val firstBreak = request.indexOf('\n')
@@ -780,7 +781,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private var pendingMoveY = 0f
         private var hasPendingMove = false
         private var lastFlingY = 0
+        private var textCursorVisible = true
         private var velocityTracker: VelocityTracker? = null
+        private val textCursorBlink = object : Runnable {
+            override fun run() {
+                textCursorVisible = !textCursorVisible
+                requestFrame()
+                postDelayed(this, TEXT_CURSOR_BLINK_MS)
+            }
+        }
         private val frameCallback = Choreographer.FrameCallback {
             framePosted = false
             if (!surfaceAttached || engineHandle == 0L) {
@@ -903,6 +912,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             postFrame()
         }
 
+        fun isTextCursorVisible(): Boolean = textCursorVisible
+
+        fun setTextCursorActive(active: Boolean) {
+            removeCallbacks(textCursorBlink)
+            textCursorVisible = true
+            if (active) {
+                postDelayed(textCursorBlink, TEXT_CURSOR_BLINK_MS)
+            }
+        }
+
         fun stopScrolling() {
             stopFling()
             velocityTracker?.recycle()
@@ -955,6 +974,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_BACKSPACE = 1
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
+        private const val TEXT_CURSOR_BLINK_MS = 500L
         private const val PERSISTENCE_DELAY_MS = 250L
         private const val RESOURCE_LOG_TAG = "InkResource"
         private const val LIGHT_SDK_MODULE = "light-sdk"
@@ -1021,7 +1041,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeScrollMaximum(handle: Long): Float
 
         @JvmStatic
-        private external fun nativeRender(handle: Long): String
+        private external fun nativeRender(handle: Long, textCursorVisible: Boolean): String
 
         @JvmStatic
         private external fun nativeInstallSystemGlyph(
