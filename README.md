@@ -4,12 +4,9 @@
   <img src="./assets/images/title-light.png" alt="Ink" width="48">
 </picture>
 <br><br>
-<p>An experimental TypeScript framework for small, native Light Phone III apps.</p>
+<p>A TypeScript framework for performant apps for the Light Phone III.</p>
 
-Ink compiles a restricted TypeScript and TSX dialect ahead of time into a compact native app definition. Apps use a native Rust/Vulkan runtime and do not include a JavaScript runtime.
-
-> [!NOTE]
-> Ink is an early experiment and is not ready for production apps.
+Ink compiles TypeScript into a small native Android app at build time, powered by Rust and Vulkan. There is no JavaScript engine bundled!
 
 ## Example
 
