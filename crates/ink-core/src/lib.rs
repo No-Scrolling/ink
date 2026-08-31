@@ -66,6 +66,10 @@ const SCROLL_THUMB_TOUCH_MULTIPLIER: f32 = 6.0;
 const MIN_SCROLL_THUMB_FRACTION: f32 = 0.1;
 const MAX_SCROLL_THUMB_FRACTION: f32 = 0.85;
 const TAP_SLOP: f32 = 8.0;
+const BACK_SWIPE_EDGE_WIDTH: f32 = 30.0;
+const BACK_SWIPE_ACTIVATION_DISTANCE: f32 = 12.0;
+const BACK_SWIPE_TRIGGER_DISTANCE: f32 = 80.0;
+const BACK_SWIPE_VERTICAL_RATIO: f32 = 1.5;
 const LP3_REFERENCE_WIDTH: f32 = 1080.0;
 const LP3_REFERENCE_SCALE: f32 = 2.55;
 const PUBLIC_SANS_RASTER_SCALE: f32 = 7.0 / 6.0;
@@ -1398,13 +1402,62 @@ struct HitRegion {
     scrolling: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PointerOutcome {
+    pub changed: bool,
+    pub activated: bool,
+    pub captured: bool,
+}
+
+impl PointerOutcome {
+    const fn changed(changed: bool) -> Self {
+        Self {
+            changed,
+            activated: false,
+            captured: false,
+        }
+    }
+
+    const fn activated(changed: bool) -> Self {
+        Self {
+            changed,
+            activated: changed,
+            captured: false,
+        }
+    }
+
+    const fn captured(mut self) -> Self {
+        self.captured = true;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EdgeBackState {
+    Pending,
+    Claimed,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct EdgeBackPointer {
+    start_x: f32,
+    start_y: f32,
+    start_offset: f32,
+    state: EdgeBackState,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ContentPointer {
+    start_x: f32,
+    start_y: f32,
+    start_offset: f32,
+    dragging: bool,
+    cancelled: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 enum Pointer {
-    Content {
-        start_y: f32,
-        start_offset: f32,
-        dragging: bool,
-    },
+    Content(ContentPointer),
     ScrollThumb {
         grab_offset: f32,
     },
@@ -1413,6 +1466,7 @@ enum Pointer {
         start_y: f32,
         cancelled: bool,
     },
+    EdgeBack(EdgeBackPointer),
 }
 
 #[derive(Clone, Copy)]
@@ -2115,7 +2169,7 @@ impl Engine {
         true
     }
 
-    pub fn pointer_down(&mut self, x: f32, y: f32) -> bool {
+    pub fn pointer_down(&mut self, x: f32, y: f32) -> PointerOutcome {
         if let Some(scroll_bar) = self
             .scene
             .scroll_bar
@@ -2133,85 +2187,170 @@ impl Engine {
                     cancelled: false,
                 }
             });
-            return true;
+            return PointerOutcome::default().captured();
         }
 
-        self.pointer = Some(Pointer::Content {
+        if self.navigation.len() > 1 && x <= self.scaled(BACK_SWIPE_EDGE_WIDTH) {
+            self.pointer = Some(Pointer::EdgeBack(EdgeBackPointer {
+                start_x: x,
+                start_y: y,
+                start_offset: self.scroll_offset,
+                state: EdgeBackState::Pending,
+            }));
+            return PointerOutcome::default();
+        }
+
+        self.pointer = Some(Pointer::Content(ContentPointer {
+            start_x: x,
             start_y: y,
             start_offset: self.scroll_offset,
             dragging: false,
-        });
-        false
+            cancelled: false,
+        }));
+        PointerOutcome::default()
     }
 
-    pub fn pointer_move(&mut self, x: f32, y: f32) -> bool {
+    pub fn pointer_move(&mut self, x: f32, y: f32) -> PointerOutcome {
         let tap_slop = self.scaled(TAP_SLOP);
-        let Some(pointer) = &mut self.pointer else {
-            return false;
+        let Some(pointer) = self.pointer else {
+            return PointerOutcome::default();
         };
 
         match pointer {
-            Pointer::Content {
-                start_y,
-                start_offset,
-                dragging,
-            } => {
-                let delta = *start_y - y;
-                if !*dragging {
-                    if delta.abs() <= tap_slop {
-                        return false;
-                    }
-                    *start_y -= delta.signum() * tap_slop;
-                    *dragging = true;
-                }
-                let next = (*start_offset + *start_y - y).clamp(0.0, self.scroll_max);
-                self.set_scroll_offset(next)
-            }
+            Pointer::Content(pointer) => self.move_content_pointer(pointer, x, y, tap_slop),
             Pointer::ScrollThumb { grab_offset } => {
                 let Some(scroll_bar) = self.scene.scroll_bar else {
-                    return false;
+                    return PointerOutcome::default();
                 };
-                let next =
-                    scroll_bar.scroll_offset_for_thumb_top(y - *grab_offset, self.scroll_max);
-                self.set_scroll_offset(next)
+                let next = scroll_bar.scroll_offset_for_thumb_top(y - grab_offset, self.scroll_max);
+                PointerOutcome::changed(self.set_scroll_offset(next)).captured()
             }
             Pointer::ScrollTrack {
                 start_x,
                 start_y,
                 cancelled,
             } => {
-                if (x - *start_x).abs() > tap_slop || (y - *start_y).abs() > tap_slop {
-                    *cancelled = true;
-                }
-                false
+                self.pointer = Some(Pointer::ScrollTrack {
+                    start_x,
+                    start_y,
+                    cancelled: cancelled
+                        || (x - start_x).abs() > tap_slop
+                        || (y - start_y).abs() > tap_slop,
+                });
+                PointerOutcome::default().captured()
             }
+            Pointer::EdgeBack(pointer) => self.move_edge_back_pointer(pointer, x, y, tap_slop),
         }
     }
 
-    pub fn pointer_up(&mut self, x: f32, y: f32) -> bool {
+    pub fn pointer_up(&mut self, x: f32, y: f32) -> PointerOutcome {
         let Some(pointer) = self.pointer.take() else {
-            return false;
+            return PointerOutcome::default();
         };
 
         match pointer {
-            Pointer::Content { dragging, .. } if !dragging => self.tap(x, y),
+            Pointer::Content(ContentPointer {
+                dragging: false,
+                cancelled: false,
+                ..
+            }) => PointerOutcome::activated(self.tap(x, y)),
             Pointer::ScrollTrack { cancelled, .. } if !cancelled => {
                 let Some(scroll_bar) = self
                     .scene
                     .scroll_bar
                     .filter(|scroll_bar| scroll_bar.contains_touch(x, y))
                 else {
-                    return false;
+                    return PointerOutcome::default();
                 };
                 let next = scroll_bar.scroll_offset_for_track_tap(y, self.scroll_max);
-                self.set_scroll_offset(next)
+                PointerOutcome::activated(self.set_scroll_offset(next)).captured()
             }
-            _ => false,
+            Pointer::EdgeBack(EdgeBackPointer {
+                state: EdgeBackState::Pending,
+                ..
+            }) => PointerOutcome::activated(self.tap(x, y)),
+            Pointer::ScrollThumb { .. }
+            | Pointer::ScrollTrack { .. }
+            | Pointer::EdgeBack(EdgeBackPointer {
+                state: EdgeBackState::Claimed,
+                ..
+            }) => PointerOutcome::default().captured(),
+            Pointer::Content(_) => PointerOutcome::default(),
         }
     }
 
     pub fn pointer_cancel(&mut self) {
         self.pointer = None;
+    }
+
+    fn move_content_pointer(
+        &mut self,
+        mut pointer: ContentPointer,
+        x: f32,
+        y: f32,
+        tap_slop: f32,
+    ) -> PointerOutcome {
+        let delta = pointer.start_y - y;
+        if !pointer.dragging {
+            if delta.abs() <= tap_slop {
+                pointer.cancelled |= (x - pointer.start_x).abs() > tap_slop;
+                self.pointer = Some(Pointer::Content(pointer));
+                return PointerOutcome::default();
+            }
+            pointer.start_y -= delta.signum() * tap_slop;
+            pointer.dragging = true;
+            pointer.cancelled = true;
+        }
+        self.pointer = Some(Pointer::Content(pointer));
+        let next = (pointer.start_offset + pointer.start_y - y).clamp(0.0, self.scroll_max);
+        PointerOutcome::changed(self.set_scroll_offset(next))
+    }
+
+    fn move_edge_back_pointer(
+        &mut self,
+        pointer: EdgeBackPointer,
+        x: f32,
+        y: f32,
+        tap_slop: f32,
+    ) -> PointerOutcome {
+        let horizontal = x - pointer.start_x;
+        let horizontal_distance = horizontal.abs();
+        let vertical_distance = (y - pointer.start_y).abs();
+
+        if pointer.state == EdgeBackState::Pending
+            && vertical_distance > tap_slop
+            && vertical_distance > horizontal_distance * BACK_SWIPE_VERTICAL_RATIO
+        {
+            let content_pointer = ContentPointer {
+                start_x: pointer.start_x,
+                start_y: pointer.start_y,
+                start_offset: pointer.start_offset,
+                dragging: false,
+                cancelled: false,
+            };
+            return self.move_content_pointer(content_pointer, x, y, tap_slop);
+        }
+
+        let claimed = pointer.state == EdgeBackState::Claimed
+            || (horizontal_distance > self.scaled(BACK_SWIPE_ACTIVATION_DISTANCE)
+                && vertical_distance <= horizontal_distance * BACK_SWIPE_VERTICAL_RATIO);
+        if !claimed {
+            return PointerOutcome::default();
+        }
+
+        if horizontal > self.scaled(BACK_SWIPE_TRIGGER_DISTANCE)
+            && vertical_distance <= horizontal * BACK_SWIPE_VERTICAL_RATIO
+        {
+            return PointerOutcome::activated(self.back()).captured();
+        }
+
+        self.pointer = Some(Pointer::EdgeBack(EdgeBackPointer {
+            start_x: pointer.start_x,
+            start_y: pointer.start_y,
+            start_offset: pointer.start_offset,
+            state: EdgeBackState::Claimed,
+        }));
+        PointerOutcome::default().captured()
     }
 
     pub fn scroll_by(&mut self, delta: f32) -> bool {

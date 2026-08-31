@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex, Once};
 use ink_core::ImageFit;
 use ink_core::{
     AppDefinition, CameraPreviewKind, ControllerId, Engine, Hydration, NativeRequestKind,
-    PUBLIC_SANS, ResourceError, ResourceErrorKind, StateValue, TextEdit, TextInputAction,
+    PUBLIC_SANS, PointerOutcome, ResourceError, ResourceErrorKind, StateValue, TextEdit,
+    TextInputAction,
 };
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
@@ -26,6 +27,9 @@ use ndk::native_window::NativeWindow;
 const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_WARN: c_int = 5;
 const ANDROID_LOG_ERROR: c_int = 6;
+const POINTER_CHANGED: jint = 1;
+const POINTER_ACTIVATED: jint = 1 << 1;
+const POINTER_CAPTURED: jint = 1 << 2;
 const LOG_TAG: &[u8] = b"Ink\0";
 static PANIC_HOOK: Once = Once::new();
 #[cfg(feature = "image")]
@@ -183,18 +187,28 @@ impl AndroidEngine {
         }
     }
 
-    fn pointer(&mut self, action: i32, x: f32, y: f32) -> bool {
-        let changed = match action {
+    fn pointer(&mut self, action: i32, x: f32, y: f32) -> jint {
+        let outcome = match action {
             0 => self.engine.pointer_down(x, y),
             1 => self.engine.pointer_up(x, y),
             2 => self.engine.pointer_move(x, y),
             3 => {
                 self.engine.pointer_cancel();
-                false
+                PointerOutcome::default()
             }
-            _ => false,
+            _ => PointerOutcome::default(),
         };
-        changed
+        (if outcome.changed { POINTER_CHANGED } else { 0 })
+            | (if outcome.activated {
+                POINTER_ACTIVATED
+            } else {
+                0
+            })
+            | (if outcome.captured {
+                POINTER_CAPTURED
+            } else {
+                0
+            })
     }
 
     fn scroll_by(&mut self, delta: f32) -> bool {
@@ -461,10 +475,10 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePointer(
     action: jint,
     x: jfloat,
     y: jfloat,
-) -> jboolean {
+) -> jint {
     engine(handle)
         .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| engine.pointer(action, x, y)) as jboolean
+        .map_or(0, |mut engine| engine.pointer(action, x, y))
 }
 
 #[unsafe(no_mangle)]

@@ -781,7 +781,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private var pendingMoveY = 0f
         private var hasPendingMove = false
         private var lastFlingY = 0
-        private var scrollBarGesture = false
+        private var capturedGesture = false
         private var textCursorVisible = true
         private var velocityTracker: VelocityTracker? = null
         private val textCursorBlink = object : Runnable {
@@ -801,11 +801,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             renderPending = false
             if (hasPendingMove) {
                 hasPendingMove = false
-                changed = nativePointer(
-                    engineHandle,
-                    MotionEvent.ACTION_MOVE,
-                    pendingMoveX,
-                    pendingMoveY,
+                changed = processPointerResult(
+                    nativePointer(
+                        engineHandle,
+                        MotionEvent.ACTION_MOVE,
+                        pendingMoveX,
+                        pendingMoveY,
+                    ),
                 ) || changed
             }
             if (scroller.computeScrollOffset()) {
@@ -855,7 +857,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
             if (engineHandle != 0L && surfaceAttached) {
                 var changed = false
-                var activated = false
                 if (event.actionMasked == MotionEvent.ACTION_MOVE) {
                     pendingMoveX = event.x
                     pendingMoveY = event.y
@@ -864,55 +865,54 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 } else {
                     if (hasPendingMove) {
                         hasPendingMove = false
-                        changed = nativePointer(
-                            engineHandle,
-                            MotionEvent.ACTION_MOVE,
-                            pendingMoveX,
-                            pendingMoveY,
+                        changed = processPointerResult(
+                            nativePointer(
+                                engineHandle,
+                                MotionEvent.ACTION_MOVE,
+                                pendingMoveX,
+                                pendingMoveY,
+                            ),
                         )
                     }
-                    val pointerResult = nativePointer(
-                        engineHandle,
-                        event.actionMasked,
-                        event.x,
-                        event.y,
-                    )
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                        scrollBarGesture = pointerResult
-                    } else {
-                        activated = pointerResult
-                        changed = activated || changed
-                    }
+                    changed = processPointerResult(
+                        nativePointer(
+                            engineHandle,
+                            event.actionMasked,
+                            event.x,
+                            event.y,
+                        ),
+                    ) || changed
                 }
                 if (changed) {
                     requestFrame()
                     schedulePersistence()
-                    syncCameraPortal()
-                }
-                if (activated) {
-                    drainNativeRequests()
                 }
                 postFrame()
-                if (event.actionMasked == MotionEvent.ACTION_UP) {
-                    if (activated) {
-                        lightSdkAdapter.performHaptic(this)
-                    }
-                    syncTextInput()
-                }
             }
-            if (flingVelocity != 0 && !scrollBarGesture) {
+            if (flingVelocity != 0 && !capturedGesture) {
                 startFling(flingVelocity)
             }
             if (
                 event.actionMasked == MotionEvent.ACTION_UP ||
                 event.actionMasked == MotionEvent.ACTION_CANCEL
             ) {
-                scrollBarGesture = false
+                capturedGesture = false
             }
             if (event.actionMasked == MotionEvent.ACTION_UP) {
                 performClick()
             }
             return true
+        }
+
+        private fun processPointerResult(result: Int): Boolean {
+            capturedGesture = capturedGesture || (result and POINTER_CAPTURED) != 0
+            if ((result and POINTER_ACTIVATED) != 0) {
+                lightSdkAdapter.performHaptic(this)
+                drainNativeRequests()
+                syncCameraPortal()
+                syncTextInput()
+            }
+            return (result and POINTER_CHANGED) != 0
         }
 
         fun requestFrame() {
@@ -986,6 +986,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_BACKSPACE = 1
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
+        private const val POINTER_CHANGED = 1
+        private const val POINTER_ACTIVATED = 1 shl 1
+        private const val POINTER_CAPTURED = 1 shl 2
         private const val TEXT_CURSOR_BLINK_MS = 500L
         private const val PERSISTENCE_DELAY_MS = 250L
         private const val RESOURCE_LOG_TAG = "InkResource"
@@ -1041,7 +1044,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             action: Int,
             x: Float,
             y: Float,
-        ): Boolean
+        ): Int
 
         @JvmStatic
         private external fun nativeScrollBy(handle: Long, delta: Float): Boolean

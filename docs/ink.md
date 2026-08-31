@@ -224,6 +224,8 @@ Long, fixed-height vertical lists are virtualised automatically. Ink lays out on
 
 Wrap multi-page apps in `Navigator` and give every destination a compile-time `Route` path. A `Button` can navigate instead of running an action.
 
+Nested routes include a back button automatically. You can also swipe right from the left edge to return. Vertical gestures that begin at the edge continue to scroll the page normally.
+
 ```tsx
 <Button href="/settings/temperature">Temperature</Button>
 ```
