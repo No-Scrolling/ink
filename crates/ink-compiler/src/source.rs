@@ -178,7 +178,7 @@ fn max_active_controllers(node: &Node, controllers: &[crate::ir::Controller], ki
         Node::Text { .. }
         | Node::TextInput { .. }
         | Node::Button { .. }
-        | Node::SelectorButton { .. }
+        | Node::Field { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
         | Node::CameraPreview { .. }
@@ -203,7 +203,7 @@ fn bundle_node_assets(node: &mut Node, directory: &Path) -> Result<()> {
                 bundle_node_assets(child, directory)?;
             }
         }
-        Node::Button { action, .. } | Node::SelectorButton { action, .. } => {
+        Node::Button { action, .. } | Node::Field { action, .. } => {
             if let Some(action) = action {
                 bundle_action_assets(action, directory)?;
             }
@@ -538,7 +538,7 @@ impl Compiler<'_> {
             node @ (Node::Text { .. }
             | Node::TextInput { .. }
             | Node::Button { .. }
-            | Node::SelectorButton { .. }
+            | Node::Field { .. }
             | Node::Icon { .. }
             | Node::Image { .. }
             | Node::CameraPreview { .. }
@@ -603,7 +603,7 @@ fn remap_node(
                 remap_action(action, mapping, resource_mapping, controller_mapping);
             }
         }
-        Node::SelectorButton { value, action, .. } => {
+        Node::Field { value, action, .. } => {
             remap_text(value, mapping, resource_mapping, controller_mapping);
             if let Some(action) = action {
                 remap_action(action, mapping, resource_mapping, controller_mapping);

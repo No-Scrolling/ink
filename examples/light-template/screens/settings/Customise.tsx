@@ -1,4 +1,4 @@
-import { Button, Screen, SelectorButton, persistedState } from "ink";
+import { Button, Field, Screen, persistedState } from "ink";
 
 export default function Customise() {
   const temperatureUnit = persistedState("settings.temperature-unit", "Celsius");
@@ -6,9 +6,9 @@ export default function Customise() {
   return (
     <Screen title="Customise">
       <Button href="/settings/customise-interface">Interface</Button>
-      <SelectorButton label="Temperature" href="/settings/temperature-unit">
+      <Field label="Temperature" href="/settings/temperature-unit">
         {temperatureUnit.value}
-      </SelectorButton>
+      </Field>
     </Screen>
   );
 }

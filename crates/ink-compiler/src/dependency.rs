@@ -47,7 +47,7 @@ fn visit_node(
                 add_dependency(dependencies, state, node_id, format::DependencyKind::Layout);
             }
         }
-        ir::Node::SelectorButton { value, .. } => {
+        ir::Node::Field { value, .. } => {
             for state in text_dependencies(value) {
                 add_dependency(dependencies, state, node_id, format::DependencyKind::Layout);
             }

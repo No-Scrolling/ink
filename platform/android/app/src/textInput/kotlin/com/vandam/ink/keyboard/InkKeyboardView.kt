@@ -1,12 +1,9 @@
 package com.vandam.ink.keyboard
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
@@ -52,6 +49,8 @@ internal class InkKeyboardView @JvmOverloads constructor(
         set(value) {
             field = value
             emojiKeys = KeyboardLayouts.parseEmojis(value)
+                .filter { emojiPaint.hasGlyph(it.value) }
+                .ifEmpty { KeyboardLayouts.defaultEmojis }
             invalidate()
         }
     var keyAnimationEnabled: Boolean = true
@@ -72,13 +71,16 @@ internal class InkKeyboardView @JvmOverloads constructor(
         strokeJoin = Paint.Join.ROUND
         strokeWidth = dp(1.7f)
     }
+    private val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT
+    }
     private val icons: Map<KeyboardIcon, Drawable> = KeyboardIcon.entries.associateWith { icon ->
         checkNotNull(context.getDrawable(icon.resource)).mutate().apply {
             setTint(Color.WHITE)
         }
     }
-    private val atlas: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.ink_keyboard_emoji)
-    private val emojiSource = Rect()
     private val keys = mutableListOf<PlacedKey>()
     private var emojiKeys = KeyboardLayouts.defaultEmojis
     private val repeatHandler = Handler(Looper.getMainLooper())
@@ -197,7 +199,7 @@ internal class InkKeyboardView @JvmOverloads constructor(
     private fun drawKey(canvas: Canvas, placed: PlacedKey) {
         when (val key = placed.key) {
             is KeyboardKey.Text -> drawTextKey(canvas, placed, displayedText(key.value))
-            is KeyboardKey.Emoji -> drawEmoji(canvas, placed, key.atlasIndex)
+            is KeyboardKey.Emoji -> drawEmoji(canvas, placed, key.value)
             is KeyboardKey.Command -> drawCommand(canvas, placed, key)
             is KeyboardKey.Gap -> Unit
         }
@@ -258,21 +260,12 @@ internal class InkKeyboardView @JvmOverloads constructor(
         canvas.drawText(label, x, baseline, paint)
     }
 
-    private fun drawEmoji(canvas: Canvas, placed: PlacedKey, index: Int) {
-        val column = index % 8
-        val row = index / 8
-        emojiSource.set(column * 64, row * 64, (column + 1) * 64, (row + 1) * 64)
-        val animated = keyAnimationEnabled && pressed == placed
-        val scale = if (animated) 1.25f else 1f
-        val size = dp(25f) * scale
-        val lift = if (animated) dp(-12f) else 0f
-        val destination = RectF(
-            placed.contentX() - size / 2f,
-            placed.bounds.centerY() - size / 2f + lift,
-            placed.contentX() + size / 2f,
-            placed.bounds.centerY() + size / 2f + lift,
-        )
-        canvas.drawBitmap(atlas, emojiSource, destination, paint)
+    private fun drawEmoji(canvas: Canvas, placed: PlacedKey, emoji: String) {
+        drawPressed(canvas, placed) { x, y ->
+            emojiPaint.textSize = dp(25f)
+            val baseline = y - (emojiPaint.ascent() + emojiPaint.descent()) / 2f
+            canvas.drawText(emoji, x, baseline, emojiPaint)
+        }
     }
 
     private fun drawIcon(canvas: Canvas, icon: KeyboardIcon, x: Float, y: Float) {

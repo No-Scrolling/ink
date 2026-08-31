@@ -94,7 +94,7 @@ Ink resolves packages through `node_modules` and compiles their source with the 
 
 ## Text and controls
 
-Ink uses Public Sans throughout the app. Text is fully opaque and uses the framework's default size unless you pass `size`.
+Ink uses Public Sans throughout the app. Emoji use the device's system emoji font, so apps can render the full emoji set supported by their Android version without bundling an emoji font or image set. Text is fully opaque and uses the framework's default size unless you pass `size`.
 
 ```tsx
 <Text size={40} align="center">18°</Text>
@@ -106,13 +106,23 @@ Ink uses Public Sans throughout the app. Text is fully opaque and uses the frame
 />
 ```
 
+`Text` wraps automatically at Unicode line-break opportunities. If one word is wider than the available space, Ink breaks it at a grapheme boundary rather than clipping it. Set `maxLines` to limit the result and truncate the final visible line with an ellipsis.
+
+```tsx
+<Text maxLines={2}>{description.value}</Text>
+```
+
+Set `align` to `"start"`, `"center"`, `"end"`, or `"justify"`. Justification expands only wrapped lines; the final line remains start-aligned.
+
+Buttons, field values, headers, and text inputs stay on one line and use an ellipsis when their content is too wide.
+
 Core controls are:
 
 | Component | Purpose |
 | --- | --- |
 | `Text` | Renders text, numbers, and state values. |
 | `Button` | Runs an action or opens a route. It can show one Material Symbol and an underline. |
-| `SelectorButton` | Shows a setting label and its current value. |
+| `Field` | Shows a label and its current value. Add `href` or `onPress` to make it actionable. |
 | `Toggle` | Changes a `boolean` value. |
 | `Icon` | Renders one referenced Material Symbol. |
 | `TextInput` | Edits a string with the Ink keyboard. |
@@ -135,7 +145,7 @@ const query = state("");
 />
 ```
 
-`action` controls the bottom-right keyboard key and accepts `"search"`, `"return"`, or `"done"`. Apps without `TextInput` do not include the keyboard.
+`action` controls the bottom-right keyboard key and accepts `"search"`, `"return"`, or `"done"`. The emoji keyboard uses the same system emoji as app text and follows the configured LightOS emoji list when LightOS integration is enabled. Apps without `TextInput` do not include the keyboard.
 
 ## Images
 
@@ -167,6 +177,10 @@ Ink provides three kinds of writable state:
 const count = state(0);
 const selectedTab = sharedState("player.tab", "queue");
 const temperatureUnit = persistedState("settings.temperature", "Celsius");
+
+<Field label="Temperature" href="/settings/temperature">
+  {temperatureUnit.value}
+</Field>
 ```
 
 Scalar state supports `boolean`, `number`, `string`, and `null`. List state also provides `append`, `remove`, `replace`, and `clear`.

@@ -182,6 +182,7 @@ pub enum TextAlignment {
     Start,
     Center,
     End,
+    Justify,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -233,6 +234,7 @@ pub enum Node {
         parts: Vec<TextPart>,
         font_size: Option<f32>,
         align: TextAlignment,
+        max_lines: Option<u32>,
     },
     TextInput {
         placeholder: String,
@@ -245,7 +247,7 @@ pub enum Node {
         underline: bool,
         action: Option<Action>,
     },
-    SelectorButton {
+    Field {
         label: String,
         value: Vec<TextPart>,
         action: Option<Action>,

@@ -12,4 +12,6 @@ path = "src/lib.rs"
 ab_glyph.workspace = true
 ink-app-format = { path = "../ink-app-format" }
 serde_json.workspace = true
+unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
+unicode-properties.workspace = true

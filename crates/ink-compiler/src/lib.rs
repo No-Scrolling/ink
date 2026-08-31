@@ -309,7 +309,7 @@ fn tree_summary(node: &ir::Node) -> TreeSummary {
         ir::Node::Text { .. }
         | ir::Node::TextInput { .. }
         | ir::Node::Button { .. }
-        | ir::Node::SelectorButton { .. }
+        | ir::Node::Field { .. }
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
         | ir::Node::CameraPreview { .. }
@@ -335,7 +335,7 @@ fn virtualisable_template(node: &ir::Node) -> bool {
         ir::Node::Text { .. }
         | ir::Node::TextInput { .. }
         | ir::Node::Button { .. }
-        | ir::Node::SelectorButton { .. }
+        | ir::Node::Field { .. }
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
         | ir::Node::Toggle { .. } => true,
@@ -516,7 +516,7 @@ fn uses_remote_image(node: &ir::Node) -> bool {
         ir::Node::Text { .. }
         | ir::Node::TextInput { .. }
         | ir::Node::Button { .. }
-        | ir::Node::SelectorButton { .. }
+        | ir::Node::Field { .. }
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
         | ir::Node::CameraPreview { .. }
@@ -543,7 +543,7 @@ fn uses_text_input(node: &ir::Node) -> bool {
         ir::Node::ForEach { template, .. } => uses_text_input(template),
         ir::Node::Text { .. }
         | ir::Node::Button { .. }
-        | ir::Node::SelectorButton { .. }
+        | ir::Node::Field { .. }
         | ir::Node::Icon { .. }
         | ir::Node::Image { .. }
         | ir::Node::CameraPreview { .. }

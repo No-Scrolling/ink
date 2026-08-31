@@ -1,5 +1,5 @@
 import { lightSdkPermission, lightSdkVersion } from "@ink/light-sdk";
-import { Button, Screen, Text, match } from "ink";
+import { Button, Field, Screen, match } from "ink";
 
 export default function Connection() {
   const version = lightSdkVersion();
@@ -8,15 +8,15 @@ export default function Connection() {
   return (
     <Screen title="Connection & Permissions">
       {match(version, {
-        loading: () => <Text>Connecting...</Text>,
-        ready: (result) => <Text>Version: {result.value}</Text>,
-        error: (result) => <Text>{result.error.message}</Text>,
+        loading: () => <Field label="Light SDK">Connecting...</Field>,
+        ready: (result) => <Field label="Light SDK version">{result.value}</Field>,
+        error: (result) => <Field label="Light SDK">{result.error.message}</Field>,
       })}
       <Button onPress={() => version.reload()}>Refresh</Button>
       {match(camera, {
-        loading: () => <Text>Checking Camera...</Text>,
-        ready: (result) => <Text>Camera: {result.value}</Text>,
-        error: (result) => <Text>{result.error.message}</Text>,
+        loading: () => <Field label="Camera permission">Checking...</Field>,
+        ready: (result) => <Field label="Camera permission">{result.value}</Field>,
+        error: (result) => <Field label="Camera permission">{result.error.message}</Field>,
       })}
       <Button onPress={() => camera.request()}>Request Camera</Button>
     </Screen>

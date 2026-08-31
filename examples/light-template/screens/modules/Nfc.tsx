@@ -1,5 +1,5 @@
 import { nfcTag } from "@ink/nfc";
-import { Button, Screen, Stack, Text, match } from "ink";
+import { Button, Field, Screen, Stack, match } from "ink";
 
 export default function Nfc() {
   const tag = nfcTag();
@@ -7,23 +7,23 @@ export default function Nfc() {
   return (
     <Screen title="NFC">
       {match(tag, {
-        loading: () => <Text>Hold an NFC tag near the phone...</Text>,
+        loading: () => <Field label="Tag">Hold an NFC tag near the phone...</Field>,
         ready: (result) => (
           <Stack gap={16}>
-            <Text>Serial number: {result.value.serialNumber}</Text>
+            <Field label="Serial number">{result.value.serialNumber}</Field>
             {result.value.hasText ? (
-              <Text>Text: {result.value.text}</Text>
+              <Field label="Text">{result.value.text}</Field>
             ) : (
-              <Text>Text: None</Text>
+              <Field label="Text">None</Field>
             )}
             {result.value.hasUri ? (
-              <Text>URI: {result.value.uri}</Text>
+              <Field label="URI">{result.value.uri}</Field>
             ) : (
-              <Text>URI: None</Text>
+              <Field label="URI">None</Field>
             )}
           </Stack>
         ),
-        error: (result) => <Text>{result.error.message}</Text>,
+        error: (result) => <Field label="Tag">{result.error.message}</Field>,
       })}
       <Button onPress={() => tag.reload()}>Read another tag</Button>
     </Screen>

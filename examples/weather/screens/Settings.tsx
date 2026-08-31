@@ -1,4 +1,4 @@
-import { Screen, SelectorButton, Toggle, persistedState } from "ink";
+import { Field, Screen, Toggle, persistedState } from "ink";
 
 export default function Settings() {
   const showIcons = persistedState("settings.show-icons", true);
@@ -10,8 +10,8 @@ export default function Settings() {
         value={showIcons.value}
         onChange={() => showIcons.set(!showIcons.value)}
       />
-      <SelectorButton label="Main Page Location">London</SelectorButton>
-      <SelectorButton label="Temperature">Celsius</SelectorButton>
+      <Field label="Main Page Location">London</Field>
+      <Field label="Temperature">Celsius</Field>
     </Screen>
   );
 }

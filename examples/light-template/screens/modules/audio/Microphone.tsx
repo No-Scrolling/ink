@@ -3,7 +3,7 @@ import {
   microphonePermission,
   pitchDetector,
 } from "@ink/audio";
-import { Button, Screen, Text, match } from "ink";
+import { Button, Field, Screen, match } from "ink";
 
 export default function Microphone() {
   const microphone = microphonePermission();
@@ -13,24 +13,26 @@ export default function Microphone() {
   return (
     <Screen title="Microphone">
       {match(microphone, {
-        loading: () => <Text>Checking Microphone...</Text>,
-        ready: (result) => <Text>Permission: {result.value}</Text>,
-        error: (result) => <Text>{result.error.message}</Text>,
+        loading: () => <Field label="Permission">Checking...</Field>,
+        ready: (result) => <Field label="Permission">{result.value}</Field>,
+        error: (result) => <Field label="Permission">{result.error.message}</Field>,
       })}
       <Button onPress={() => microphone.request()}>Request Microphone</Button>
-      <Text>Level: {level.status}</Text>
+      <Field label="Level status">{level.status}</Field>
       {level.status === "error" ? (
-        <Text>{level.error.message}</Text>
+        <Field label="Level error">{level.error.message}</Field>
       ) : (
-        <Text>RMS: {level.rms} Peak: {level.peak}</Text>
+        <Field label="Level">RMS {level.rms}, peak {level.peak}</Field>
       )}
       <Button onPress={() => level.start()}>Start Meter</Button>
       <Button onPress={() => level.stop()}>Stop Meter</Button>
-      <Text>Pitch: {pitch.status}</Text>
+      <Field label="Pitch status">{pitch.status}</Field>
       {pitch.status === "error" ? (
-        <Text>{pitch.error.message}</Text>
+        <Field label="Pitch error">{pitch.error.message}</Field>
       ) : (
-        <Text>{pitch.note}{pitch.octave} {pitch.frequencyHz} Hz {pitch.cents} cents</Text>
+        <Field label="Pitch">
+          {pitch.note}{pitch.octave}, {pitch.frequencyHz} Hz, {pitch.cents} cents
+        </Field>
       )}
       <Button onPress={() => pitch.start()}>Start Tuner</Button>
       <Button onPress={() => pitch.stop()}>Stop Tuner</Button>

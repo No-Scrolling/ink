@@ -1,18 +1,18 @@
 import { audioRecorder } from "@ink/audio";
-import { Button, Screen, Text } from "ink";
+import { Button, Field, Screen } from "ink";
 
 export default function Recording() {
   const recorder = audioRecorder();
 
   return (
     <Screen title="Recording">
-      <Text>Status: {recorder.status}</Text>
+      <Field label="Status">{recorder.status}</Field>
       {recorder.status === "error" ? (
-        <Text>{recorder.error.message}</Text>
+        <Field label="Error">{recorder.error.message}</Field>
       ) : recorder.status === "ready" ? (
-        <Text>Saved: {recorder.recordingDurationMs} ms</Text>
+        <Field label="Saved recording">{recorder.recordingDurationMs} ms</Field>
       ) : (
-        <Text>Duration: {recorder.durationMs} ms</Text>
+        <Field label="Duration">{recorder.durationMs} ms</Field>
       )}
       <Button onPress={() => recorder.start()}>Start Recording</Button>
       <Button onPress={() => recorder.stop()}>Save Recording</Button>

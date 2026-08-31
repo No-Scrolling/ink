@@ -8,10 +8,14 @@ use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
-    APPLE_EMOJI_ATLAS, Colour, ImageData, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign,
-    TextRun, emoji_index,
+    Colour, ImageData, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign, TextRun,
+    is_emoji_grapheme,
 };
 use unicode_segmentation::UnicodeSegmentation;
+
+use crate::system_glyph::{
+    ATLAS_SIZE as SYSTEM_GLYPH_ATLAS_SIZE, CachedSystemGlyph, SystemGlyphAtlas, SystemGlyphRequest,
+};
 
 const MAX_QUADS: usize = 64;
 const MAX_GLYPHS: usize = 512;
@@ -102,13 +106,19 @@ struct PreparedScene {
     text_fixed: Range<u32>,
     text_scroll: Range<u32>,
     image_draws: Vec<ImageDraw>,
+    system_glyph_draws: Vec<SystemGlyphDraw>,
     text_runs: Vec<PreparedTextRun>,
 }
 
 struct PreparedTextRun {
     run: TextRun,
     text: Vec<TextVertex>,
-    emoji: Vec<TextVertex>,
+    system_glyphs: Vec<SystemGlyphVertices>,
+}
+
+struct SystemGlyphVertices {
+    page: usize,
+    vertices: Vec<TextVertex>,
 }
 
 #[derive(Clone, Copy)]
@@ -287,6 +297,12 @@ impl ImageCache {
 
 struct ImageDraw {
     id: u64,
+    vertices: Range<u32>,
+    scrolling: bool,
+}
+
+struct SystemGlyphDraw {
+    page: usize,
     vertices: Range<u32>,
     scrolling: bool,
 }
@@ -496,6 +512,7 @@ pub enum RenderOutcome {
     Presented,
     Skipped,
     SurfaceLost,
+    NeedsSystemGlyph(SystemGlyphRequest),
 }
 
 pub struct Renderer {
@@ -516,6 +533,8 @@ pub struct Renderer {
     image_pipeline: wgpu::RenderPipeline,
     image_buffer: VertexBuffer<TextVertex>,
     image_cache: ImageCache,
+    system_glyph_buffer: VertexBuffer<TextVertex>,
+    system_glyph_atlas: SystemGlyphAtlas,
     glyph_atlas: GlyphAtlas,
     prepared: PreparedScene,
 }
@@ -827,7 +846,10 @@ impl Renderer {
         let overlay_buffer = VertexBuffer::new(&device, "Ink overlay vertices", 12);
         let text_buffer = VertexBuffer::new(&device, "Ink text vertices", MAX_GLYPHS * 6);
         let image_buffer = VertexBuffer::new(&device, "Ink image vertices", MAX_QUADS * 6);
+        let system_glyph_atlas = SystemGlyphAtlas::new(image_bind_group_layout.clone());
         let image_cache = ImageCache::new(image_bind_group_layout);
+        let system_glyph_buffer =
+            VertexBuffer::new(&device, "Ink system glyph vertices", MAX_GLYPHS * 6);
         let glyph_atlas = GlyphAtlas::new(&device, &glyph_bind_group_layout)?;
 
         Ok(Self {
@@ -848,6 +870,8 @@ impl Renderer {
             image_pipeline,
             image_buffer,
             image_cache,
+            system_glyph_buffer,
+            system_glyph_atlas,
             glyph_atlas,
             prepared: PreparedScene::default(),
         })
@@ -870,6 +894,9 @@ impl Renderer {
             self.resize(scene.width, scene.height);
         }
         if !self.prepared.ready || self.prepared.revision != scene.revision {
+            if let Some(request) = self.system_glyph_atlas.request(scene) {
+                return Ok(RenderOutcome::NeedsSystemGlyph(request));
+            }
             self.prepare(scene)?;
         }
         let scroll_y = if scene.height == 0 {
@@ -973,6 +1000,29 @@ impl Renderer {
                 }
                 reset_scissor(&mut pass, scene);
             }
+            if !self.prepared.system_glyph_draws.is_empty() {
+                pass.set_pipeline(&self.image_pipeline);
+                pass.set_vertex_buffer(0, self.system_glyph_buffer.buffer.slice(..));
+                for draw in &self.prepared.system_glyph_draws {
+                    pass.set_bind_group(
+                        0,
+                        if draw.scrolling {
+                            &self.scroll_transform
+                        } else {
+                            &self.fixed_transform
+                        },
+                        &[],
+                    );
+                    pass.set_bind_group(1, self.system_glyph_atlas.bind_group(draw.page), &[]);
+                    if draw.scrolling {
+                        set_scroll_scissor(&mut pass, scene);
+                    } else {
+                        reset_scissor(&mut pass, scene);
+                    }
+                    pass.draw(draw.vertices.clone(), 0..1);
+                }
+                reset_scissor(&mut pass, scene);
+            }
             if !self.prepared.text_fixed.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
@@ -1001,6 +1051,11 @@ impl Renderer {
         Ok(RenderOutcome::Presented)
     }
 
+    pub fn install_system_glyph(&mut self, request_id: u64, pixels: Option<&[u8]>) -> Result<()> {
+        self.system_glyph_atlas
+            .install(&self.device, &self.queue, request_id, pixels)
+    }
+
     fn prepare(&mut self, scene: &Scene) -> Result<()> {
         let mut quads = quad_vertices(scene, false);
         let quad_fixed_end = quads.len() as u32;
@@ -1012,11 +1067,6 @@ impl Renderer {
             .filter(|run| !run.run.scrolling)
             .flat_map(|run| run.text.iter().copied())
             .collect::<Vec<_>>();
-        let fixed_emoji = text_runs
-            .iter()
-            .filter(|run| !run.run.scrolling)
-            .flat_map(|run| run.emoji.iter().copied())
-            .collect::<Vec<_>>();
         text.extend(self.mask_vertices(scene, false)?);
         let text_fixed_end = text.len() as u32;
         text.extend(
@@ -1025,12 +1075,30 @@ impl Renderer {
                 .filter(|run| run.run.scrolling)
                 .flat_map(|run| run.text.iter().copied()),
         );
-        let scroll_emoji = text_runs
-            .iter()
-            .filter(|run| run.run.scrolling)
-            .flat_map(|run| run.emoji.iter().copied())
-            .collect::<Vec<_>>();
         text.extend(self.mask_vertices(scene, true)?);
+
+        let mut system_glyph_groups = HashMap::<(bool, usize), Vec<TextVertex>>::new();
+        for run in &text_runs {
+            for glyphs in &run.system_glyphs {
+                system_glyph_groups
+                    .entry((run.run.scrolling, glyphs.page))
+                    .or_default()
+                    .extend_from_slice(&glyphs.vertices);
+            }
+        }
+        let mut system_glyph_groups = system_glyph_groups.into_iter().collect::<Vec<_>>();
+        system_glyph_groups.sort_by_key(|((scrolling, page), _)| (*scrolling, *page));
+        let mut system_glyph_vertices = Vec::new();
+        let mut system_glyph_draws = Vec::with_capacity(system_glyph_groups.len());
+        for ((scrolling, page), vertices) in system_glyph_groups {
+            let start = system_glyph_vertices.len() as u32;
+            system_glyph_vertices.extend(vertices);
+            system_glyph_draws.push(SystemGlyphDraw {
+                page,
+                vertices: start..system_glyph_vertices.len() as u32,
+                scrolling,
+            });
+        }
 
         self.image_cache.begin_frame();
         let (mut images, mut image_draws) = self.image_vertices(scene, false)?;
@@ -1042,25 +1110,6 @@ impl Renderer {
             draw.vertices.end += scroll_start;
         }
         image_draws.extend(scroll_draws);
-        if !fixed_emoji.is_empty() || !scroll_emoji.is_empty() {
-            self.image_cache.prepare(
-                &self.device,
-                &self.queue,
-                &ImageData::Asset(APPLE_EMOJI_ATLAS.clone()),
-            )?;
-        }
-        for (vertices, scrolling) in [(fixed_emoji, false), (scroll_emoji, true)] {
-            if vertices.is_empty() {
-                continue;
-            }
-            let start = images.len() as u32;
-            images.extend(vertices);
-            image_draws.push(ImageDraw {
-                id: APPLE_EMOJI_ATLAS.id,
-                vertices: start..images.len() as u32,
-                scrolling,
-            });
-        }
         self.image_cache.trim(
             &image_draws
                 .iter()
@@ -1071,6 +1120,8 @@ impl Renderer {
         self.quad_buffer.write(&self.device, &self.queue, &quads);
         self.text_buffer.write(&self.device, &self.queue, &text);
         self.image_buffer.write(&self.device, &self.queue, &images);
+        self.system_glyph_buffer
+            .write(&self.device, &self.queue, &system_glyph_vertices);
         self.prepared = PreparedScene {
             revision: scene.revision,
             ready: true,
@@ -1079,6 +1130,7 @@ impl Renderer {
             text_fixed: 0..text_fixed_end,
             text_scroll: text_fixed_end..text.len() as u32,
             image_draws,
+            system_glyph_draws,
             text_runs,
         };
         Ok(())
@@ -1099,13 +1151,26 @@ impl Renderer {
     fn prepare_text_run(&mut self, scene: &Scene, run: &TextRun) -> Result<PreparedTextRun> {
         let font = self.glyph_atlas.font.clone();
         let mut vertices = Vec::new();
-        let mut emoji = Vec::new();
+        let mut system_glyphs = HashMap::<usize, Vec<TextVertex>>::new();
         let clip = intersect(run.rect, run.clip);
         if clip.width > 0.0 && clip.height > 0.0 {
             let size = run.font_size.round().clamp(1.0, u16::MAX as f32) as u16;
             let scaled = font.as_scaled(PxScale::from(size as f32));
+            let justified_space = if run.align == TextAlign::Justify {
+                let spaces = run
+                    .text
+                    .graphemes(true)
+                    .filter(|grapheme| grapheme.chars().all(char::is_whitespace))
+                    .count();
+                (spaces > 0).then(|| {
+                    (run.rect.width - text_run_width(&scaled, &run.text, size as f32)).max(0.0)
+                        / spaces as f32
+                })
+            } else {
+                None
+            };
             let mut pen_x = match run.align {
-                TextAlign::Start => run.rect.x,
+                TextAlign::Start | TextAlign::Justify => run.rect.x,
                 TextAlign::Centre => {
                     let width = text_run_width(&scaled, &run.text, size as f32);
                     run.rect.x + (run.rect.width - width).max(0.0) / 2.0
@@ -1118,20 +1183,22 @@ impl Renderer {
             let baseline = run.rect.y + (run.rect.height - scaled.height()) / 2.0 + scaled.ascent();
             let mut previous = None;
             for grapheme in run.text.graphemes(true) {
-                if let Some(index) = emoji_index(grapheme) {
-                    let emoji_size = size as f32 * 0.9;
-                    push_atlas_quad(
-                        &mut emoji,
-                        scene,
-                        Rect {
-                            x: pen_x + (size as f32 - emoji_size) / 2.0,
-                            y: run.rect.y + (run.rect.height - emoji_size) / 2.0,
-                            width: emoji_size,
-                            height: emoji_size,
-                        },
-                        clip,
-                        index,
-                    );
+                if is_emoji_grapheme(grapheme) {
+                    if let Some(glyph) = self.system_glyph_atlas.glyph(grapheme, size) {
+                        let glyph_size = size as f32 * 0.9;
+                        push_system_glyph_quad(
+                            system_glyphs.entry(glyph.page).or_default(),
+                            scene,
+                            Rect {
+                                x: pen_x + (size as f32 - glyph_size) / 2.0,
+                                y: run.rect.y + (run.rect.height - glyph_size) / 2.0,
+                                width: glyph_size,
+                                height: glyph_size,
+                            },
+                            clip,
+                            glyph,
+                        );
+                    }
                     pen_x += size as f32;
                     previous = None;
                     continue;
@@ -1159,12 +1226,18 @@ impl Renderer {
                     pen_x += scaled.h_advance(id);
                     previous = Some(id);
                 }
+                if grapheme.chars().all(char::is_whitespace) {
+                    pen_x += justified_space.unwrap_or_default();
+                }
             }
         }
         Ok(PreparedTextRun {
             run: run.clone(),
             text: vertices,
-            emoji,
+            system_glyphs: system_glyphs
+                .into_iter()
+                .map(|(page, vertices)| SystemGlyphVertices { page, vertices })
+                .collect(),
         })
     }
 
@@ -1212,7 +1285,7 @@ fn text_run_width<F: Font>(font: &impl ScaleFont<F>, text: &str, emoji_size: f32
     let mut width = 0.0;
     let mut previous = None;
     for grapheme in text.graphemes(true) {
-        if emoji_index(grapheme).is_some() {
+        if is_emoji_grapheme(grapheme) {
             width += emoji_size;
             previous = None;
             continue;
@@ -1605,30 +1678,25 @@ fn push_image_quad(
     ]);
 }
 
-fn push_atlas_quad(
+fn push_system_glyph_quad(
     vertices: &mut Vec<TextVertex>,
     scene: &Scene,
     rect: Rect,
     clip: Rect,
-    index: usize,
+    glyph: CachedSystemGlyph,
 ) {
     let visible = intersect(rect, clip);
     if visible.width <= 0.0 || visible.height <= 0.0 {
         return;
     }
-    let column = index % 8;
-    let row = index / 8;
-    let cell_u = 1.0 / 8.0;
-    let cell_v = 1.0 / 3.0;
-    let u0 = column as f32 * cell_u;
-    let v0 = row as f32 * cell_v;
-    let u1 = u0 + cell_u;
-    let v1 = v0 + cell_v;
-    let clipped_u0 = u0 + (visible.x - rect.x) / rect.width * cell_u;
-    let clipped_v0 = v0 + (visible.y - rect.y) / rect.height * cell_v;
-    let clipped_u1 = u1 - (rect.x + rect.width - visible.x - visible.width) / rect.width * cell_u;
-    let clipped_v1 =
-        v1 - (rect.y + rect.height - visible.y - visible.height) / rect.height * cell_v;
+    let atlas_size = SYSTEM_GLYPH_ATLAS_SIZE as f32;
+    let u0 = glyph.atlas_x as f32 / atlas_size;
+    let v0 = glyph.atlas_y as f32 / atlas_size;
+    let glyph_uv_size = glyph.size as f32 / atlas_size;
+    let clipped_u0 = u0 + (visible.x - rect.x) / rect.width * glyph_uv_size;
+    let clipped_v0 = v0 + (visible.y - rect.y) / rect.height * glyph_uv_size;
+    let clipped_u1 = u0 + (visible.x + visible.width - rect.x) / rect.width * glyph_uv_size;
+    let clipped_v1 = v0 + (visible.y + visible.height - rect.y) / rect.height * glyph_uv_size;
     let [left, top] = position(scene, visible.x, visible.y);
     let [right, bottom] = position(scene, visible.x + visible.width, visible.y + visible.height);
     let colour = [1.0; 4];

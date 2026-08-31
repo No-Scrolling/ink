@@ -1,14 +1,18 @@
 import { lightPush } from "@ink/light-sdk";
-import { Button, Screen, Stack, Text } from "ink";
+import { Button, Field, Screen, Stack } from "ink";
 
 export default function Push() {
   const push = lightPush();
 
   return (
     <Screen title="Push">
-      <Text>Status: {push.status}</Text>
-      {push.endpoint === "" ? null : <Text>Endpoint: {push.endpoint}</Text>}
-      {push.status === "error" ? <Text>{push.error.message}</Text> : null}
+      <Field label="Status">{push.status}</Field>
+      {push.endpoint === "" ? null : (
+        <Field label="Endpoint">{push.endpoint}</Field>
+      )}
+      {push.status === "error" ? (
+        <Field label="Error">{push.error.message}</Field>
+      ) : null}
       <Button
         onPress={() =>
           push.register("http://127.0.0.1:18080/v1/push/subscriptions")
@@ -21,8 +25,9 @@ export default function Push() {
       <Button onPress={() => push.clear()}>Clear Inbox</Button>
       {push.messages.map((message) => (
         <Stack>
-          <Text>{message.title}</Text>
-          <Text>{message.body}</Text>
+          <Field label="Message">
+            {message.title}: {message.body}
+          </Field>
           <Button onPress={() => push.dismiss(message.groupKey)}>Dismiss</Button>
         </Stack>
       ))}

@@ -111,10 +111,12 @@ impl<'a> Emitter<'a> {
                 parts,
                 font_size,
                 align,
+                max_lines,
             } => format::Node::Text {
                 parts: text_parts(parts)?,
                 font_size: *font_size,
                 align: text_align(*align),
+                max_lines: *max_lines,
             },
             ir::Node::TextInput {
                 placeholder,
@@ -139,11 +141,11 @@ impl<'a> Emitter<'a> {
                 underline: *underline,
                 action: action.as_ref().map(action_value).transpose()?,
             },
-            ir::Node::SelectorButton {
+            ir::Node::Field {
                 label,
                 value,
                 action,
-            } => format::Node::SelectorButton {
+            } => format::Node::Field {
                 label: label.clone(),
                 value: text_parts(value)?,
                 action: action.as_ref().map(action_value).transpose()?,
@@ -692,6 +694,7 @@ fn text_align(alignment: ir::TextAlignment) -> format::TextAlign {
         ir::TextAlignment::Start => format::TextAlign::Start,
         ir::TextAlignment::Center => format::TextAlign::Centre,
         ir::TextAlignment::End => format::TextAlign::End,
+        ir::TextAlignment::Justify => format::TextAlign::Justify,
     }
 }
 

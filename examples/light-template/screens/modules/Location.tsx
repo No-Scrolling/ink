@@ -1,5 +1,5 @@
 import { currentLocation, locationPermission } from "@ink/location";
-import { Button, Screen, Stack, Text, match } from "ink";
+import { Button, Field, Screen, Stack, match } from "ink";
 
 export default function Location() {
   const permission = locationPermission();
@@ -8,21 +8,21 @@ export default function Location() {
   return (
     <Screen title="Location">
       {match(permission, {
-        loading: () => <Text>Checking Location...</Text>,
-        ready: (result) => <Text>Permission: {result.value}</Text>,
-        error: (result) => <Text>{result.error.message}</Text>,
+        loading: () => <Field label="Permission">Checking...</Field>,
+        ready: (result) => <Field label="Permission">{result.value}</Field>,
+        error: (result) => <Field label="Permission">{result.error.message}</Field>,
       })}
       <Button onPress={() => permission.request()}>Request Location</Button>
       {match(location, {
-        loading: () => <Text>Finding Location...</Text>,
+        loading: () => <Field label="Location">Finding...</Field>,
         ready: (result) => (
           <Stack gap={16}>
-            <Text>Latitude: {result.value.latitude}</Text>
-            <Text>Longitude: {result.value.longitude}</Text>
-            <Text>Provider: {result.value.provider}</Text>
+            <Field label="Latitude">{result.value.latitude}</Field>
+            <Field label="Longitude">{result.value.longitude}</Field>
+            <Field label="Provider">{result.value.provider}</Field>
           </Stack>
         ),
-        error: (result) => <Text>{result.error.message}</Text>,
+        error: (result) => <Field label="Location">{result.error.message}</Field>,
       })}
       <Button onPress={() => location.reload()}>Refresh Location</Button>
     </Screen>

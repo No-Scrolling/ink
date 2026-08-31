@@ -150,7 +150,7 @@ export declare function Stack(props: Ink.StackProps): Ink.Element;
 export declare function Text(props: Ink.TextProps): Ink.Element;
 export declare function TextInput(props: Ink.TextInputProps): Ink.Element;
 export declare function Button(props: Ink.ButtonProps): Ink.Element;
-export declare function SelectorButton(props: Ink.SelectorButtonProps): Ink.Element;
+export declare function Field(props: Ink.FieldProps): Ink.Element;
 export declare function Icon(props: Ink.IconProps): Ink.Element;
 export declare function Image(props: Ink.ImageProps): Ink.Element;
 export declare function Toggle(props: Ink.ToggleProps): Ink.Element;
@@ -170,7 +170,7 @@ export namespace Ink {
   type TextContent = Scalar | ReadonlyArray<Scalar>;
   type Alignment = "start" | "center" | "end" | "stretch";
   type Justification = "start" | "center" | "end" | "space-between";
-  type TextAlignment = "start" | "center" | "end";
+  type TextAlignment = "start" | "center" | "end" | "justify";
   type Tone = "primary" | "muted";
 
   interface ScreenProps {
@@ -191,6 +191,7 @@ export namespace Ink {
     children: Children;
     size?: number;
     align?: TextAlignment;
+    maxLines?: number;
   }
 
   interface TextInputProps {
@@ -218,7 +219,7 @@ export namespace Ink {
     underline?: boolean;
   } & PressProps;
 
-  type SelectorButtonProps = {
+  type FieldProps = {
     children: TextContent;
     label: string;
   } & PressProps;
@@ -276,7 +277,7 @@ export namespace JSX {
     Text: Ink.TextProps;
     TextInput: Ink.TextInputProps;
     Button: Ink.ButtonProps;
-    SelectorButton: Ink.SelectorButtonProps;
+    Field: Ink.FieldProps;
     Icon: Ink.IconProps;
     Image: Ink.ImageProps;
     Toggle: Ink.ToggleProps;

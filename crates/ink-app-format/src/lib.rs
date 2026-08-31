@@ -160,6 +160,7 @@ pub enum TextAlign {
     Start,
     Centre,
     End,
+    Justify,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -207,6 +208,7 @@ pub enum Node {
         parts: Vec<TextPart>,
         font_size: Option<f32>,
         align: TextAlign,
+        max_lines: Option<u32>,
     },
     TextInput {
         placeholder: String,
@@ -219,7 +221,7 @@ pub enum Node {
         underline: bool,
         action: Option<Action>,
     },
-    SelectorButton {
+    Field {
         label: String,
         value: Vec<TextPart>,
         action: Option<Action>,
@@ -596,7 +598,7 @@ fn count_nodes(node: &Node, depth: usize) -> Result<usize, FormatError> {
         Node::Text { .. }
         | Node::TextInput { .. }
         | Node::Button { .. }
-        | Node::SelectorButton { .. }
+        | Node::Field { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
         | Node::CameraPreview { .. }
@@ -672,10 +674,16 @@ fn validate_node(application: &Application, node: &Node, depth: usize) -> Result
             validate_children(application, children, depth)
         }
         Node::Text {
-            parts, font_size, ..
+            parts,
+            font_size,
+            max_lines,
+            ..
         } => {
             if font_size.is_some_and(|size| !size.is_finite() || size <= 0.0) {
                 return invalid("text size is invalid");
+            }
+            if max_lines == &Some(0) {
+                return invalid("text max lines is invalid");
             }
             validate_text_parts(application, parts, depth)
         }
@@ -695,7 +703,7 @@ fn validate_node(application: &Application, node: &Node, depth: usize) -> Result
             }
             Ok(())
         }
-        Node::SelectorButton { value, action, .. } => {
+        Node::Field { value, action, .. } => {
             validate_text_parts(application, value, depth)?;
             if let Some(action) = action {
                 validate_action(application, action, depth)?;

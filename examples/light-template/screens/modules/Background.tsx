@@ -1,5 +1,5 @@
 import { periodicJson } from "@ink/background";
-import { Screen, Stack, Text, match } from "ink";
+import { Field, Screen, Stack, match } from "ink";
 
 type Todo = {
   userId: number;
@@ -17,17 +17,17 @@ export default function Background() {
 
   return (
     <Screen title="Background">
-      <Text>Status: {todo.status}</Text>
+      <Field label="Status">{todo.status}</Field>
       {match(todo, {
-        waiting: () => <Text>Waiting for the first update...</Text>,
-        ready: (result) => <Text>{result.value.title}</Text>,
+        waiting: () => <Field label="Update">Waiting for the first update...</Field>,
+        ready: (result) => <Field label="Title">{result.value.title}</Field>,
         stale: (result) => (
           <Stack gap={16}>
-            <Text>{result.value.title}</Text>
-            <Text>{result.error.message}</Text>
+            <Field label="Title">{result.value.title}</Field>
+            <Field label="Error">{result.error.message}</Field>
           </Stack>
         ),
-        error: (result) => <Text>{result.error.message}</Text>,
+        error: (result) => <Field label="Error">{result.error.message}</Field>,
       })}
     </Screen>
   );

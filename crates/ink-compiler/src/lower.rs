@@ -35,7 +35,7 @@ const INK_IMPORTS: [&str; 21] = [
     "Navigator",
     "Route",
     "Screen",
-    "SelectorButton",
+    "Field",
     "Stack",
     "Tab",
     "Tabs",
@@ -3120,7 +3120,7 @@ fn lower_node(
         "Text" => lower_text(element, states, item),
         "TextInput" => lower_text_input(element, states),
         "Button" => lower_button(element, states, imports, item),
-        "SelectorButton" => lower_selector_button(element, states, imports, item),
+        "Field" => lower_field(element, states, imports, item),
         "Icon" => lower_icon(element),
         "Image" => lower_image(element, states, item),
         "Toggle" => lower_toggle(element, states),
@@ -3229,11 +3229,13 @@ fn lower_text(
 ) -> Result<Node, CompileError> {
     let font_size = optional_number_attribute(element, "size")?;
     let align = text_alignment(element)?;
-    reject_other_attributes(element, &["size", "align"])?;
+    let max_lines = optional_positive_integer_attribute(element, "maxLines")?;
+    reject_other_attributes(element, &["size", "align", "maxLines"])?;
     Ok(Node::Text {
         parts: lower_text_parts(element, states, item, "Text")?,
         font_size,
         align,
+        max_lines,
     })
 }
 
@@ -3288,18 +3290,18 @@ fn lower_button(
     })
 }
 
-fn lower_selector_button(
+fn lower_field(
     element: &JSXElement<'_>,
     states: &Bindings,
     imports: &Imports,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Node, CompileError> {
     let label = required_string_attribute(element, "label")?;
-    let action = press_action(element, "SelectorButton", states, imports, item)?;
+    let action = press_action(element, "Field", states, imports, item)?;
     reject_other_attributes(element, &["label", "onPress", "href"])?;
-    Ok(Node::SelectorButton {
+    Ok(Node::Field {
         label,
-        value: lower_text_parts(element, states, item, "SelectorButton")?,
+        value: lower_text_parts(element, states, item, "Field")?,
         action,
     })
 }
@@ -3933,7 +3935,7 @@ fn validate_navigation_node(
                 }),
             ..
         }
-        | Node::SelectorButton {
+        | Node::Field {
             action:
                 Some(Action::Navigate {
                     path,
@@ -4022,7 +4024,7 @@ fn validate_navigation_node(
         Node::Text { .. }
         | Node::TextInput { .. }
         | Node::Button { .. }
-        | Node::SelectorButton { .. }
+        | Node::Field { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
         | Node::CameraPreview { .. }
@@ -4107,7 +4109,7 @@ fn contains_camera_preview(node: &Node) -> bool {
         Node::Text { .. }
         | Node::TextInput { .. }
         | Node::Button { .. }
-        | Node::SelectorButton { .. }
+        | Node::Field { .. }
         | Node::Icon { .. }
         | Node::Image { .. }
         | Node::Toggle { .. }
@@ -6181,6 +6183,35 @@ fn optional_number_attribute(
     Ok(Some(value.value as f32))
 }
 
+fn optional_positive_integer_attribute(
+    element: &JSXElement<'_>,
+    name: &str,
+) -> Result<Option<u32>, CompileError> {
+    let Some(attribute) = attribute(element, name) else {
+        return Ok(None);
+    };
+    let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
+        return Err(CompileError::new(
+            format!("{name} must be a positive integer"),
+            attribute.span,
+        ));
+    };
+    let JSXExpression::NumericLiteral(value) = &container.expression else {
+        return Err(CompileError::new(
+            format!("{name} must be a positive integer"),
+            container.span,
+        ));
+    };
+    let value = integer(value.value, value.span, name)?;
+    u32::try_from(value)
+        .ok()
+        .filter(|value| *value > 0)
+        .map(Some)
+        .ok_or_else(|| {
+            CompileError::new(format!("{name} must be a positive integer"), container.span)
+        })
+}
+
 fn required_number_attribute(element: &JSXElement<'_>, name: &str) -> Result<f32, CompileError> {
     optional_number_attribute(element, name)?.ok_or_else(|| {
         CompileError::new(
@@ -6309,7 +6340,8 @@ fn text_alignment(element: &JSXElement<'_>) -> Result<TextAlignment, CompileErro
         None | Some("start") => Ok(TextAlignment::Start),
         Some("center") => Ok(TextAlignment::Center),
         Some("end") => Ok(TextAlignment::End),
-        Some(_) => invalid_value(element, "align", "start, center or end"),
+        Some("justify") => Ok(TextAlignment::Justify),
+        Some(_) => invalid_value(element, "align", "start, center, end or justify"),
     }
 }
 

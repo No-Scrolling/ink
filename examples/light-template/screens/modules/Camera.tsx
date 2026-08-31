@@ -1,5 +1,5 @@
 import { cameraPermission } from "@ink/camera";
-import { Button, Screen, Text, match } from "ink";
+import { Button, Field, Screen, match } from "ink";
 
 export default function Camera() {
   const permission = cameraPermission();
@@ -7,9 +7,9 @@ export default function Camera() {
   return (
     <Screen title="Camera">
       {match(permission, {
-        loading: () => <Text>Checking camera permission...</Text>,
-        ready: (result) => <Text>Permission: {result.value}</Text>,
-        error: (result) => <Text>{result.error.message}</Text>,
+        loading: () => <Field label="Permission">Checking...</Field>,
+        ready: (result) => <Field label="Permission">{result.value}</Field>,
+        error: (result) => <Field label="Permission">{result.error.message}</Field>,
       })}
       <Button onPress={() => permission.request()}>Request Camera</Button>
       <Button href="/modules/camera/photo">Photo</Button>

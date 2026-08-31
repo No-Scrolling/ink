@@ -1,18 +1,18 @@
 import { audioPlayer } from "@ink/audio";
-import { Button, Screen, Text } from "ink";
+import { Button, Field, Screen } from "ink";
 
 export default function RemotePlayback() {
   const player = audioPlayer({ usage: "speech", playback: "detached" });
 
   return (
     <Screen title="Remote Playback">
-      <Text>Status: {player.status}</Text>
+      <Field label="Status">{player.status}</Field>
       {player.status === "error" ? (
-        <Text>{player.error.message}</Text>
+        <Field label="Error">{player.error.message}</Field>
       ) : (
-        <Text>{player.title}</Text>
+        <Field label="Track">{player.title}</Field>
       )}
-      <Text>{player.positionMs} / {player.durationMs} ms</Text>
+      <Field label="Position">{player.positionMs} / {player.durationMs} ms</Field>
       <Button
         onPress={() => player.play({
           src: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Wikipedia_-_The_Dawn_of_Everything.mp3",

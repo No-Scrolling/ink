@@ -1,5 +1,8 @@
 package com.vandam.ink.keyboard
 
+import android.icu.text.BreakIterator
+import java.util.Locale
+
 internal const val KEYBOARD_HEIGHT_DP = 164f
 internal const val DISMISS_HEIGHT_DP = 56f
 
@@ -40,7 +43,6 @@ internal sealed interface KeyboardKey {
 
     data class Emoji(
         val value: String,
-        val atlasIndex: Int,
         override val widthDp: Float = 43f,
         override val alignment: KeyContentAlignment = KeyContentAlignment.Centre,
     ) : KeyboardKey
@@ -82,26 +84,22 @@ internal object KeyboardLayouts {
         "✨", "🔥", "❤️", "💔", "🏆", "🎯", "👑", "👀",
     )
 
-    val defaultEmojis: List<KeyboardKey.Emoji> = emojiValues.mapIndexed { index, value ->
-        KeyboardKey.Emoji(value, index)
-    }
+    val defaultEmojis: List<KeyboardKey.Emoji> = emojiValues.map { KeyboardKey.Emoji(it) }
 
     fun parseEmojis(value: String?): List<KeyboardKey.Emoji> {
         if (value.isNullOrEmpty()) return defaultEmojis
-        val recognised = mutableListOf<KeyboardKey.Emoji>()
-        var offset = 0
-        while (offset < value.length && recognised.size < defaultEmojis.size) {
-            val match = defaultEmojis
-                .sortedByDescending { it.value.length }
-                .firstOrNull { value.startsWith(it.value, offset) }
-            if (match == null) {
-                offset += Character.charCount(value.codePointAt(offset))
-            } else {
-                recognised += match
-                offset += match.value.length
-            }
+        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT).apply { setText(value) }
+        val emojis = mutableListOf<KeyboardKey.Emoji>()
+        var start = iterator.first()
+        var end = iterator.next()
+        while (end != BreakIterator.DONE && emojis.size < defaultEmojis.size) {
+            value.substring(start, end)
+                .takeUnless(String::isBlank)
+                ?.let { emojis += KeyboardKey.Emoji(it) }
+            start = end
+            end = iterator.next()
         }
-        return recognised.ifEmpty { defaultEmojis }
+        return emojis.ifEmpty { defaultEmojis }
     }
 
     private val letters = KeyboardLayout(

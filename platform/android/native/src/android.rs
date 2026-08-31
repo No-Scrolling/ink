@@ -172,7 +172,6 @@ impl AndroidEngine {
             ANDROID_LOG_INFO,
             &format!("attached Vulkan surface {width}x{height}"),
         );
-        self.render();
     }
 
     fn resize(&mut self, width: u32, height: u32) {
@@ -182,7 +181,6 @@ impl AndroidEngine {
         if let Some(surface) = &mut self.surface {
             surface.renderer.resize(width, height);
         }
-        self.render();
     }
 
     fn pointer(&mut self, action: i32, x: f32, y: f32) -> bool {
@@ -255,9 +253,9 @@ impl AndroidEngine {
         self.engine.fail_native(request_id, error)
     }
 
-    fn render(&mut self) {
+    fn render(&mut self) -> Option<ink_renderer_wgpu::SystemGlyphRequest> {
         let Some(surface) = &mut self.surface else {
-            return;
+            return None;
         };
         match surface.renderer.render(self.engine.scene()) {
             Ok(RenderOutcome::Presented) => {}
@@ -268,12 +266,29 @@ impl AndroidEngine {
                 android_log(ANDROID_LOG_ERROR, "Vulkan surface was lost");
                 self.surface = None;
             }
+            Ok(RenderOutcome::NeedsSystemGlyph(request)) => return Some(request),
             Err(error) => {
                 android_log(
                     ANDROID_LOG_ERROR,
                     &format!("failed to render dirty frame: {error:#}"),
                 );
             }
+        }
+        None
+    }
+
+    fn install_system_glyph(&mut self, request_id: u64, pixels: &[u8]) {
+        let Some(surface) = &mut self.surface else {
+            return;
+        };
+        if let Err(error) = surface
+            .renderer
+            .install_system_glyph(request_id, (!pixels.is_empty()).then_some(pixels))
+        {
+            android_log(
+                ANDROID_LOG_ERROR,
+                &format!("failed to install system glyph: {error:#}"),
+            );
         }
     }
 }
@@ -484,15 +499,43 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollMaximum(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender(
-    _env: EnvUnowned<'_>,
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JString<'local> {
+    let request = if let Some(engine) = engine(handle)
+        && let Ok(mut engine) = engine.lock()
+    {
+        engine.render()
+    } else {
+        None
+    };
+    let value = request.map_or_else(String::new, |request| {
+        format!(
+            "{}\n{}\n{}",
+            request.id, request.pixel_size, request.grapheme,
+        )
+    });
+    env.with_env(|env| env.new_string(value))
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeInstallSystemGlyph(
+    mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
+    request_id: jlong,
+    pixels: JByteArray<'_>,
 ) {
+    let pixels = env
+        .with_env(|env| env.convert_byte_array(&pixels))
+        .resolve::<jni::errors::LogErrorAndDefault>();
     if let Some(engine) = engine(handle)
         && let Ok(mut engine) = engine.lock()
     {
-        engine.render();
+        engine.install_system_glyph(request_id as u64, &pixels);
     }
 }
 

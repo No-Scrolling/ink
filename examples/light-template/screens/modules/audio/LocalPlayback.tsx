@@ -1,20 +1,20 @@
 import { audioPlayer } from "@ink/audio";
-import { Button, Screen, Text } from "ink";
+import { Button, Field, Screen } from "ink";
 
 export default function LocalPlayback() {
   const player = audioPlayer({ usage: "music", playback: "detached" });
 
   return (
     <Screen title="Local Playback">
-      <Text>Status: {player.status}</Text>
+      <Field label="Status">{player.status}</Field>
       {player.status === "error" ? (
-        <Text>{player.error.message}</Text>
+        <Field label="Error">{player.error.message}</Field>
       ) : player.status === "idle" ? (
-        <Text>No Track</Text>
+        <Field label="Track">None</Field>
       ) : (
-        <Text>Track {player.index}: {player.title}</Text>
+        <Field label="Track">{player.index}: {player.title}</Field>
       )}
-      <Text>{player.positionMs} / {player.durationMs} ms</Text>
+      <Field label="Position">{player.positionMs} / {player.durationMs} ms</Field>
       <Button
         onPress={() => {
           player.setQueue([

@@ -6,6 +6,11 @@ use std::{
 };
 
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
+use unicode_linebreak::linebreaks;
+use unicode_properties::emoji::{
+    EmojiStatus, UnicodeEmoji, is_emoji_presentation_selector, is_regional_indicator,
+    is_text_presentation_selector, is_zwj,
+};
 use unicode_segmentation::UnicodeSegmentation;
 
 mod definition;
@@ -16,12 +21,6 @@ pub use persistence::PersistenceTooLarge;
 use persistence::{decode_persisted_state, encode_persisted_state};
 
 pub const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
-pub const APPLE_EMOJI_ATLAS: ImageAsset = ImageAsset::new(
-    0x6170_706c_655f_656d,
-    512,
-    192,
-    include_bytes!("../../../assets/emoji/apple_emoji.rgba.zlib"),
-);
 
 const DEFAULT_TEXT_SIZE: f32 = 30.0;
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
@@ -32,9 +31,9 @@ const DEFAULT_ICON_SIZE: f32 = 28.0;
 const BUTTON_HEIGHT: f32 = 40.0;
 const BUTTON_ICON_SIZE: f32 = 30.0;
 const BUTTON_ICON_GAP: f32 = 12.0;
-const SELECTOR_LABEL_SIZE: f32 = 20.0;
-const SELECTOR_LABEL_HEIGHT: f32 = 25.0;
-const SELECTOR_HEIGHT: f32 = SELECTOR_LABEL_HEIGHT + BUTTON_HEIGHT;
+const FIELD_LABEL_SIZE: f32 = 20.0;
+const FIELD_LABEL_HEIGHT: f32 = 25.0;
+const FIELD_HEIGHT: f32 = FIELD_LABEL_HEIGHT + BUTTON_HEIGHT;
 const CONTENT_INSET_START: f32 = 37.0;
 const CONTENT_INSET_END: f32 = CONTENT_INSET_START;
 const CONTENT_TOP: f32 = 14.0;
@@ -59,6 +58,7 @@ const TOGGLE_LINE_WIDTH: f32 = 14.5;
 const TOGGLE_LINE_HEIGHT: f32 = 2.22;
 const TOGGLE_START: f32 = 8.5;
 const TOGGLE_LABEL_GAP: f32 = 20.0;
+const SCROLL_CONTENT_INSET_END: f32 = 52.0;
 const SCROLL_TRACK_END: f32 = 34.0;
 const SCROLL_TRACK_WIDTH: f32 = 1.0;
 const SCROLL_THUMB_WIDTH: f32 = 5.0;
@@ -742,6 +742,7 @@ pub enum TextAlign {
     Start,
     Centre,
     End,
+    Justify,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -894,6 +895,7 @@ enum NodeKind {
         parts: Vec<TextPart>,
         font_size: Option<f32>,
         align: TextAlign,
+        max_lines: Option<u32>,
     },
     TextInput {
         placeholder: String,
@@ -906,7 +908,7 @@ enum NodeKind {
         underline: bool,
         action: Option<Action>,
     },
-    SelectorButton {
+    Field {
         label: String,
         value: Vec<TextPart>,
         action: Option<Action>,
@@ -1000,13 +1002,19 @@ impl Node {
         }
     }
 
-    pub fn text(parts: Vec<TextPart>, font_size: Option<f32>, align: TextAlign) -> Self {
+    pub fn text(
+        parts: Vec<TextPart>,
+        font_size: Option<f32>,
+        align: TextAlign,
+        max_lines: Option<u32>,
+    ) -> Self {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Text {
                 parts,
                 font_size,
                 align,
+                max_lines,
             },
         }
     }
@@ -1043,14 +1051,10 @@ impl Node {
         }
     }
 
-    pub fn selector_button(
-        label: impl Into<String>,
-        value: Vec<TextPart>,
-        action: Option<Action>,
-    ) -> Self {
+    pub fn field(label: impl Into<String>, value: Vec<TextPart>, action: Option<Action>) -> Self {
         Self {
             identity: NodeIdentity(0),
-            kind: NodeKind::SelectorButton {
+            kind: NodeKind::Field {
                 label: label.into(),
                 value,
                 action,
@@ -1354,6 +1358,7 @@ struct HitRegion {
 struct Pointer {
     start_y: f32,
     start_offset: f32,
+    dragging: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -2058,6 +2063,7 @@ impl Engine {
         self.pointer = Some(Pointer {
             start_y: y,
             start_offset: self.scroll_offset,
+            dragging: false,
         });
     }
 
@@ -2066,8 +2072,13 @@ impl Engine {
         let Some(pointer) = &mut self.pointer else {
             return false;
         };
-        if (pointer.start_y - y).abs() <= tap_slop {
-            return false;
+        let delta = pointer.start_y - y;
+        if !pointer.dragging {
+            if delta.abs() <= tap_slop {
+                return false;
+            }
+            pointer.start_y -= delta.signum() * tap_slop;
+            pointer.dragging = true;
         }
         let next = (pointer.start_offset + pointer.start_y - y).clamp(0.0, self.scroll_max);
         self.set_scroll_offset(next)
@@ -2077,7 +2088,7 @@ impl Engine {
         let Some(pointer) = self.pointer.take() else {
             return false;
         };
-        if (pointer.start_y - y).abs() <= self.scaled(TAP_SLOP) {
+        if !pointer.dragging {
             return self.tap(x, y);
         }
         false
@@ -2642,7 +2653,7 @@ impl Engine {
             NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
-            | NodeKind::SelectorButton { .. }
+            | NodeKind::Field { .. }
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
             | NodeKind::CameraPreview { .. }
@@ -2704,7 +2715,7 @@ impl Engine {
             NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
-            | NodeKind::SelectorButton { .. }
+            | NodeKind::Field { .. }
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
             | NodeKind::CameraPreview { .. }
@@ -3166,15 +3177,29 @@ impl Engine {
                 }
             }
             NodeKind::Text {
-                parts, font_size, ..
+                parts,
+                font_size,
+                align,
+                max_lines,
             } => {
-                let logical_size = self.scaled(font_size.unwrap_or(DEFAULT_TEXT_SIZE));
-                let font_size = logical_size * PUBLIC_SANS_RASTER_SCALE;
+                let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
+                let font_size = self.scaled_font(size);
+                let lines = self.wrap_text(
+                    &self.resolve_text(parts),
+                    font_size,
+                    available.width,
+                    *max_lines,
+                );
+                let line_height = self.text_line_height(size, lines.len());
                 MeasuredSize {
-                    width: self
-                        .text_width(&self.resolve_text(parts), font_size)
-                        .min(available.width),
-                    height: (logical_size * 1.25).min(available.height),
+                    width: if *align == TextAlign::Justify && lines.iter().any(|line| line.wrapped)
+                    {
+                        available.width
+                    } else {
+                        lines.iter().map(|line| line.width).fold(0.0, f32::max)
+                    }
+                    .min(available.width),
+                    height: (line_height * lines.len() as f32).min(available.height),
                 }
             }
             NodeKind::TextInput { .. } => MeasuredSize {
@@ -3194,15 +3219,15 @@ impl Engine {
                     height: self.scaled(BUTTON_HEIGHT).min(available.height),
                 }
             }
-            NodeKind::SelectorButton { label, value, .. } => {
-                let label_width = self.text_width(label, self.scaled_font(SELECTOR_LABEL_SIZE));
+            NodeKind::Field { label, value, .. } => {
+                let label_width = self.text_width(label, self.scaled_font(FIELD_LABEL_SIZE));
                 let value_width = self.text_width(
                     &self.resolve_text(value),
                     self.scaled_font(DEFAULT_TEXT_SIZE),
                 );
                 MeasuredSize {
                     width: label_width.max(value_width).ceil().min(available.width),
-                    height: self.scaled(SELECTOR_HEIGHT).min(available.height),
+                    height: self.scaled(FIELD_HEIGHT).min(available.height),
                 }
             }
             NodeKind::Icon { size, .. } => {
@@ -3404,18 +3429,38 @@ impl Engine {
                 parts,
                 font_size,
                 align,
+                max_lines,
             } => {
-                let font_size = self.scaled_font(font_size.unwrap_or(DEFAULT_TEXT_SIZE));
+                let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
+                let font_size = self.scaled_font(size);
                 let text = self.resolve_text(parts);
-                self.scene.text.push(TextRun {
-                    text: self.ellipsize(&text, font_size, rect.width),
-                    rect,
-                    clip: self.clip,
-                    font_size,
-                    colour: Colour::WHITE,
-                    align: *align,
-                    scrolling: self.scrolling,
-                });
+                let lines = self.wrap_text(&text, font_size, rect.width, *max_lines);
+                let line_height = self.text_line_height(size, lines.len());
+                for (index, line) in lines.into_iter().enumerate() {
+                    let mut line_rect = Rect {
+                        y: rect.y + line_height * index as f32,
+                        height: line_height
+                            .min((rect.height - line_height * index as f32).max(0.0)),
+                        ..rect
+                    };
+                    if size == DEFAULT_TEXT_SIZE {
+                        line_rect.y += self.scaled(1.0);
+                        line_rect.height = (line_rect.height - self.scaled(1.0)).max(0.0);
+                    }
+                    self.scene.text.push(TextRun {
+                        text: line.text,
+                        rect: line_rect,
+                        clip: self.clip,
+                        font_size,
+                        colour: Colour::WHITE,
+                        align: if *align == TextAlign::Justify && !line.wrapped {
+                            TextAlign::Start
+                        } else {
+                            *align
+                        },
+                        scrolling: self.scrolling,
+                    });
+                }
             }
             NodeKind::TextInput {
                 placeholder,
@@ -3428,11 +3473,11 @@ impl Engine {
                 underline,
                 action,
             } => self.layout_button(label, icon.clone(), *underline, action, rect),
-            NodeKind::SelectorButton {
+            NodeKind::Field {
                 label,
                 value,
                 action,
-            } => self.layout_selector_button(label, value, action, rect),
+            } => self.layout_field(label, value, action, rect),
             NodeKind::Icon { mask, tone, .. } => self.scene.masks.push(MaskRun {
                 mask: mask.clone(),
                 rect,
@@ -3501,7 +3546,13 @@ impl Engine {
                 parts,
                 font_size,
                 align,
-            } => Node::text(self.materialise_text(parts, item), *font_size, *align),
+                max_lines,
+            } => Node::text(
+                self.materialise_text(parts, item),
+                *font_size,
+                *align,
+                *max_lines,
+            ),
             NodeKind::Button {
                 label,
                 icon,
@@ -3541,11 +3592,11 @@ impl Engine {
             NodeKind::CameraPreview { controller, kind } => {
                 Node::camera_preview(*controller, *kind)
             }
-            NodeKind::SelectorButton {
+            NodeKind::Field {
                 label,
                 value,
                 action,
-            } => Node::selector_button(
+            } => Node::field(
                 label.clone(),
                 self.materialise_text(value, item),
                 action
@@ -3817,16 +3868,18 @@ impl Engine {
                     0.0
                 };
             let title_height = self.scaled(32.0);
+            let title_rect = Rect {
+                x: rect.x + title_inset,
+                y: rect.y + (header_height - title_height) / 2.0,
+                width: (rect.width - title_inset * 2.0).max(0.0),
+                height: title_height,
+            };
+            let font_size = self.scaled_font(HEADER_TEXT_SIZE);
             self.scene.text.push(TextRun {
-                text: title.to_owned(),
-                rect: Rect {
-                    x: rect.x + title_inset,
-                    y: rect.y + (header_height - title_height) / 2.0,
-                    width: (rect.width - title_inset * 2.0).max(0.0),
-                    height: title_height,
-                },
+                text: self.ellipsize(title, font_size, title_rect.width),
+                rect: title_rect,
                 clip: self.clip,
-                font_size: self.scaled_font(HEADER_TEXT_SIZE),
+                font_size,
                 colour: Colour::WHITE,
                 align: TextAlign::Centre,
                 scrolling: self.scrolling,
@@ -3857,7 +3910,7 @@ impl Engine {
         } else {
             0.0
         };
-        let unbounded_content = Rect {
+        let mut unbounded_content = Rect {
             x: rect.x + inset_start,
             y: rect.y + header_height + inset_top,
             width: (rect.width - inset_start - inset_end).max(0.0),
@@ -3872,20 +3925,33 @@ impl Engine {
         } else {
             self.scaled(CONTENT_GAP)
         };
-        let sizes = self.measure_vertical_children(children, unbounded_content);
-        let entries = sizes.iter().map(|measure| measure.entries).sum::<usize>();
-        let content_height = sizes.iter().map(|measure| measure.size.height).sum::<f32>()
-            + gap * entries.saturating_sub(1) as f32;
-        let inset_bottom = if first_child_is_full_bleed {
+        let (mut sizes, mut content_height) =
+            self.measure_screen_content(children, unbounded_content, gap);
+        let mut inset_bottom = if first_child_is_full_bleed {
             requested_bottom_inset
                 .min((rect.height - header_height - inset_top - content_height).max(0.0))
         } else {
             requested_bottom_inset
         };
-        let content = Rect {
+        let mut content = Rect {
             height: (rect.height - header_height - inset_top - inset_bottom).max(0.0),
             ..unbounded_content
         };
+        if content_height > content.height && !fills_remaining {
+            unbounded_content.width =
+                (rect.width - inset_start - self.scaled(SCROLL_CONTENT_INSET_END)).max(0.0);
+            (sizes, content_height) = self.measure_screen_content(children, unbounded_content, gap);
+            inset_bottom = if first_child_is_full_bleed {
+                requested_bottom_inset
+                    .min((rect.height - header_height - inset_top - content_height).max(0.0))
+            } else {
+                requested_bottom_inset
+            };
+            content = Rect {
+                height: (rect.height - header_height - inset_top - inset_bottom).max(0.0),
+                ..unbounded_content
+            };
+        }
         self.scroll_max = (content_height - content.height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, self.scroll_max);
         self.scroll_origin = self.scroll_offset;
@@ -3958,6 +4024,19 @@ impl Engine {
                 scrolling: self.scrolling,
             });
         }
+    }
+
+    fn measure_screen_content(
+        &mut self,
+        children: &[Node],
+        available: Rect,
+        gap: f32,
+    ) -> (Vec<VerticalMeasure>, f32) {
+        let sizes = self.measure_vertical_children(children, available);
+        let entries = sizes.iter().map(|measure| measure.entries).sum::<usize>();
+        let height = sizes.iter().map(|measure| measure.size.height).sum::<f32>()
+            + gap * entries.saturating_sub(1) as f32;
+        (sizes, height)
     }
 
     fn layout_stack(
@@ -4226,22 +4305,23 @@ impl Engine {
         }
     }
 
-    fn layout_selector_button(
+    fn layout_field(
         &mut self,
         label: &str,
         value: &[TextPart],
         action: &Option<Action>,
         rect: Rect,
     ) {
-        let label_height = self.scaled(SELECTOR_LABEL_HEIGHT).min(rect.height);
+        let label_height = self.scaled(FIELD_LABEL_HEIGHT).min(rect.height);
+        let label_font_size = self.scaled_font(FIELD_LABEL_SIZE);
         self.scene.text.push(TextRun {
-            text: label.to_owned(),
+            text: self.ellipsize(label, label_font_size, rect.width),
             rect: Rect {
                 height: label_height,
                 ..rect
             },
             clip: self.clip,
-            font_size: self.scaled_font(SELECTOR_LABEL_SIZE),
+            font_size: label_font_size,
             colour: Colour::WHITE,
             align: TextAlign::Start,
             scrolling: self.scrolling,
@@ -4394,16 +4474,18 @@ impl Engine {
 
         let label_x = rect.x
             + self.scaled(TOGGLE_START + TOGGLE_ICON_SIZE + TOGGLE_LINE_WIDTH + TOGGLE_LABEL_GAP);
+        let label_rect = Rect {
+            x: label_x,
+            y: rect.y,
+            width: (rect.x + rect.width - label_x).max(0.0),
+            height: rect.height,
+        };
+        let label_font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
         self.scene.text.push(TextRun {
-            text: label.to_owned(),
-            rect: Rect {
-                x: label_x,
-                y: rect.y,
-                width: (rect.x + rect.width - label_x).max(0.0),
-                height: rect.height,
-            },
+            text: self.ellipsize(label, label_font_size, label_rect.width),
+            rect: label_rect,
             clip: self.clip,
-            font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
+            font_size: label_font_size,
             colour: Colour::WHITE,
             align: TextAlign::Start,
             scrolling: self.scrolling,
@@ -4754,11 +4836,102 @@ impl Engine {
         }
     }
 
+    fn wrap_text(
+        &self,
+        text: &str,
+        font_size: f32,
+        available_width: f32,
+        max_lines: Option<u32>,
+    ) -> Vec<WrappedLine> {
+        let mut lines = Vec::new();
+        for paragraph in text.split('\n') {
+            if paragraph.is_empty() {
+                lines.push(WrappedLine {
+                    text: String::new(),
+                    width: 0.0,
+                    wrapped: false,
+                });
+                continue;
+            }
+
+            let breakpoints = linebreaks(paragraph)
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            let mut start = 0;
+            while start < paragraph.len() {
+                let mut best = None;
+                for end in breakpoints.iter().copied().filter(|end| *end > start) {
+                    let display_end = trim_whitespace_end(paragraph, start, end);
+                    let candidate = &paragraph[start..display_end];
+                    let width = self.text_width(candidate, font_size);
+                    if width <= available_width {
+                        best = Some((end, display_end, width));
+                    } else {
+                        break;
+                    }
+                }
+
+                let (end, display_end, width) = best.unwrap_or_else(|| {
+                    let end = self.forced_text_break(paragraph, start, font_size, available_width);
+                    (end, end, self.text_width(&paragraph[start..end], font_size))
+                });
+                lines.push(WrappedLine {
+                    text: paragraph[start..display_end].to_owned(),
+                    width,
+                    wrapped: end < paragraph.len(),
+                });
+                start = skip_whitespace_start(paragraph, end);
+            }
+        }
+        if let Some(max_lines) = max_lines.map(|value| value as usize)
+            && lines.len() > max_lines
+        {
+            lines.truncate(max_lines);
+            if let Some(line) = lines.last_mut() {
+                line.text = self.ellipsize_forced(&line.text, font_size, available_width);
+                line.width = self.text_width(&line.text, font_size);
+                line.wrapped = false;
+            }
+        }
+        lines
+    }
+
+    fn forced_text_break(
+        &self,
+        text: &str,
+        start: usize,
+        font_size: f32,
+        available_width: f32,
+    ) -> usize {
+        let mut best = start;
+        for (offset, grapheme) in text[start..].grapheme_indices(true) {
+            let end = start + offset + grapheme.len();
+            if best > start && self.text_width(&text[start..end], font_size) > available_width {
+                break;
+            }
+            best = end;
+        }
+        best
+    }
+
+    fn text_line_height(&self, size: f32, lines: usize) -> f32 {
+        let single_line = if size == DEFAULT_TEXT_SIZE {
+            BUTTON_HEIGHT
+        } else {
+            size * 1.25
+        };
+        self.scaled(if lines > 1 {
+            single_line.max(size * 1.4)
+        } else {
+            single_line
+        })
+    }
+
     fn text_width(&self, text: &str, font_size: f32) -> f32 {
         let scaled = self.font.as_scaled(PxScale::from(font_size));
         let mut previous = None;
         text.graphemes(true).fold(0.0, |mut width, grapheme| {
-            if emoji_index(grapheme).is_some() {
+            if is_emoji_grapheme(grapheme) {
                 previous = None;
                 return width + font_size;
             }
@@ -4778,6 +4951,10 @@ impl Engine {
         if self.text_width(text, font_size) <= available_width {
             return text.to_owned();
         }
+        self.ellipsize_forced(text, font_size, available_width)
+    }
+
+    fn ellipsize_forced(&self, text: &str, font_size: f32, available_width: f32) -> String {
         let ellipsis = '…';
         let ellipsis_width = self.text_width("…", font_size);
         let mut visible = text.to_owned();
@@ -4849,18 +5026,58 @@ fn finite_number(value: f64) -> Option<StateValue> {
     value.is_finite().then_some(StateValue::Number(value))
 }
 
-pub fn emoji_index(grapheme: &str) -> Option<usize> {
-    const EMOJI: [&str; 24] = [
-        "😅", "☺️", "🙃", "😍", "😜", "😂", "😭", "😎", "🙌", "👍", "👎", "🤞", "✌️", "👌", "👋",
-        "🙏", "✨", "🔥", "❤️", "💔", "🏆", "🎯", "👑", "👀",
-    ];
-    EMOJI.iter().position(|emoji| *emoji == grapheme)
+pub fn is_emoji_grapheme(grapheme: &str) -> bool {
+    if grapheme.is_empty() || grapheme.chars().any(is_text_presentation_selector) {
+        return false;
+    }
+
+    let mut has_emoji = false;
+    let mut has_emoji_presentation = false;
+    let mut has_sequence_marker = false;
+    let mut regional_indicators = 0;
+    for character in grapheme.chars() {
+        has_emoji |= character.is_emoji_char();
+        has_emoji_presentation |= matches!(
+            character.emoji_status(),
+            EmojiStatus::EmojiPresentation
+                | EmojiStatus::EmojiPresentationAndModifierBase
+                | EmojiStatus::EmojiPresentationAndEmojiComponent
+                | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent
+        );
+        has_sequence_marker |= is_emoji_presentation_selector(character) || is_zwj(character);
+        regional_indicators += usize::from(is_regional_indicator(character));
+    }
+
+    has_emoji_presentation || (has_emoji && (has_sequence_marker || regional_indicators >= 2))
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 struct MeasuredSize {
     width: f32,
     height: f32,
+}
+
+struct WrappedLine {
+    text: String,
+    width: f32,
+    wrapped: bool,
+}
+
+fn trim_whitespace_end(text: &str, start: usize, end: usize) -> usize {
+    text[start..end]
+        .char_indices()
+        .rev()
+        .find(|(_, character)| !character.is_whitespace())
+        .map_or(start, |(index, character)| {
+            start + index + character.len_utf8()
+        })
+}
+
+fn skip_whitespace_start(text: &str, start: usize) -> usize {
+    text[start..]
+        .char_indices()
+        .find(|(_, character)| !character.is_whitespace())
+        .map_or(text.len(), |(index, _)| start + index)
 }
 
 fn assign_node_identities(node: &mut Node, next: &mut usize) {
@@ -4896,7 +5113,7 @@ fn assign_node_identities(node: &mut Node, next: &mut usize) {
         NodeKind::Text { .. }
         | NodeKind::TextInput { .. }
         | NodeKind::Button { .. }
-        | NodeKind::SelectorButton { .. }
+        | NodeKind::Field { .. }
         | NodeKind::Icon { .. }
         | NodeKind::Image { .. }
         | NodeKind::CameraPreview { .. }
@@ -4930,7 +5147,7 @@ fn subtree_node_count(node: &Node) -> usize {
         NodeKind::Text { .. }
         | NodeKind::TextInput { .. }
         | NodeKind::Button { .. }
-        | NodeKind::SelectorButton { .. }
+        | NodeKind::Field { .. }
         | NodeKind::Icon { .. }
         | NodeKind::Image { .. }
         | NodeKind::CameraPreview { .. }
@@ -4970,7 +5187,7 @@ fn subtree_contains(node: &Node, predicate: impl Copy + Fn(NodeIdentity) -> bool
         NodeKind::Text { .. }
         | NodeKind::TextInput { .. }
         | NodeKind::Button { .. }
-        | NodeKind::SelectorButton { .. }
+        | NodeKind::Field { .. }
         | NodeKind::Icon { .. }
         | NodeKind::Image { .. }
         | NodeKind::CameraPreview { .. }
@@ -4984,7 +5201,7 @@ fn virtualisable_template(node: &Node) -> bool {
         NodeKind::Text { .. }
         | NodeKind::TextInput { .. }
         | NodeKind::Button { .. }
-        | NodeKind::SelectorButton { .. }
+        | NodeKind::Field { .. }
         | NodeKind::Icon { .. }
         | NodeKind::Image { .. }
         | NodeKind::Toggle { .. } => true,
@@ -5231,7 +5448,7 @@ fn stretchable(node: &Node) -> bool {
             | NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
-            | NodeKind::SelectorButton { .. }
+            | NodeKind::Field { .. }
             | NodeKind::CameraPreview { .. }
             | NodeKind::Toggle { .. }
     )

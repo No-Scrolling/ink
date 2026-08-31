@@ -52,6 +52,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var cameraAdapter: CameraAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private lateinit var notificationsAdapter: NotificationsAdapter
+    private val systemGlyphRasterizer = SystemGlyphRasterizer()
     private var engineHandle = 0L
     private var surfaceAttached = false
     private var resumedOnce = false
@@ -292,6 +293,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             frame.height().coerceAtLeast(1),
         )
         surfaceAttached = true
+        inkView.requestFrame()
         syncCameraPortal()
     }
 
@@ -301,6 +303,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         nativeResize(engineHandle, width, height)
+        inkView.requestFrame()
         syncCameraPortal()
     }
 
@@ -732,6 +735,32 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    private fun renderFrame() {
+        while (true) {
+            val request = nativeRender(engineHandle)
+            if (request.isEmpty()) return
+
+            val firstBreak = request.indexOf('\n')
+            val secondBreak = request.indexOf('\n', firstBreak + 1)
+            if (firstBreak < 1 || secondBreak <= firstBreak) {
+                Log.e(RESOURCE_LOG_TAG, "Invalid system glyph request")
+                return
+            }
+            val requestId = request.take(firstBreak).toLongOrNull()
+            val size = request.substring(firstBreak + 1, secondBreak).toIntOrNull()
+            if (requestId == null || size == null) {
+                Log.e(RESOURCE_LOG_TAG, "Invalid system glyph request")
+                return
+            }
+            val grapheme = request.substring(secondBreak + 1)
+            nativeInstallSystemGlyph(
+                engineHandle,
+                requestId,
+                systemGlyphRasterizer.rasterise(grapheme, size) ?: ByteArray(0),
+            )
+        }
+    }
+
     private fun logResource(message: String) {
         if (BuildConfig.DEBUG) Log.d(RESOURCE_LOG_TAG, message)
     }
@@ -781,7 +810,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     }
                 }
             }
-            if (changed) nativeRender(engineHandle)
+            if (changed) renderFrame()
             postFrame()
         }
 
@@ -992,7 +1021,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeScrollMaximum(handle: Long): Float
 
         @JvmStatic
-        private external fun nativeRender(handle: Long)
+        private external fun nativeRender(handle: Long): String
+
+        @JvmStatic
+        private external fun nativeInstallSystemGlyph(
+            handle: Long,
+            requestId: Long,
+            pixels: ByteArray,
+        )
 
         @JvmStatic
         private external fun nativeBack(handle: Long): Boolean

@@ -112,10 +112,12 @@ impl Converter {
                 parts,
                 font_size,
                 align,
+                max_lines,
             } => Node::text(
                 parts.into_iter().map(text_part).collect(),
                 font_size,
                 text_align(align),
+                max_lines,
             ),
             wire::Node::TextInput {
                 placeholder,
@@ -133,11 +135,11 @@ impl Converter {
                 underline,
                 action.map(action_value),
             ),
-            wire::Node::SelectorButton {
+            wire::Node::Field {
                 label,
                 value,
                 action,
-            } => Node::selector_button(
+            } => Node::field(
                 label,
                 value.into_iter().map(text_part).collect(),
                 action.map(action_value),
@@ -553,6 +555,7 @@ fn text_align(alignment: wire::TextAlign) -> TextAlign {
         wire::TextAlign::Start => TextAlign::Start,
         wire::TextAlign::Centre => TextAlign::Centre,
         wire::TextAlign::End => TextAlign::End,
+        wire::TextAlign::Justify => TextAlign::Justify,
     }
 }
 

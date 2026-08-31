@@ -8,12 +8,14 @@ import Settings from "./screens/Settings";
 import Audio from "./screens/modules/Audio";
 import Background from "./screens/modules/Background";
 import Camera from "./screens/modules/Camera";
+import Emoji from "./screens/modules/Emoji";
 import LightSdk from "./screens/modules/LightSdk";
 import Location from "./screens/modules/Location";
 import Nfc from "./screens/modules/Nfc";
 import Network from "./screens/modules/Network";
 import Data from "./screens/modules/network/Data";
 import Notifications from "./screens/modules/Notifications";
+import Typography from "./screens/modules/Typography";
 import LocalPlayback from "./screens/modules/audio/LocalPlayback";
 import Microphone from "./screens/modules/audio/Microphone";
 import Recording from "./screens/modules/audio/Recording";
@@ -92,6 +94,9 @@ export default function LightTemplate() {
       <Route path="/modules/camera/scan">
         <Scan />
       </Route>
+      <Route path="/modules/emoji">
+        <Emoji />
+      </Route>
       <Route path="/modules/light-sdk">
         <LightSdk />
       </Route>
@@ -121,6 +126,9 @@ export default function LightTemplate() {
       </Route>
       <Route path="/modules/notifications">
         <Notifications />
+      </Route>
+      <Route path="/modules/typography">
+        <Typography />
       </Route>
       <Route path="/modules/network/remote-image">
         <RemoteImage />
