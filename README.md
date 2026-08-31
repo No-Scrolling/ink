@@ -6,6 +6,8 @@
 <br><br>
 <p>A TypeScript framework for small, fast Light Phone III apps.</p>
 
+[![Light SDK 0.1.1](https://img.shields.io/badge/Light%20SDK-0.1.1-black)](https://github.com/lightphone/light-sdk/tree/3df3c24a21247e70ad59e1bc0393ac6d63840bc2) [![MIT licence](https://img.shields.io/badge/licence-MIT-black)](LICENSE)
+
 Write apps in TypeScript and TSX. Ink builds them as native Android apps powered by Rust and Vulkan, without bundling a JavaScript engine.
 
 ## Example
