@@ -4,7 +4,7 @@
   <img src="./assets/images/title-light.png" alt="Ink" width="48">
 </picture>
 <br><br>
-<p>A TypeScript framework for performant apps for the Light Phone III.</p>
+<p>A TypeScript framework to create performant apps for the Light Phone III.</p>
 
 Ink compiles TypeScript into a small native Android app at build time, powered by Rust and Vulkan. There is no JavaScript engine bundled!
 
