@@ -66,6 +66,7 @@ const TAP_SLOP: f32 = 8.0;
 const LP3_REFERENCE_WIDTH: f32 = 1080.0;
 const LP3_REFERENCE_SCALE: f32 = 2.55;
 const PUBLIC_SANS_RASTER_SCALE: f32 = 7.0 / 6.0;
+const INCREMENTAL_TREE_THRESHOLD: usize = 32;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct StateId(usize);
@@ -1182,6 +1183,8 @@ impl Route {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppDefinition {
     states: Vec<StateDefinition>,
+    state_dependencies: Vec<Vec<NodeIdentity>>,
+    node_count: usize,
     resources: Vec<ResourceDefinition>,
     application_resources: Vec<ResourceId>,
     controllers: Vec<ControllerDefinition>,
@@ -1190,16 +1193,20 @@ pub struct AppDefinition {
 }
 
 impl AppDefinition {
-    pub fn new(
+    pub(crate) fn new(
         states: Vec<StateDefinition>,
+        state_dependencies: Vec<Vec<NodeIdentity>>,
         resources: Vec<ResourceDefinition>,
         application_resources: Vec<ResourceId>,
         controllers: Vec<ControllerDefinition>,
         application_controllers: Vec<ControllerId>,
         root: Node,
     ) -> Self {
+        let node_count = subtree_node_count(&root);
         Self {
             states,
+            state_dependencies,
+            node_count,
             resources,
             application_resources,
             controllers,
@@ -2033,12 +2040,17 @@ impl Engine {
             self.focused_input = None;
         }
 
-        let changed = action.is_some_and(|action| self.apply(action));
+        let (changed, states) =
+            action.map_or_else(|| (false, Vec::new()), |action| self.apply(action));
         if !changed && !blurred {
             return false;
         }
 
-        self.rebuild_scene();
+        if blurred || states.is_empty() {
+            self.rebuild_scene();
+        } else {
+            self.rebuild_scene_for_states(states);
+        }
         true
     }
 
@@ -2088,10 +2100,13 @@ impl Engine {
     }
 
     pub fn navigate(&mut self, path: &str) -> bool {
-        if !self.apply(Action::Navigate {
-            path: path.to_owned(),
-            params: Vec::new(),
-        }) {
+        if !self
+            .apply(Action::Navigate {
+                path: path.to_owned(),
+                params: Vec::new(),
+            })
+            .0
+        {
             return false;
         }
         self.rebuild_scene();
@@ -2162,7 +2177,11 @@ impl Engine {
                 self.mark_persisted(state);
                 self.refresh_dependent_resources(state);
             }
-            self.rebuild_scene();
+            if mutated {
+                self.rebuild_scene_for_states([state]);
+            } else {
+                self.rebuild_scene();
+            }
         }
         changed
     }
@@ -2179,7 +2198,13 @@ impl Engine {
         self.scroll_max
     }
 
-    fn apply(&mut self, action: Action) -> bool {
+    fn apply(&mut self, action: Action) -> (bool, Vec<StateId>) {
+        let mut states = Vec::new();
+        let changed = self.apply_inner(action, &mut states);
+        (changed, states)
+    }
+
+    fn apply_inner(&mut self, action: Action, states: &mut Vec<StateId>) -> bool {
         let mutated_state = action_state(&action);
         match action {
             Action::Increment { state, by } => {
@@ -2335,12 +2360,15 @@ impl Engine {
             Action::Sequence(actions) => {
                 let mut changed = false;
                 for action in actions {
-                    changed |= self.apply(action);
+                    changed |= self.apply_inner(action, states);
                 }
                 return changed;
             }
         }
         if let Some(state) = mutated_state {
+            if !states.contains(&state) {
+                states.push(state);
+            }
             self.mark_persisted(state);
             self.refresh_dependent_resources(state);
         }
@@ -2868,6 +2896,173 @@ impl Engine {
             None
         };
         self.relayout_scene();
+    }
+
+    fn rebuild_scene_for_states(&mut self, states: impl IntoIterator<Item = StateId>) {
+        if self.definition.node_count < INCREMENTAL_TREE_THRESHOLD {
+            self.rebuild_scene();
+            return;
+        }
+        self.sync_active_resources();
+        let states = states.into_iter().collect::<Vec<_>>();
+        if self
+            .definition
+            .resources
+            .iter()
+            .enumerate()
+            .any(|(index, resource)| {
+                self.active_resources.contains(&ResourceId(index))
+                    && resource
+                        .read
+                        .dependencies()
+                        .any(|state| states.contains(&state))
+            })
+        {
+            self.rebuild_scene();
+            return;
+        }
+        let targets = states
+            .iter()
+            .filter_map(|state| self.definition.state_dependencies.get(state.0))
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        if targets.is_empty() {
+            return;
+        }
+        if self.viewport.width == 0 || self.viewport.height == 0 {
+            self.virtual_lists.clear();
+            self.materialised_root = None;
+            self.relayout_scene();
+            return;
+        }
+
+        let root = match &self.definition.root.kind {
+            NodeKind::Navigator { routes, .. } => {
+                let route = self
+                    .navigation
+                    .last()
+                    .expect("navigator history is never empty")
+                    .route;
+                &routes[route].screen
+            }
+            _ => &self.definition.root,
+        };
+        if !subtree_contains_target(root, &targets) {
+            return;
+        }
+        self.virtual_lists.clear();
+        let previous = self.materialised_root.take();
+        let mut roots = previous.as_ref().map_or_else(
+            || self.materialise(root, None),
+            |previous| self.materialise_incremental(root, previous, &targets),
+        );
+        assert_eq!(roots.len(), 1, "an app route has exactly one root");
+        self.materialised_root = Some(roots.remove(0));
+        self.relayout_scene();
+    }
+
+    fn materialise_incremental(
+        &self,
+        source: &Node,
+        previous: &Node,
+        targets: &[NodeIdentity],
+    ) -> Vec<Node> {
+        if !subtree_contains_target(source, targets) {
+            return vec![previous.clone()];
+        }
+        if source.identity != previous.identity || targets.contains(&source.identity) {
+            return self.materialise(source, None);
+        }
+
+        match (&source.kind, &previous.kind) {
+            (
+                NodeKind::Screen {
+                    children,
+                    title,
+                    centred,
+                    resources,
+                    controllers,
+                },
+                NodeKind::Screen {
+                    children: previous_children,
+                    ..
+                },
+            ) => vec![Node {
+                identity: source.identity,
+                kind: NodeKind::Screen {
+                    children: self.materialise_incremental_children(
+                        children,
+                        previous_children,
+                        targets,
+                        true,
+                    ),
+                    title: title.clone(),
+                    centred: *centred,
+                    resources: resources.clone(),
+                    controllers: controllers.clone(),
+                },
+            }],
+            (
+                NodeKind::Stack {
+                    children,
+                    axis,
+                    gap,
+                    align,
+                    justify,
+                },
+                NodeKind::Stack {
+                    children: previous_children,
+                    ..
+                },
+            ) => vec![Node {
+                identity: source.identity,
+                kind: NodeKind::Stack {
+                    children: self.materialise_incremental_children(
+                        children,
+                        previous_children,
+                        targets,
+                        *axis == Axis::Vertical,
+                    ),
+                    axis: *axis,
+                    gap: *gap,
+                    align: *align,
+                    justify: *justify,
+                },
+            }],
+            _ => self.materialise(source, None),
+        }
+    }
+
+    fn materialise_incremental_children(
+        &self,
+        source: &[Node],
+        previous: &[Node],
+        targets: &[NodeIdentity],
+        preserve_virtual_lists: bool,
+    ) -> Vec<Node> {
+        let mut output = Vec::new();
+        for child in source {
+            if preserve_virtual_lists
+                && matches!(&child.kind, NodeKind::ForEach { template, .. } if virtualisable_template(template))
+            {
+                output.push(child.clone());
+            } else if !subtree_contains_target(child, targets) {
+                output.extend(
+                    previous
+                        .iter()
+                        .filter(|node| subtree_contains_identity(child, node.identity))
+                        .cloned(),
+                );
+            } else if let Some(previous) =
+                previous.iter().find(|node| node.identity == child.identity)
+            {
+                output.extend(self.materialise_incremental(child, previous, targets));
+            } else {
+                output.extend(self.materialise(child, None));
+            }
+        }
+        output
     }
 
     fn relayout_scene(&mut self) {
@@ -4706,6 +4901,80 @@ fn assign_node_identities(node: &mut Node, next: &mut usize) {
         | NodeKind::Image { .. }
         | NodeKind::CameraPreview { .. }
         | NodeKind::Toggle { .. } => {}
+    }
+}
+
+fn subtree_contains_target(node: &Node, targets: &[NodeIdentity]) -> bool {
+    subtree_contains(node, |identity| targets.contains(&identity))
+}
+
+fn subtree_node_count(node: &Node) -> usize {
+    1 + match &node.kind {
+        NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => {
+            children.iter().map(subtree_node_count).sum()
+        }
+        NodeKind::Tabs { tabs, .. } => tabs.iter().map(|tab| subtree_node_count(&tab.screen)).sum(),
+        NodeKind::Navigator { routes, .. } => routes
+            .iter()
+            .map(|route| subtree_node_count(&route.screen))
+            .sum(),
+        NodeKind::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            subtree_node_count(consequent)
+                + alternate.as_deref().map(subtree_node_count).unwrap_or(0)
+        }
+        NodeKind::ForEach { template, .. } => subtree_node_count(template),
+        NodeKind::Text { .. }
+        | NodeKind::TextInput { .. }
+        | NodeKind::Button { .. }
+        | NodeKind::SelectorButton { .. }
+        | NodeKind::Icon { .. }
+        | NodeKind::Image { .. }
+        | NodeKind::CameraPreview { .. }
+        | NodeKind::Toggle { .. } => 0,
+    }
+}
+
+fn subtree_contains_identity(node: &Node, identity: NodeIdentity) -> bool {
+    subtree_contains(node, |candidate| candidate == identity)
+}
+
+fn subtree_contains(node: &Node, predicate: impl Copy + Fn(NodeIdentity) -> bool) -> bool {
+    if predicate(node.identity) {
+        return true;
+    }
+    match &node.kind {
+        NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => children
+            .iter()
+            .any(|child| subtree_contains(child, predicate)),
+        NodeKind::Tabs { tabs, .. } => tabs
+            .iter()
+            .any(|tab| subtree_contains(&tab.screen, predicate)),
+        NodeKind::Navigator { routes, .. } => routes
+            .iter()
+            .any(|route| subtree_contains(&route.screen, predicate)),
+        NodeKind::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            subtree_contains(consequent, predicate)
+                || alternate
+                    .as_deref()
+                    .is_some_and(|node| subtree_contains(node, predicate))
+        }
+        NodeKind::ForEach { template, .. } => subtree_contains(template, predicate),
+        NodeKind::Text { .. }
+        | NodeKind::TextInput { .. }
+        | NodeKind::Button { .. }
+        | NodeKind::SelectorButton { .. }
+        | NodeKind::Icon { .. }
+        | NodeKind::Image { .. }
+        | NodeKind::CameraPreview { .. }
+        | NodeKind::Toggle { .. } => false,
     }
 }
 

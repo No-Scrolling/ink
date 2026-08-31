@@ -4,17 +4,7 @@ use oxc::span::Span;
 use oxc_resolver::{ResolveOptions, Resolver};
 use serde::Deserialize;
 
-use crate::{diagnostic::CompileError, ir::Extension};
-
-const LIGHT_SDK_PACKAGE: &str = "@ink/light-sdk";
-const LIGHT_SDK_VERSION: &str = "0.1.1";
-const NETWORK_PACKAGE: &str = "@ink/network";
-const AUDIO_PACKAGE: &str = "@ink/audio";
-const LOCATION_PACKAGE: &str = "@ink/location";
-const NFC_PACKAGE: &str = "@ink/nfc";
-const BACKGROUND_PACKAGE: &str = "@ink/background";
-const NOTIFICATIONS_PACKAGE: &str = "@ink/notifications";
-const CAMERA_PACKAGE: &str = "@ink/camera";
+use crate::{diagnostic::CompileError, ir::Extension, module_schema};
 
 pub struct ModuleResolver {
     project_root: PathBuf,
@@ -150,82 +140,41 @@ impl ModuleResolver {
             .ink
             .ok_or_else(|| CompileError::new("package is missing Ink extension metadata", span))?;
 
-        match (manifest.name.as_str(), ink.extension.as_str()) {
-            (LIGHT_SDK_PACKAGE, "light-sdk") if ink.sdk_version == LIGHT_SDK_VERSION => {
-                Ok(Extension::LightSdk)
-            }
-            (LIGHT_SDK_PACKAGE, "light-sdk") => Err(CompileError::new(
-                format!(
-                    "@ink/light-sdk targets Light SDK {}, but this Ink version supports {LIGHT_SDK_VERSION}",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            (NETWORK_PACKAGE, "network") if ink.sdk_version == "1" => Ok(Extension::Network),
-            (NETWORK_PACKAGE, "network") => Err(CompileError::new(
-                format!(
-                    "@ink/network targets Ink network API {}, but this Ink version supports 1",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            (AUDIO_PACKAGE, "audio") if ink.sdk_version == "1" => Ok(Extension::Audio),
-            (AUDIO_PACKAGE, "audio") => Err(CompileError::new(
-                format!(
-                    "@ink/audio targets Ink audio API {}, but this Ink version supports 1",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            (LOCATION_PACKAGE, "location") if ink.sdk_version == "1" => Ok(Extension::Location),
-            (LOCATION_PACKAGE, "location") => Err(CompileError::new(
-                format!(
-                    "@ink/location targets Ink location API {}, but this Ink version supports 1",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            (NFC_PACKAGE, "nfc") if ink.sdk_version == "1" => Ok(Extension::Nfc),
-            (NFC_PACKAGE, "nfc") => Err(CompileError::new(
-                format!(
-                    "@ink/nfc targets Ink NFC API {}, but this Ink version supports 1",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            (BACKGROUND_PACKAGE, "background") if ink.sdk_version == "1" => {
-                Ok(Extension::Background)
-            }
-            (BACKGROUND_PACKAGE, "background") => Err(CompileError::new(
-                format!(
-                    "@ink/background targets Ink background API {}, but this Ink version supports 1",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            (NOTIFICATIONS_PACKAGE, "notifications") if ink.sdk_version == "1" => {
-                Ok(Extension::Notifications)
-            }
-            (NOTIFICATIONS_PACKAGE, "notifications") => Err(CompileError::new(
-                format!(
-                    "@ink/notifications targets Ink notifications API {}, but this Ink version supports 1",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            (CAMERA_PACKAGE, "camera") if ink.sdk_version == "1" => Ok(Extension::Camera),
-            (CAMERA_PACKAGE, "camera") => Err(CompileError::new(
-                format!(
-                    "@ink/camera targets Ink camera API {}, but this Ink version supports 1",
-                    ink.sdk_version
-                ),
-                span,
-            )),
-            _ => Err(CompileError::new(
+        let Some(module) = module_schema::by_package(&manifest.name, &ink.extension) else {
+            return Err(CompileError::new(
                 format!("{specifier:?} is not a supported Ink extension"),
                 span,
-            )),
+            ));
+        };
+        if ink.sdk_version != module.api_version {
+            return Err(CompileError::new(
+                format!(
+                    "{} targets API {}, but this Ink version supports {}",
+                    module.package, ink.sdk_version, module.api_version
+                ),
+                span,
+            ));
         }
+        let declarations =
+            std::fs::read_to_string(package_root.join("index.d.ts")).map_err(|error| {
+                CompileError::new(
+                    format!("could not read {} declarations: {error}", module.package),
+                    span,
+                )
+            })?;
+        for export in module.exports {
+            let declaration = format!("export declare function {}", export.name);
+            if !declarations.contains(&declaration) {
+                return Err(CompileError::new(
+                    format!(
+                        "{} declarations are missing schema export {}",
+                        module.package, export.name
+                    ),
+                    span,
+                ));
+            }
+        }
+        Ok(module.extension)
     }
 
     fn owner(&self, importer: &Path) -> Option<PathBuf> {

@@ -24,6 +24,7 @@ use crate::{
         RouteArgument, SourceSpan, State, StateId, StateLifetime, StateLiteral, StateShape,
         StateValue, Tab, TextAlignment, TextPart, Tone, Value, ValueOperator,
     },
+    module_schema::{self, ExportKind, ExtensionElement, ExtensionFunction},
     resolver::ModuleResolver,
 };
 
@@ -130,38 +131,6 @@ impl Bindings {
     fn get(&self, name: &str) -> Option<&StateBinding> {
         self.states.get(name)
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ExtensionFunction {
-    LightSdkVersion,
-    LightSdkPermission,
-    OpenDialler,
-    RingtoneInstaller,
-    LightPush,
-    Json,
-    CachedJson,
-    Mutation,
-    MicrophonePermission,
-    LevelMeter,
-    PitchDetector,
-    AudioPlayer,
-    AudioRecorder,
-    LocationPermission,
-    CurrentLocation,
-    NfcTag,
-    PeriodicJson,
-    NotificationPermission,
-    LocalNotifications,
-    NotificationTap,
-    CameraPermission,
-    PhotoCapture,
-    CodeScanner,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ExtensionElement {
-    CameraPreview,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -299,14 +268,18 @@ fn validate_imports(
                             specifier.span,
                         ));
                     }
-                    if (extension, imported.as_str()) == (Extension::Camera, "CameraPreview") {
+                    let Some(export) = module_schema::export(extension, imported.as_str()) else {
+                        return Err(CompileError::new(
+                            format!("{imported} is not exported by this Ink extension"),
+                            specifier.span,
+                        ));
+                    };
+                    if let ExportKind::Element(element) = export {
                         let local = specifier.local.name.to_string();
                         if ink.contains(&local)
                             || screens.contains_key(&local)
                             || extension_functions.contains_key(&local)
-                            || extension_elements
-                                .insert(local.clone(), ExtensionElement::CameraPreview)
-                                .is_some()
+                            || extension_elements.insert(local.clone(), element).is_some()
                         {
                             return Err(CompileError::new(
                                 format!("{local} is imported twice"),
@@ -315,56 +288,9 @@ fn validate_imports(
                         }
                         continue;
                     }
-                    let function = match (extension, imported.as_str()) {
-                        (Extension::LightSdk, "lightSdkVersion") => {
-                            ExtensionFunction::LightSdkVersion
-                        }
-                        (Extension::LightSdk, "lightSdkPermission") => {
-                            ExtensionFunction::LightSdkPermission
-                        }
-                        (Extension::LightSdk, "openDialler") => ExtensionFunction::OpenDialler,
-                        (Extension::LightSdk, "ringtoneInstaller") => {
-                            ExtensionFunction::RingtoneInstaller
-                        }
-                        (Extension::LightSdk, "lightPush") => ExtensionFunction::LightPush,
-                        (Extension::Network, "json") => ExtensionFunction::Json,
-                        (Extension::Network, "cachedJson") => ExtensionFunction::CachedJson,
-                        (Extension::Network, "mutation") => ExtensionFunction::Mutation,
-                        (Extension::Audio, "microphonePermission") => {
-                            ExtensionFunction::MicrophonePermission
-                        }
-                        (Extension::Audio, "levelMeter") => ExtensionFunction::LevelMeter,
-                        (Extension::Audio, "pitchDetector") => ExtensionFunction::PitchDetector,
-                        (Extension::Audio, "audioPlayer") => ExtensionFunction::AudioPlayer,
-                        (Extension::Audio, "audioRecorder") => ExtensionFunction::AudioRecorder,
-                        (Extension::Location, "locationPermission") => {
-                            ExtensionFunction::LocationPermission
-                        }
-                        (Extension::Location, "currentLocation") => {
-                            ExtensionFunction::CurrentLocation
-                        }
-                        (Extension::Nfc, "nfcTag") => ExtensionFunction::NfcTag,
-                        (Extension::Background, "periodicJson") => ExtensionFunction::PeriodicJson,
-                        (Extension::Notifications, "notificationPermission") => {
-                            ExtensionFunction::NotificationPermission
-                        }
-                        (Extension::Notifications, "localNotifications") => {
-                            ExtensionFunction::LocalNotifications
-                        }
-                        (Extension::Notifications, "notificationTap") => {
-                            ExtensionFunction::NotificationTap
-                        }
-                        (Extension::Camera, "cameraPermission") => {
-                            ExtensionFunction::CameraPermission
-                        }
-                        (Extension::Camera, "photoCapture") => ExtensionFunction::PhotoCapture,
-                        (Extension::Camera, "codeScanner") => ExtensionFunction::CodeScanner,
-                        _ => {
-                            return Err(CompileError::new(
-                                format!("{imported} is not exported by this Ink extension"),
-                                specifier.span,
-                            ));
-                        }
+                    let function = match export {
+                        ExportKind::Function(function) => function,
+                        ExportKind::Element(_) => unreachable!(),
                     };
                     let local = specifier.local.name.to_string();
                     if ink.contains(&local)

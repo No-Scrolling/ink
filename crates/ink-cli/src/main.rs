@@ -209,6 +209,9 @@ fn show_info(project: &Project) -> Result<()> {
             app.capabilities.join(", ")
         },
     );
+    for detail in &app.capability_details {
+        output::field("", detail);
+    }
     output::field(
         "Modules",
         if app.modules.is_empty() {
@@ -246,6 +249,31 @@ fn show_info(project: &Project) -> Result<()> {
         format!(
             "{} local, {} shared, {} persisted",
             app.local_states, app.shared_states, app.persisted_states,
+        ),
+    );
+    output::field(
+        "Rendering",
+        format!(
+            "{} nodes, {} virtual lists (fixed geometry), {} general lists (variable geometry)",
+            app.nodes, app.virtual_lists, app.general_lists,
+        ),
+    );
+    output::field(
+        "Invalidation",
+        format!(
+            "{} state→node bindings: {} layout, {} structural",
+            app.state_dependencies, app.layout_dependencies, app.structural_dependencies,
+        ),
+    );
+    output::field(
+        "Fallback",
+        "small trees, structural branches and native events use conservative rebuilds",
+    );
+    output::field(
+        "App data",
+        format!(
+            "{} (versioned app.ink)",
+            file_size(app.definition_bytes as u64)
         ),
     );
     output::field(

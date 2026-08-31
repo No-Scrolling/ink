@@ -16,7 +16,7 @@ First-party native extension packages declare `ink` as a peer and import their s
 
 No package source is evaluated. A package changes the APK only through the native Ink nodes and assets generated from the screens actually imported by the application.
 
-Native extensions remain a separate framework interface. Oxc answers which source file an import names; extension metadata declares a capability and selects a framework-owned Android/Rust adapter from Ink's allow-list. It does not grant packages arbitrary compiler or Gradle execution. The first extension is `@ink/light-sdk`.
+Native extensions remain a separate framework interface. Oxc answers which source file an import names; a framework-owned module schema defines each first-party package, API version, runtime export and base capability. The resolver checks installed package metadata and TypeScript declarations against that schema, and the compiler lowers accepted exports into the capability manifest that selects framework-owned Android/Rust adapters. It does not grant packages arbitrary compiler or Gradle execution.
 
 ## Consequences
 

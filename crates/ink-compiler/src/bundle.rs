@@ -19,6 +19,7 @@ pub fn generate(app: &ir::App, root: &Path) -> Result<Vec<u8>> {
     let root = emitter.node(&app.root)?;
     let application = format::Application {
         states: app.states.iter().map(state_definition).collect(),
+        state_dependencies: crate::dependency::analyse(&app.root),
         resources: app
             .resources
             .iter()

@@ -6,12 +6,13 @@ const MAGIC: [u8; 4] = *b"INKA";
 const HEADER_SIZE: usize = 6;
 const MAX_DEFINITION_SIZE: usize = 64 * 1024 * 1024;
 const MAX_TREE_DEPTH: usize = 256;
-pub const FORMAT_VERSION: u16 = 1;
+pub const FORMAT_VERSION: u16 = 2;
 pub const ASSET_NAME: &str = "app.ink";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Application {
     pub states: Vec<StateDefinition>,
+    pub state_dependencies: Vec<StateDependency>,
     pub resources: Vec<ResourceDefinition>,
     pub application_resources: Vec<ResourceId>,
     pub controllers: Vec<ControllerDefinition>,
@@ -19,6 +20,19 @@ pub struct Application {
     pub masks: Vec<MaskAsset>,
     pub images: Vec<ImageAsset>,
     pub root: Node,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StateDependency {
+    pub state: StateId,
+    pub node: u32,
+    pub kind: DependencyKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DependencyKind {
+    Layout,
+    Structure,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -533,7 +547,62 @@ pub fn validate(application: &Application) -> Result<(), FormatError> {
             return invalid(format!("image {index} is empty"));
         }
     }
+    let node_count = count_nodes(&application.root, 0)?;
+    let mut previous = None;
+    for dependency in &application.state_dependencies {
+        state(application, dependency.state)?;
+        if dependency.node == 0 || dependency.node as usize > node_count {
+            return invalid(format!("node {} does not exist", dependency.node));
+        }
+        let key = (dependency.state.0, dependency.node);
+        if previous.is_some_and(|previous| previous >= key) {
+            return invalid("state dependencies must be sorted and unique");
+        }
+        previous = Some(key);
+    }
     validate_node(application, &application.root, 0)
+}
+
+fn count_nodes(node: &Node, depth: usize) -> Result<usize, FormatError> {
+    if depth > MAX_TREE_DEPTH {
+        return invalid("node tree is too deep");
+    }
+    let descendants = match node {
+        Node::Screen { children, .. } | Node::Stack { children, .. } => children
+            .iter()
+            .map(|child| count_nodes(child, depth + 1))
+            .sum::<Result<usize, _>>()?,
+        Node::Tabs { tabs, .. } => tabs
+            .iter()
+            .map(|tab| count_nodes(&tab.screen, depth + 1))
+            .sum::<Result<usize, _>>()?,
+        Node::Navigator { routes, .. } => routes
+            .iter()
+            .map(|route| count_nodes(&route.screen, depth + 1))
+            .sum::<Result<usize, _>>()?,
+        Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => {
+            count_nodes(consequent, depth + 1)?
+                + alternate
+                    .as_deref()
+                    .map(|node| count_nodes(node, depth + 1))
+                    .transpose()?
+                    .unwrap_or_default()
+        }
+        Node::ForEach { template, .. } => count_nodes(template, depth + 1)?,
+        Node::Text { .. }
+        | Node::TextInput { .. }
+        | Node::Button { .. }
+        | Node::SelectorButton { .. }
+        | Node::Icon { .. }
+        | Node::Image { .. }
+        | Node::CameraPreview { .. }
+        | Node::Toggle { .. } => 0,
+    };
+    Ok(1 + descendants)
 }
 
 impl StateShape {

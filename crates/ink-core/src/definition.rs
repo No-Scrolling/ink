@@ -44,12 +44,18 @@ impl Converter {
     }
 
     fn application(&self, application: wire::Application) -> AppDefinition {
+        let mut state_dependencies = vec![Vec::new(); application.states.len()];
+        for dependency in application.state_dependencies {
+            state_dependencies[dependency.state.0 as usize]
+                .push(NodeIdentity(dependency.node as usize));
+        }
         AppDefinition::new(
             application
                 .states
                 .into_iter()
                 .map(state_definition)
                 .collect(),
+            state_dependencies,
             application
                 .resources
                 .into_iter()

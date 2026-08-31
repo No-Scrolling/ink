@@ -10,22 +10,22 @@ All sizes use decimal megabytes. Memory is Android proportional set size (PSS) a
 
 | Metric | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK size | **3.06 MB** | 26.30 MB | 25.83 MB |
-| Clean release build | **1.26 s** | 53.59 s | 46.07 s |
-| Cold start median | **181 ms** | 204 ms | 1,156 ms |
-| Cold start p95 | **206 ms** | 267 ms | 1,177 ms |
-| Idle PSS | **25.0 MB** | 61.9 MB | 25.3 MB |
-| Idle RSS | **135.7 MB** | 179.7 MB | 142.5 MB |
-| Idle threads | **30** | 32 | 33 |
+| APK size | **3.07 MB** | 26.30 MB | 25.83 MB |
+| Clean release build | **1.23 s** | 53.59 s | 46.07 s |
+| Cold start median | **163 ms** | 204 ms | 1,156 ms |
+| Cold start p95 | **208 ms** | 267 ms | 1,177 ms |
+| Idle PSS | 26.1 MB | 61.9 MB | **25.3 MB** |
+| Idle RSS | **135.6 MB** | 179.7 MB | 142.5 MB |
+| Idle threads | **29** | 32 | 33 |
 | Process CPU for 100 taps | **220 ms** | 400 ms | 310 ms |
 
-Ink's APK is about 88% smaller than both alternatives. It starts 11% faster than Expo and 84% faster than Light SDK, has the lowest memory totals, and uses less process CPU for the fixed counter workload.
+Ink's APK is about 88% smaller than both alternatives. It starts 20% faster than Expo and 86% faster than Light SDK, keeps the lowest RSS and uses less process CPU for the fixed counter workload.
 
 The APK entry breakdown is uncompressed and explains where further size work can pay off:
 
 | Counter APK contents | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| Native libraries | 2.98 MB | 16.32 MB | 20.46 MB |
+| Native libraries | 2.99 MB | 16.32 MB | 20.46 MB |
 | DEX bytecode | 0.04 MB | 7.86 MB | 2.90 MB |
 | Android resources | 0.01 MB | 8.49 MB | 1.45 MB |
 | Assets | 0 MB | 1.70 MB | 1.02 MB |
@@ -34,19 +34,19 @@ The APK entry breakdown is uncompressed and explains where further size work can
 
 | Metric | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK size | **3.06 MB** | 26.30 MB | 25.93 MB |
+| APK size | **3.07 MB** | 26.30 MB | 25.93 MB |
 | Clean release build | **1.22 s** | 54.59 s | 38.81 s |
-| No-op release rebuild | **1.08 s** | 9.68 s | 7.39 s |
-| Cold start median | **180 ms** | 216 ms | 1,167 ms |
-| Cold start p95 | **200 ms** | 402 ms | 1,182 ms |
-| Idle PSS | **25.2 MB** | 110.4 MB | 40.9 MB |
+| No-op release rebuild | **1.05 s** | 9.68 s | 7.39 s |
+| Cold start median | **173 ms** | 216 ms | 1,167 ms |
+| Cold start p95 | **186 ms** | 402 ms | 1,182 ms |
+| Idle PSS | **26.4 MB** | 110.4 MB | 40.9 MB |
 | Idle RSS | **135.8 MB** | 229.1 MB | 158.7 MB |
-| Idle threads | **29** | 33 | 33 |
+| Idle threads | **30** | 33 | 33 |
 | Process CPU for 12 swipes | **680 ms** | 850 ms | 980 ms |
-| Presented frames | 252 | 183 | **255** |
-| Average compositor cadence | 57.0 fps | 54.8 fps | **57.6 fps** |
-| p95 presented-frame interval | 22 ms | **17 ms** | 21 ms |
-| p95 compositor latency | 3 ms | **2 ms** | **2 ms** |
+| Presented frames | 253 | 183 | **255** |
+| Average compositor cadence | 57.2 fps | 54.8 fps | **57.6 fps** |
+| p95 presented-frame interval | 24 ms | **17 ms** | 21 ms |
+| p95 compositor latency | **2 ms** | **2 ms** | **2 ms** |
 
 The 1,000 literals compile to a 9.9 KB `app.ink` asset. The stable native runtime does not relink when only application data changes, and retained visible-range layout gives Ink the lowest process CPU result of the three stacks. Emulator frame-tail data remains host-sensitive, so renderer changes are also required to pass the physical LP3 budget.
 
@@ -90,6 +90,7 @@ Before making device-specific release decisions, rerun the same protocol on a ph
 ## Implemented performance design
 
 - Fixed-geometry vertical lists retain one layout record and materialise only their visible range plus overscan. Scroll extent lookup is O(1), and visible layout is O(visible rows) rather than O(total rows).
+- Compiler-emitted state-to-node bindings rematerialise only affected retained branches in substantial trees. Tiny trees, structural branches and native/resource completions keep cheaper conservative paths.
 - Scene revisions retain GPU geometry. Scroll-only frames write one transform uniform, update a scissor and redraw a tiny scrollbar overlay.
 - Choreographer coalesces pointer movement to one update per display frame, and raw movement no longer polls the native action queue through JNI.
 - TSX compiles to a validated, versioned `app.ink` asset. The Rust runtime is stable across ordinary app-data changes.

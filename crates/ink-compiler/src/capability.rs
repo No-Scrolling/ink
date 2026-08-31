@@ -50,6 +50,28 @@ impl Capability {
             Self::TextInput => "text-input",
         }
     }
+
+    pub const fn native_cost(self) -> &'static str {
+        match self {
+            Self::Audio => "audio adapter",
+            Self::AudioDetached => "foreground playback service",
+            Self::AudioPlayback => "Media3 playback",
+            Self::Background => "background job service and network access",
+            Self::CameraPermission => "camera permission adapter",
+            Self::CodeScanner => "camera session and barcode scanner",
+            Self::LightSdk => "LightOS Binder adapter",
+            Self::LightSdkPush => "LightOS push receivers and network access",
+            Self::LightSdkRingtone => "LightOS ringtone provider",
+            Self::Location => "location adapter and coarse/fine permissions",
+            Self::MicrophonePermission => "microphone permission and recording access",
+            Self::Network => "HTTP client and network permissions",
+            Self::Nfc => "NFC adapter and hardware permission",
+            Self::NotificationPermission => "Android notification permission",
+            Self::Notifications => "alarm store and notification receivers",
+            Self::PhotoCapture => "camera session and photo capture",
+            Self::TextInput => "Public Sans keyboard adapter",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
