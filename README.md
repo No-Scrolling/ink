@@ -57,12 +57,12 @@ export default function Counter() {
 ## Modules
 
 - `ink` — UI, layout, navigation, state and persistence
-- `@ink/light-sdk` — LightOS integration
-- `@ink/network` — typed HTTPS JSON resources
-- `@ink/notifications` — local reminders, permission and durable tap events
+- `@ink/light-sdk` — LightOS preferences, hardware keys, dialler, ringtone and push
+- `@ink/network` — Typed HTTPS JSON resources
+- `@ink/notifications` — Local reminders, permission and durable tap events
 - `@ink/audio` — Playback, recording and microphone analysis
-- `@ink/location` — Foreground device location
-- `@ink/camera` — Camera permission, photo capture and code scanning
+- `@ink/location` — Foreground device location and permission
+- `@ink/camera` — Permission, photo capture and code scanning
 - `@ink/nfc` — NFC tag and NDEF reading
 - `@ink/background` — Typed, persisted periodic JSON resources
 
@@ -225,6 +225,7 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [LightOS capabilities](docs/light-sdk.md)
 - [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
 - [Notifications](docs/notifications.md)
+- [Background resources](docs/background.md)
 - [Audio](docs/audio.md)
 - [Location](docs/location.md)
 - [NFC](docs/nfc.md)
