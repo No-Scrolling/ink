@@ -24,6 +24,15 @@ type RuntimeResult = {
     medianAverageFps: number;
     medianPresentP95Ms: number;
   };
+  continuousScroll?: {
+    medianDroppedFrames: number;
+    medianLateAcquireFrames: number;
+    medianJankyFrames: number;
+    medianLongPresentIntervals: number;
+    medianPresentP95Ms: number;
+    medianPresentP99Ms: number;
+    medianAcquireP95Ms: number;
+  };
 };
 
 type Results = {
@@ -49,6 +58,13 @@ type ScenarioBudget = {
   workloadCpuMs: number;
   averageFps?: number;
   presentP95Ms?: number;
+  continuousPresentP95Ms?: number;
+  continuousPresentP99Ms?: number;
+  continuousAcquireP95Ms?: number;
+  continuousLongPresentIntervals?: number;
+  continuousDroppedFrames?: number;
+  continuousJankyFrames?: number;
+  continuousLateAcquireFrames?: number;
 };
 
 type Budgets = {
@@ -178,6 +194,55 @@ for (const scenario of ["Counter", "Scroll"] as const) {
       result.workload.medianPresentP95Ms,
       budget.presentP95Ms,
       " ms",
+    );
+  }
+  if (scenario === "Scroll" && budget.continuousPresentP95Ms !== undefined) {
+    const continuous = result.continuousScroll;
+    if (!continuous) {
+      failures.push("missing Ink continuous-scroll result");
+      continue;
+    }
+    maximum(
+      `${prefix} continuous p95`,
+      continuous.medianPresentP95Ms,
+      budget.continuousPresentP95Ms,
+      " ms",
+    );
+    maximum(
+      `${prefix} continuous p99`,
+      continuous.medianPresentP99Ms,
+      budget.continuousPresentP99Ms ?? budget.continuousPresentP95Ms,
+      " ms",
+    );
+    maximum(
+      `${prefix} continuous acquire p95`,
+      continuous.medianAcquireP95Ms,
+      budget.continuousAcquireP95Ms ?? budget.continuousPresentP95Ms,
+      " ms",
+    );
+    maximum(
+      `${prefix} continuous intervals >17ms`,
+      continuous.medianLongPresentIntervals,
+      budget.continuousLongPresentIntervals ?? 0,
+      "",
+    );
+    maximum(
+      `${prefix} continuous dropped frames`,
+      continuous.medianDroppedFrames,
+      budget.continuousDroppedFrames ?? 0,
+      "",
+    );
+    maximum(
+      `${prefix} continuous janky frames`,
+      continuous.medianJankyFrames,
+      budget.continuousJankyFrames ?? 0,
+      "",
+    );
+    maximum(
+      `${prefix} continuous late acquisitions`,
+      continuous.medianLateAcquireFrames,
+      budget.continuousLateAcquireFrames ?? 0,
+      "",
     );
   }
 }

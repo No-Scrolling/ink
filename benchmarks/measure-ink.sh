@@ -7,6 +7,7 @@ BUILD_BENCHMARK_STACKS=ink \
 
 adb="${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}"
 benchmark_device="${BENCHMARK_DEVICE:-$("$adb" devices | awk '/^emulator-/{ print $1; exit }')}"
+benchmark_output="${BENCHMARK_OUTPUT:-benchmarks/results/ink.json}"
 if [ -z "$benchmark_device" ]; then
   echo "No Android emulator found" >&2
   exit 1
@@ -14,8 +15,8 @@ fi
 
 BENCHMARK_STACKS=ink \
   BENCHMARK_DEVICE="$benchmark_device" \
-  BENCHMARK_OUTPUT=benchmarks/results/ink.json \
+  BENCHMARK_OUTPUT="$benchmark_output" \
   bun benchmarks/measure.ts
 bun benchmarks/verify.ts \
-  benchmarks/results/ink.json \
+  "$benchmark_output" \
   benchmarks/results/ink-build.csv

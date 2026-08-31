@@ -6,9 +6,11 @@ Ink targets small Light Phone III applications. Performance is part of the frame
 
 - An unchanged application submits no frames while idle.
 - Input and state changes produce at most one rendered update per display frame.
+- Native completions join the same display-synchronised update path rather than presenting from their callback thread.
 - State changes in substantial trees rematerialise only compiler-identified retained branches; tiny trees take the cheaper direct rebuild path.
 - Fixed-geometry `ForEach` scrolling work is proportional to visible content plus a small overscan window, not the total number of rows. Structurally variable rows use the exact non-virtual fallback.
 - Unchanged layout, text, image and GPU data are retained across frames.
+- Remote image decoding does not occupy the UI or render thread.
 - Only native capabilities, permissions, dependencies and assets used by the application enter its APK.
 - TypeScript and TSX are compiled ahead of time; applications contain no JavaScript engine.
 
@@ -16,7 +18,7 @@ These guarantees describe release builds. Development builds retain diagnostics 
 
 ## Budgets
 
-The checked emulator budgets live in [`benchmarks/budgets.json`](../benchmarks/budgets.json), with tighter target-device budgets in [`benchmarks/budgets-lp3.json`](../benchmarks/budgets-lp3.json). They cover APK size, release build time, start-up, memory, threads, fixed-workload CPU and scrolling frame cadence. The verifier selects the LP3 contract for model `TLP301`; the emulator profile is a regression envelope for its host-powered software Vulkan path.
+The checked emulator budgets live in [`benchmarks/budgets.json`](../benchmarks/budgets.json), with tighter target-device budgets in [`benchmarks/budgets-lp3.json`](../benchmarks/budgets-lp3.json). They cover APK size, release build time, start-up, memory, threads, fixed-workload CPU and scrolling frame cadence. Three uninterrupted five-second scrolls additionally check p95 and p99 presentation interval, acquire latency and missed-frame counters. The verifier selects the LP3 contract for model `TLP301`; the emulator profile is a regression envelope for its host-powered software Vulkan path.
 
 `ink info` explains the compiled state-to-node bindings, list fast paths, capability causes and native costs, and `app.ink` size before a release build. Structural branches and native/resource completions intentionally retain conservative fallbacks; the report makes those boundaries explicit.
 

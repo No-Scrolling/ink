@@ -422,16 +422,6 @@ kotlin {
 
 tasks.withType<KotlinCompile>().configureEach {
     inputs.property("inkCapabilityFingerprint", inkCapabilityFingerprint)
-    val marker = layout.buildDirectory.file("ink-source-features/$name.txt")
-    doFirst {
-        val file = marker.get().asFile
-        val fingerprint = inkCapabilityFingerprint.get()
-        if (!file.isFile || file.readText() != fingerprint) {
-            project.delete(destinationDirectory)
-        }
-        file.parentFile.mkdirs()
-        file.writeText(fingerprint)
-    }
 }
 
 val cargoBuildDebug by tasks.registering(Exec::class) {

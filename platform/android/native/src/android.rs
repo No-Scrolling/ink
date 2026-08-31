@@ -203,42 +203,23 @@ impl AndroidEngine {
     }
 
     fn scroll_by(&mut self, delta: f32) -> bool {
-        if !self.engine.scroll_by(delta) {
-            return false;
-        }
-        true
+        self.engine.scroll_by(delta)
     }
 
     fn back(&mut self) -> bool {
-        if !self.engine.back() {
-            return false;
-        }
-        self.render();
-        true
+        self.engine.back()
     }
 
     fn navigate(&mut self, path: &str) -> bool {
-        if !self.engine.navigate(path) {
-            return false;
-        }
-        self.render();
-        true
+        self.engine.navigate(path)
     }
 
     fn resume(&mut self) -> bool {
-        if !self.engine.resume() {
-            return false;
-        }
-        self.render();
-        true
+        self.engine.resume()
     }
 
     fn edit_text(&mut self, edit: TextEdit) -> bool {
-        if !self.engine.edit_text(edit) {
-            return false;
-        }
-        self.render();
-        true
+        self.engine.edit_text(edit)
     }
 
     fn complete_native(
@@ -246,28 +227,16 @@ impl AndroidEngine {
         request_id: u64,
         result: Result<StateValue, ResourceError>,
     ) -> bool {
-        if !self.engine.complete_native(request_id, result) {
-            return false;
-        }
-        self.render();
-        true
+        self.engine.complete_native(request_id, result)
     }
 
     #[cfg(feature = "audio")]
     fn process_audio(&mut self, samples: &[i16], sample_rate: u32) -> bool {
-        let changed = self.audio.process(&mut self.engine, samples, sample_rate);
-        if changed {
-            self.render();
-        }
-        changed
+        self.audio.process(&mut self.engine, samples, sample_rate)
     }
 
     fn complete_native_json(&mut self, request_id: u64, bytes: &[u8]) -> bool {
-        if !self.engine.complete_native_json(request_id, bytes) {
-            return false;
-        }
-        self.render();
-        true
+        self.engine.complete_native_json(request_id, bytes)
     }
 
     #[cfg(feature = "image")]
@@ -278,22 +247,12 @@ impl AndroidEngine {
         height: u32,
         pixels: Vec<u8>,
     ) -> bool {
-        if !self
-            .engine
+        self.engine
             .complete_native_image(request_id, width, height, pixels)
-        {
-            return false;
-        }
-        self.render();
-        true
     }
 
     fn fail_native(&mut self, request_id: u64, error: ResourceError) -> bool {
-        if !self.engine.fail_native(request_id, error) {
-            return false;
-        }
-        self.render();
-        true
+        self.engine.fail_native(request_id, error)
     }
 
     fn render(&mut self) {
@@ -434,14 +393,10 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetCameraReview(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| {
-            let changed = engine.engine.set_camera_review(
+            engine.engine.set_camera_review(
                 ControllerId::new(controller as usize),
                 (!source.is_empty()).then_some(source),
-            );
-            if changed {
-                engine.render();
-            }
-            changed
+            )
         }) as jboolean
 }
 
@@ -862,13 +817,9 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeUpdateController(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| {
-            let changed = engine
+            engine
                 .engine
-                .update_controller_json(ControllerId::new(controller as usize), value.as_bytes());
-            if changed {
-                engine.render();
-            }
-            changed
+                .update_controller_json(ControllerId::new(controller as usize), value.as_bytes())
         }) as jboolean
 }
 

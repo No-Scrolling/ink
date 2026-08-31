@@ -76,18 +76,18 @@ Six equivalent arm64 release applications were measured on the same Android 14 e
 | Counter | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
 | APK | **3.07 MB** | 26.30 MB | 25.83 MB |
-| Clean release build | **1.23 s** | 53.59 s | 46.07 s |
-| Cold start | **163 / 208 ms** | 204 / 267 ms | 1,156 / 1,177 ms |
-| Idle PSS / RSS | 26.1 / **135.6 MB** | 61.9 / 179.7 MB | **25.3** / 142.5 MB |
-| CPU for 100 taps | **220 ms** | 400 ms | 310 ms |
+| Clean release build | **1.21 s** | 53.59 s | 46.07 s |
+| Cold start | **174 / 217 ms** | 204 / 267 ms | 1,156 / 1,177 ms |
+| Idle PSS / RSS | 26.2 / **135.7 MB** | 61.9 / 179.7 MB | **25.3** / 142.5 MB |
+| CPU for 100 taps | **200 ms** | 400 ms | 310 ms |
 
 | 1,000-row scroll | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
 | APK | **3.07 MB** | 26.30 MB | 25.93 MB |
-| Idle PSS / RSS | **26.4 / 135.8 MB** | 110.4 / 229.1 MB | 40.9 / 158.7 MB |
-| CPU for 12 swipes | **680 ms** | 850 ms | 980 ms |
-| Average compositor cadence | 57.2 fps | 54.8 fps | **57.6 fps** |
-| p95 presented-frame interval | 24 ms | **17 ms** | 21 ms |
+| Idle PSS / RSS | **26.3 / 135.7 MB** | 110.4 / 229.1 MB | 40.9 / 158.7 MB |
+| CPU for 12 swipes | **580 ms** | 850 ms | 980 ms |
+| Average compositor cadence | 56.6 fps | 54.8 fps | **57.6 fps** |
+| p95 presented-frame interval | 21 ms | **17 ms** | 21 ms |
 
 Ink retains its size, build and memory advantages while using the least process CPU in the scrolling workload. See the [full protocol, raw results and design](benchmarks/README.md).
 

@@ -33,6 +33,8 @@ type WorkloadSample = {
   rssKb: number;
 };
 
+type ContinuousScrollSample = ReturnType<typeof surfaceStats>;
+
 const stackKeys = ["ink", "expo", "light-sdk"] as const;
 const scenarioKeys = ["Counter", "Scroll"] as const;
 const selectedStacks = new Set(
@@ -164,6 +166,14 @@ function histogramPercentile(line: string | undefined, fraction: number): number
   return buckets.at(-1)?.milliseconds ?? 0;
 }
 
+function histogramCountAfter(line: string | undefined, milliseconds: number): number {
+  if (!line) return 0;
+  return [...line.matchAll(/(\d+)ms=(\d+)/g)].reduce(
+    (count, match) => count + (Number(match[1]) > milliseconds ? Number(match[2]) : 0),
+    0,
+  );
+}
+
 function apkBreakdown(apk: string) {
   const bytes = Bun.file(apk).size;
   const listing = run(["unzip", "-l", apk], true);
@@ -224,11 +234,17 @@ function surfaceStats(app: App) {
     .sort((a, b) => b.frames - a.frames);
   const block = candidates[0]?.block ?? "";
   const histogramAfter = (name: string) => block.match(new RegExp(`${name} histogram is as below:\\n([^\\n]+)`))?.[1];
+  const presented = histogramAfter("present2present");
   return {
     frames: candidates[0]?.frames ?? 0,
     droppedFrames: Number(block.match(/droppedFrames = (\d+)/)?.[1] ?? 0),
+    lateAcquireFrames: Number(block.match(/lateAcquireFrames = (\d+)/)?.[1] ?? 0),
+    jankyFrames: Number(block.match(/jankyFrames = (\d+)/)?.[1] ?? 0),
+    longPresentIntervals: histogramCountAfter(presented, 17),
     averageFps: Number(block.match(/averageFPS = ([\d.]+)/)?.[1] ?? 0),
-    presentP95Ms: histogramPercentile(histogramAfter("present2present"), 0.95),
+    presentP95Ms: histogramPercentile(presented, 0.95),
+    presentP99Ms: histogramPercentile(presented, 0.99),
+    acquireP95Ms: histogramPercentile(histogramAfter("acquire2present"), 0.95),
     compositorP95Ms: histogramPercentile(histogramAfter("latch2present"), 0.95),
   };
 }
@@ -263,6 +279,14 @@ function workload(app: App): WorkloadSample {
     ...surfaceStats(app),
     ...memory(app),
   };
+}
+
+function continuousScroll(app: App): ContinuousScrollSample {
+  start(app);
+  sleep(2_000);
+  shell("dumpsys SurfaceFlinger --timestats -clear");
+  shell("input swipe 540 1050 540 180 5000");
+  return surfaceStats(app);
 }
 
 run([...adbCommand, "wait-for-device"], true);
@@ -316,6 +340,20 @@ for (let round = 0; round < 5; round += 1) {
   }
 }
 
+const continuousScrolls = Object.fromEntries(
+  apps
+    .filter((app) => app.scenario === "Scroll")
+    .map((app) => [app.packageName, [] as ContinuousScrollSample[]]),
+);
+for (let round = 0; round < 3; round += 1) {
+  const scrollApps = apps.filter((app) => app.scenario === "Scroll");
+  const order = round % 2 === 0 ? scrollApps : [...scrollApps].reverse();
+  for (const app of order) {
+    console.log(`Continuous scroll ${round + 1}/3: ${app.stack}`);
+    continuousScrolls[app.packageName].push(continuousScroll(app));
+  }
+}
+
 const display = shell("dumpsys display");
 const refreshRate = Number(display.match(/renderFrameRate\s+([\d.]+)/)?.[1]);
 if (!Number.isFinite(refreshRate)) {
@@ -342,6 +380,9 @@ const results = apps.map((app) => {
   const memories = idle[app.packageName];
   const samples = workloads[app.packageName];
   const median = <K extends keyof WorkloadSample>(key: K) => percentile(samples.map((sample) => sample[key] as number), 0.5);
+  const continuousSamples = continuousScrolls[app.packageName] ?? [];
+  const continuousMedian = <K extends keyof ContinuousScrollSample>(key: K) =>
+    percentile(continuousSamples.map((sample) => sample[key] as number), 0.5);
   return {
     ...app,
     apk: apkBreakdown(app.apk),
@@ -368,6 +409,19 @@ const results = apps.map((app) => {
       medianPssKb: median("pssKb"),
       medianRssKb: median("rssKb"),
     },
+    continuousScroll: app.scenario === "Scroll"
+      ? {
+          samples: continuousSamples,
+          medianFrames: continuousMedian("frames"),
+          medianDroppedFrames: continuousMedian("droppedFrames"),
+          medianLateAcquireFrames: continuousMedian("lateAcquireFrames"),
+          medianJankyFrames: continuousMedian("jankyFrames"),
+          medianLongPresentIntervals: continuousMedian("longPresentIntervals"),
+          medianPresentP95Ms: continuousMedian("presentP95Ms"),
+          medianPresentP99Ms: continuousMedian("presentP99Ms"),
+          medianAcquireP95Ms: continuousMedian("acquireP95Ms"),
+        }
+      : undefined,
   };
 });
 
@@ -380,6 +434,8 @@ const protocol = {
   counterTaps: 100,
   scrollSwipesEachDirection: 6,
   swipeDurationMs: 350,
+  continuousScrollRuns: 3,
+  continuousScrollDurationMs: 5_000,
 };
 await Bun.write(
   output,

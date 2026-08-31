@@ -1,7 +1,6 @@
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
-    marker::PhantomData,
     ops::Range,
 };
 
@@ -10,7 +9,7 @@ use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
     APPLE_EMOJI_ATLAS, Colour, ImageData, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign,
-    emoji_index,
+    TextRun, emoji_index,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -20,14 +19,14 @@ const ATLAS_SIZE: u32 = 1024;
 const ATLAS_PADDING: u32 = 1;
 const IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
 
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C)]
 struct QuadVertex {
     position: [f32; 2],
     colour: [f32; 4],
 }
 
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C)]
 struct TextVertex {
     position: [f32; 2],
@@ -44,28 +43,53 @@ struct TransformUniform {
 struct VertexBuffer<T> {
     buffer: wgpu::Buffer,
     capacity: usize,
+    vertices: Vec<T>,
     label: &'static str,
-    marker: PhantomData<T>,
 }
 
-impl<T: Pod> VertexBuffer<T> {
+impl<T: Pod + PartialEq> VertexBuffer<T> {
     fn new(device: &wgpu::Device, label: &'static str, capacity: usize) -> Self {
         Self {
             buffer: raw_vertex_buffer::<T>(device, label, capacity),
             capacity,
+            vertices: Vec::new(),
             label,
-            marker: PhantomData,
         }
     }
 
     fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, vertices: &[T]) {
-        if vertices.len() > self.capacity {
+        let resized = vertices.len() > self.capacity;
+        if resized {
             self.capacity = vertices.len().next_power_of_two();
             self.buffer = raw_vertex_buffer::<T>(device, self.label, self.capacity);
         }
-        if !vertices.is_empty() {
-            queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(vertices));
+        let start = if resized {
+            0
+        } else {
+            self.vertices
+                .iter()
+                .zip(vertices)
+                .position(|(current, next)| current != next)
+                .unwrap_or(self.vertices.len().min(vertices.len()))
+        };
+        let end = if resized || self.vertices.len() != vertices.len() {
+            vertices.len()
+        } else {
+            self.vertices
+                .iter()
+                .zip(vertices)
+                .rposition(|(current, next)| current != next)
+                .map_or(start, |index| index + 1)
+        };
+        if start < end {
+            queue.write_buffer(
+                &self.buffer,
+                (start * size_of::<T>()) as u64,
+                bytemuck::cast_slice(&vertices[start..end]),
+            );
         }
+        self.vertices.clear();
+        self.vertices.extend_from_slice(vertices);
     }
 }
 
@@ -78,6 +102,13 @@ struct PreparedScene {
     text_fixed: Range<u32>,
     text_scroll: Range<u32>,
     image_draws: Vec<ImageDraw>,
+    text_runs: Vec<PreparedTextRun>,
+}
+
+struct PreparedTextRun {
+    run: TextRun,
+    text: Vec<TextVertex>,
+    emoji: Vec<TextVertex>,
 }
 
 #[derive(Clone, Copy)]
@@ -551,7 +582,7 @@ impl Renderer {
             present_mode,
             alpha_mode,
             view_formats: Vec::new(),
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1,
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
         surface.configure(&device, &config);
@@ -975,11 +1006,30 @@ impl Renderer {
         let quad_fixed_end = quads.len() as u32;
         quads.extend(quad_vertices(scene, true));
 
-        let (mut text, fixed_emoji) = self.text_vertices(scene, false)?;
+        let text_runs = self.prepare_text_runs(scene)?;
+        let mut text = text_runs
+            .iter()
+            .filter(|run| !run.run.scrolling)
+            .flat_map(|run| run.text.iter().copied())
+            .collect::<Vec<_>>();
+        let fixed_emoji = text_runs
+            .iter()
+            .filter(|run| !run.run.scrolling)
+            .flat_map(|run| run.emoji.iter().copied())
+            .collect::<Vec<_>>();
         text.extend(self.mask_vertices(scene, false)?);
         let text_fixed_end = text.len() as u32;
-        let (scroll_text, scroll_emoji) = self.text_vertices(scene, true)?;
-        text.extend(scroll_text);
+        text.extend(
+            text_runs
+                .iter()
+                .filter(|run| run.run.scrolling)
+                .flat_map(|run| run.text.iter().copied()),
+        );
+        let scroll_emoji = text_runs
+            .iter()
+            .filter(|run| run.run.scrolling)
+            .flat_map(|run| run.emoji.iter().copied())
+            .collect::<Vec<_>>();
         text.extend(self.mask_vertices(scene, true)?);
 
         self.image_cache.begin_frame();
@@ -1029,23 +1079,29 @@ impl Renderer {
             text_fixed: 0..text_fixed_end,
             text_scroll: text_fixed_end..text.len() as u32,
             image_draws,
+            text_runs,
         };
         Ok(())
     }
 
-    fn text_vertices(
-        &mut self,
-        scene: &Scene,
-        scrolling: bool,
-    ) -> Result<(Vec<TextVertex>, Vec<TextVertex>)> {
+    fn prepare_text_runs(&mut self, scene: &Scene) -> Result<Vec<PreparedTextRun>> {
+        let mut previous = std::mem::take(&mut self.prepared.text_runs).into_iter();
+        scene
+            .text
+            .iter()
+            .map(|run| match previous.next() {
+                Some(prepared) if prepared.run == *run => Ok(prepared),
+                _ => self.prepare_text_run(scene, run),
+            })
+            .collect()
+    }
+
+    fn prepare_text_run(&mut self, scene: &Scene, run: &TextRun) -> Result<PreparedTextRun> {
         let font = self.glyph_atlas.font.clone();
         let mut vertices = Vec::new();
         let mut emoji = Vec::new();
-        for run in scene.text.iter().filter(|run| run.scrolling == scrolling) {
-            let clip = intersect(run.rect, run.clip);
-            if clip.width <= 0.0 || clip.height <= 0.0 {
-                continue;
-            }
+        let clip = intersect(run.rect, run.clip);
+        if clip.width > 0.0 && clip.height > 0.0 {
             let size = run.font_size.round().clamp(1.0, u16::MAX as f32) as u16;
             let scaled = font.as_scaled(PxScale::from(size as f32));
             let mut pen_x = match run.align {
@@ -1105,7 +1161,11 @@ impl Renderer {
                 }
             }
         }
-        Ok((vertices, emoji))
+        Ok(PreparedTextRun {
+            run: run.clone(),
+            text: vertices,
+            emoji,
+        })
     }
 
     fn mask_vertices(&mut self, scene: &Scene, scrolling: bool) -> Result<Vec<TextVertex>> {

@@ -23,8 +23,14 @@
     "idleRssKb": 145000,
     "threads": 26,
     "workloadCpuMs": 1200,
-    "averageFps": 60,
-    "presentP95Ms": 17
+    "presentP95Ms": 17,
+    "continuousPresentP95Ms": 16,
+    "continuousPresentP99Ms": 17,
+    "continuousAcquireP95Ms": 17,
+    "continuousLongPresentIntervals": 0,
+    "continuousDroppedFrames": 0,
+    "continuousJankyFrames": 0,
+    "continuousLateAcquireFrames": 0
   },
   "build": {
     "counterCleanSeconds": 18,

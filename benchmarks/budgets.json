@@ -24,7 +24,14 @@
     "threads": 32,
     "workloadCpuMs": 850,
     "averageFps": 56,
-    "presentP95Ms": 30
+    "presentP95Ms": 30,
+    "continuousPresentP95Ms": 30,
+    "continuousPresentP99Ms": 50,
+    "continuousAcquireP95Ms": 50,
+    "continuousLongPresentIntervals": 90,
+    "continuousDroppedFrames": 0,
+    "continuousJankyFrames": 0,
+    "continuousLateAcquireFrames": 0
   },
   "build": {
     "counterCleanSeconds": 18,

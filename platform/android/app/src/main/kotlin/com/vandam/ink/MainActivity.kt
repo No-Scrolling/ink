@@ -30,6 +30,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import org.json.JSONObject
@@ -63,6 +64,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val persistenceExecutor by lazy(LazyThreadSafetyMode.NONE) {
         Executors.newSingleThreadExecutor()
     }
+    private val imageExecutor = Executors.newSingleThreadExecutor()
     private val persistState = Runnable(::persistAsync)
     private val backCallback = OnBackInvokedCallback {
         handleBack()
@@ -88,6 +90,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (engineHandle == 0L || !nativeBack(engineHandle)) {
             finish()
         } else {
+            inkView.requestFrame()
             syncCameraPortal()
             drainNativeRequests()
         }
@@ -129,8 +132,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             this,
             textInputAdapter::applyPreferences,
         ) { controller, value ->
-            if (engineHandle != 0L) {
+            if (
+                engineHandle != 0L &&
                 nativeUpdateController(engineHandle, controller, value)
+            ) {
+                inkView.requestFrame()
             }
         }
         networkAdapter = createNetworkAdapter(this)
@@ -145,6 +151,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     engineHandle != 0L &&
                     nativeUpdateController(engineHandle, controller, value)
                 ) {
+                    inkView.requestFrame()
                     syncCameraPortal()
                     drainNativeRequests()
                 }
@@ -154,6 +161,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     engineHandle != 0L &&
                     nativeSetCameraReview(engineHandle, controller, source.orEmpty())
                 ) {
+                    inkView.requestFrame()
                     syncCameraPortal()
                     drainNativeRequests()
                 }
@@ -170,14 +178,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             this,
             { samples, sampleRate ->
                 runOnUiThread {
-                    if (engineHandle != 0L) {
+                    if (
+                        engineHandle != 0L &&
                         nativeAudioSamples(engineHandle, samples, sampleRate)
+                    ) {
+                        inkView.requestFrame()
                     }
                 }
             },
             { controller, value ->
-                if (engineHandle != 0L) {
+                if (
+                    engineHandle != 0L &&
                     nativeUpdateController(engineHandle, controller, value)
+                ) {
+                    inkView.requestFrame()
                 }
             },
             { controller, kind, config ->
@@ -190,13 +204,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             },
             { controller, enabled ->
-                engineHandle != 0L &&
+                val changed = engineHandle != 0L &&
                     nativeAudioSetEnabled(engineHandle, controller, enabled)
+                if (changed) inkView.requestFrame()
+                changed
             },
         )
         notificationsAdapter = createNotificationsAdapter(this) { controller, value ->
-            if (engineHandle != 0L) {
+            if (
+                engineHandle != 0L &&
                 nativeUpdateController(engineHandle, controller, value)
+            ) {
+                inkView.requestFrame()
             }
         }
         lightSdkAdapter.start()
@@ -236,6 +255,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         lightSdkAdapter.refresh()
         backgroundAdapter.reconcile()
         if (resumedOnce && engineHandle != 0L && nativeResume(engineHandle)) {
+            inkView.requestFrame()
             syncCameraPortal()
             drainNativeRequests()
         }
@@ -253,6 +273,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (engineHandle != 0L && nativeResume(engineHandle)) {
+            inkView.requestFrame()
             syncCameraPortal()
             drainNativeRequests()
         }
@@ -301,6 +322,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         nfcAdapter.stop()
         backgroundAdapter.stop()
         cameraAdapter.stop()
+        imageExecutor.shutdown()
+        imageExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
         nativeRequestStartedAt.clear()
@@ -374,6 +397,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             TextEdit.Dismiss -> TEXT_INPUT_DISMISS to null
         }
         if (nativeTextInput(engineHandle, action, value)) {
+            inkView.requestFrame()
             schedulePersistence()
         }
         syncTextInput()
@@ -640,6 +664,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (href.isNotEmpty() && engineHandle != 0L) {
             if (nativeNavigate(engineHandle, href)) {
                 inkView.stopScrolling()
+                inkView.requestFrame()
             }
         }
         intent?.removeExtra(EXTRA_NOTIFICATION_HREF)
@@ -660,19 +685,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             "ready"
         }
         logResource("$outcome $requestId $label ${elapsed}ms")
-        when (result) {
+        val changed = when (result) {
             is NativeResult.Success -> if (kind == NATIVE_REQUEST_RESOURCE) {
                 nativeCompleteString(engineHandle, requestId, result.value)
             } else {
                 nativeCompleteAction(engineHandle, requestId)
             }
             is NativeResult.Bytes -> nativeCompleteBytes(engineHandle, requestId, result.value)
-            is NativeResult.File -> try {
-                nativeCompleteFile(engineHandle, requestId, result.path)
-            } finally {
-                if (result.deleteAfterRead) {
-                    File(result.path).delete()
-                }
+            is NativeResult.File -> {
+                completeImage(requestId, result)
+                return
             }
             is NativeResult.Failure -> if (
                 kind == NATIVE_REQUEST_RESOURCE || kind == NATIVE_REQUEST_IMAGE
@@ -688,8 +710,26 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 nativeCompleteAction(engineHandle, requestId)
             }
         }
+        if (changed) inkView.requestFrame()
         syncCameraPortal()
         drainNativeRequests()
+    }
+
+    private fun completeImage(requestId: Long, result: NativeResult.File) {
+        val handle = engineHandle
+        imageExecutor.execute {
+            val changed = try {
+                nativeCompleteFile(handle, requestId, result.path)
+            } finally {
+                if (result.deleteAfterRead) File(result.path).delete()
+            }
+            runOnUiThread {
+                if (engineHandle != handle) return@runOnUiThread
+                if (changed) inkView.requestFrame()
+                syncCameraPortal()
+                drainNativeRequests()
+            }
+        }
     }
 
     private fun logResource(message: String) {
@@ -801,7 +841,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     changed = activated || changed
                 }
                 if (changed) {
-                    renderPending = true
+                    requestFrame()
                     schedulePersistence()
                     syncCameraPortal()
                 }
@@ -823,6 +863,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 performClick()
             }
             return true
+        }
+
+        fun requestFrame() {
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                post(::requestFrame)
+                return
+            }
+            renderPending = true
+            postFrame()
         }
 
         fun stopScrolling() {
