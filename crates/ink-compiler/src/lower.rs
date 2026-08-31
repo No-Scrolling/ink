@@ -96,6 +96,7 @@ struct Bindings {
     states: HashMap<String, StateBinding>,
     resources: HashMap<String, ResourceBinding>,
     controllers: HashMap<String, ControllerBinding>,
+    extension_functions: HashMap<String, ExtensionFunction>,
     source_path: PathBuf,
 }
 
@@ -109,6 +110,9 @@ impl Bindings {
 enum ExtensionFunction {
     LightSdkVersion,
     LightSdkPermission,
+    OpenDialler,
+    RingtoneInstaller,
+    LightPush,
     Json,
     MicrophonePermission,
     LevelMeter,
@@ -142,6 +146,8 @@ enum NativeControllerKind {
     NotificationTap,
     Photo,
     Scanner,
+    RingtoneInstaller,
+    LightPush,
 }
 
 #[derive(Clone, Copy)]
@@ -281,6 +287,11 @@ fn validate_imports(
                         (Extension::LightSdk, "lightSdkPermission") => {
                             ExtensionFunction::LightSdkPermission
                         }
+                        (Extension::LightSdk, "openDialler") => ExtensionFunction::OpenDialler,
+                        (Extension::LightSdk, "ringtoneInstaller") => {
+                            ExtensionFunction::RingtoneInstaller
+                        }
+                        (Extension::LightSdk, "lightPush") => ExtensionFunction::LightPush,
                         (Extension::Network, "json") => ExtensionFunction::Json,
                         (Extension::Audio, "microphonePermission") => {
                             ExtensionFunction::MicrophonePermission
@@ -442,6 +453,7 @@ fn lower_function(
     let mut controllers = Vec::new();
     let mut android_permissions = BTreeSet::new();
     let mut state_names = Bindings {
+        extension_functions: imports.extension_functions.clone(),
         source_path: imports.source_path.clone(),
         ..Bindings::default()
     };
@@ -610,11 +622,21 @@ fn lower_function(
     let scoped_resources = (0..resources.len()).map(ResourceId).collect::<Vec<_>>();
     let scoped_controllers = (0..controllers.len())
         .map(ControllerId)
-        .filter(|controller| controllers[controller.0].kind != "notification-tap")
+        .filter(|controller| {
+            !matches!(
+                controllers[controller.0].kind.as_str(),
+                "notification-tap" | "light-push"
+            )
+        })
         .collect::<Vec<_>>();
     let event_controllers = (0..controllers.len())
         .map(ControllerId)
-        .filter(|controller| controllers[controller.0].kind == "notification-tap")
+        .filter(|controller| {
+            matches!(
+                controllers[controller.0].kind.as_str(),
+                "notification-tap" | "light-push"
+            )
+        })
         .collect::<Vec<_>>();
     let application_resources = match kind {
         ModuleKind::App => scoped_resources,
@@ -701,6 +723,9 @@ fn resource_initialiser(
             | ExtensionFunction::PitchDetector
             | ExtensionFunction::LocalNotifications
             | ExtensionFunction::NotificationTap
+            | ExtensionFunction::OpenDialler
+            | ExtensionFunction::RingtoneInstaller
+            | ExtensionFunction::LightPush
     ) {
         return Ok(None);
     }
@@ -878,7 +903,10 @@ fn resource_initialiser(
         | ExtensionFunction::LocalNotifications
         | ExtensionFunction::NotificationTap
         | ExtensionFunction::PhotoCapture
-        | ExtensionFunction::CodeScanner => unreachable!(),
+        | ExtensionFunction::CodeScanner
+        | ExtensionFunction::OpenDialler
+        | ExtensionFunction::RingtoneInstaller
+        | ExtensionFunction::LightPush => unreachable!(),
     };
     Ok(Some(resource))
 }
@@ -1134,6 +1162,8 @@ fn controller_initialiser(
             | ExtensionFunction::NotificationTap
             | ExtensionFunction::PhotoCapture
             | ExtensionFunction::CodeScanner
+            | ExtensionFunction::RingtoneInstaller
+            | ExtensionFunction::LightPush
     ) {
         return Ok(None);
     }
@@ -1343,16 +1373,85 @@ fn controller_initialiser(
         ExtensionFunction::CodeScanner => {
             camera_controller(NativeControllerKind::Scanner, scanner_config(call)?)
         }
+        ExtensionFunction::RingtoneInstaller => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "ringtoneInstaller() takes no arguments",
+                    call.span,
+                ));
+            }
+            let shape = object_shape([
+                ("status", StateShape::String),
+                ("errorKind", StateShape::String),
+                ("errorMessage", StateShape::String),
+                ("errorRetryable", StateShape::Bool),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("idle".to_owned())),
+                ("errorKind", StateValue::String(String::new())),
+                ("errorMessage", StateValue::String(String::new())),
+                ("errorRetryable", StateValue::Bool(false)),
+            ]);
+            (
+                NativeControllerKind::RingtoneInstaller,
+                "{}".to_owned(),
+                shape,
+                initial,
+            )
+        }
+        ExtensionFunction::LightPush => {
+            if !call.arguments.is_empty() {
+                return Err(CompileError::new(
+                    "lightPush() takes no arguments",
+                    call.span,
+                ));
+            }
+            let message = object_shape([
+                ("id", StateShape::String),
+                ("groupKey", StateShape::String),
+                ("title", StateShape::String),
+                ("body", StateShape::String),
+                ("route", StateShape::String),
+                ("receivedAtMs", StateShape::Number),
+            ]);
+            let shape = object_shape([
+                ("status", StateShape::String),
+                ("endpoint", StateShape::String),
+                ("registeredAtMs", StateShape::Number),
+                ("openedKey", StateShape::String),
+                ("messages", StateShape::List(Box::new(message))),
+                ("errorKind", StateShape::String),
+                ("errorMessage", StateShape::String),
+                ("errorRetryable", StateShape::Bool),
+            ]);
+            let initial = object_value([
+                ("status", StateValue::String("idle".to_owned())),
+                ("endpoint", StateValue::String(String::new())),
+                ("registeredAtMs", StateValue::Number(0.0)),
+                ("openedKey", StateValue::String(String::new())),
+                ("messages", StateValue::List(Vec::new())),
+                ("errorKind", StateValue::String(String::new())),
+                ("errorMessage", StateValue::String(String::new())),
+                ("errorRetryable", StateValue::Bool(false)),
+            ]);
+            (
+                NativeControllerKind::LightPush,
+                "{}".to_owned(),
+                shape,
+                initial,
+            )
+        }
         _ => unreachable!(),
     };
     Ok(Some(ControllerInitialiser {
         definition: Controller {
             state: StateId(0),
             module: match kind {
-                NativeControllerKind::Notifications | NativeControllerKind::NotificationTap => {
-                    "notifications"
-                }
+                NativeControllerKind::Notifications
+                | NativeControllerKind::NotificationTap
+                | NativeControllerKind::LightPush => "notifications",
                 NativeControllerKind::Photo | NativeControllerKind::Scanner => "camera",
+                NativeControllerKind::RingtoneInstaller => "light-sdk",
                 _ => "audio",
             }
             .to_owned(),
@@ -1365,6 +1464,8 @@ fn controller_initialiser(
                 NativeControllerKind::NotificationTap => "notification-tap",
                 NativeControllerKind::Photo => "photo",
                 NativeControllerKind::Scanner => "scanner",
+                NativeControllerKind::RingtoneInstaller => "ringtone-installer",
+                NativeControllerKind::LightPush => "light-push",
             }
             .to_owned(),
             config,
@@ -3476,7 +3577,12 @@ fn lower_collection(
         ));
     }
     let (collection, collection_kind) =
-        if let Some(resource) = expression_resource_value(&map.object, states)? {
+        if let Some(controller) = expression_controller_value(&map.object, states)? {
+            (
+                Collection::Controller(controller.controller, controller.path),
+                controller.kind,
+            )
+        } else if let Some(resource) = expression_resource_value(&map.object, states)? {
             let ResourceField::Value(path) = resource.field else {
                 return Err(CompileError::new(
                     "map requires a resource value list",
@@ -3755,6 +3861,12 @@ fn lower_state_action(
     states: &Bindings,
     item: Option<ItemBinding<'_>>,
 ) -> Result<Action, CompileError> {
+    if let Expression::Identifier(callee) = &call.callee
+        && states.extension_functions.get(callee.name.as_str())
+            == Some(&ExtensionFunction::OpenDialler)
+    {
+        return lower_open_dialler_action(call, states, item);
+    }
     let Expression::StaticMemberExpression(callee) = &call.callee else {
         return Err(CompileError::new(
             "expected a state mutation",
@@ -3899,6 +4011,49 @@ fn lower_state_action(
     }
 }
 
+fn lower_open_dialler_action(
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Action, CompileError> {
+    if call.type_arguments.is_some() {
+        return Err(CompileError::new(
+            "openDialler() does not take type arguments",
+            call.span,
+        ));
+    }
+    let [argument] = call.arguments.as_slice() else {
+        return Err(CompileError::new(
+            "openDialler() takes one phone number",
+            call.span,
+        ));
+    };
+    let expression = argument.as_expression().ok_or_else(|| {
+        CompileError::new("phone numbers cannot use spread syntax", argument.span())
+    })?;
+    if let Expression::StringLiteral(value) = expression {
+        let number = value.value.as_str();
+        if number.trim().is_empty() || number.len() > 64 || number.chars().any(char::is_control) {
+            return Err(CompileError::new(
+                "phone numbers must contain 1–64 non-control characters",
+                value.span,
+            ));
+        }
+    }
+    Ok(Action::Native {
+        operation: NativeOperation {
+            module: "light-sdk".to_owned(),
+            operation: "open-dialler".to_owned(),
+            payload: vec![
+                PayloadPart::Literal("{\"phoneNumber\":".to_owned()),
+                notification_string_part(expression, states, item, "phone number")?,
+                PayloadPart::Literal("}".to_owned()),
+            ],
+            timeout_ms: 10_000,
+        },
+    })
+}
+
 fn lower_controller_action(
     kind: NativeControllerKind,
     method: &str,
@@ -3949,7 +4104,140 @@ fn lower_controller_action(
             }
             Ok(vec![PayloadPart::Literal("{}".to_owned())])
         }
+        NativeControllerKind::RingtoneInstaller => ringtone_action_payload(method, call, states),
+        NativeControllerKind::LightPush => light_push_action_payload(method, call, states, item),
     }
+}
+
+fn ringtone_action_payload(
+    method: &str,
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &Bindings,
+) -> Result<Vec<PayloadPart>, CompileError> {
+    if method != "set" || !(1..=2).contains(&call.arguments.len()) {
+        return Err(CompileError::new(
+            "ringtoneInstaller supports set(source, kind?)",
+            call.span,
+        ));
+    }
+    let Argument::StringLiteral(source) = &call.arguments[0] else {
+        return Err(CompileError::new(
+            "ringtone sources must be local string literals",
+            call.arguments[0].span(),
+        ));
+    };
+    let relative = source.value.as_str();
+    if !relative.starts_with("./") {
+        return Err(CompileError::new(
+            "ringtone sources must start with ./",
+            source.span,
+        ));
+    }
+    let path = states
+        .source_path
+        .parent()
+        .expect("a source file has a parent")
+        .join(relative)
+        .canonicalize()
+        .map_err(|_| {
+            CompileError::new(
+                format!("could not find ringtone asset {relative:?}"),
+                source.span,
+            )
+        })?;
+    if !path.is_file() {
+        return Err(CompileError::new(
+            format!("ringtone asset {relative:?} is not a file"),
+            source.span,
+        ));
+    }
+    let kind = match call.arguments.get(1) {
+        None => "ringtone",
+        Some(Argument::StringLiteral(value))
+            if matches!(value.value.as_str(), "ringtone" | "notification" | "alarm") =>
+        {
+            value.value.as_str()
+        }
+        Some(value) => {
+            return Err(CompileError::new(
+                "ringtone kind must be ringtone, notification or alarm",
+                value.span(),
+            ));
+        }
+    };
+    Ok(vec![PayloadPart::Literal(
+        serde_json::json!({
+            "source": format!("ink-file://{}", path.display()),
+            "kind": kind,
+        })
+        .to_string(),
+    )])
+}
+
+fn light_push_action_payload(
+    method: &str,
+    call: &oxc::ast::ast::CallExpression<'_>,
+    states: &Bindings,
+    item: Option<ItemBinding<'_>>,
+) -> Result<Vec<PayloadPart>, CompileError> {
+    if matches!(method, "retry" | "unregister" | "clear") {
+        if !call.arguments.is_empty() {
+            return Err(CompileError::new(
+                format!("{method}() takes no arguments"),
+                call.span,
+            ));
+        }
+        return Ok(vec![PayloadPart::Literal("{}".to_owned())]);
+    }
+    if method == "dismiss" {
+        let [argument] = call.arguments.as_slice() else {
+            return Err(CompileError::new(
+                "dismiss() takes one group key",
+                call.span,
+            ));
+        };
+        let expression = argument.as_expression().ok_or_else(|| {
+            CompileError::new("group keys cannot use spread syntax", argument.span())
+        })?;
+        return Ok(vec![
+            PayloadPart::Literal("{\"groupKey\":".to_owned()),
+            notification_string_part(expression, states, item, "group key")?,
+            PayloadPart::Literal("}".to_owned()),
+        ]);
+    }
+    if method != "register" || !(1..=2).contains(&call.arguments.len()) {
+        return Err(CompileError::new(
+            "lightPush supports register(baseUrl, bearerToken?), retry(), unregister(), dismiss(groupKey) and clear()",
+            call.span,
+        ));
+    }
+    let base = call.arguments[0].as_expression().ok_or_else(|| {
+        CompileError::new(
+            "subscription URLs cannot use spread syntax",
+            call.arguments[0].span(),
+        )
+    })?;
+    let mut payload = vec![PayloadPart::Literal("{\"subscriptionBaseUrl\":".to_owned())];
+    payload.push(notification_string_part(
+        base,
+        states,
+        item,
+        "subscription base URL",
+    )?);
+    if let Some(argument) = call.arguments.get(1) {
+        let token = argument.as_expression().ok_or_else(|| {
+            CompileError::new("bearer tokens cannot use spread syntax", argument.span())
+        })?;
+        payload.push(PayloadPart::Literal(",\"bearerToken\":".to_owned()));
+        payload.push(notification_string_part(
+            token,
+            states,
+            item,
+            "bearer token",
+        )?);
+    }
+    payload.push(PayloadPart::Literal("}".to_owned()));
+    Ok(payload)
 }
 
 fn notification_action_payload(

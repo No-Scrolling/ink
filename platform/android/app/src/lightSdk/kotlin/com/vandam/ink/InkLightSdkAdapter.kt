@@ -5,10 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.ServiceConnection
+import android.media.RingtoneManager
 import android.os.IBinder
 import android.os.Parcel
 import android.util.Log
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.View
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -18,12 +20,18 @@ import java.util.concurrent.FutureTask
 
 internal fun createLightSdkAdapter(
     activity: MainActivity,
-    onHapticsChanged: HapticsChangedHandler,
-): LightSdkAdapter = InkLightSdkAdapter(activity, onHapticsChanged)
+    onKeyboardPreferencesChanged: KeyboardPreferencesChangedHandler,
+    updateController: (Long, String) -> Unit,
+): LightSdkAdapter = InkLightSdkAdapter(
+    activity,
+    onKeyboardPreferencesChanged,
+    updateController,
+)
 
 private class InkLightSdkAdapter(
     private val activity: MainActivity,
-    private val onHapticsChanged: HapticsChangedHandler,
+    private val onKeyboardPreferencesChanged: KeyboardPreferencesChangedHandler,
+    private val updateController: (Long, String) -> Unit,
 ) : LightSdkAdapter, ServiceConnection {
     private val context = activity.applicationContext
     private val executor = Executors.newSingleThreadExecutor()
@@ -32,12 +40,17 @@ private class InkLightSdkAdapter(
     private var token = DEFAULT_TOKEN
     private val pendingRequests = mutableListOf<PendingRequest>()
     private val runningRequests = ConcurrentHashMap<Long, Future<*>>()
+    private val ringtoneFiles = createRingtoneFiles(context)
 
     @Volatile
     private var hapticsEnabled = false
+    @Volatile
+    private var emojis: String? = null
+    @Volatile
+    private var keyAnimationEnabled = true
 
     override fun start() {
-        onHapticsChanged(false)
+        updateKeyboardPreferences()
         bind()
     }
 
@@ -66,6 +79,103 @@ private class InkLightSdkAdapter(
         }
     }
 
+    override fun forwardDeviceKey(event: KeyEvent): Boolean {
+        if (event.keyCode !in DEVICE_KEY_CODES) return false
+        if (binder != null) {
+            val payload = JSONObject()
+                .put("keyCode", event.keyCode)
+                .put("repeatCount", event.repeatCount)
+                .put("action", event.action)
+                .put("unicodeChar", event.unicodeChar)
+                .put("componentToRelaunch", activity.componentName.flattenToString())
+                .toString()
+            executor.execute {
+                if (authenticatedRequest(DEVICE_KEY_EVENT, payload) is Response.Error) {
+                    Log.w(TAG, "Could not forward LightOS device key ${event.keyCode}")
+                }
+            }
+        }
+        return true
+    }
+
+    override fun executeController(
+        requestId: Long,
+        controller: Long,
+        operation: String,
+        payload: String,
+        complete: NativeResultHandler,
+    ) {
+        if (operation == "activate") {
+            updateRingtone(controller, "idle")
+            complete(NativeResult.Success(""))
+            return
+        }
+        if (operation == "deactivate") {
+            complete(NativeResult.Success(""))
+            return
+        }
+        if (operation != "set") {
+            updateRingtone(
+                controller,
+                "error",
+                "protocol",
+                "Unknown ringtone operation: $operation",
+            )
+            complete(NativeResult.Success(""))
+            return
+        }
+        val request = runCatching { JSONObject(payload) }.getOrNull()
+        val source = request?.optString("source").orEmpty()
+        val kind = request?.optString("kind", "ringtone").orEmpty()
+        if (source.isEmpty() || kind !in RINGTONE_TYPES) {
+            updateRingtone(controller, "error", "protocol", "Invalid ringtone request")
+            complete(NativeResult.Success(""))
+            return
+        }
+        updateRingtone(controller, "installing")
+        val task = FutureTask<Unit> {
+            val staged = runCatching { ringtoneFiles.stage(source) }.getOrElse { error ->
+                runningRequests.remove(requestId)
+                updateRingtone(
+                    controller,
+                    "error",
+                    "source",
+                    error.message ?: "Could not stage ringtone",
+                )
+                complete(NativeResult.Success(""))
+                return@FutureTask
+            }
+            val requestPayload = JSONObject()
+                .put("type", RINGTONE_TYPES.getValue(kind))
+                .put("uri", staged.uri.toString())
+                .toString()
+            when (val response = authenticatedRequest(SET_RINGTONE, requestPayload)) {
+                is Response.Success -> {
+                    ringtoneFiles.commit(kind, staged)
+                    if (!Thread.currentThread().isInterrupted) {
+                        updateRingtone(controller, "installed")
+                    }
+                }
+                is Response.Error -> {
+                    ringtoneFiles.discard(staged)
+                    if (!Thread.currentThread().isInterrupted) {
+                        updateRingtone(
+                            controller,
+                            "error",
+                            if (response.code == INVALID_PARAMETERS) "protocol" else "unavailable",
+                            response.message ?: "Could not install ringtone",
+                            response.code != INVALID_PARAMETERS,
+                        )
+                    }
+                }
+            }
+            runningRequests.remove(requestId)
+            complete(NativeResult.Success(""))
+        }
+        runningRequests[requestId] = task
+        executor.execute(task)
+    }
+
     override fun execute(
         requestId: Long,
         operation: String,
@@ -79,6 +189,11 @@ private class InkLightSdkAdapter(
                     payload == MICROPHONE ||
                     payload == LOCATION_APPROXIMATE ||
                     payload == LOCATION_PRECISE
+            OPEN_DIALLER_OPERATION -> runCatching {
+                val phoneNumber = JSONObject(payload).getString("phoneNumber")
+                phoneNumber.trim().isNotEmpty() && phoneNumber.length <= 64 &&
+                    phoneNumber.none { Character.isISOControl(it.code) }
+            }.getOrDefault(false)
             else -> false
         }
         if (!valid) {
@@ -176,11 +291,25 @@ private class InkLightSdkAdapter(
         }
         PERMISSION_STATUS_OPERATION -> permissionStatus(request.payload)
         REQUEST_PERMISSION_OPERATION -> requestPermission(request.payload)
+        OPEN_DIALLER_OPERATION -> openDialler(request.payload)
         else -> NativeResult.Failure(
             NativeErrorKind.PROTOCOL,
             "Unknown Light SDK operation: ${request.operation}",
             false,
         )
+    }
+
+    private fun openDialler(payload: String): NativeResult {
+        val phoneNumber = JSONObject(payload).getString("phoneNumber").trim()
+        return when (
+            val response = authenticatedRequest(
+                OPEN_DIALLER,
+                JSONObject().put("phoneNumber", phoneNumber).toString(),
+            )
+        ) {
+            is Response.Success -> NativeResult.Success("")
+            is Response.Error -> response.failure()
+        }
     }
 
     private fun permissionStatus(permission: String): NativeResult {
@@ -291,11 +420,21 @@ private class InkLightSdkAdapter(
         }
 
         when (val preferences = authenticatedRequest(GET_USER_PREFERENCES, UNIT_JSON)) {
-            is Response.Success -> updateHaptics(
-                JSONObject(preferences.data).optBoolean("hapticsEnabled", false),
-            )
+            is Response.Success -> {
+                hapticsEnabled = JSONObject(preferences.data).optBoolean("hapticsEnabled", false)
+            }
             is Response.Error -> Log.w(TAG, "Could not read Light SDK preferences: ${preferences.message}")
         }
+
+        when (val options = authenticatedRequest(GET_KEYBOARD_OPTIONS, UNIT_JSON)) {
+            is Response.Success -> {
+                val value = JSONObject(options.data)
+                emojis = value.optString("emojisAsString").takeIf(String::isNotEmpty)
+                keyAnimationEnabled = value.optBoolean("enableKeyAnimation", true)
+            }
+            is Response.Error -> Log.w(TAG, "Could not read Light SDK keyboard options: ${options.message}")
+        }
+        updateKeyboardPreferences()
     }
 
     private fun authenticate(): Response.Error? {
@@ -350,10 +489,25 @@ private class InkLightSdkAdapter(
         }
     }
 
-    private fun updateHaptics(enabled: Boolean) {
-        hapticsEnabled = enabled
-        Log.i(TAG, "Haptics enabled: $enabled")
-        activity.runOnUiThread { onHapticsChanged(enabled) }
+    private fun updateKeyboardPreferences() {
+        val preferences = KeyboardPreferences(hapticsEnabled, emojis, keyAnimationEnabled)
+        activity.runOnUiThread { onKeyboardPreferencesChanged(preferences) }
+    }
+
+    private fun updateRingtone(
+        controller: Long,
+        status: String,
+        errorKind: String = "",
+        errorMessage: String = "",
+        retryable: Boolean = false,
+    ) {
+        val value = JSONObject()
+            .put("status", status)
+            .put("errorKind", errorKind)
+            .put("errorMessage", errorMessage)
+            .put("errorRetryable", retryable)
+            .toString()
+        activity.runOnUiThread { updateController(controller, value) }
     }
 
     private sealed interface Response {
@@ -382,6 +536,10 @@ private class InkLightSdkAdapter(
         const val GET_TOKEN = "GetToken"
         const val GET_VERSION = "GetVersion"
         const val GET_USER_PREFERENCES = "GetUserPreferences"
+        const val GET_KEYBOARD_OPTIONS = "GetKeyboardOptions"
+        const val DEVICE_KEY_EVENT = "DeviceKeyEvent"
+        const val OPEN_DIALLER = "OpenDialer"
+        const val SET_RINGTONE = "SetRingtone"
         const val GET_PERMISSION = "GetPermission"
         const val REQUEST_PERMISSION_COMPONENT = "RequestPermissionComponent"
         const val PERMISSION_NAME_KEY = "permissionName"
@@ -392,9 +550,16 @@ private class InkLightSdkAdapter(
         const val VERSION_OPERATION = "version"
         const val PERMISSION_STATUS_OPERATION = "permission-status"
         const val REQUEST_PERMISSION_OPERATION = "request-permission"
+        const val OPEN_DIALLER_OPERATION = "open-dialler"
         const val CAMERA = "camera"
         const val MICROPHONE = "microphone"
         const val LOCATION_APPROXIMATE = "location-approximate"
         const val LOCATION_PRECISE = "location-precise"
+        val DEVICE_KEY_CODES = setOf(24, 25, 27, 80, 317, 318, 319)
+        val RINGTONE_TYPES = mapOf(
+            "ringtone" to RingtoneManager.TYPE_RINGTONE,
+            "notification" to RingtoneManager.TYPE_NOTIFICATION,
+            "alarm" to RingtoneManager.TYPE_ALARM,
+        )
     }
 }

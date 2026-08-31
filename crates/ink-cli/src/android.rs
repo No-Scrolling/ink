@@ -208,6 +208,11 @@ fn gradle_command(
         .arg(format!("-PinkVersionName={}", project.version()))
         .arg(format!("-PinkVersionCode={}", project.version_code()))
         .arg(format!("-PinkUsesLightSdk={}", features.light_sdk))
+        .arg(format!(
+            "-PinkUsesLightSdkRingtone={}",
+            features.light_sdk_ringtone
+        ))
+        .arg(format!("-PinkUsesLightSdkPush={}", features.light_sdk_push))
         .arg(format!("-PinkUsesNetwork={}", features.network))
         .arg(format!("-PinkUsesAudio={}", features.audio))
         .arg(format!(

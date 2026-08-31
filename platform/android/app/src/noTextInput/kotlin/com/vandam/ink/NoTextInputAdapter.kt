@@ -11,5 +11,5 @@ internal fun createTextInputAdapter(
 
     override fun dismiss() = false
 
-    override fun setHapticsEnabled(enabled: Boolean) = Unit
+    override fun applyPreferences(preferences: KeyboardPreferences) = Unit
 }

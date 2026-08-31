@@ -48,6 +48,17 @@ internal class InkKeyboardView @JvmOverloads constructor(
             paint.typeface = value
             invalidate()
         }
+    var emojis: String? = null
+        set(value) {
+            field = value
+            emojiKeys = KeyboardLayouts.parseEmojis(value)
+            invalidate()
+        }
+    var keyAnimationEnabled: Boolean = true
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -69,6 +80,7 @@ internal class InkKeyboardView @JvmOverloads constructor(
     private val atlas: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.ink_keyboard_emoji)
     private val emojiSource = Rect()
     private val keys = mutableListOf<PlacedKey>()
+    private var emojiKeys = KeyboardLayouts.defaultEmojis
     private val repeatHandler = Handler(Looper.getMainLooper())
     private var mode = KeyboardMode.Letters
     private var shifted = false
@@ -97,7 +109,7 @@ internal class InkKeyboardView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         keys.clear()
-        drawLayout(canvas, KeyboardLayouts.forMode(mode))
+        drawLayout(canvas, KeyboardLayouts.forMode(mode, emojiKeys))
         drawDismiss(canvas)
     }
 
@@ -228,7 +240,7 @@ internal class InkKeyboardView @JvmOverloads constructor(
         isSpace: Boolean = false,
         draw: (x: Float, y: Float) -> Unit,
     ) {
-        val isPressed = pressed == placed
+        val isPressed = keyAnimationEnabled && pressed == placed
         val lift = if (isPressed) dp(if (isSpace) -8f else -12f) else 0f
         val scale = if (isPressed) if (isSpace) 1.1f else 1.25f else 1f
         val centreX = placed.contentX()
@@ -250,9 +262,10 @@ internal class InkKeyboardView @JvmOverloads constructor(
         val column = index % 8
         val row = index / 8
         emojiSource.set(column * 64, row * 64, (column + 1) * 64, (row + 1) * 64)
-        val scale = if (pressed == placed) 1.25f else 1f
+        val animated = keyAnimationEnabled && pressed == placed
+        val scale = if (animated) 1.25f else 1f
         val size = dp(25f) * scale
-        val lift = if (pressed == placed) dp(-12f) else 0f
+        val lift = if (animated) dp(-12f) else 0f
         val destination = RectF(
             placed.contentX() - size / 2f,
             placed.bounds.centerY() - size / 2f + lift,

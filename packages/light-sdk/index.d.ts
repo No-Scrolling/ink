@@ -33,3 +33,64 @@ export type LightSdkPermission = AsyncResource<LightSdkPermissionStatus> & {
 
 export declare function lightSdkVersion(): AsyncResource<string>;
 export declare function lightSdkPermission(permission: "camera"): LightSdkPermission;
+
+export declare function openDialler(phoneNumber: string): void;
+
+export type RingtoneKind = "ringtone" | "notification" | "alarm";
+
+export type RingtoneErrorKind =
+  | ""
+  | "source"
+  | "unavailable"
+  | "protocol"
+  | "unexpected";
+
+export interface RingtoneInstaller {
+  readonly status: "idle" | "installing" | "installed" | "error";
+  readonly errorKind: RingtoneErrorKind;
+  readonly errorMessage: string;
+  readonly errorRetryable: boolean;
+  set(source: string, kind?: RingtoneKind): void;
+}
+
+export interface LightPushMessage {
+  readonly id: string;
+  readonly groupKey: string;
+  readonly title: string;
+  readonly body: string;
+  readonly route: string;
+  readonly receivedAtMs: number;
+}
+
+export type LightPushErrorKind =
+  | ""
+  | "no-distributor"
+  | "registration"
+  | "subscription"
+  | "protocol"
+  | "storage"
+  | "unexpected";
+
+export interface LightPush {
+  readonly status:
+    | "idle"
+    | "registering"
+    | "synchronising"
+    | "ready"
+    | "error";
+  readonly endpoint: string;
+  readonly registeredAtMs: number;
+  readonly openedKey: string;
+  readonly messages: ReadonlyArray<LightPushMessage>;
+  readonly errorKind: LightPushErrorKind;
+  readonly errorMessage: string;
+  readonly errorRetryable: boolean;
+  register(subscriptionBaseUrl: string, bearerToken?: string): void;
+  retry(): void;
+  unregister(): void;
+  dismiss(groupKey: string): void;
+  clear(): void;
+}
+
+export declare function ringtoneInstaller(): RingtoneInstaller;
+export declare function lightPush(): LightPush;

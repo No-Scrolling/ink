@@ -18,6 +18,8 @@ val inkGeneratedSource = providers.gradleProperty("inkGeneratedSource")
 val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
 val inkAndroidAssets = providers.gradleProperty("inkAndroidAssets")
 val inkUsesLightSdk = providers.gradleProperty("inkUsesLightSdk").orElse("false")
+val inkUsesLightSdkRingtone = providers.gradleProperty("inkUsesLightSdkRingtone").orElse("false")
+val inkUsesLightSdkPush = providers.gradleProperty("inkUsesLightSdkPush").orElse("false")
 val inkUsesNetwork = providers.gradleProperty("inkUsesNetwork").orElse("false")
 val inkUsesAudio = providers.gradleProperty("inkUsesAudio").orElse("false")
 val inkUsesAudioPlayback = providers.gradleProperty("inkUsesAudioPlayback").orElse("false")
@@ -42,6 +44,8 @@ val inkConditionalSources = providers.provider {
         inkUsesDetachedAudio.get(),
         inkUsesNetwork.get(),
         inkUsesLightSdk.get(),
+        inkUsesLightSdkRingtone.get(),
+        inkUsesLightSdkPush.get(),
         inkUsesLocation.get(),
         inkUsesNfc.get(),
         inkUsesBackground.get(),
@@ -52,7 +56,8 @@ val inkPermissions = buildList {
     if (
         inkUsesNetwork.get().toBoolean() ||
         inkUsesDetachedAudio.get().toBoolean() ||
-        inkUsesBackground.get().toBoolean()
+        inkUsesBackground.get().toBoolean() ||
+        inkUsesLightSdkPush.get().toBoolean()
     ) {
         add("android.permission.ACCESS_NETWORK_STATE")
         add("android.permission.INTERNET")
@@ -74,7 +79,7 @@ val inkPermissions = buildList {
     if (inkUsesNfc.get().toBoolean()) {
         add("android.permission.NFC")
     }
-    if (inkUsesNotificationPermission.get().toBoolean()) {
+    if (inkUsesNotificationPermission.get().toBoolean() || inkUsesLightSdkPush.get().toBoolean()) {
         add("android.permission.POST_NOTIFICATIONS")
     }
     if (inkUsesBackground.get().toBoolean() || inkUsesNotifications.get().toBoolean()) {
@@ -92,7 +97,14 @@ val generateInkPermissionManifest by tasks.registering {
     inputs.property("features", inkFeatures.joinToString())
     inputs.property("nfc", inkUsesNfc)
     inputs.property("background", inkUsesBackground)
-    inputs.property("notifications", inkUsesNotifications)
+    inputs.property(
+        "components",
+        listOf(
+            inkUsesNotifications.get(),
+            inkUsesLightSdkRingtone.get(),
+            inkUsesLightSdkPush.get(),
+        ).joinToString(","),
+    )
     outputs.file(inkPermissionManifest)
     doLast {
         val output = inkPermissionManifest.get().asFile
@@ -111,8 +123,16 @@ val generateInkPermissionManifest by tasks.registering {
                     "    <uses-feature android:name=\"android.hardware.nfc\" android:required=\"false\" />",
                 )
             }
-            if (inkUsesBackground.get().toBoolean() || inkUsesNotifications.get().toBoolean()) {
-                appendLine("    <application>")
+            val hasInkComponents = inkUsesBackground.get().toBoolean() ||
+                inkUsesNotifications.get().toBoolean() ||
+                inkUsesLightSdkRingtone.get().toBoolean() || inkUsesLightSdkPush.get().toBoolean()
+            if (hasInkComponents) {
+                val networkSecurity = if (inkUsesLightSdkPush.get().toBoolean()) {
+                    " android:networkSecurityConfig=\"@xml/ink_light_push_network_security\""
+                } else {
+                    ""
+                }
+                appendLine("    <application$networkSecurity>")
             }
             if (inkUsesBackground.get().toBoolean()) {
                 appendLine("        <service")
@@ -122,7 +142,6 @@ val generateInkPermissionManifest by tasks.registering {
             }
             if (inkUsesNotifications.get().toBoolean()) {
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationAlarmReceiver\" android:exported=\"false\" />")
-                appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationTapReceiver\" android:exported=\"false\" />")
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationDismissReceiver\" android:exported=\"false\" />")
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationBootReceiver\" android:exported=\"true\">")
                 appendLine("            <intent-filter>")
@@ -130,7 +149,22 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine("            </intent-filter>")
                 appendLine("        </receiver>")
             }
-            if (inkUsesBackground.get().toBoolean() || inkUsesNotifications.get().toBoolean()) {
+            if (inkUsesLightSdkRingtone.get().toBoolean()) {
+                appendLine("        <provider android:name=\"com.vandam.ink.InkLightFileProvider\" android:authorities=\"${inkApplicationId.get()}.lightfiles\" android:exported=\"true\" />")
+            }
+            if (inkUsesLightSdkPush.get().toBoolean()) {
+                appendLine("        <receiver android:name=\"com.vandam.ink.InkLightPushReceiver\" android:enabled=\"true\" android:exported=\"true\">")
+                appendLine("            <intent-filter>")
+                appendLine("                <action android:name=\"org.unifiedpush.android.connector.MESSAGE\" />")
+                appendLine("                <action android:name=\"org.unifiedpush.android.connector.NEW_ENDPOINT\" />")
+                appendLine("                <action android:name=\"org.unifiedpush.android.connector.UNREGISTERED\" />")
+                appendLine("                <action android:name=\"org.unifiedpush.android.connector.REGISTRATION_FAILED\" />")
+                appendLine("                <action android:name=\"org.unifiedpush.android.connector.TEMP_UNAVAILABLE\" />")
+                appendLine("            </intent-filter>")
+                appendLine("        </receiver>")
+                appendLine("        <receiver android:name=\"com.vandam.ink.InkLightPushDismissReceiver\" android:exported=\"false\" />")
+            }
+            if (hasInkComponents) {
                 appendLine("    </application>")
             }
             appendLine("</manifest>")
@@ -199,7 +233,7 @@ android {
             },
         )
         getByName("main").java.srcDir(
-            if (inkUsesNotifications.get().toBoolean()) {
+            if (inkUsesNotifications.get().toBoolean() || inkUsesLightSdkPush.get().toBoolean()) {
                 "src/notifications/kotlin"
             } else {
                 "src/noNotifications/kotlin"
@@ -210,6 +244,20 @@ android {
                 "src/audio/kotlin"
             } else {
                 "src/noAudio/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesLightSdkRingtone.get().toBoolean()) {
+                "src/lightSdkRingtone/kotlin"
+            } else {
+                "src/noLightSdkRingtone/kotlin"
+            },
+        )
+        getByName("main").java.srcDir(
+            if (inkUsesLightSdkPush.get().toBoolean()) {
+                "src/lightSdkPush/kotlin"
+            } else {
+                "src/noLightSdkPush/kotlin"
             },
         )
         getByName("main").java.srcDir(
@@ -288,6 +336,9 @@ android {
         }
         if (inkUsesTextInput.get().toBoolean()) {
             getByName("main").res.srcDir("src/textInput/res")
+        }
+        if (inkUsesLightSdkPush.get().toBoolean()) {
+            getByName("main").res.srcDir("src/lightSdkPush/res")
         }
         getByName("debug").jniLibs.srcDir(generatedJniRoot.map { it.dir("debug") })
         getByName("release").jniLibs.srcDir(generatedJniRoot.map { it.dir("release") })
@@ -428,6 +479,9 @@ tasks.configureEach {
 
 dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
+    if (inkUsesLightSdkPush.get().toBoolean()) {
+        implementation("org.unifiedpush.android:connector:3.3.2")
+    }
     if (inkUsesAudioPlayback.get().toBoolean()) {
         implementation("androidx.media3:media3-exoplayer:1.10.1")
     }

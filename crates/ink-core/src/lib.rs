@@ -873,6 +873,7 @@ enum NodeKind {
 pub enum Collection {
     State(StateId),
     Resource(ResourceId, Vec<String>),
+    Controller(ControllerId, Vec<String>),
 }
 
 impl Node {
@@ -2983,6 +2984,12 @@ impl Engine {
                         Some(StateValue::List(items)) => items,
                         _ => return Vec::new(),
                     },
+                    Collection::Controller(controller, path) => {
+                        match self.controller_field_value(*controller, path) {
+                            Some(StateValue::List(items)) => items.clone(),
+                            _ => return Vec::new(),
+                        }
+                    }
                 };
                 if items.is_empty() {
                     return Vec::new();

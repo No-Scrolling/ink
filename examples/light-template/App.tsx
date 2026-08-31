@@ -19,6 +19,10 @@ import Recording from "./screens/modules/audio/Recording";
 import RemotePlayback from "./screens/modules/audio/RemotePlayback";
 import Photo from "./screens/modules/camera/Photo";
 import Scan from "./screens/modules/camera/Scan";
+import Connection from "./screens/modules/light-sdk/Connection";
+import Dialler from "./screens/modules/light-sdk/Dialler";
+import Push from "./screens/modules/light-sdk/Push";
+import Ringtone from "./screens/modules/light-sdk/Ringtone";
 import RemoteImage from "./screens/modules/network/RemoteImage";
 import Customise from "./screens/settings/Customise";
 import CustomiseInterface from "./screens/settings/CustomiseInterface";
@@ -91,6 +95,18 @@ export default function LightTemplate() {
       </Route>
       <Route path="/modules/light-sdk">
         <LightSdk />
+      </Route>
+      <Route path="/modules/light-sdk/connection">
+        <Connection />
+      </Route>
+      <Route path="/modules/light-sdk/dialler">
+        <Dialler />
+      </Route>
+      <Route path="/modules/light-sdk/ringtone">
+        <Ringtone />
+      </Route>
+      <Route path="/modules/light-sdk/push">
+        <Push />
       </Route>
       <Route path="/modules/location">
         <Location />

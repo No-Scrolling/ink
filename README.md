@@ -49,7 +49,7 @@ export default function Counter() {
 - Audio playback, recording and microphone analysis
 - Foreground device location through LightOS permissions
 - Screen-scoped NFC tag and NDEF reading
-- Durable local notifications and route-aware notification taps
+- Durable local notifications, UnifiedPush delivery and route-aware notification taps
 - In-screen photo capture and QR/barcode scanning
 - Multi-file apps and installed UI packages
 - Android development, signing and device tooling through the `ink` CLI
@@ -64,7 +64,6 @@ export default function Counter() {
 - `@ink/location` — Foreground device location
 - `@ink/camera` — Camera permission, photo capture and code scanning
 - `@ink/nfc` — NFC tag and NDEF reading
-- `@ink/notifications` — Local notifications (planned)
 - `@ink/background` — Typed, persisted periodic JSON resources
 
 ## LightOS support
@@ -115,15 +114,15 @@ The compiler adds the Android permission only when the application uses that res
 - [x] Service authentication
 - [x] SDK version checking
 - [x] Haptic preferences
-- [ ] Keyboard preferences
+- [x] Keyboard preferences
 - [x] Permission status
 - [x] Permission requests
-- [ ] Device key forwarding
-- [ ] Shared files
-- [ ] Push registration
-- [ ] Push notifications
-- [ ] Open dialler
-- [ ] Set ringtone
+- [x] Device key forwarding
+- [x] Secure ringtone file hand-off
+- [x] UnifiedPush registration and delivery
+- [x] Background message notifications
+- [x] Open dialler
+- [x] Set ringtone
 
 Ink currently targets Light SDK `0.1.1`. Physical Light Phone III builds connect to `com.lightos`; `ink dev` selects the official SDK service automatically when its target is an Android emulator.
 
@@ -223,6 +222,7 @@ Use `ink -C <directory> <command>` to run a command for an app outside the curre
 - [Persistence and shared state](docs/adr/0001-persistence-and-shared-state.md)
 - [Installed UI packages](docs/adr/0002-installed-source-packages.md)
 - [Light SDK adapter](docs/adr/0003-light-sdk-adapter.md)
+- [LightOS capabilities](docs/light-sdk.md)
 - [Async resources and native actions](docs/adr/0004-async-resources-and-native-actions.md)
 - [Notifications](docs/notifications.md)
 - [Audio](docs/audio.md)

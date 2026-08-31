@@ -26,6 +26,11 @@ private class InkNotificationsAdapter(
     private val update: (Long, String) -> Unit,
 ) : NotificationsAdapter {
     private var tapController: Long? = null
+    private val lightPush = createLightPushAdapter(activity, update)
+
+    override fun start() = lightPush.start()
+
+    override fun stop() = lightPush.stop()
 
     override fun execute(
         requestId: Long,
@@ -56,6 +61,10 @@ private class InkNotificationsAdapter(
         payload: String,
         complete: NativeResultHandler,
     ) {
+        if (lightPush.executeController(controller, operation, payload)) {
+            complete(NativeResult.Success(""))
+            return
+        }
         if (operation == "activate") {
             when (JSONObject(payload).optString("kind")) {
                 "local-notifications" -> {
@@ -93,7 +102,19 @@ private class InkNotificationsAdapter(
 
     override fun cancel(requestId: Long) = Unit
 
-    override fun refreshEvents() = updateTap()
+    override fun refreshEvents() {
+        updateTap()
+        lightPush.refresh()
+    }
+
+    override fun handleIntent(intent: Intent) {
+        intent.getStringExtra(EXTRA_NOTIFICATION_ID)?.let { id ->
+            runCatching { InkNotificationStore(activity).recordTap(id) }
+            InkNotificationPresenter.cancel(activity, id)
+            intent.removeExtra(EXTRA_NOTIFICATION_ID)
+        }
+        lightPush.handleIntent(intent)
+    }
 
     private fun schedule(controller: Long, payload: String) {
         val request = runCatching { LocalNotification.parse(JSONObject(payload)) }.getOrElse {
@@ -418,13 +439,15 @@ private object InkNotificationScheduler {
 
 internal object InkNotificationPresenter {
     private const val CHANNEL_ID = "ink-reminders"
+    private const val PUSH_CHANNEL_ID = "ink-messages"
 
     fun present(context: Context, notification: LocalNotification) {
         ensureChannel(context)
-        val tapIntent = PendingIntent.getBroadcast(
+        val tapIntent = PendingIntent.getActivity(
             context,
             notification.id.hashCode(),
-            Intent(context, InkNotificationTapReceiver::class.java)
+            Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .setData(Uri.parse("ink-notification://tap/${Uri.encode(notification.id)}"))
                 .putExtra(EXTRA_NOTIFICATION_ID, notification.id)
                 .putExtra(EXTRA_NOTIFICATION_HREF, notification.href),
@@ -451,13 +474,43 @@ internal object InkNotificationPresenter {
         context.getSystemService(NotificationManager::class.java).notify(notification.id, 0, value)
     }
 
+    fun presentPush(
+        context: Context,
+        key: String,
+        title: String,
+        body: String,
+        contentIntent: PendingIntent,
+        deleteIntent: PendingIntent,
+    ) {
+        ensureChannel(context, PUSH_CHANNEL_ID, "Messages")
+        val value = Notification.Builder(context, PUSH_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            .setDeleteIntent(deleteIntent)
+            .build()
+        context.getSystemService(NotificationManager::class.java)
+            .notify("ink-push:$key", 0, value)
+    }
+
+    fun cancelPush(context: Context, key: String) {
+        context.getSystemService(NotificationManager::class.java).cancel("ink-push:$key", 0)
+    }
+
     fun cancel(context: Context, id: String) {
         context.getSystemService(NotificationManager::class.java).cancel(id, 0)
     }
 
     private fun ensureChannel(context: Context) {
+        ensureChannel(context, CHANNEL_ID, "Reminders")
+    }
+
+    private fun ensureChannel(context: Context, id: String, name: String) {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
+            NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH).apply {
                 enableVibration(true)
                 setShowBadge(true)
             },
@@ -470,19 +523,6 @@ class InkNotificationAlarmReceiver : BroadcastReceiver() {
         val id = intent.getStringExtra(EXTRA_NOTIFICATION_ID) ?: return
         val notification = runCatching { InkNotificationStore(context).markDisplayed(id) }.getOrNull() ?: return
         InkNotificationPresenter.present(context, notification)
-    }
-}
-
-class InkNotificationTapReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        val id = intent.getStringExtra(EXTRA_NOTIFICATION_ID) ?: return
-        runCatching { InkNotificationStore(context).recordTap(id) }.getOrNull() ?: return
-        InkNotificationPresenter.cancel(context, id)
-        context.startActivity(
-            Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra(EXTRA_NOTIFICATION_HREF, intent.getStringExtra(EXTRA_NOTIFICATION_HREF).orEmpty()),
-        )
     }
 }
 

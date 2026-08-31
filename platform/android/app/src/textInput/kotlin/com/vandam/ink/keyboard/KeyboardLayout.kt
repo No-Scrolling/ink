@@ -69,11 +69,11 @@ internal data class KeyboardLayout(
 )
 
 internal object KeyboardLayouts {
-    fun forMode(mode: KeyboardMode): KeyboardLayout = when (mode) {
+    fun forMode(mode: KeyboardMode, emojis: List<KeyboardKey.Emoji>): KeyboardLayout = when (mode) {
         KeyboardMode.Letters -> letters
         KeyboardMode.Numbers -> numbers
         KeyboardMode.Symbols -> symbols
-        KeyboardMode.Emoji -> emoji
+        KeyboardMode.Emoji -> emoji(emojis)
     }
 
     private val emojiValues = listOf(
@@ -81,6 +81,28 @@ internal object KeyboardLayouts {
         "🙌", "👍", "👎", "🤞", "✌️", "👌", "👋", "🙏",
         "✨", "🔥", "❤️", "💔", "🏆", "🎯", "👑", "👀",
     )
+
+    val defaultEmojis: List<KeyboardKey.Emoji> = emojiValues.mapIndexed { index, value ->
+        KeyboardKey.Emoji(value, index)
+    }
+
+    fun parseEmojis(value: String?): List<KeyboardKey.Emoji> {
+        if (value.isNullOrEmpty()) return defaultEmojis
+        val recognised = mutableListOf<KeyboardKey.Emoji>()
+        var offset = 0
+        while (offset < value.length && recognised.size < defaultEmojis.size) {
+            val match = defaultEmojis
+                .sortedByDescending { it.value.length }
+                .firstOrNull { value.startsWith(it.value, offset) }
+            if (match == null) {
+                offset += Character.charCount(value.codePointAt(offset))
+            } else {
+                recognised += match
+                offset += match.value.length
+            }
+        }
+        return recognised.ifEmpty { defaultEmojis }
+    }
 
     private val letters = KeyboardLayout(
         listOf(
@@ -113,14 +135,8 @@ internal object KeyboardLayouts {
         ),
     )
 
-    private val emoji = KeyboardLayout(
-        emojiValues.chunked(8).mapIndexed { row, values ->
-            KeyboardRow(
-                values.mapIndexed { column, value ->
-                    KeyboardKey.Emoji(value, row * 8 + column)
-                },
-            )
-        } + KeyboardRow(
+    private fun emoji(emojis: List<KeyboardKey.Emoji>) = KeyboardLayout(
+        emojis.chunked(8).map { KeyboardRow(it) } + KeyboardRow(
             listOf(
                 command(KeyboardCommand.Letters),
                 KeyboardKey.Gap(245f),

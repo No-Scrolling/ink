@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Choreographer
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -68,6 +69,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         handleBack()
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        onUserInteraction()
+        if (window.superDispatchKeyEvent(event)) return true
+        if (lightSdkAdapter.forwardDeviceKey(event)) return true
+        return event.dispatch(this, window.decorView.keyDispatcherState, this)
+    }
+
     private fun handleBack() {
         inkView.stopScrolling()
         if (textInputAdapter.dismiss()) {
@@ -107,7 +115,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             )
         }
         textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
-        lightSdkAdapter = createLightSdkAdapter(this, textInputAdapter::setHapticsEnabled)
+        lightSdkAdapter = createLightSdkAdapter(
+            this,
+            textInputAdapter::applyPreferences,
+        ) { controller, value ->
+            if (engineHandle != 0L) {
+                nativeUpdateController(engineHandle, controller, value)
+            }
+        }
         networkAdapter = createNetworkAdapter(this)
         locationAdapter = createLocationAdapter(this)
         nfcAdapter = createNfcAdapter(this)
@@ -176,6 +191,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         lightSdkAdapter.start()
         backgroundAdapter.reconcile()
+        notificationsAdapter.start()
         drainNativeRequests()
         setContentView(
             root,
@@ -268,6 +284,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         lightSdkAdapter.stop()
+        notificationsAdapter.stop()
         networkAdapter.stop()
         audioAdapter.stop()
         locationAdapter.stop()
@@ -527,6 +544,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             } else if (controller >= 0L && adapter === audioAdapter) {
                 audioAdapter.executeController(controller, operation, payload, execute)
+            } else if (controller >= 0L && adapter === lightSdkAdapter) {
+                lightSdkAdapter.executeController(
+                    requestId,
+                    controller,
+                    operation,
+                    payload,
+                    execute,
+                )
             } else if (controller >= 0L && adapter === notificationsAdapter) {
                 notificationsAdapter.executeController(controller, operation, payload, execute)
             } else if (controller >= 0L && adapter === cameraAdapter) {
@@ -588,6 +613,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun handleNotificationIntent(intent: android.content.Intent?) {
+        intent?.let(notificationsAdapter::handleIntent)
         notificationsAdapter.refreshEvents()
         val href = intent?.getStringExtra(EXTRA_NOTIFICATION_HREF).orEmpty()
         if (href.isNotEmpty() && engineHandle != 0L) {

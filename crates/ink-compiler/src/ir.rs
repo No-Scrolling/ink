@@ -312,6 +312,7 @@ pub enum ImageSource {
 pub enum Collection {
     State(StateId),
     Resource(ResourceId, Vec<String>),
+    Controller(ControllerId, Vec<String>),
 }
 
 #[derive(Clone, Debug)]

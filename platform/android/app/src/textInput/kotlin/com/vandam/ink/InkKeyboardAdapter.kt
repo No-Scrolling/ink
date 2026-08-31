@@ -57,8 +57,10 @@ private class InkKeyboardAdapter(
         return true
     }
 
-    override fun setHapticsEnabled(enabled: Boolean) {
-        keyboard.isHapticFeedbackEnabled = enabled
+    override fun applyPreferences(preferences: KeyboardPreferences) {
+        keyboard.isHapticFeedbackEnabled = preferences.hapticsEnabled
+        keyboard.emojis = preferences.emojis
+        keyboard.keyAnimationEnabled = preferences.keyAnimationEnabled
     }
 
     override fun onText(text: String) {

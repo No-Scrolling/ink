@@ -38,6 +38,9 @@ internal enum class NativeErrorKind(val code: Int) {
 }
 
 internal interface NotificationsAdapter : NativeAdapter {
+    fun start()
+    fun stop()
+
     fun executeController(
         controller: Long,
         operation: String,
@@ -46,6 +49,8 @@ internal interface NotificationsAdapter : NativeAdapter {
     )
 
     fun refreshEvents()
+
+    fun handleIntent(intent: android.content.Intent)
 }
 
 internal const val EXTRA_NOTIFICATION_HREF = "com.vandam.ink.notification.HREF"

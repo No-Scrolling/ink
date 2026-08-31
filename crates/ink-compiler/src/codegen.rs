@@ -320,6 +320,11 @@ impl<'a> Emitter<'a> {
                         let path = path.iter().map(|field| quote! { #field.to_owned() });
                         quote! { Collection::Resource(ResourceId::new(#resource), vec![#(#path),*]) }
                     }
+                    Collection::Controller(controller, path) => {
+                        let controller = controller.0;
+                        let path = path.iter().map(|field| quote! { #field.to_owned() });
+                        quote! { Collection::Controller(ControllerId::new(#controller), vec![#(#path),*]) }
+                    }
                 };
                 let template = self.node(template)?;
                 quote! { Node::for_each(#collection, #template) }

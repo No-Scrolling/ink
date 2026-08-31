@@ -16,6 +16,8 @@ use config::ResolvedConfig;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AppFeatures {
     pub light_sdk: bool,
+    pub light_sdk_ringtone: bool,
+    pub light_sdk_push: bool,
     pub network: bool,
     pub text_input: bool,
     pub camera_permission: bool,
@@ -141,11 +143,21 @@ fn generate(project: &Project) -> Result<GeneratedApp> {
         .controllers
         .iter()
         .any(|controller| controller.module == "camera" && controller.kind == "scanner");
+    let light_sdk_ringtone = app
+        .controllers
+        .iter()
+        .any(|controller| controller.kind == "ringtone-installer");
+    let light_sdk_push = app
+        .controllers
+        .iter()
+        .any(|controller| controller.kind == "light-push");
     Ok(GeneratedApp {
         features: AppFeatures {
             light_sdk: app.extensions.contains(&ir::Extension::LightSdk)
                 || app.extensions.contains(&ir::Extension::Location)
                 || app.extensions.contains(&ir::Extension::Camera),
+            light_sdk_ringtone,
+            light_sdk_push,
             network: app.extensions.contains(&ir::Extension::Network)
                 || uses_remote_image(&app.root)
                 || audio_playback,

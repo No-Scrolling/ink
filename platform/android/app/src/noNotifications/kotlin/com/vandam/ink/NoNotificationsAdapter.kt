@@ -6,6 +6,10 @@ internal fun createNotificationsAdapter(
 ): NotificationsAdapter = NoNotificationsAdapter
 
 private object NoNotificationsAdapter : NotificationsAdapter {
+    override fun start() = Unit
+
+    override fun stop() = Unit
+
     override fun execute(
         requestId: Long,
         operation: String,
@@ -25,4 +29,6 @@ private object NoNotificationsAdapter : NotificationsAdapter {
     override fun cancel(requestId: Long) = Unit
 
     override fun refreshEvents() = Unit
+
+    override fun handleIntent(intent: android.content.Intent) = Unit
 }

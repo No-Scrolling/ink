@@ -10,7 +10,7 @@ internal sealed interface TextEdit {
 internal interface TextInputAdapter {
     fun sync(active: Boolean, action: Int)
     fun dismiss(): Boolean
-    fun setHapticsEnabled(enabled: Boolean)
+    fun applyPreferences(preferences: KeyboardPreferences)
 }
 
 internal typealias TextEditHandler = (TextEdit) -> Unit

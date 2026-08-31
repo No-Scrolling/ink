@@ -117,14 +117,19 @@ fn validate_audio(app: &App) -> Result<()> {
 }
 
 fn validate_notifications(app: &App) -> Result<()> {
-    if app
-        .application_controllers
-        .iter()
-        .filter(|controller| app.controllers[controller.0].kind == "notification-tap")
-        .count()
-        > 1
-    {
-        bail!("an Ink application can declare notificationTap() only once");
+    for (kind, name) in [
+        ("notification-tap", "notificationTap"),
+        ("light-push", "lightPush"),
+    ] {
+        if app
+            .application_controllers
+            .iter()
+            .filter(|controller| app.controllers[controller.0].kind == kind)
+            .count()
+            > 1
+        {
+            bail!("an Ink application can declare {name}() only once");
+        }
     }
     Ok(())
 }
@@ -692,6 +697,9 @@ fn remap_node(
             match collection {
                 Collection::State(state) => remap(state, mapping),
                 Collection::Resource(resource, _) => remap_resource(resource, resource_mapping),
+                Collection::Controller(controller, _) => {
+                    remap_controller(controller, controller_mapping);
+                }
             }
             remap_node(template, mapping, resource_mapping, controller_mapping);
         }
