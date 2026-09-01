@@ -1,13 +1,13 @@
 ---
 title: "Camera"
-description: "Request camera access, capture photos, and scan codes."
+description: "Request camera access and capture photos or video."
 ---
 
-`@ink/camera` provides camera permission, photo capture, and code scanning. The preview uses Ink's standard `Screen` header and fills the remaining content area.
+`@ink/camera` captures photos and video through a native camera view. The preview uses Ink's standard `Screen` header and fills the remaining content area.
 
-## Permission
+## Request permission
 
-`cameraPermission()` returns `"granted"`, `"denied"`, `"blocked"` or `"unknown"` when ready.
+`cameraPermission()` returns `"granted"`, `"denied"`, `"blocked"`, or `"unknown"` when ready.
 
 ```tsx
 import { cameraPermission } from "@ink/camera";
@@ -17,98 +17,111 @@ const permission = cameraPermission();
 
 {match(permission, {
   loading: () => <Text>Checking camera permission</Text>,
-  ready: (result) => <Text>{result.value}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
+  ready: ({ value }) => <Text>{value}</Text>,
+  error: ({ error }) => <Text>{error.message}</Text>,
 })}
 <Button onPress={() => permission.request()}>Allow camera</Button>
 ```
 
 Creating the resource does not open a prompt. On a Light Phone III, Ink uses the LightOS permission screen. On an ordinary Android development device, it uses the Android permission prompt.
 
+Video with sound also needs microphone permission from `@ink/audio`. Request it before opening a video session with `audio: true`.
+
 ## Take a photo
 
-Create a session with `photoCapture()` and pass it to `CameraPreview`. The preview must be the only child of its `Screen`.
+Create a controller with `photoCapture()` and pass it to `CameraView`:
 
 ```tsx
-import { CameraPreview, photoCapture } from "@ink/camera";
+import { CameraView, photoCapture } from "@ink/camera";
 import { Screen } from "ink";
 
 export default function Photo() {
-  const capture = photoCapture();
+  const camera = photoCapture({ facing: "back" });
 
   return (
     <Screen title="Photo">
-      <CameraPreview session={capture} />
+      <CameraView controller={camera} />
     </Screen>
   );
 }
 ```
 
-Opening the screen starts the preview. Tap anywhere on the preview to capture. The preview then shows **Retake** and **Use photo**. The session becomes `ready` only after the photo is accepted.
+Tap the capture control to take a photo. The view then shows **Retake** and **Use photo**. The controller becomes `ready` after the user accepts it.
 
 The ready value contains:
 
 - `source`, an opaque image accepted by `Image.src`;
+- `file`, a temporary `FileHandle` accepted by `@ink/files` and `@ink/media`;
 - pixel `width` and `height`;
 - `mimeType` as `"image/jpeg"`;
 - `capturedAtMs` as Unix time in milliseconds.
 
-The source cannot be read as a filesystem path or persisted in Ink state. One accepted photo is kept for the active session; accepting another replaces it.
+Use `managedFile().replace(result.file)` from `@ink/files` when the photo must survive after the camera screen leaves.
+
+Photo options are:
+
+| Option | Values | Default |
+| --- | --- | --- |
+| `facing` | `"back"`, `"front"` | `"back"` |
+| `flash` | `"off"`, `"auto"`, `"on"` | `"off"` |
+| `quality` | `"balanced"`, `"maximum"` | `"balanced"` |
+
+## Record video
+
+Create a video controller and pass it to the same view:
 
 ```tsx
-import { Image } from "ink";
+import { CameraView, videoCapture } from "@ink/camera";
 
-{capture.status === "ready" ? (
-  <Image
-    src={capture.value.source}
-    width={349}
-    height={349}
-    fit="contain"
-  />
-) : null}
+const camera = videoCapture({
+  facing: "back",
+  audio: false,
+  maximumDurationMs: 60_000,
+});
+
+<CameraView controller={camera} />
 ```
 
-## Scan a code
+Call `start()` and `stop()` from buttons or use the view's standard record control. The controller stops automatically at `maximumDurationMs` or its configured size limit.
 
-`codeScanner()` scans QR codes by default. Pass a literal format list to accept other code types.
+The ready value contains a temporary `FileHandle`, `mimeType`, pixel dimensions, `durationMs`, `sizeBytes`, and `capturedAtMs`. Pass the file to `@ink/media` for playback, metadata, or a thumbnail.
 
-```tsx
-import { CameraPreview, codeScanner } from "@ink/camera";
-import { Screen } from "ink";
+`maximumDurationMs` accepts 1,000 milliseconds to 30 minutes and defaults to 5 minutes. `quality` is `"compact"`, `"balanced"`, or `"maximum"`.
 
-export default function Scan() {
-  const scanner = codeScanner({ formats: ["qr", "ean-13", "code-128"] });
+## Control focus, zoom, and torch
 
-  return (
-    <Screen title="Scan code">
-      <CameraPreview session={scanner} />
-    </Screen>
-  );
-}
-```
+`CameraView` supports tap-to-focus and pinch-to-zoom. The controller also exposes:
 
-Supported formats are QR, Aztec, Data Matrix, PDF417, Codabar, Code 39, Code 93, Code 128, EAN-8, EAN-13, ITF, UPC-A, and UPC-E.
+- `focus({ x, y })` with logical coordinates inside the view;
+- `setZoom(value)` from `1` to the reported `maximumZoom`;
+- `setTorch("off" | "on")` while the back camera is active;
+- `switchFacing()` when both cameras are available.
 
-The first recognised code stops scanning. The ready value contains `text` and `format`. A scan that remains active for 60 seconds returns a timeout error.
+Unsupported controls return an `unsupported-control` error without closing the session.
 
 ## Session states
 
-A photo or scanner session is:
+A photo or video controller is:
 
 | Status | Meaning |
 | --- | --- |
-| `idle` | The preview is not active. |
+| `idle` | The camera view is not active. |
 | `opening` | The camera is starting. |
-| `active` | The preview is ready for capture or scanning. |
-| `ready` | A photo was accepted or a code was found. |
+| `active` | The preview is ready. |
+| `capturing` | A photo is being processed. |
+| `recording` | Video recording is active. |
+| `reviewing` | The view is presenting captured media for approval. |
+| `ready` | The user accepted the captured media. |
 | `error` | The session failed. |
 
-`open()` retries or reopens a session. It never requests permission.
+`open()` retries a failed session. `retake()` removes the temporary capture and returns to `active`. `accept()` publishes the ready value.
 
-Leaving the screen, pressing the standard back button, or moving the app to the background releases the camera. Only one camera session can be open; another active session receives a `busy` error. Late capture and scan results are ignored after a session closes.
+## Lifecycle and errors
 
-Errors distinguish permission, unavailable camera, busy camera, capture, storage, decoding, timeout, protocol, and unexpected failures.
+Leaving the screen, pressing the standard back button, or moving the app to the background releases the camera and discards an unaccepted capture. An accepted temporary file remains valid for its controller lifetime.
 
-## Packaging
+Only one camera-backed controller can be active. This includes barcode scanners from `@ink/barcode`. A second controller receives a `busy` error.
 
-Ink packages camera capabilities independently. Permission handling does not add capture or scanning. Photo capture does not add code decoding. An app that does not import `@ink/camera` carries no camera implementation or manifest entries.
+Errors distinguish denied or blocked permission, unavailable or busy camera, unsupported controls, capture, recording, microphone, storage, size limits, interrupted sessions, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
+
+Use [Barcode](barcode.md) to scan codes. Barcode generation does not include camera capability.

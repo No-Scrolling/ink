@@ -35,13 +35,35 @@
       {
         "group": "Modules",
         "pages": [
+          "network",
+          "store",
+          "secure-store",
+          "files",
+          "auth",
+          "crypto",
+          "system",
           "light-sdk",
           "audio",
           "background",
           "camera",
+          "barcode",
           "location",
+          "maps",
+          "media",
           "nfc",
-          "notifications"
+          "notifications",
+          "sensors",
+          "bluetooth",
+          "reader",
+          "charts"
+        ]
+      },
+      {
+        "group": "Extending Ink",
+        "pages": [
+          "modules",
+          "developing-modules",
+          "open-meteo-module"
         ]
       }
     ]

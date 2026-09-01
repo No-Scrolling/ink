@@ -65,6 +65,8 @@ import NowPlaying from "@example/player-ui/now-playing";
 
 Ink resolves packages through `node_modules` and compiles their source with the same language checks as local screens. It does not execute package JavaScript.
 
+Read [Third-party modules](modules.md) to install packages that add data or native capabilities. Read [Develop an Ink module](developing-modules.md) to publish one.
+
 ## Screens and layout
 
 `Screen` owns the standard Ink header, content insets, scrolling, and safe space above bottom navigation. Set `title` to show a header, or omit it for a headerless screen. `centered` centres the content in the available area.

@@ -55,7 +55,7 @@ export default function Weather() {
 
 Call `reload()` to replace the current request. Ink cancels the old request and ignores any late result.
 
-URLs must use HTTPS. Query values can be `string`, `number`, or `boolean` literals or scalar state values. Header values can be string literals or string state values. `timeoutMs` accepts 1,000 to 120,000 milliseconds and defaults to 15 seconds.
+URLs must use HTTPS. Query values can be `string`, `number`, or `boolean` literals, lists of those values, or compatible state values. Lists are encoded as comma-separated values. Header values can be string literals or string state values. `timeoutMs` accepts 1,000 to 120,000 milliseconds and defaults to 15 seconds.
 
 ## Cache a read
 

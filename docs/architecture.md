@@ -63,6 +63,14 @@ The capability list produced by the compiler controls what enters the APK. For e
 
 An app that does not use a capability does not carry its native implementation. `ink info` shows the capability list and its estimated native cost before a release build.
 
+## Third-party modules
+
+A source module publishes TypeScript or TSX through the `ink` package export. The compiler validates and lowers that source with the app, so reusable screens and API clients do not need a JavaScript runtime.
+
+A native module also publishes a versioned manifest and Android adapter. The manifest declares typed resources, actions, streams, controllers, native views, permissions, components and native dependencies. Ink validates those declarations, assigns compact operation IDs and generates the adapter registry during the app build.
+
+Native modules cannot inject arbitrary Gradle scripts or manifest XML. They use the validated integration fields supported by Ink. Read [Third-party modules](modules.md) to install one or [Develop an Ink module](developing-modules.md) to create one.
+
 ## Runtime
 
 The Rust runtime reads `app.ink` and owns state, navigation, layout, scrolling, hit testing and async resource states. It retains the current UI tree and updates affected branches when state changes.
