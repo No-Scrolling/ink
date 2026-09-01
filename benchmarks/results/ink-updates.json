@@ -1,0 +1,4310 @@
+{
+  "timestamp": "2026-09-01T11:37:01.917Z",
+  "harnessRevision": "6aecf45a4a20fc04c62e6316b0c7fa8d02b1339f",
+  "environment": {
+    "device": "LP3LHMA531900140",
+    "model": "TLP301",
+    "sdk": 34,
+    "thermalStatusStart": 0,
+    "thermalStatusEnd": 0
+  },
+  "rounds": 25,
+  "results": [
+    {
+      "name": "current",
+      "revision": "6aecf45a4a20fc04c62e6316b0c7fa8d02b1339f",
+      "instrumented": true,
+      "apk": {
+        "path": "benchmarks/apps/ink-updates/dist/ink-updates-benchmark-1.0.0-arm64.apk",
+        "bytes": 3006312,
+        "sha256": "3a9a06c25ba9ff70accfeb5055ec73852b8fb9fc1af935fce88c2b7f6ce5580a"
+      },
+      "scenarios": [
+        {
+          "name": "Text 7 → 8",
+          "route": "/text-same-width",
+          "samples": [
+            {
+              "cpuMs": 10.996456,
+              "startMs": 300,
+              "phases": {
+                "revision": 6,
+                "update_ns": 191770,
+                "materialise_ns": 12656,
+                "measure_ns": 61823,
+                "relayout_ns": 132135,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1120573,
+                "upload_ns": 25209,
+                "acquire_ns": 69636,
+                "encode_ns": 1299010,
+                "queue_submit_cpu_ns": 718489,
+                "queue_present_cpu_ns": 1298333,
+                "frame_ns": 4567917
+              }
+            },
+            {
+              "cpuMs": 11.602345,
+              "startMs": 310,
+              "phases": {
+                "revision": 6,
+                "update_ns": 229948,
+                "materialise_ns": 16093,
+                "measure_ns": 68384,
+                "relayout_ns": 153125,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 703125,
+                "upload_ns": 9636,
+                "acquire_ns": 55156,
+                "encode_ns": 800781,
+                "queue_submit_cpu_ns": 500990,
+                "queue_present_cpu_ns": 787709,
+                "frame_ns": 2873646
+              }
+            },
+            {
+              "cpuMs": 13.168859,
+              "startMs": 337,
+              "phases": {
+                "revision": 6,
+                "update_ns": 230156,
+                "materialise_ns": 16666,
+                "measure_ns": 67501,
+                "relayout_ns": 150885,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1266458,
+                "upload_ns": 39270,
+                "acquire_ns": 85312,
+                "encode_ns": 1648854,
+                "queue_submit_cpu_ns": 899636,
+                "queue_present_cpu_ns": 1268125,
+                "frame_ns": 5245365
+              }
+            },
+            {
+              "cpuMs": 12.115209,
+              "startMs": 336,
+              "phases": {
+                "revision": 6,
+                "update_ns": 127344,
+                "materialise_ns": 9271,
+                "measure_ns": 47292,
+                "relayout_ns": 84531,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1172292,
+                "upload_ns": 33958,
+                "acquire_ns": 80104,
+                "encode_ns": 1322240,
+                "queue_submit_cpu_ns": 737239,
+                "queue_present_cpu_ns": 1326511,
+                "frame_ns": 4697656
+              }
+            },
+            {
+              "cpuMs": 16.275365,
+              "startMs": 310,
+              "phases": {
+                "revision": 6,
+                "update_ns": 503125,
+                "materialise_ns": 20469,
+                "measure_ns": 318645,
+                "relayout_ns": 416041,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1300468,
+                "upload_ns": 18697,
+                "acquire_ns": 78021,
+                "encode_ns": 1539687,
+                "queue_submit_cpu_ns": 809583,
+                "queue_present_cpu_ns": 1350833,
+                "frame_ns": 5129115
+              }
+            },
+            {
+              "cpuMs": 12.330831,
+              "startMs": 322,
+              "phases": {
+                "revision": 6,
+                "update_ns": 507136,
+                "materialise_ns": 15209,
+                "measure_ns": 302709,
+                "relayout_ns": 417084,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 837552,
+                "upload_ns": 9115,
+                "acquire_ns": 61146,
+                "encode_ns": 912969,
+                "queue_submit_cpu_ns": 604531,
+                "queue_present_cpu_ns": 917864,
+                "frame_ns": 3360104
+              }
+            },
+            {
+              "cpuMs": 12.428852,
+              "startMs": 330,
+              "phases": {
+                "revision": 6,
+                "update_ns": 233281,
+                "materialise_ns": 16302,
+                "measure_ns": 69062,
+                "relayout_ns": 154167,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 832084,
+                "upload_ns": 25520,
+                "acquire_ns": 61667,
+                "encode_ns": 846354,
+                "queue_submit_cpu_ns": 507448,
+                "queue_present_cpu_ns": 1052187,
+                "frame_ns": 3341719
+              }
+            },
+            {
+              "cpuMs": 12.559636,
+              "startMs": 310,
+              "phases": {
+                "revision": 6,
+                "update_ns": 242031,
+                "materialise_ns": 15886,
+                "measure_ns": 71146,
+                "relayout_ns": 161406,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 837656,
+                "upload_ns": 10208,
+                "acquire_ns": 61667,
+                "encode_ns": 899791,
+                "queue_submit_cpu_ns": 526406,
+                "queue_present_cpu_ns": 1352135,
+                "frame_ns": 3704792
+              }
+            },
+            {
+              "cpuMs": 12.489842,
+              "startMs": 317,
+              "phases": {
+                "revision": 6,
+                "update_ns": 107396,
+                "materialise_ns": 8750,
+                "measure_ns": 27864,
+                "relayout_ns": 64896,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1383021,
+                "upload_ns": 19896,
+                "acquire_ns": 78281,
+                "encode_ns": 1420886,
+                "queue_submit_cpu_ns": 762709,
+                "queue_present_cpu_ns": 1354010,
+                "frame_ns": 5048750
+              }
+            },
+            {
+              "cpuMs": 14.343125,
+              "startMs": 299,
+              "phases": {
+                "revision": 6,
+                "update_ns": 307969,
+                "materialise_ns": 20156,
+                "measure_ns": 111771,
+                "relayout_ns": 221979,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1074687,
+                "upload_ns": 15885,
+                "acquire_ns": 81093,
+                "encode_ns": 1280677,
+                "queue_submit_cpu_ns": 678385,
+                "queue_present_cpu_ns": 1148958,
+                "frame_ns": 4319740
+              }
+            },
+            {
+              "cpuMs": 14.830365,
+              "startMs": 319,
+              "phases": {
+                "revision": 6,
+                "update_ns": 230468,
+                "materialise_ns": 16770,
+                "measure_ns": 69115,
+                "relayout_ns": 152448,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1407969,
+                "upload_ns": 18594,
+                "acquire_ns": 79948,
+                "encode_ns": 1410625,
+                "queue_submit_cpu_ns": 742187,
+                "queue_present_cpu_ns": 1376094,
+                "frame_ns": 5065573
+              }
+            },
+            {
+              "cpuMs": 14.545783,
+              "startMs": 319,
+              "phases": {
+                "revision": 6,
+                "update_ns": 241250,
+                "materialise_ns": 15105,
+                "measure_ns": 64322,
+                "relayout_ns": 171197,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1462708,
+                "upload_ns": 21302,
+                "acquire_ns": 92813,
+                "encode_ns": 1730938,
+                "queue_submit_cpu_ns": 842187,
+                "queue_present_cpu_ns": 1229791,
+                "frame_ns": 5410417
+              }
+            },
+            {
+              "cpuMs": 14.959532,
+              "startMs": 302,
+              "phases": {
+                "revision": 6,
+                "update_ns": 252291,
+                "materialise_ns": 14531,
+                "measure_ns": 68333,
+                "relayout_ns": 181770,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1386094,
+                "upload_ns": 18854,
+                "acquire_ns": 90260,
+                "encode_ns": 1569895,
+                "queue_submit_cpu_ns": 1065260,
+                "queue_present_cpu_ns": 1489219,
+                "frame_ns": 5656250
+              }
+            },
+            {
+              "cpuMs": 13.483489,
+              "startMs": 315,
+              "phases": {
+                "revision": 6,
+                "update_ns": 228490,
+                "materialise_ns": 15937,
+                "measure_ns": 68802,
+                "relayout_ns": 151407,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 781615,
+                "upload_ns": 9479,
+                "acquire_ns": 60730,
+                "encode_ns": 1402864,
+                "queue_submit_cpu_ns": 783646,
+                "queue_present_cpu_ns": 1301510,
+                "frame_ns": 4357865
+              }
+            },
+            {
+              "cpuMs": 14.906719,
+              "startMs": 296,
+              "phases": {
+                "revision": 6,
+                "update_ns": 202136,
+                "materialise_ns": 13854,
+                "measure_ns": 63176,
+                "relayout_ns": 137760,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1267292,
+                "upload_ns": 19062,
+                "acquire_ns": 76614,
+                "encode_ns": 1562812,
+                "queue_submit_cpu_ns": 944791,
+                "queue_present_cpu_ns": 1559896,
+                "frame_ns": 5460625
+              }
+            },
+            {
+              "cpuMs": 14.495629,
+              "startMs": 301,
+              "phases": {
+                "revision": 6,
+                "update_ns": 208437,
+                "materialise_ns": 13906,
+                "measure_ns": 64167,
+                "relayout_ns": 141145,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1315677,
+                "upload_ns": 20417,
+                "acquire_ns": 90990,
+                "encode_ns": 1805209,
+                "queue_submit_cpu_ns": 870990,
+                "queue_present_cpu_ns": 1360052,
+                "frame_ns": 5501927
+              }
+            },
+            {
+              "cpuMs": 14.066044,
+              "startMs": 337,
+              "phases": {
+                "revision": 6,
+                "update_ns": 201198,
+                "materialise_ns": 13854,
+                "measure_ns": 64063,
+                "relayout_ns": 138282,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1233907,
+                "upload_ns": 19792,
+                "acquire_ns": 79427,
+                "encode_ns": 1475677,
+                "queue_submit_cpu_ns": 790833,
+                "queue_present_cpu_ns": 1493438,
+                "frame_ns": 5122917
+              }
+            },
+            {
+              "cpuMs": 11.870522,
+              "startMs": 323,
+              "phases": {
+                "revision": 6,
+                "update_ns": 145833,
+                "materialise_ns": 11041,
+                "measure_ns": 41928,
+                "relayout_ns": 94219,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1348906,
+                "upload_ns": 19323,
+                "acquire_ns": 72188,
+                "encode_ns": 1354375,
+                "queue_submit_cpu_ns": 737812,
+                "queue_present_cpu_ns": 1307240,
+                "frame_ns": 4869323
+              }
+            },
+            {
+              "cpuMs": 13.899479,
+              "startMs": 354,
+              "phases": {
+                "revision": 6,
+                "update_ns": 247031,
+                "materialise_ns": 17552,
+                "measure_ns": 68906,
+                "relayout_ns": 155104,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1344323,
+                "upload_ns": 18021,
+                "acquire_ns": 76250,
+                "encode_ns": 1429531,
+                "queue_submit_cpu_ns": 757968,
+                "queue_present_cpu_ns": 1368177,
+                "frame_ns": 5034844
+              }
+            },
+            {
+              "cpuMs": 12.440575,
+              "startMs": 332,
+              "phases": {
+                "revision": 6,
+                "update_ns": 126562,
+                "materialise_ns": 8698,
+                "measure_ns": 44636,
+                "relayout_ns": 82448,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1385105,
+                "upload_ns": 35052,
+                "acquire_ns": 80625,
+                "encode_ns": 1456198,
+                "queue_submit_cpu_ns": 909375,
+                "queue_present_cpu_ns": 1371302,
+                "frame_ns": 5270365
+              }
+            },
+            {
+              "cpuMs": 15.492756,
+              "startMs": 310,
+              "phases": {
+                "revision": 6,
+                "update_ns": 232135,
+                "materialise_ns": 16719,
+                "measure_ns": 67344,
+                "relayout_ns": 153646,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1465781,
+                "upload_ns": 40417,
+                "acquire_ns": 85000,
+                "encode_ns": 1453646,
+                "queue_submit_cpu_ns": 822552,
+                "queue_present_cpu_ns": 1376198,
+                "frame_ns": 5274635
+              }
+            },
+            {
+              "cpuMs": 13.857601,
+              "startMs": 320,
+              "phases": {
+                "revision": 6,
+                "update_ns": 248229,
+                "materialise_ns": 13281,
+                "measure_ns": 87344,
+                "relayout_ns": 181667,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1364115,
+                "upload_ns": 20573,
+                "acquire_ns": 82656,
+                "encode_ns": 1467604,
+                "queue_submit_cpu_ns": 783073,
+                "queue_present_cpu_ns": 1263177,
+                "frame_ns": 5013594
+              }
+            },
+            {
+              "cpuMs": 11.010992,
+              "startMs": 338,
+              "phases": {
+                "revision": 6,
+                "update_ns": 139531,
+                "materialise_ns": 11719,
+                "measure_ns": 32865,
+                "relayout_ns": 80104,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 894010,
+                "upload_ns": 10365,
+                "acquire_ns": 50990,
+                "encode_ns": 1472448,
+                "queue_submit_cpu_ns": 860000,
+                "queue_present_cpu_ns": 1532761,
+                "frame_ns": 4840104
+              }
+            },
+            {
+              "cpuMs": 14.106876,
+              "startMs": 347,
+              "phases": {
+                "revision": 6,
+                "update_ns": 211980,
+                "materialise_ns": 14740,
+                "measure_ns": 65262,
+                "relayout_ns": 144584,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1552813,
+                "upload_ns": 20677,
+                "acquire_ns": 90000,
+                "encode_ns": 1553281,
+                "queue_submit_cpu_ns": 877240,
+                "queue_present_cpu_ns": 1377344,
+                "frame_ns": 5502084
+              }
+            },
+            {
+              "cpuMs": 13.253852,
+              "startMs": 342,
+              "phases": {
+                "revision": 6,
+                "update_ns": 216302,
+                "materialise_ns": 14479,
+                "measure_ns": 66926,
+                "relayout_ns": 146146,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 813125,
+                "upload_ns": 23386,
+                "acquire_ns": 60937,
+                "encode_ns": 850833,
+                "queue_submit_cpu_ns": 866771,
+                "queue_present_cpu_ns": 1151406,
+                "frame_ns": 3782761
+              }
+            }
+          ],
+          "cpuMeanMs": 13.42122936,
+          "cpuMedianMs": 13.483489,
+          "cpuP95Ms": 15.492756,
+          "startMedianMs": 319,
+          "phases": {
+            "revision": {
+              "mean": 6,
+              "median": 6,
+              "p95": 6
+            },
+            "update_ns": {
+              "mean": 232481.16,
+              "median": 229948,
+              "p95": 503125
+            },
+            "materialise_ns": {
+              "mean": 14545.76,
+              "median": 14740,
+              "p95": 20156
+            },
+            "measure_ns": {
+              "mean": 83335.44,
+              "median": 67344,
+              "p95": 302709
+            },
+            "relayout_ns": {
+              "mean": 162727.04,
+              "median": 151407,
+              "p95": 416041
+            },
+            "nodes_measured": {
+              "mean": 5,
+              "median": 5,
+              "p95": 5
+            },
+            "full_rebuilds": {
+              "mean": 0,
+              "median": 0,
+              "p95": 0
+            },
+            "incremental_rebuilds": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "prepare_ns": {
+              "mean": 1182054.24,
+              "median": 1267292,
+              "p95": 1465781
+            },
+            "upload_ns": {
+              "mean": 20908.32,
+              "median": 19792,
+              "p95": 39270
+            },
+            "acquire_ns": {
+              "mean": 75260.44,
+              "median": 78281,
+              "p95": 90990
+            },
+            "encode_ns": {
+              "mean": 1358687.4,
+              "median": 1429531,
+              "p95": 1730938
+            },
+            "queue_submit_cpu_ns": {
+              "mean": 776004.04,
+              "median": 783646,
+              "p95": 944791
+            },
+            "queue_present_cpu_ns": {
+              "mean": 1296570.8,
+              "median": 1350833,
+              "p95": 1532761
+            },
+            "frame_ns": {
+              "mean": 4738083.52,
+              "median": 5034844,
+              "p95": 5502084
+            }
+          }
+        },
+        {
+          "name": "Text 9 → 10",
+          "route": "/text-width-change",
+          "samples": [
+            {
+              "cpuMs": 12.164323,
+              "startMs": 292,
+              "phases": {
+                "revision": 6,
+                "update_ns": 241771,
+                "materialise_ns": 16823,
+                "measure_ns": 72448,
+                "relayout_ns": 162083,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1091302,
+                "upload_ns": 11875,
+                "acquire_ns": 70834,
+                "encode_ns": 1132448,
+                "queue_submit_cpu_ns": 515260,
+                "queue_present_cpu_ns": 882292,
+                "frame_ns": 3734375
+              }
+            },
+            {
+              "cpuMs": 12.745988,
+              "startMs": 345,
+              "phases": {
+                "revision": 6,
+                "update_ns": 235365,
+                "materialise_ns": 16511,
+                "measure_ns": 70415,
+                "relayout_ns": 157917,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1015364,
+                "upload_ns": 10313,
+                "acquire_ns": 65625,
+                "encode_ns": 933281,
+                "queue_submit_cpu_ns": 527605,
+                "queue_present_cpu_ns": 891563,
+                "frame_ns": 3461197
+              }
+            },
+            {
+              "cpuMs": 15.322086,
+              "startMs": 308,
+              "phases": {
+                "revision": 6,
+                "update_ns": 271250,
+                "materialise_ns": 16510,
+                "measure_ns": 70573,
+                "relayout_ns": 193073,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1402083,
+                "upload_ns": 17500,
+                "acquire_ns": 76406,
+                "encode_ns": 1387292,
+                "queue_submit_cpu_ns": 882135,
+                "queue_present_cpu_ns": 1339896,
+                "frame_ns": 5139635
+              }
+            },
+            {
+              "cpuMs": 9.937757,
+              "startMs": 329,
+              "phases": {
+                "revision": 6,
+                "update_ns": 112605,
+                "materialise_ns": 10417,
+                "measure_ns": 27970,
+                "relayout_ns": 67969,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 795104,
+                "upload_ns": 9687,
+                "acquire_ns": 53229,
+                "encode_ns": 803020,
+                "queue_submit_cpu_ns": 432084,
+                "queue_present_cpu_ns": 736979,
+                "frame_ns": 2864740
+              }
+            },
+            {
+              "cpuMs": 11.193958,
+              "startMs": 301,
+              "phases": {
+                "revision": 6,
+                "update_ns": 111093,
+                "materialise_ns": 8854,
+                "measure_ns": 29063,
+                "relayout_ns": 68229,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1331666,
+                "upload_ns": 19219,
+                "acquire_ns": 75157,
+                "encode_ns": 1387396,
+                "queue_submit_cpu_ns": 851614,
+                "queue_present_cpu_ns": 1276198,
+                "frame_ns": 4974062
+              }
+            },
+            {
+              "cpuMs": 14.245731,
+              "startMs": 322,
+              "phases": {
+                "revision": 6,
+                "update_ns": 237865,
+                "materialise_ns": 15938,
+                "measure_ns": 72187,
+                "relayout_ns": 160625,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1474270,
+                "upload_ns": 20416,
+                "acquire_ns": 100625,
+                "encode_ns": 1545312,
+                "queue_submit_cpu_ns": 766927,
+                "queue_present_cpu_ns": 1296094,
+                "frame_ns": 5245833
+              }
+            },
+            {
+              "cpuMs": 16.436247,
+              "startMs": 356,
+              "phases": {
+                "revision": 6,
+                "update_ns": 222187,
+                "materialise_ns": 14531,
+                "measure_ns": 69688,
+                "relayout_ns": 153542,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1343437,
+                "upload_ns": 19844,
+                "acquire_ns": 76042,
+                "encode_ns": 1416406,
+                "queue_submit_cpu_ns": 921667,
+                "queue_present_cpu_ns": 1228178,
+                "frame_ns": 5038437
+              }
+            },
+            {
+              "cpuMs": 15.443333,
+              "startMs": 342,
+              "phases": {
+                "revision": 6,
+                "update_ns": 240261,
+                "materialise_ns": 16875,
+                "measure_ns": 71876,
+                "relayout_ns": 161250,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1671927,
+                "upload_ns": 20885,
+                "acquire_ns": 91823,
+                "encode_ns": 1551458,
+                "queue_submit_cpu_ns": 892500,
+                "queue_present_cpu_ns": 1613698,
+                "frame_ns": 5881042
+              }
+            },
+            {
+              "cpuMs": 13.932346,
+              "startMs": 287,
+              "phases": {
+                "revision": 6,
+                "update_ns": 360521,
+                "materialise_ns": 21042,
+                "measure_ns": 124165,
+                "relayout_ns": 263646,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1075989,
+                "upload_ns": 13594,
+                "acquire_ns": 65990,
+                "encode_ns": 1197813,
+                "queue_submit_cpu_ns": 606198,
+                "queue_present_cpu_ns": 1102135,
+                "frame_ns": 4087083
+              }
+            },
+            {
+              "cpuMs": 11.720521,
+              "startMs": 321,
+              "phases": {
+                "revision": 6,
+                "update_ns": 239531,
+                "materialise_ns": 18854,
+                "measure_ns": 71876,
+                "relayout_ns": 160677,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 762917,
+                "upload_ns": 8646,
+                "acquire_ns": 58229,
+                "encode_ns": 781146,
+                "queue_submit_cpu_ns": 459271,
+                "queue_present_cpu_ns": 903177,
+                "frame_ns": 2989844
+              }
+            },
+            {
+              "cpuMs": 14.385778,
+              "startMs": 305,
+              "phases": {
+                "revision": 6,
+                "update_ns": 236979,
+                "materialise_ns": 16250,
+                "measure_ns": 73229,
+                "relayout_ns": 160417,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1408490,
+                "upload_ns": 33698,
+                "acquire_ns": 77969,
+                "encode_ns": 1332084,
+                "queue_submit_cpu_ns": 841041,
+                "queue_present_cpu_ns": 1261406,
+                "frame_ns": 4994844
+              }
+            },
+            {
+              "cpuMs": 10.922291,
+              "startMs": 338,
+              "phases": {
+                "revision": 6,
+                "update_ns": 114531,
+                "materialise_ns": 9167,
+                "measure_ns": 29895,
+                "relayout_ns": 71094,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 731041,
+                "upload_ns": 8958,
+                "acquire_ns": 188334,
+                "encode_ns": 1230156,
+                "queue_submit_cpu_ns": 688229,
+                "queue_present_cpu_ns": 1137552,
+                "frame_ns": 4001511
+              }
+            },
+            {
+              "cpuMs": 11.470158,
+              "startMs": 332,
+              "phases": {
+                "revision": 6,
+                "update_ns": 140729,
+                "materialise_ns": 10365,
+                "measure_ns": 40052,
+                "relayout_ns": 91614,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1176614,
+                "upload_ns": 15886,
+                "acquire_ns": 68177,
+                "encode_ns": 1313021,
+                "queue_submit_cpu_ns": 617500,
+                "queue_present_cpu_ns": 1165156,
+                "frame_ns": 4386146
+              }
+            },
+            {
+              "cpuMs": 12.075468,
+              "startMs": 305,
+              "phases": {
+                "revision": 6,
+                "update_ns": 218333,
+                "materialise_ns": 14896,
+                "measure_ns": 66667,
+                "relayout_ns": 148958,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 855261,
+                "upload_ns": 11927,
+                "acquire_ns": 78698,
+                "encode_ns": 929115,
+                "queue_submit_cpu_ns": 629010,
+                "queue_present_cpu_ns": 1141614,
+                "frame_ns": 3664688
+              }
+            },
+            {
+              "cpuMs": 14.930313,
+              "startMs": 323,
+              "phases": {
+                "revision": 6,
+                "update_ns": 238750,
+                "materialise_ns": 15729,
+                "measure_ns": 71458,
+                "relayout_ns": 161302,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1409062,
+                "upload_ns": 18334,
+                "acquire_ns": 78906,
+                "encode_ns": 1333698,
+                "queue_submit_cpu_ns": 861511,
+                "queue_present_cpu_ns": 1344271,
+                "frame_ns": 5079218
+              }
+            },
+            {
+              "cpuMs": 14.86406,
+              "startMs": 312,
+              "phases": {
+                "revision": 6,
+                "update_ns": 220833,
+                "materialise_ns": 14166,
+                "measure_ns": 69585,
+                "relayout_ns": 152969,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1348334,
+                "upload_ns": 21198,
+                "acquire_ns": 75833,
+                "encode_ns": 1527083,
+                "queue_submit_cpu_ns": 748958,
+                "queue_present_cpu_ns": 1377604,
+                "frame_ns": 5136563
+              }
+            },
+            {
+              "cpuMs": 14.104061,
+              "startMs": 330,
+              "phases": {
+                "revision": 6,
+                "update_ns": 211042,
+                "materialise_ns": 13333,
+                "measure_ns": 67030,
+                "relayout_ns": 147031,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1591146,
+                "upload_ns": 31927,
+                "acquire_ns": 96666,
+                "encode_ns": 1632291,
+                "queue_submit_cpu_ns": 883698,
+                "queue_present_cpu_ns": 1462292,
+                "frame_ns": 5738958
+              }
+            },
+            {
+              "cpuMs": 15.07047,
+              "startMs": 327,
+              "phases": {
+                "revision": 6,
+                "update_ns": 237552,
+                "materialise_ns": 16458,
+                "measure_ns": 71874,
+                "relayout_ns": 160000,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1483646,
+                "upload_ns": 39166,
+                "acquire_ns": 87448,
+                "encode_ns": 1592344,
+                "queue_submit_cpu_ns": 956406,
+                "queue_present_cpu_ns": 1493333,
+                "frame_ns": 5692240
+              }
+            },
+            {
+              "cpuMs": 15.082757,
+              "startMs": 310,
+              "phases": {
+                "revision": 6,
+                "update_ns": 230938,
+                "materialise_ns": 16198,
+                "measure_ns": 69530,
+                "relayout_ns": 161094,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1318073,
+                "upload_ns": 30157,
+                "acquire_ns": 78333,
+                "encode_ns": 1460312,
+                "queue_submit_cpu_ns": 1064115,
+                "queue_present_cpu_ns": 1441719,
+                "frame_ns": 5428229
+              }
+            },
+            {
+              "cpuMs": 14.254273,
+              "startMs": 292,
+              "phases": {
+                "revision": 6,
+                "update_ns": 238698,
+                "materialise_ns": 16145,
+                "measure_ns": 72291,
+                "relayout_ns": 160312,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 943802,
+                "upload_ns": 10365,
+                "acquire_ns": 61302,
+                "encode_ns": 1696198,
+                "queue_submit_cpu_ns": 772760,
+                "queue_present_cpu_ns": 1280573,
+                "frame_ns": 4806770
+              }
+            },
+            {
+              "cpuMs": 15.60677,
+              "startMs": 317,
+              "phases": {
+                "revision": 6,
+                "update_ns": 268541,
+                "materialise_ns": 17135,
+                "measure_ns": 78386,
+                "relayout_ns": 186823,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1442552,
+                "upload_ns": 20417,
+                "acquire_ns": 84167,
+                "encode_ns": 1643437,
+                "queue_submit_cpu_ns": 822448,
+                "queue_present_cpu_ns": 1278437,
+                "frame_ns": 5337395
+              }
+            },
+            {
+              "cpuMs": 12.937447,
+              "startMs": 347,
+              "phases": {
+                "revision": 6,
+                "update_ns": 227604,
+                "materialise_ns": 12188,
+                "measure_ns": 82553,
+                "relayout_ns": 168750,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 920208,
+                "upload_ns": 9010,
+                "acquire_ns": 60417,
+                "encode_ns": 1596146,
+                "queue_submit_cpu_ns": 846458,
+                "queue_present_cpu_ns": 1351979,
+                "frame_ns": 4802239
+              }
+            },
+            {
+              "cpuMs": 14.302343,
+              "startMs": 318,
+              "phases": {
+                "revision": 6,
+                "update_ns": 221198,
+                "materialise_ns": 13437,
+                "measure_ns": 70885,
+                "relayout_ns": 152865,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1645521,
+                "upload_ns": 33125,
+                "acquire_ns": 92188,
+                "encode_ns": 1512188,
+                "queue_submit_cpu_ns": 852552,
+                "queue_present_cpu_ns": 1433750,
+                "frame_ns": 5604844
+              }
+            },
+            {
+              "cpuMs": 13.090573,
+              "startMs": 325,
+              "phases": {
+                "revision": 6,
+                "update_ns": 248490,
+                "materialise_ns": 18178,
+                "measure_ns": 75155,
+                "relayout_ns": 166198,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 874792,
+                "upload_ns": 10834,
+                "acquire_ns": 68021,
+                "encode_ns": 904531,
+                "queue_submit_cpu_ns": 481719,
+                "queue_present_cpu_ns": 1108333,
+                "frame_ns": 3466302
+              }
+            },
+            {
+              "cpuMs": 15.152608,
+              "startMs": 349,
+              "phases": {
+                "revision": 6,
+                "update_ns": 245364,
+                "materialise_ns": 17605,
+                "measure_ns": 73646,
+                "relayout_ns": 166458,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1334739,
+                "upload_ns": 18333,
+                "acquire_ns": 75781,
+                "encode_ns": 1548229,
+                "queue_submit_cpu_ns": 802604,
+                "queue_present_cpu_ns": 1399844,
+                "frame_ns": 5215052
+              }
+            }
+          ],
+          "cpuMeanMs": 13.6556664,
+          "cpuMedianMs": 14.245731,
+          "cpuP95Ms": 15.60677,
+          "startMedianMs": 322,
+          "phases": {
+            "revision": {
+              "mean": 6,
+              "median": 6,
+              "p95": 6
+            },
+            "update_ns": {
+              "mean": 222881.24,
+              "median": 236979,
+              "p95": 271250
+            },
+            "materialise_ns": {
+              "mean": 15104.2,
+              "median": 16145,
+              "p95": 18854
+            },
+            "measure_ns": {
+              "mean": 67699.88,
+              "median": 71458,
+              "p95": 82553
+            },
+            "relayout_ns": {
+              "mean": 152195.84,
+              "median": 160417,
+              "p95": 193073
+            },
+            "nodes_measured": {
+              "mean": 5,
+              "median": 5,
+              "p95": 5
+            },
+            "full_rebuilds": {
+              "mean": 0,
+              "median": 0,
+              "p95": 0
+            },
+            "incremental_rebuilds": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "prepare_ns": {
+              "mean": 1217893.6,
+              "median": 1331666,
+              "p95": 1645521
+            },
+            "upload_ns": {
+              "mean": 18612.56,
+              "median": 18333,
+              "p95": 33698
+            },
+            "acquire_ns": {
+              "mean": 80248,
+              "median": 76042,
+              "p95": 100625
+            },
+            "encode_ns": {
+              "mean": 1335456.2,
+              "median": 1387396,
+              "p95": 1643437
+            },
+            "queue_submit_cpu_ns": {
+              "mean": 748970.8,
+              "median": 802604,
+              "p95": 956406
+            },
+            "queue_present_cpu_ns": {
+              "mean": 1237922.92,
+              "median": 1278437,
+              "p95": 1493333
+            },
+            "frame_ns": {
+              "mean": 4670849.88,
+              "median": 4994844,
+              "p95": 5738958
+            }
+          }
+        },
+        {
+          "name": "Toggle",
+          "route": "/toggle",
+          "samples": [
+            {
+              "cpuMs": 12.415106,
+              "startMs": 290,
+              "phases": {
+                "revision": 6,
+                "update_ns": 127708,
+                "materialise_ns": 10625,
+                "measure_ns": 729,
+                "relayout_ns": 63125,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 621302,
+                "upload_ns": 16250,
+                "acquire_ns": 46563,
+                "encode_ns": 1508281,
+                "queue_submit_cpu_ns": 715469,
+                "queue_present_cpu_ns": 1194062,
+                "frame_ns": 4115416
+              }
+            },
+            {
+              "cpuMs": 13.955263,
+              "startMs": 309,
+              "phases": {
+                "revision": 6,
+                "update_ns": 215573,
+                "materialise_ns": 8854,
+                "measure_ns": 573,
+                "relayout_ns": 52239,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1326355,
+                "upload_ns": 46459,
+                "acquire_ns": 92188,
+                "encode_ns": 1690000,
+                "queue_submit_cpu_ns": 833282,
+                "queue_present_cpu_ns": 1334687,
+                "frame_ns": 5353385
+              }
+            },
+            {
+              "cpuMs": 13.492604,
+              "startMs": 318,
+              "phases": {
+                "revision": 6,
+                "update_ns": 120052,
+                "materialise_ns": 9844,
+                "measure_ns": 625,
+                "relayout_ns": 59479,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1164687,
+                "upload_ns": 40157,
+                "acquire_ns": 81875,
+                "encode_ns": 1721094,
+                "queue_submit_cpu_ns": 784115,
+                "queue_present_cpu_ns": 1238281,
+                "frame_ns": 5061875
+              }
+            },
+            {
+              "cpuMs": 10.955002,
+              "startMs": 305,
+              "phases": {
+                "revision": 6,
+                "update_ns": 107865,
+                "materialise_ns": 9167,
+                "measure_ns": 781,
+                "relayout_ns": 53802,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 708542,
+                "upload_ns": 20209,
+                "acquire_ns": 62812,
+                "encode_ns": 1007761,
+                "queue_submit_cpu_ns": 471250,
+                "queue_present_cpu_ns": 781407,
+                "frame_ns": 3066250
+              }
+            },
+            {
+              "cpuMs": 11.836512,
+              "startMs": 326,
+              "phases": {
+                "revision": 6,
+                "update_ns": 109375,
+                "materialise_ns": 9480,
+                "measure_ns": 625,
+                "relayout_ns": 54011,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 743750,
+                "upload_ns": 20886,
+                "acquire_ns": 65260,
+                "encode_ns": 816719,
+                "queue_submit_cpu_ns": 562812,
+                "queue_present_cpu_ns": 759063,
+                "frame_ns": 2982448
+              }
+            },
+            {
+              "cpuMs": 14.139481,
+              "startMs": 301,
+              "phases": {
+                "revision": 6,
+                "update_ns": 124219,
+                "materialise_ns": 10521,
+                "measure_ns": 729,
+                "relayout_ns": 61198,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1078437,
+                "upload_ns": 68802,
+                "acquire_ns": 75417,
+                "encode_ns": 1436719,
+                "queue_submit_cpu_ns": 776823,
+                "queue_present_cpu_ns": 1323438,
+                "frame_ns": 4786250
+              }
+            },
+            {
+              "cpuMs": 13.000522,
+              "startMs": 287,
+              "phases": {
+                "revision": 6,
+                "update_ns": 74583,
+                "materialise_ns": 6458,
+                "measure_ns": 417,
+                "relayout_ns": 34740,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1247656,
+                "upload_ns": 42136,
+                "acquire_ns": 89792,
+                "encode_ns": 1811823,
+                "queue_submit_cpu_ns": 954062,
+                "queue_present_cpu_ns": 1496823,
+                "frame_ns": 5670937
+              }
+            },
+            {
+              "cpuMs": 14.609325,
+              "startMs": 310,
+              "phases": {
+                "revision": 6,
+                "update_ns": 122031,
+                "materialise_ns": 9688,
+                "measure_ns": 782,
+                "relayout_ns": 59271,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1114583,
+                "upload_ns": 37188,
+                "acquire_ns": 76198,
+                "encode_ns": 1678802,
+                "queue_submit_cpu_ns": 856354,
+                "queue_present_cpu_ns": 1342657,
+                "frame_ns": 5138645
+              }
+            },
+            {
+              "cpuMs": 12.037813,
+              "startMs": 356,
+              "phases": {
+                "revision": 6,
+                "update_ns": 125885,
+                "materialise_ns": 10521,
+                "measure_ns": 625,
+                "relayout_ns": 60729,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 739844,
+                "upload_ns": 33073,
+                "acquire_ns": 66198,
+                "encode_ns": 844635,
+                "queue_submit_cpu_ns": 466771,
+                "queue_present_cpu_ns": 1424948,
+                "frame_ns": 3591510
+              }
+            },
+            {
+              "cpuMs": 9.55745,
+              "startMs": 315,
+              "phases": {
+                "revision": 6,
+                "update_ns": 101198,
+                "materialise_ns": 8386,
+                "measure_ns": 572,
+                "relayout_ns": 50104,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 617865,
+                "upload_ns": 19167,
+                "acquire_ns": 49791,
+                "encode_ns": 831197,
+                "queue_submit_cpu_ns": 520209,
+                "queue_present_cpu_ns": 873386,
+                "frame_ns": 2925104
+              }
+            },
+            {
+              "cpuMs": 11.213075,
+              "startMs": 342,
+              "phases": {
+                "revision": 6,
+                "update_ns": 186250,
+                "materialise_ns": 11042,
+                "measure_ns": 625,
+                "relayout_ns": 58437,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 767657,
+                "upload_ns": 30261,
+                "acquire_ns": 194740,
+                "encode_ns": 1013073,
+                "queue_submit_cpu_ns": 480313,
+                "queue_present_cpu_ns": 826042,
+                "frame_ns": 3327239
+              }
+            },
+            {
+              "cpuMs": 15.301719,
+              "startMs": 319,
+              "phases": {
+                "revision": 6,
+                "update_ns": 123073,
+                "materialise_ns": 10052,
+                "measure_ns": 729,
+                "relayout_ns": 60677,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1399895,
+                "upload_ns": 59688,
+                "acquire_ns": 106354,
+                "encode_ns": 1580260,
+                "queue_submit_cpu_ns": 802188,
+                "queue_present_cpu_ns": 1496458,
+                "frame_ns": 5473959
+              }
+            },
+            {
+              "cpuMs": 14.866719,
+              "startMs": 314,
+              "phases": {
+                "revision": 6,
+                "update_ns": 109688,
+                "materialise_ns": 8490,
+                "measure_ns": 625,
+                "relayout_ns": 54167,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1320260,
+                "upload_ns": 35573,
+                "acquire_ns": 94114,
+                "encode_ns": 1557083,
+                "queue_submit_cpu_ns": 882031,
+                "queue_present_cpu_ns": 1444427,
+                "frame_ns": 5363385
+              }
+            },
+            {
+              "cpuMs": 13.734998,
+              "startMs": 316,
+              "phases": {
+                "revision": 6,
+                "update_ns": 123802,
+                "materialise_ns": 10312,
+                "measure_ns": 677,
+                "relayout_ns": 60209,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1158803,
+                "upload_ns": 36979,
+                "acquire_ns": 76198,
+                "encode_ns": 1586927,
+                "queue_submit_cpu_ns": 722552,
+                "queue_present_cpu_ns": 1258594,
+                "frame_ns": 4863854
+              }
+            },
+            {
+              "cpuMs": 14.328596,
+              "startMs": 347,
+              "phases": {
+                "revision": 6,
+                "update_ns": 108125,
+                "materialise_ns": 9375,
+                "measure_ns": 625,
+                "relayout_ns": 53959,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1411771,
+                "upload_ns": 47396,
+                "acquire_ns": 93490,
+                "encode_ns": 1566198,
+                "queue_submit_cpu_ns": 806719,
+                "queue_present_cpu_ns": 1485469,
+                "frame_ns": 5439740
+              }
+            },
+            {
+              "cpuMs": 15.269325,
+              "startMs": 333,
+              "phases": {
+                "revision": 6,
+                "update_ns": 125208,
+                "materialise_ns": 10105,
+                "measure_ns": 677,
+                "relayout_ns": 62083,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1084583,
+                "upload_ns": 40313,
+                "acquire_ns": 76302,
+                "encode_ns": 1551718,
+                "queue_submit_cpu_ns": 807656,
+                "queue_present_cpu_ns": 1232187,
+                "frame_ns": 4816667
+              }
+            },
+            {
+              "cpuMs": 14.327188,
+              "startMs": 330,
+              "phases": {
+                "revision": 6,
+                "update_ns": 96250,
+                "materialise_ns": 8750,
+                "measure_ns": 625,
+                "relayout_ns": 47083,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1154583,
+                "upload_ns": 38802,
+                "acquire_ns": 75677,
+                "encode_ns": 1577708,
+                "queue_submit_cpu_ns": 753541,
+                "queue_present_cpu_ns": 1306250,
+                "frame_ns": 4930417
+              }
+            },
+            {
+              "cpuMs": 13.991407,
+              "startMs": 297,
+              "phases": {
+                "revision": 6,
+                "update_ns": 113125,
+                "materialise_ns": 9375,
+                "measure_ns": 573,
+                "relayout_ns": 54063,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1149635,
+                "upload_ns": 48854,
+                "acquire_ns": 85573,
+                "encode_ns": 1576667,
+                "queue_submit_cpu_ns": 749219,
+                "queue_present_cpu_ns": 1283646,
+                "frame_ns": 4922969
+              }
+            },
+            {
+              "cpuMs": 14.741457,
+              "startMs": 303,
+              "phases": {
+                "revision": 6,
+                "update_ns": 125313,
+                "materialise_ns": 10573,
+                "measure_ns": 729,
+                "relayout_ns": 61198,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1334010,
+                "upload_ns": 36927,
+                "acquire_ns": 80989,
+                "encode_ns": 1571562,
+                "queue_submit_cpu_ns": 818177,
+                "queue_present_cpu_ns": 1434219,
+                "frame_ns": 5303437
+              }
+            },
+            {
+              "cpuMs": 12.971147,
+              "startMs": 306,
+              "phases": {
+                "revision": 6,
+                "update_ns": 125208,
+                "materialise_ns": 10156,
+                "measure_ns": 677,
+                "relayout_ns": 61146,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 704167,
+                "upload_ns": 21094,
+                "acquire_ns": 59636,
+                "encode_ns": 1701667,
+                "queue_submit_cpu_ns": 766771,
+                "queue_present_cpu_ns": 1312083,
+                "frame_ns": 4581250
+              }
+            },
+            {
+              "cpuMs": 11.050523,
+              "startMs": 325,
+              "phases": {
+                "revision": 6,
+                "update_ns": 108542,
+                "materialise_ns": 8854,
+                "measure_ns": 625,
+                "relayout_ns": 53178,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 764948,
+                "upload_ns": 25260,
+                "acquire_ns": 60312,
+                "encode_ns": 1035938,
+                "queue_submit_cpu_ns": 550677,
+                "queue_present_cpu_ns": 1082240,
+                "frame_ns": 3534166
+              }
+            },
+            {
+              "cpuMs": 9.849064,
+              "startMs": 330,
+              "phases": {
+                "revision": 6,
+                "update_ns": 64532,
+                "materialise_ns": 5417,
+                "measure_ns": 521,
+                "relayout_ns": 29948,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1047865,
+                "upload_ns": 30573,
+                "acquire_ns": 79270,
+                "encode_ns": 1449687,
+                "queue_submit_cpu_ns": 693854,
+                "queue_present_cpu_ns": 1110834,
+                "frame_ns": 4433750
+              }
+            },
+            {
+              "cpuMs": 14.785626,
+              "startMs": 328,
+              "phases": {
+                "revision": 6,
+                "update_ns": 130313,
+                "materialise_ns": 8646,
+                "measure_ns": 625,
+                "relayout_ns": 58802,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1215937,
+                "upload_ns": 39532,
+                "acquire_ns": 80365,
+                "encode_ns": 1858333,
+                "queue_submit_cpu_ns": 807709,
+                "queue_present_cpu_ns": 1351302,
+                "frame_ns": 5377761
+              }
+            },
+            {
+              "cpuMs": 13.893023,
+              "startMs": 332,
+              "phases": {
+                "revision": 6,
+                "update_ns": 127136,
+                "materialise_ns": 11198,
+                "measure_ns": 781,
+                "relayout_ns": 61510,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1302917,
+                "upload_ns": 44010,
+                "acquire_ns": 87916,
+                "encode_ns": 1781667,
+                "queue_submit_cpu_ns": 893125,
+                "queue_present_cpu_ns": 1596355,
+                "frame_ns": 5734219
+              }
+            },
+            {
+              "cpuMs": 8.325158,
+              "startMs": 322,
+              "phases": {
+                "revision": 6,
+                "update_ns": 64219,
+                "materialise_ns": 5365,
+                "measure_ns": 417,
+                "relayout_ns": 29532,
+                "nodes_measured": 1,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 617709,
+                "upload_ns": 21927,
+                "acquire_ns": 61719,
+                "encode_ns": 748959,
+                "queue_submit_cpu_ns": 386146,
+                "queue_present_cpu_ns": 776770,
+                "frame_ns": 2626563
+              }
+            }
+          ],
+          "cpuMeanMs": 12.98592412,
+          "cpuMedianMs": 13.734998,
+          "cpuP95Ms": 15.269325,
+          "startMedianMs": 318,
+          "phases": {
+            "revision": {
+              "mean": 6,
+              "median": 6,
+              "p95": 6
+            },
+            "update_ns": {
+              "mean": 118370.92,
+              "median": 122031,
+              "p95": 186250
+            },
+            "materialise_ns": {
+              "mean": 9250.16,
+              "median": 9480,
+              "p95": 11042
+            },
+            "measure_ns": {
+              "mean": 639.56,
+              "median": 625,
+              "p95": 781
+            },
+            "relayout_ns": {
+              "mean": 54187.6,
+              "median": 58437,
+              "p95": 62083
+            },
+            "nodes_measured": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "full_rebuilds": {
+              "mean": 0,
+              "median": 0,
+              "p95": 0
+            },
+            "incremental_rebuilds": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "prepare_ns": {
+              "mean": 1031910.44,
+              "median": 1114583,
+              "p95": 1399895
+            },
+            "upload_ns": {
+              "mean": 36060.64,
+              "median": 36979,
+              "p95": 59688
+            },
+            "acquire_ns": {
+              "mean": 80749.96,
+              "median": 76302,
+              "p95": 106354
+            },
+            "encode_ns": {
+              "mean": 1420179.12,
+              "median": 1566198,
+              "p95": 1811823
+            },
+            "queue_submit_cpu_ns": {
+              "mean": 714473,
+              "median": 766771,
+              "p95": 893125
+            },
+            "queue_present_cpu_ns": {
+              "mean": 1230625.12,
+              "median": 1306250,
+              "p95": 1496823
+            },
+            "frame_ns": {
+              "mean": 4536847.84,
+              "median": 4863854,
+              "p95": 5670937
+            }
+          }
+        },
+        {
+          "name": "Structure",
+          "route": "/structure",
+          "samples": [
+            {
+              "cpuMs": 14.324894,
+              "startMs": 328,
+              "phases": {
+                "revision": 6,
+                "update_ns": 217448,
+                "materialise_ns": 13438,
+                "measure_ns": 68699,
+                "relayout_ns": 150781,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1234948,
+                "upload_ns": 15365,
+                "acquire_ns": 68542,
+                "encode_ns": 1400052,
+                "queue_submit_cpu_ns": 627917,
+                "queue_present_cpu_ns": 1121822,
+                "frame_ns": 4495886
+              }
+            },
+            {
+              "cpuMs": 12.994794,
+              "startMs": 345,
+              "phases": {
+                "revision": 6,
+                "update_ns": 243906,
+                "materialise_ns": 16302,
+                "measure_ns": 77708,
+                "relayout_ns": 165520,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 875365,
+                "upload_ns": 11198,
+                "acquire_ns": 59792,
+                "encode_ns": 1266042,
+                "queue_submit_cpu_ns": 538855,
+                "queue_present_cpu_ns": 762500,
+                "frame_ns": 3532552
+              }
+            },
+            {
+              "cpuMs": 8.032448,
+              "startMs": 318,
+              "phases": {
+                "revision": 6,
+                "update_ns": 114636,
+                "materialise_ns": 9063,
+                "measure_ns": 26875,
+                "relayout_ns": 67188,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 840521,
+                "upload_ns": 13281,
+                "acquire_ns": 50990,
+                "encode_ns": 789271,
+                "queue_submit_cpu_ns": 409063,
+                "queue_present_cpu_ns": 789740,
+                "frame_ns": 2909583
+              }
+            },
+            {
+              "cpuMs": 15.712653,
+              "startMs": 342,
+              "phases": {
+                "revision": 6,
+                "update_ns": 229688,
+                "materialise_ns": 14114,
+                "measure_ns": 70833,
+                "relayout_ns": 156562,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1684739,
+                "upload_ns": 21094,
+                "acquire_ns": 79115,
+                "encode_ns": 1468542,
+                "queue_submit_cpu_ns": 821042,
+                "queue_present_cpu_ns": 1417708,
+                "frame_ns": 5527968
+              }
+            },
+            {
+              "cpuMs": 14.673804,
+              "startMs": 305,
+              "phases": {
+                "revision": 6,
+                "update_ns": 215677,
+                "materialise_ns": 14427,
+                "measure_ns": 68906,
+                "relayout_ns": 149219,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1156198,
+                "upload_ns": 10833,
+                "acquire_ns": 94792,
+                "encode_ns": 1159791,
+                "queue_submit_cpu_ns": 516146,
+                "queue_present_cpu_ns": 984219,
+                "frame_ns": 3982656
+              }
+            },
+            {
+              "cpuMs": 12.993127,
+              "startMs": 332,
+              "phases": {
+                "revision": 6,
+                "update_ns": 262968,
+                "materialise_ns": 16094,
+                "measure_ns": 74218,
+                "relayout_ns": 174062,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1184114,
+                "upload_ns": 12657,
+                "acquire_ns": 81823,
+                "encode_ns": 1390677,
+                "queue_submit_cpu_ns": 729219,
+                "queue_present_cpu_ns": 881354,
+                "frame_ns": 4302656
+              }
+            },
+            {
+              "cpuMs": 11.970622,
+              "startMs": 311,
+              "phases": {
+                "revision": 6,
+                "update_ns": 280781,
+                "materialise_ns": 14844,
+                "measure_ns": 120313,
+                "relayout_ns": 206407,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 859323,
+                "upload_ns": 9219,
+                "acquire_ns": 57135,
+                "encode_ns": 827969,
+                "queue_submit_cpu_ns": 450365,
+                "queue_present_cpu_ns": 770364,
+                "frame_ns": 2990937
+              }
+            },
+            {
+              "cpuMs": 10.270468,
+              "startMs": 317,
+              "phases": {
+                "revision": 6,
+                "update_ns": 111354,
+                "materialise_ns": 9011,
+                "measure_ns": 26354,
+                "relayout_ns": 65677,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1187396,
+                "upload_ns": 15469,
+                "acquire_ns": 70364,
+                "encode_ns": 1188490,
+                "queue_submit_cpu_ns": 618020,
+                "queue_present_cpu_ns": 1047343,
+                "frame_ns": 4152239
+              }
+            },
+            {
+              "cpuMs": 15.405727,
+              "startMs": 306,
+              "phases": {
+                "revision": 6,
+                "update_ns": 243386,
+                "materialise_ns": 15521,
+                "measure_ns": 70887,
+                "relayout_ns": 160833,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1618177,
+                "upload_ns": 18385,
+                "acquire_ns": 384479,
+                "encode_ns": 1627448,
+                "queue_submit_cpu_ns": 832343,
+                "queue_present_cpu_ns": 1478177,
+                "frame_ns": 6001614
+              }
+            },
+            {
+              "cpuMs": 13.964476,
+              "startMs": 324,
+              "phases": {
+                "revision": 6,
+                "update_ns": 243541,
+                "materialise_ns": 15521,
+                "measure_ns": 71874,
+                "relayout_ns": 162605,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1576041,
+                "upload_ns": 20157,
+                "acquire_ns": 82135,
+                "encode_ns": 1670156,
+                "queue_submit_cpu_ns": 825781,
+                "queue_present_cpu_ns": 1479063,
+                "frame_ns": 5688802
+              }
+            },
+            {
+              "cpuMs": 12.761301,
+              "startMs": 347,
+              "phases": {
+                "revision": 6,
+                "update_ns": 244531,
+                "materialise_ns": 15573,
+                "measure_ns": 72657,
+                "relayout_ns": 164323,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1172813,
+                "upload_ns": 9532,
+                "acquire_ns": 68229,
+                "encode_ns": 893385,
+                "queue_submit_cpu_ns": 474219,
+                "queue_present_cpu_ns": 872240,
+                "frame_ns": 3508229
+              }
+            },
+            {
+              "cpuMs": 10.822496,
+              "startMs": 336,
+              "phases": {
+                "revision": 6,
+                "update_ns": 219167,
+                "materialise_ns": 13646,
+                "measure_ns": 68749,
+                "relayout_ns": 150937,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 970729,
+                "upload_ns": 10313,
+                "acquire_ns": 61614,
+                "encode_ns": 1009791,
+                "queue_submit_cpu_ns": 524635,
+                "queue_present_cpu_ns": 875990,
+                "frame_ns": 3469583
+              }
+            },
+            {
+              "cpuMs": 12.449738,
+              "startMs": 312,
+              "phases": {
+                "revision": 6,
+                "update_ns": 248907,
+                "materialise_ns": 16510,
+                "measure_ns": 71876,
+                "relayout_ns": 162448,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 933854,
+                "upload_ns": 10260,
+                "acquire_ns": 62084,
+                "encode_ns": 1003958,
+                "queue_submit_cpu_ns": 507396,
+                "queue_present_cpu_ns": 942448,
+                "frame_ns": 3479271
+              }
+            },
+            {
+              "cpuMs": 14.446876,
+              "startMs": 344,
+              "phases": {
+                "revision": 6,
+                "update_ns": 215416,
+                "materialise_ns": 13646,
+                "measure_ns": 69324,
+                "relayout_ns": 149636,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1575677,
+                "upload_ns": 21302,
+                "acquire_ns": 87969,
+                "encode_ns": 1517136,
+                "queue_submit_cpu_ns": 869479,
+                "queue_present_cpu_ns": 1460730,
+                "frame_ns": 5575677
+              }
+            },
+            {
+              "cpuMs": 12.322709,
+              "startMs": 311,
+              "phases": {
+                "revision": 6,
+                "update_ns": 111875,
+                "materialise_ns": 9114,
+                "measure_ns": 25989,
+                "relayout_ns": 66250,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1550782,
+                "upload_ns": 37239,
+                "acquire_ns": 90469,
+                "encode_ns": 1514323,
+                "queue_submit_cpu_ns": 823698,
+                "queue_present_cpu_ns": 1363073,
+                "frame_ns": 5413230
+              }
+            },
+            {
+              "cpuMs": 11.764637,
+              "startMs": 329,
+              "phases": {
+                "revision": 6,
+                "update_ns": 224792,
+                "materialise_ns": 13125,
+                "measure_ns": 72188,
+                "relayout_ns": 155625,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 979219,
+                "upload_ns": 94635,
+                "acquire_ns": 90521,
+                "encode_ns": 969948,
+                "queue_submit_cpu_ns": 455937,
+                "queue_present_cpu_ns": 812083,
+                "frame_ns": 3420000
+              }
+            },
+            {
+              "cpuMs": 12.043645,
+              "startMs": 346,
+              "phases": {
+                "revision": 6,
+                "update_ns": 243229,
+                "materialise_ns": 15104,
+                "measure_ns": 71666,
+                "relayout_ns": 162656,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 912760,
+                "upload_ns": 11354,
+                "acquire_ns": 63541,
+                "encode_ns": 937604,
+                "queue_submit_cpu_ns": 690521,
+                "queue_present_cpu_ns": 1109688,
+                "frame_ns": 3743489
+              }
+            },
+            {
+              "cpuMs": 14.989792,
+              "startMs": 341,
+              "phases": {
+                "revision": 6,
+                "update_ns": 233177,
+                "materialise_ns": 14011,
+                "measure_ns": 77865,
+                "relayout_ns": 163385,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1766615,
+                "upload_ns": 21198,
+                "acquire_ns": 92031,
+                "encode_ns": 1397552,
+                "queue_submit_cpu_ns": 858178,
+                "queue_present_cpu_ns": 1660938,
+                "frame_ns": 5835833
+              }
+            },
+            {
+              "cpuMs": 14.165368,
+              "startMs": 305,
+              "phases": {
+                "revision": 6,
+                "update_ns": 234687,
+                "materialise_ns": 13958,
+                "measure_ns": 69271,
+                "relayout_ns": 160781,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1475573,
+                "upload_ns": 17761,
+                "acquire_ns": 73125,
+                "encode_ns": 1402188,
+                "queue_submit_cpu_ns": 800625,
+                "queue_present_cpu_ns": 1267344,
+                "frame_ns": 5081302
+              }
+            },
+            {
+              "cpuMs": 13.975049,
+              "startMs": 307,
+              "phases": {
+                "revision": 6,
+                "update_ns": 231146,
+                "materialise_ns": 14688,
+                "measure_ns": 71511,
+                "relayout_ns": 157239,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1450365,
+                "upload_ns": 21875,
+                "acquire_ns": 76615,
+                "encode_ns": 1390000,
+                "queue_submit_cpu_ns": 738645,
+                "queue_present_cpu_ns": 1609427,
+                "frame_ns": 5322552
+              }
+            },
+            {
+              "cpuMs": 14.754064,
+              "startMs": 318,
+              "phases": {
+                "revision": 6,
+                "update_ns": 312917,
+                "materialise_ns": 14688,
+                "measure_ns": 123125,
+                "relayout_ns": 240000,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1655417,
+                "upload_ns": 21979,
+                "acquire_ns": 88750,
+                "encode_ns": 1635365,
+                "queue_submit_cpu_ns": 1032136,
+                "queue_present_cpu_ns": 1428750,
+                "frame_ns": 5908021
+              }
+            },
+            {
+              "cpuMs": 15.788489,
+              "startMs": 337,
+              "phases": {
+                "revision": 6,
+                "update_ns": 258854,
+                "materialise_ns": 16354,
+                "measure_ns": 74532,
+                "relayout_ns": 172865,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1646458,
+                "upload_ns": 22917,
+                "acquire_ns": 104583,
+                "encode_ns": 1800468,
+                "queue_submit_cpu_ns": 1055261,
+                "queue_present_cpu_ns": 1656458,
+                "frame_ns": 6333021
+              }
+            },
+            {
+              "cpuMs": 12.581041,
+              "startMs": 325,
+              "phases": {
+                "revision": 6,
+                "update_ns": 247760,
+                "materialise_ns": 16667,
+                "measure_ns": 71458,
+                "relayout_ns": 163177,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 921719,
+                "upload_ns": 25313,
+                "acquire_ns": 64948,
+                "encode_ns": 1106354,
+                "queue_submit_cpu_ns": 464166,
+                "queue_present_cpu_ns": 814479,
+                "frame_ns": 3417396
+              }
+            },
+            {
+              "cpuMs": 12.220159,
+              "startMs": 330,
+              "phases": {
+                "revision": 6,
+                "update_ns": 143073,
+                "materialise_ns": 11927,
+                "measure_ns": 28073,
+                "relayout_ns": 76198,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1666771,
+                "upload_ns": 17135,
+                "acquire_ns": 73855,
+                "encode_ns": 1413177,
+                "queue_submit_cpu_ns": 749270,
+                "queue_present_cpu_ns": 1474636,
+                "frame_ns": 5448802
+              }
+            },
+            {
+              "cpuMs": 15.660415,
+              "startMs": 344,
+              "phases": {
+                "revision": 6,
+                "update_ns": 468282,
+                "materialise_ns": 86563,
+                "measure_ns": 113072,
+                "relayout_ns": 241614,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1666406,
+                "upload_ns": 38021,
+                "acquire_ns": 91407,
+                "encode_ns": 1671562,
+                "queue_submit_cpu_ns": 849895,
+                "queue_present_cpu_ns": 1413542,
+                "frame_ns": 5770000
+              }
+            }
+          ],
+          "cpuMeanMs": 13.243551680000005,
+          "cpuMedianMs": 12.994794,
+          "cpuP95Ms": 15.712653,
+          "startMedianMs": 328,
+          "phases": {
+            "revision": {
+              "mean": 6,
+              "median": 6,
+              "p95": 6
+            },
+            "update_ns": {
+              "mean": 232047.92,
+              "median": 234687,
+              "p95": 312917
+            },
+            "materialise_ns": {
+              "mean": 16956.36,
+              "median": 14688,
+              "p95": 16667
+            },
+            "measure_ns": {
+              "mean": 70320.92,
+              "median": 71511,
+              "p95": 120313
+            },
+            "relayout_ns": {
+              "mean": 153839.52,
+              "median": 160833,
+              "p95": 240000
+            },
+            "nodes_measured": {
+              "mean": 5,
+              "median": 5,
+              "p95": 5
+            },
+            "full_rebuilds": {
+              "mean": 0,
+              "median": 0,
+              "p95": 0
+            },
+            "incremental_rebuilds": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "prepare_ns": {
+              "mean": 1302479.2,
+              "median": 1234948,
+              "p95": 1684739
+            },
+            "upload_ns": {
+              "mean": 21139.68,
+              "median": 17761,
+              "p95": 38021
+            },
+            "acquire_ns": {
+              "mean": 88756.32,
+              "median": 76615,
+              "p95": 104583
+            },
+            "encode_ns": {
+              "mean": 1298049.96,
+              "median": 1390677,
+              "p95": 1671562
+            },
+            "queue_submit_cpu_ns": {
+              "mean": 690512.48,
+              "median": 729219,
+              "p95": 1032136
+            },
+            "queue_present_cpu_ns": {
+              "mean": 1179764.64,
+              "median": 1121822,
+              "p95": 1656458
+            },
+            "frame_ns": {
+              "mean": 4612451.96,
+              "median": 4495886,
+              "p95": 6001614
+            }
+          }
+        },
+        {
+          "name": "List append",
+          "route": "/list-append",
+          "samples": [
+            {
+              "cpuMs": 12.476982,
+              "startMs": 316,
+              "phases": {
+                "revision": 6,
+                "update_ns": 253697,
+                "materialise_ns": 10573,
+                "measure_ns": 69012,
+                "relayout_ns": 175781,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1114271,
+                "upload_ns": 11666,
+                "acquire_ns": 64167,
+                "encode_ns": 955156,
+                "queue_submit_cpu_ns": 494063,
+                "queue_present_cpu_ns": 856615,
+                "frame_ns": 3516511
+              }
+            },
+            {
+              "cpuMs": 13.605673,
+              "startMs": 316,
+              "phases": {
+                "revision": 6,
+                "update_ns": 156980,
+                "materialise_ns": 8229,
+                "measure_ns": 33385,
+                "relayout_ns": 89166,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1479948,
+                "upload_ns": 19218,
+                "acquire_ns": 78281,
+                "encode_ns": 1373125,
+                "queue_submit_cpu_ns": 1047500,
+                "queue_present_cpu_ns": 1435417,
+                "frame_ns": 5479011
+              }
+            },
+            {
+              "cpuMs": 14.249322,
+              "startMs": 333,
+              "phases": {
+                "revision": 6,
+                "update_ns": 303958,
+                "materialise_ns": 17136,
+                "measure_ns": 78647,
+                "relayout_ns": 198490,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1451094,
+                "upload_ns": 18489,
+                "acquire_ns": 76510,
+                "encode_ns": 1433489,
+                "queue_submit_cpu_ns": 725885,
+                "queue_present_cpu_ns": 1494375,
+                "frame_ns": 5246614
+              }
+            },
+            {
+              "cpuMs": 12.220941,
+              "startMs": 323,
+              "phases": {
+                "revision": 6,
+                "update_ns": 274792,
+                "materialise_ns": 10729,
+                "measure_ns": 71564,
+                "relayout_ns": 187083,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 809688,
+                "upload_ns": 12240,
+                "acquire_ns": 61666,
+                "encode_ns": 934011,
+                "queue_submit_cpu_ns": 544323,
+                "queue_present_cpu_ns": 875469,
+                "frame_ns": 3256562
+              }
+            },
+            {
+              "cpuMs": 15.106616,
+              "startMs": 316,
+              "phases": {
+                "revision": 6,
+                "update_ns": 324322,
+                "materialise_ns": 13594,
+                "measure_ns": 109271,
+                "relayout_ns": 229323,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1347395,
+                "upload_ns": 17865,
+                "acquire_ns": 74062,
+                "encode_ns": 1405677,
+                "queue_submit_cpu_ns": 751458,
+                "queue_present_cpu_ns": 1443438,
+                "frame_ns": 5088073
+              }
+            },
+            {
+              "cpuMs": 15.699426,
+              "startMs": 350,
+              "phases": {
+                "revision": 6,
+                "update_ns": 291354,
+                "materialise_ns": 12083,
+                "measure_ns": 80310,
+                "relayout_ns": 201979,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1446459,
+                "upload_ns": 20365,
+                "acquire_ns": 88646,
+                "encode_ns": 1664375,
+                "queue_submit_cpu_ns": 851980,
+                "queue_present_cpu_ns": 1327761,
+                "frame_ns": 5440313
+              }
+            },
+            {
+              "cpuMs": 17.029376,
+              "startMs": 342,
+              "phases": {
+                "revision": 6,
+                "update_ns": 273854,
+                "materialise_ns": 12031,
+                "measure_ns": 74063,
+                "relayout_ns": 187135,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1489688,
+                "upload_ns": 21667,
+                "acquire_ns": 105625,
+                "encode_ns": 1740208,
+                "queue_submit_cpu_ns": 886510,
+                "queue_present_cpu_ns": 1592136,
+                "frame_ns": 5880260
+              }
+            },
+            {
+              "cpuMs": 14.122084,
+              "startMs": 346,
+              "phases": {
+                "revision": 6,
+                "update_ns": 267136,
+                "materialise_ns": 12083,
+                "measure_ns": 72449,
+                "relayout_ns": 183073,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1397656,
+                "upload_ns": 20104,
+                "acquire_ns": 83437,
+                "encode_ns": 1569011,
+                "queue_submit_cpu_ns": 775208,
+                "queue_present_cpu_ns": 1305990,
+                "frame_ns": 5197552
+              }
+            },
+            {
+              "cpuMs": 8.767762,
+              "startMs": 336,
+              "phases": {
+                "revision": 6,
+                "update_ns": 123959,
+                "materialise_ns": 6198,
+                "measure_ns": 28542,
+                "relayout_ns": 75521,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 798490,
+                "upload_ns": 39062,
+                "acquire_ns": 66042,
+                "encode_ns": 809115,
+                "queue_submit_cpu_ns": 450000,
+                "queue_present_cpu_ns": 794062,
+                "frame_ns": 2975416
+              }
+            },
+            {
+              "cpuMs": 14.400521,
+              "startMs": 331,
+              "phases": {
+                "revision": 6,
+                "update_ns": 200052,
+                "materialise_ns": 9375,
+                "measure_ns": 54113,
+                "relayout_ns": 135052,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1582656,
+                "upload_ns": 75364,
+                "acquire_ns": 90260,
+                "encode_ns": 1614010,
+                "queue_submit_cpu_ns": 948854,
+                "queue_present_cpu_ns": 1420260,
+                "frame_ns": 5762292
+              }
+            },
+            {
+              "cpuMs": 10.586877,
+              "startMs": 309,
+              "phases": {
+                "revision": 6,
+                "update_ns": 269479,
+                "materialise_ns": 11614,
+                "measure_ns": 71770,
+                "relayout_ns": 183125,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 827917,
+                "upload_ns": 9479,
+                "acquire_ns": 56146,
+                "encode_ns": 876354,
+                "queue_submit_cpu_ns": 480730,
+                "queue_present_cpu_ns": 789791,
+                "frame_ns": 3059791
+              }
+            },
+            {
+              "cpuMs": 14.72583,
+              "startMs": 336,
+              "phases": {
+                "revision": 6,
+                "update_ns": 272500,
+                "materialise_ns": 12187,
+                "measure_ns": 72604,
+                "relayout_ns": 183958,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1297708,
+                "upload_ns": 19115,
+                "acquire_ns": 80365,
+                "encode_ns": 1514219,
+                "queue_submit_cpu_ns": 787291,
+                "queue_present_cpu_ns": 1314166,
+                "frame_ns": 5051771
+              }
+            },
+            {
+              "cpuMs": 14.768382,
+              "startMs": 307,
+              "phases": {
+                "revision": 6,
+                "update_ns": 249584,
+                "materialise_ns": 10625,
+                "measure_ns": 67968,
+                "relayout_ns": 173229,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1411355,
+                "upload_ns": 24688,
+                "acquire_ns": 79427,
+                "encode_ns": 1432031,
+                "queue_submit_cpu_ns": 822968,
+                "queue_present_cpu_ns": 1384375,
+                "frame_ns": 5194271
+              }
+            },
+            {
+              "cpuMs": 11.782967,
+              "startMs": 315,
+              "phases": {
+                "revision": 6,
+                "update_ns": 125573,
+                "materialise_ns": 5313,
+                "measure_ns": 29895,
+                "relayout_ns": 76979,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1352239,
+                "upload_ns": 19219,
+                "acquire_ns": 80782,
+                "encode_ns": 1604583,
+                "queue_submit_cpu_ns": 808021,
+                "queue_present_cpu_ns": 1437813,
+                "frame_ns": 5339583
+              }
+            },
+            {
+              "cpuMs": 14.692604,
+              "startMs": 324,
+              "phases": {
+                "revision": 6,
+                "update_ns": 259896,
+                "materialise_ns": 9792,
+                "measure_ns": 72709,
+                "relayout_ns": 186094,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1358125,
+                "upload_ns": 19947,
+                "acquire_ns": 74791,
+                "encode_ns": 1433698,
+                "queue_submit_cpu_ns": 797031,
+                "queue_present_cpu_ns": 1297344,
+                "frame_ns": 5020312
+              }
+            },
+            {
+              "cpuMs": 14.473175,
+              "startMs": 309,
+              "phases": {
+                "revision": 6,
+                "update_ns": 241927,
+                "materialise_ns": 9739,
+                "measure_ns": 67085,
+                "relayout_ns": 170209,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1274375,
+                "upload_ns": 20052,
+                "acquire_ns": 72344,
+                "encode_ns": 1640000,
+                "queue_submit_cpu_ns": 793385,
+                "queue_present_cpu_ns": 1340208,
+                "frame_ns": 5184792
+              }
+            },
+            {
+              "cpuMs": 12.301511,
+              "startMs": 329,
+              "phases": {
+                "revision": 6,
+                "update_ns": 286354,
+                "materialise_ns": 10677,
+                "measure_ns": 90885,
+                "relayout_ns": 210781,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 885886,
+                "upload_ns": 10573,
+                "acquire_ns": 61302,
+                "encode_ns": 1089115,
+                "queue_submit_cpu_ns": 502500,
+                "queue_present_cpu_ns": 863750,
+                "frame_ns": 3433490
+              }
+            },
+            {
+              "cpuMs": 12.828545,
+              "startMs": 353,
+              "phases": {
+                "revision": 6,
+                "update_ns": 268333,
+                "materialise_ns": 11979,
+                "measure_ns": 72655,
+                "relayout_ns": 182604,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1262396,
+                "upload_ns": 18854,
+                "acquire_ns": 68541,
+                "encode_ns": 1360573,
+                "queue_submit_cpu_ns": 746355,
+                "queue_present_cpu_ns": 1185469,
+                "frame_ns": 4680052
+              }
+            },
+            {
+              "cpuMs": 12.537917,
+              "startMs": 312,
+              "phases": {
+                "revision": 6,
+                "update_ns": 133750,
+                "materialise_ns": 7396,
+                "measure_ns": 29793,
+                "relayout_ns": 77917,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1301406,
+                "upload_ns": 16823,
+                "acquire_ns": 79896,
+                "encode_ns": 1575781,
+                "queue_submit_cpu_ns": 849740,
+                "queue_present_cpu_ns": 1332032,
+                "frame_ns": 5187396
+              }
+            },
+            {
+              "cpuMs": 13.834582,
+              "startMs": 340,
+              "phases": {
+                "revision": 6,
+                "update_ns": 182292,
+                "materialise_ns": 8333,
+                "measure_ns": 61302,
+                "relayout_ns": 117343,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1349740,
+                "upload_ns": 22656,
+                "acquire_ns": 72031,
+                "encode_ns": 1499896,
+                "queue_submit_cpu_ns": 790833,
+                "queue_present_cpu_ns": 1356250,
+                "frame_ns": 5127864
+              }
+            },
+            {
+              "cpuMs": 9.889323,
+              "startMs": 334,
+              "phases": {
+                "revision": 6,
+                "update_ns": 240938,
+                "materialise_ns": 9688,
+                "measure_ns": 66717,
+                "relayout_ns": 169792,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 697135,
+                "upload_ns": 9687,
+                "acquire_ns": 50000,
+                "encode_ns": 849635,
+                "queue_submit_cpu_ns": 450417,
+                "queue_present_cpu_ns": 854166,
+                "frame_ns": 2929010
+              }
+            },
+            {
+              "cpuMs": 10.919116,
+              "startMs": 329,
+              "phases": {
+                "revision": 6,
+                "update_ns": 247500,
+                "materialise_ns": 9792,
+                "measure_ns": 69323,
+                "relayout_ns": 174427,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 736250,
+                "upload_ns": 8906,
+                "acquire_ns": 48438,
+                "encode_ns": 855573,
+                "queue_submit_cpu_ns": 461875,
+                "queue_present_cpu_ns": 690834,
+                "frame_ns": 2818906
+              }
+            },
+            {
+              "cpuMs": 11.051616,
+              "startMs": 292,
+              "phases": {
+                "revision": 6,
+                "update_ns": 244687,
+                "materialise_ns": 10573,
+                "measure_ns": 68698,
+                "relayout_ns": 171510,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1039270,
+                "upload_ns": 12708,
+                "acquire_ns": 65730,
+                "encode_ns": 934791,
+                "queue_submit_cpu_ns": 500469,
+                "queue_present_cpu_ns": 808333,
+                "frame_ns": 3402343
+              }
+            },
+            {
+              "cpuMs": 12.95604,
+              "startMs": 354,
+              "phases": {
+                "revision": 6,
+                "update_ns": 345000,
+                "materialise_ns": 10260,
+                "measure_ns": 142657,
+                "relayout_ns": 265416,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1447552,
+                "upload_ns": 24115,
+                "acquire_ns": 82344,
+                "encode_ns": 1554427,
+                "queue_submit_cpu_ns": 834167,
+                "queue_present_cpu_ns": 1413333,
+                "frame_ns": 5401979
+              }
+            },
+            {
+              "cpuMs": 12.006457,
+              "startMs": 306,
+              "phases": {
+                "revision": 6,
+                "update_ns": 226146,
+                "materialise_ns": 7605,
+                "measure_ns": 75261,
+                "relayout_ns": 128021,
+                "nodes_measured": 8,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1286042,
+                "upload_ns": 22760,
+                "acquire_ns": 76615,
+                "encode_ns": 1535261,
+                "queue_submit_cpu_ns": 815573,
+                "queue_present_cpu_ns": 1284740,
+                "frame_ns": 5068229
+              }
+            }
+          ],
+          "cpuMeanMs": 13.0813458,
+          "cpuMedianMs": 12.95604,
+          "cpuP95Ms": 15.699426,
+          "startMedianMs": 329,
+          "phases": {
+            "revision": {
+              "mean": 6,
+              "median": 6,
+              "p95": 6
+            },
+            "update_ns": {
+              "mean": 242562.52,
+              "median": 253697,
+              "p95": 324322
+            },
+            "materialise_ns": {
+              "mean": 10304.16,
+              "median": 10573,
+              "p95": 13594
+            },
+            "measure_ns": {
+              "mean": 69227.12,
+              "median": 71564,
+              "p95": 109271
+            },
+            "relayout_ns": {
+              "mean": 165360.32,
+              "median": 175781,
+              "p95": 229323
+            },
+            "nodes_measured": {
+              "mean": 8,
+              "median": 8,
+              "p95": 8
+            },
+            "full_rebuilds": {
+              "mean": 0,
+              "median": 0,
+              "p95": 0
+            },
+            "incremental_rebuilds": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "prepare_ns": {
+              "mean": 1217789.64,
+              "median": 1301406,
+              "p95": 1489688
+            },
+            "upload_ns": {
+              "mean": 20624.88,
+              "median": 19218,
+              "p95": 39062
+            },
+            "acquire_ns": {
+              "mean": 73497.92,
+              "median": 74791,
+              "p95": 90260
+            },
+            "encode_ns": {
+              "mean": 1330164.56,
+              "median": 1433489,
+              "p95": 1664375
+            },
+            "queue_submit_cpu_ns": {
+              "mean": 716685.44,
+              "median": 787291,
+              "p95": 948854
+            },
+            "queue_present_cpu_ns": {
+              "mean": 1195925.08,
+              "median": 1314166,
+              "p95": 1494375
+            },
+            "frame_ns": {
+              "mean": 4589695.72,
+              "median": 5088073,
+              "p95": 5762292
+            }
+          }
+        },
+        {
+          "name": "Three-state burst",
+          "route": "/burst",
+          "samples": [
+            {
+              "cpuMs": 10.332031,
+              "startMs": 320,
+              "phases": {
+                "revision": 6,
+                "update_ns": 230521,
+                "materialise_ns": 13282,
+                "measure_ns": 81823,
+                "relayout_ns": 161459,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 768958,
+                "upload_ns": 23594,
+                "acquire_ns": 58854,
+                "encode_ns": 972135,
+                "queue_submit_cpu_ns": 486614,
+                "queue_present_cpu_ns": 762552,
+                "frame_ns": 3087864
+              }
+            },
+            {
+              "cpuMs": 12.715726,
+              "startMs": 291,
+              "phases": {
+                "revision": 6,
+                "update_ns": 287396,
+                "materialise_ns": 18334,
+                "measure_ns": 104012,
+                "relayout_ns": 196302,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 771927,
+                "upload_ns": 23645,
+                "acquire_ns": 63802,
+                "encode_ns": 971979,
+                "queue_submit_cpu_ns": 553334,
+                "queue_present_cpu_ns": 878021,
+                "frame_ns": 3279062
+              }
+            },
+            {
+              "cpuMs": 10.55734,
+              "startMs": 301,
+              "phases": {
+                "revision": 6,
+                "update_ns": 117917,
+                "materialise_ns": 10521,
+                "measure_ns": 32656,
+                "relayout_ns": 71510,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1287968,
+                "upload_ns": 44323,
+                "acquire_ns": 87291,
+                "encode_ns": 1577395,
+                "queue_submit_cpu_ns": 940104,
+                "queue_present_cpu_ns": 1466510,
+                "frame_ns": 5431198
+              }
+            },
+            {
+              "cpuMs": 10.798803,
+              "startMs": 339,
+              "phases": {
+                "revision": 6,
+                "update_ns": 238386,
+                "materialise_ns": 14791,
+                "measure_ns": 82709,
+                "relayout_ns": 164219,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 796823,
+                "upload_ns": 21562,
+                "acquire_ns": 65625,
+                "encode_ns": 844635,
+                "queue_submit_cpu_ns": 503282,
+                "queue_present_cpu_ns": 876666,
+                "frame_ns": 3123958
+              }
+            },
+            {
+              "cpuMs": 15.15625,
+              "startMs": 337,
+              "phases": {
+                "revision": 6,
+                "update_ns": 242969,
+                "materialise_ns": 15468,
+                "measure_ns": 83178,
+                "relayout_ns": 166928,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1348593,
+                "upload_ns": 41406,
+                "acquire_ns": 90417,
+                "encode_ns": 1816250,
+                "queue_submit_cpu_ns": 815885,
+                "queue_present_cpu_ns": 1431562,
+                "frame_ns": 5582552
+              }
+            },
+            {
+              "cpuMs": 15.208384,
+              "startMs": 328,
+              "phases": {
+                "revision": 6,
+                "update_ns": 374427,
+                "materialise_ns": 17760,
+                "measure_ns": 187916,
+                "relayout_ns": 283229,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1228594,
+                "upload_ns": 47344,
+                "acquire_ns": 83438,
+                "encode_ns": 1416823,
+                "queue_submit_cpu_ns": 731875,
+                "queue_present_cpu_ns": 1281094,
+                "frame_ns": 4828802
+              }
+            },
+            {
+              "cpuMs": 14.785726,
+              "startMs": 343,
+              "phases": {
+                "revision": 6,
+                "update_ns": 263073,
+                "materialise_ns": 17552,
+                "measure_ns": 86354,
+                "relayout_ns": 176666,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1147292,
+                "upload_ns": 37083,
+                "acquire_ns": 75729,
+                "encode_ns": 1462813,
+                "queue_submit_cpu_ns": 744010,
+                "queue_present_cpu_ns": 1365208,
+                "frame_ns": 4862396
+              }
+            },
+            {
+              "cpuMs": 12.803696,
+              "startMs": 334,
+              "phases": {
+                "revision": 6,
+                "update_ns": 234739,
+                "materialise_ns": 14062,
+                "measure_ns": 81302,
+                "relayout_ns": 162657,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1123750,
+                "upload_ns": 44791,
+                "acquire_ns": 64739,
+                "encode_ns": 1360364,
+                "queue_submit_cpu_ns": 697135,
+                "queue_present_cpu_ns": 1042708,
+                "frame_ns": 4363386
+              }
+            },
+            {
+              "cpuMs": 15.066044,
+              "startMs": 293,
+              "phases": {
+                "revision": 6,
+                "update_ns": 271615,
+                "materialise_ns": 18959,
+                "measure_ns": 87083,
+                "relayout_ns": 178698,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1527604,
+                "upload_ns": 53906,
+                "acquire_ns": 117708,
+                "encode_ns": 1803020,
+                "queue_submit_cpu_ns": 983802,
+                "queue_present_cpu_ns": 1690105,
+                "frame_ns": 6211354
+              }
+            },
+            {
+              "cpuMs": 13.018757,
+              "startMs": 303,
+              "phases": {
+                "revision": 6,
+                "update_ns": 258802,
+                "materialise_ns": 16459,
+                "measure_ns": 86198,
+                "relayout_ns": 173438,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 880417,
+                "upload_ns": 25156,
+                "acquire_ns": 62500,
+                "encode_ns": 928125,
+                "queue_submit_cpu_ns": 503333,
+                "queue_present_cpu_ns": 867136,
+                "frame_ns": 3282083
+              }
+            },
+            {
+              "cpuMs": 14.38198,
+              "startMs": 320,
+              "phases": {
+                "revision": 6,
+                "update_ns": 257604,
+                "materialise_ns": 16198,
+                "measure_ns": 84948,
+                "relayout_ns": 172031,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1231354,
+                "upload_ns": 69948,
+                "acquire_ns": 80104,
+                "encode_ns": 1423386,
+                "queue_submit_cpu_ns": 762291,
+                "queue_present_cpu_ns": 1335625,
+                "frame_ns": 4937187
+              }
+            },
+            {
+              "cpuMs": 14.537085,
+              "startMs": 311,
+              "phases": {
+                "revision": 6,
+                "update_ns": 239479,
+                "materialise_ns": 14375,
+                "measure_ns": 82187,
+                "relayout_ns": 165364,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1290938,
+                "upload_ns": 44688,
+                "acquire_ns": 77448,
+                "encode_ns": 1386979,
+                "queue_submit_cpu_ns": 789479,
+                "queue_present_cpu_ns": 1472969,
+                "frame_ns": 5098438
+              }
+            },
+            {
+              "cpuMs": 14.475783,
+              "startMs": 346,
+              "phases": {
+                "revision": 6,
+                "update_ns": 263542,
+                "materialise_ns": 17291,
+                "measure_ns": 88282,
+                "relayout_ns": 177083,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1390157,
+                "upload_ns": 39948,
+                "acquire_ns": 83958,
+                "encode_ns": 1345625,
+                "queue_submit_cpu_ns": 811563,
+                "queue_present_cpu_ns": 1374323,
+                "frame_ns": 5077864
+              }
+            },
+            {
+              "cpuMs": 14.451097,
+              "startMs": 330,
+              "phases": {
+                "revision": 6,
+                "update_ns": 268593,
+                "materialise_ns": 15000,
+                "measure_ns": 86512,
+                "relayout_ns": 171406,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1410989,
+                "upload_ns": 50365,
+                "acquire_ns": 93177,
+                "encode_ns": 1573802,
+                "queue_submit_cpu_ns": 841718,
+                "queue_present_cpu_ns": 1433125,
+                "frame_ns": 5442240
+              }
+            },
+            {
+              "cpuMs": 12.451509,
+              "startMs": 330,
+              "phases": {
+                "revision": 6,
+                "update_ns": 260261,
+                "materialise_ns": 16770,
+                "measure_ns": 85729,
+                "relayout_ns": 175104,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1132396,
+                "upload_ns": 24791,
+                "acquire_ns": 81354,
+                "encode_ns": 1379010,
+                "queue_submit_cpu_ns": 600885,
+                "queue_present_cpu_ns": 783229,
+                "frame_ns": 4022761
+              }
+            },
+            {
+              "cpuMs": 13.283698,
+              "startMs": 317,
+              "phases": {
+                "revision": 6,
+                "update_ns": 423125,
+                "materialise_ns": 16979,
+                "measure_ns": 88386,
+                "relayout_ns": 332292,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 866459,
+                "upload_ns": 26511,
+                "acquire_ns": 74584,
+                "encode_ns": 1209010,
+                "queue_submit_cpu_ns": 517291,
+                "queue_present_cpu_ns": 847604,
+                "frame_ns": 3580208
+              }
+            },
+            {
+              "cpuMs": 15.031719,
+              "startMs": 307,
+              "phases": {
+                "revision": 6,
+                "update_ns": 258490,
+                "materialise_ns": 16719,
+                "measure_ns": 88698,
+                "relayout_ns": 180104,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1363698,
+                "upload_ns": 46354,
+                "acquire_ns": 104844,
+                "encode_ns": 1764896,
+                "queue_submit_cpu_ns": 911250,
+                "queue_present_cpu_ns": 1480521,
+                "frame_ns": 5710989
+              }
+            },
+            {
+              "cpuMs": 12.606719,
+              "startMs": 311,
+              "phases": {
+                "revision": 6,
+                "update_ns": 261094,
+                "materialise_ns": 14687,
+                "measure_ns": 96301,
+                "relayout_ns": 187031,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 882656,
+                "upload_ns": 34323,
+                "acquire_ns": 67396,
+                "encode_ns": 980781,
+                "queue_submit_cpu_ns": 491771,
+                "queue_present_cpu_ns": 827969,
+                "frame_ns": 3301458
+              }
+            },
+            {
+              "cpuMs": 13.09698,
+              "startMs": 346,
+              "phases": {
+                "revision": 6,
+                "update_ns": 242708,
+                "materialise_ns": 14166,
+                "measure_ns": 83646,
+                "relayout_ns": 166667,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1234688,
+                "upload_ns": 40833,
+                "acquire_ns": 80000,
+                "encode_ns": 1636615,
+                "queue_submit_cpu_ns": 794062,
+                "queue_present_cpu_ns": 1313177,
+                "frame_ns": 5135208
+              }
+            },
+            {
+              "cpuMs": 15.035054,
+              "startMs": 333,
+              "phases": {
+                "revision": 6,
+                "update_ns": 260104,
+                "materialise_ns": 16250,
+                "measure_ns": 86199,
+                "relayout_ns": 174844,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1181979,
+                "upload_ns": 35052,
+                "acquire_ns": 76042,
+                "encode_ns": 1698698,
+                "queue_submit_cpu_ns": 857448,
+                "queue_present_cpu_ns": 1417864,
+                "frame_ns": 5297552
+              }
+            },
+            {
+              "cpuMs": 14.536613,
+              "startMs": 337,
+              "phases": {
+                "revision": 6,
+                "update_ns": 314583,
+                "materialise_ns": 14114,
+                "measure_ns": 83906,
+                "relayout_ns": 238177,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1166562,
+                "upload_ns": 42760,
+                "acquire_ns": 76771,
+                "encode_ns": 1566094,
+                "queue_submit_cpu_ns": 772032,
+                "queue_present_cpu_ns": 1274115,
+                "frame_ns": 4937865
+              }
+            },
+            {
+              "cpuMs": 15.357394,
+              "startMs": 321,
+              "phases": {
+                "revision": 6,
+                "update_ns": 274895,
+                "materialise_ns": 14844,
+                "measure_ns": 107500,
+                "relayout_ns": 202032,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1402968,
+                "upload_ns": 38125,
+                "acquire_ns": 116354,
+                "encode_ns": 1558438,
+                "queue_submit_cpu_ns": 799583,
+                "queue_present_cpu_ns": 1504114,
+                "frame_ns": 5451250
+              }
+            },
+            {
+              "cpuMs": 12.415105,
+              "startMs": 335,
+              "phases": {
+                "revision": 6,
+                "update_ns": 116614,
+                "materialise_ns": 9115,
+                "measure_ns": 32968,
+                "relayout_ns": 70989,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1546458,
+                "upload_ns": 43073,
+                "acquire_ns": 88073,
+                "encode_ns": 1601979,
+                "queue_submit_cpu_ns": 960312,
+                "queue_present_cpu_ns": 1655000,
+                "frame_ns": 5933854
+              }
+            },
+            {
+              "cpuMs": 11.060995,
+              "startMs": 299,
+              "phases": {
+                "revision": 6,
+                "update_ns": 150938,
+                "materialise_ns": 12239,
+                "measure_ns": 38906,
+                "relayout_ns": 87135,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1125000,
+                "upload_ns": 37552,
+                "acquire_ns": 90105,
+                "encode_ns": 1484167,
+                "queue_submit_cpu_ns": 617032,
+                "queue_present_cpu_ns": 1138437,
+                "frame_ns": 4528073
+              }
+            },
+            {
+              "cpuMs": 12.895622,
+              "startMs": 338,
+              "phases": {
+                "revision": 6,
+                "update_ns": 120886,
+                "materialise_ns": 9271,
+                "measure_ns": 33542,
+                "relayout_ns": 72708,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 1356354,
+                "upload_ns": 52812,
+                "acquire_ns": 94115,
+                "encode_ns": 1581146,
+                "queue_submit_cpu_ns": 965208,
+                "queue_present_cpu_ns": 1538906,
+                "frame_ns": 5614688
+              }
+            }
+          ],
+          "cpuMeanMs": 13.442404399999997,
+          "cpuMedianMs": 13.283698,
+          "cpuP95Ms": 15.208384,
+          "startMedianMs": 328,
+          "phases": {
+            "revision": {
+              "mean": 6,
+              "median": 6,
+              "p95": 6
+            },
+            "update_ns": {
+              "mean": 249310.44,
+              "median": 258802,
+              "p95": 374427
+            },
+            "materialise_ns": {
+              "mean": 15008.24,
+              "median": 15000,
+              "p95": 18334
+            },
+            "measure_ns": {
+              "mean": 83237.64,
+              "median": 85729,
+              "p95": 107500
+            },
+            "relayout_ns": {
+              "mean": 172322.92,
+              "median": 173438,
+              "p95": 283229
+            },
+            "nodes_measured": {
+              "mean": 5,
+              "median": 5,
+              "p95": 5
+            },
+            "full_rebuilds": {
+              "mean": 0,
+              "median": 0,
+              "p95": 0
+            },
+            "incremental_rebuilds": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "prepare_ns": {
+              "mean": 1178583.28,
+              "median": 1228594,
+              "p95": 1527604
+            },
+            "upload_ns": {
+              "mean": 39597.8,
+              "median": 40833,
+              "p95": 53906
+            },
+            "acquire_ns": {
+              "mean": 82177.12,
+              "median": 80104,
+              "p95": 116354
+            },
+            "encode_ns": {
+              "mean": 1413766.6,
+              "median": 1462813,
+              "p95": 1803020
+            },
+            "queue_submit_cpu_ns": {
+              "mean": 738051.96,
+              "median": 772032,
+              "p95": 965208
+            },
+            "queue_present_cpu_ns": {
+              "mean": 1242341.6,
+              "median": 1335625,
+              "p95": 1655000
+            },
+            "frame_ns": {
+              "mean": 4724891.6,
+              "median": 4937865,
+              "p95": 5933854
+            }
+          }
+        },
+        {
+          "name": "Emoji cold path",
+          "route": "/emoji",
+          "samples": [
+            {
+              "cpuMs": 21.114065,
+              "startMs": 347,
+              "phases": {
+                "revision": 6,
+                "update_ns": 308334,
+                "materialise_ns": 15937,
+                "measure_ns": 110938,
+                "relayout_ns": 220677,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 95782,
+                "upload_ns": 27813,
+                "acquire_ns": 60105,
+                "encode_ns": 1349583,
+                "queue_submit_cpu_ns": 622032,
+                "queue_present_cpu_ns": 968542,
+                "frame_ns": 3148750
+              }
+            },
+            {
+              "cpuMs": 28.869948,
+              "startMs": 302,
+              "phases": {
+                "revision": 6,
+                "update_ns": 198334,
+                "materialise_ns": 13750,
+                "measure_ns": 57395,
+                "relayout_ns": 128073,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 131354,
+                "upload_ns": 16146,
+                "acquire_ns": 79114,
+                "encode_ns": 1747812,
+                "queue_submit_cpu_ns": 913854,
+                "queue_present_cpu_ns": 1375261,
+                "frame_ns": 4294635
+              }
+            },
+            {
+              "cpuMs": 18.020364,
+              "startMs": 335,
+              "phases": {
+                "revision": 6,
+                "update_ns": 205886,
+                "materialise_ns": 14635,
+                "measure_ns": 57292,
+                "relayout_ns": 130729,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 81302,
+                "upload_ns": 9740,
+                "acquire_ns": 54323,
+                "encode_ns": 848282,
+                "queue_submit_cpu_ns": 498281,
+                "queue_present_cpu_ns": 748125,
+                "frame_ns": 2255052
+              }
+            },
+            {
+              "cpuMs": 29.264058,
+              "startMs": 301,
+              "phases": {
+                "revision": 6,
+                "update_ns": 220937,
+                "materialise_ns": 15886,
+                "measure_ns": 60052,
+                "relayout_ns": 135937,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 145833,
+                "upload_ns": 16719,
+                "acquire_ns": 88855,
+                "encode_ns": 2019062,
+                "queue_submit_cpu_ns": 919739,
+                "queue_present_cpu_ns": 1220833,
+                "frame_ns": 4456302
+              }
+            },
+            {
+              "cpuMs": 24.012081,
+              "startMs": 299,
+              "phases": {
+                "revision": 6,
+                "update_ns": 116250,
+                "materialise_ns": 10365,
+                "measure_ns": 25572,
+                "relayout_ns": 64167,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 131459,
+                "upload_ns": 16510,
+                "acquire_ns": 89792,
+                "encode_ns": 1652813,
+                "queue_submit_cpu_ns": 787864,
+                "queue_present_cpu_ns": 1363958,
+                "frame_ns": 4073333
+              }
+            },
+            {
+              "cpuMs": 27.224114,
+              "startMs": 322,
+              "phases": {
+                "revision": 6,
+                "update_ns": 195572,
+                "materialise_ns": 13646,
+                "measure_ns": 55573,
+                "relayout_ns": 126510,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 136511,
+                "upload_ns": 17813,
+                "acquire_ns": 79844,
+                "encode_ns": 1605677,
+                "queue_submit_cpu_ns": 813229,
+                "queue_present_cpu_ns": 1268073,
+                "frame_ns": 3958386
+              }
+            },
+            {
+              "cpuMs": 28.913279,
+              "startMs": 327,
+              "phases": {
+                "revision": 6,
+                "update_ns": 110156,
+                "materialise_ns": 9063,
+                "measure_ns": 25887,
+                "relayout_ns": 62448,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 169635,
+                "upload_ns": 19270,
+                "acquire_ns": 98958,
+                "encode_ns": 2010052,
+                "queue_submit_cpu_ns": 1404479,
+                "queue_present_cpu_ns": 1709687,
+                "frame_ns": 5455625
+              }
+            },
+            {
+              "cpuMs": 30.133642,
+              "startMs": 343,
+              "phases": {
+                "revision": 6,
+                "update_ns": 223542,
+                "materialise_ns": 16406,
+                "measure_ns": 58751,
+                "relayout_ns": 137865,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 130521,
+                "upload_ns": 16041,
+                "acquire_ns": 75104,
+                "encode_ns": 1558125,
+                "queue_submit_cpu_ns": 1061041,
+                "queue_present_cpu_ns": 1360365,
+                "frame_ns": 4241302
+              }
+            },
+            {
+              "cpuMs": 17.789947,
+              "startMs": 323,
+              "phases": {
+                "revision": 6,
+                "update_ns": 202500,
+                "materialise_ns": 13385,
+                "measure_ns": 56095,
+                "relayout_ns": 128490,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 70937,
+                "upload_ns": 7343,
+                "acquire_ns": 58438,
+                "encode_ns": 1044948,
+                "queue_submit_cpu_ns": 710104,
+                "queue_present_cpu_ns": 735886,
+                "frame_ns": 2642032
+              }
+            },
+            {
+              "cpuMs": 18.274846,
+              "startMs": 308,
+              "phases": {
+                "revision": 6,
+                "update_ns": 213698,
+                "materialise_ns": 13802,
+                "measure_ns": 62186,
+                "relayout_ns": 138542,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 71771,
+                "upload_ns": 7604,
+                "acquire_ns": 51094,
+                "encode_ns": 842188,
+                "queue_submit_cpu_ns": 489896,
+                "queue_present_cpu_ns": 797657,
+                "frame_ns": 2276563
+              }
+            },
+            {
+              "cpuMs": 30.126355,
+              "startMs": 299,
+              "phases": {
+                "revision": 6,
+                "update_ns": 227083,
+                "materialise_ns": 15834,
+                "measure_ns": 62032,
+                "relayout_ns": 140260,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 135573,
+                "upload_ns": 16042,
+                "acquire_ns": 74948,
+                "encode_ns": 1662292,
+                "queue_submit_cpu_ns": 980521,
+                "queue_present_cpu_ns": 1609167,
+                "frame_ns": 4516146
+              }
+            },
+            {
+              "cpuMs": 27.927656,
+              "startMs": 299,
+              "phases": {
+                "revision": 6,
+                "update_ns": 192760,
+                "materialise_ns": 13125,
+                "measure_ns": 56094,
+                "relayout_ns": 124270,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 149688,
+                "upload_ns": 20000,
+                "acquire_ns": 88698,
+                "encode_ns": 1956615,
+                "queue_submit_cpu_ns": 952917,
+                "queue_present_cpu_ns": 1470990,
+                "frame_ns": 4675105
+              }
+            },
+            {
+              "cpuMs": 17.625886,
+              "startMs": 320,
+              "phases": {
+                "revision": 6,
+                "update_ns": 204375,
+                "materialise_ns": 13073,
+                "measure_ns": 57969,
+                "relayout_ns": 135208,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 85781,
+                "upload_ns": 8646,
+                "acquire_ns": 50937,
+                "encode_ns": 931979,
+                "queue_submit_cpu_ns": 516666,
+                "queue_present_cpu_ns": 780886,
+                "frame_ns": 2390261
+              }
+            },
+            {
+              "cpuMs": 28.320783,
+              "startMs": 339,
+              "phases": {
+                "revision": 6,
+                "update_ns": 107605,
+                "materialise_ns": 9636,
+                "measure_ns": 26095,
+                "relayout_ns": 60834,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 136771,
+                "upload_ns": 17447,
+                "acquire_ns": 81927,
+                "encode_ns": 1654740,
+                "queue_submit_cpu_ns": 1020312,
+                "queue_present_cpu_ns": 1519688,
+                "frame_ns": 4467865
+              }
+            },
+            {
+              "cpuMs": 28.698697,
+              "startMs": 359,
+              "phases": {
+                "revision": 6,
+                "update_ns": 229219,
+                "materialise_ns": 16198,
+                "measure_ns": 61041,
+                "relayout_ns": 140834,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 159636,
+                "upload_ns": 17708,
+                "acquire_ns": 91927,
+                "encode_ns": 1846979,
+                "queue_submit_cpu_ns": 1317552,
+                "queue_present_cpu_ns": 1105937,
+                "frame_ns": 4571146
+              }
+            },
+            {
+              "cpuMs": 28.402812,
+              "startMs": 301,
+              "phases": {
+                "revision": 6,
+                "update_ns": 191198,
+                "materialise_ns": 12552,
+                "measure_ns": 58229,
+                "relayout_ns": 125156,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 171406,
+                "upload_ns": 19479,
+                "acquire_ns": 103073,
+                "encode_ns": 2128802,
+                "queue_submit_cpu_ns": 1181146,
+                "queue_present_cpu_ns": 1645417,
+                "frame_ns": 5297865
+              }
+            },
+            {
+              "cpuMs": 28.401456,
+              "startMs": 303,
+              "phases": {
+                "revision": 6,
+                "update_ns": 185625,
+                "materialise_ns": 11771,
+                "measure_ns": 54741,
+                "relayout_ns": 121302,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 155209,
+                "upload_ns": 18906,
+                "acquire_ns": 88177,
+                "encode_ns": 1802239,
+                "queue_submit_cpu_ns": 1268646,
+                "queue_present_cpu_ns": 1394063,
+                "frame_ns": 4771822
+              }
+            },
+            {
+              "cpuMs": 18.002606,
+              "startMs": 348,
+              "phases": {
+                "revision": 6,
+                "update_ns": 293541,
+                "materialise_ns": 15521,
+                "measure_ns": 58959,
+                "relayout_ns": 207812,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 78541,
+                "upload_ns": 8542,
+                "acquire_ns": 49948,
+                "encode_ns": 925781,
+                "queue_submit_cpu_ns": 502031,
+                "queue_present_cpu_ns": 779948,
+                "frame_ns": 2360938
+              }
+            },
+            {
+              "cpuMs": 29.117235,
+              "startMs": 333,
+              "phases": {
+                "revision": 6,
+                "update_ns": 203437,
+                "materialise_ns": 14271,
+                "measure_ns": 56666,
+                "relayout_ns": 129271,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 148385,
+                "upload_ns": 19427,
+                "acquire_ns": 91823,
+                "encode_ns": 1766718,
+                "queue_submit_cpu_ns": 991406,
+                "queue_present_cpu_ns": 1287553,
+                "frame_ns": 4350000
+              }
+            },
+            {
+              "cpuMs": 31.074896,
+              "startMs": 346,
+              "phases": {
+                "revision": 6,
+                "update_ns": 225416,
+                "materialise_ns": 15833,
+                "measure_ns": 60363,
+                "relayout_ns": 139895,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 171979,
+                "upload_ns": 20104,
+                "acquire_ns": 103282,
+                "encode_ns": 2011458,
+                "queue_submit_cpu_ns": 1206406,
+                "queue_present_cpu_ns": 1953333,
+                "frame_ns": 5515833
+              }
+            },
+            {
+              "cpuMs": 18.578434,
+              "startMs": 317,
+              "phases": {
+                "revision": 6,
+                "update_ns": 198542,
+                "materialise_ns": 14115,
+                "measure_ns": 57031,
+                "relayout_ns": 128021,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 89375,
+                "upload_ns": 10052,
+                "acquire_ns": 58698,
+                "encode_ns": 1021511,
+                "queue_submit_cpu_ns": 647396,
+                "queue_present_cpu_ns": 1029844,
+                "frame_ns": 2878854
+              }
+            },
+            {
+              "cpuMs": 26.875362,
+              "startMs": 349,
+              "phases": {
+                "revision": 6,
+                "update_ns": 219948,
+                "materialise_ns": 16562,
+                "measure_ns": 58594,
+                "relayout_ns": 135052,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 139740,
+                "upload_ns": 16719,
+                "acquire_ns": 77344,
+                "encode_ns": 1743750,
+                "queue_submit_cpu_ns": 893125,
+                "queue_present_cpu_ns": 1235781,
+                "frame_ns": 4144948
+              }
+            },
+            {
+              "cpuMs": 26.382549,
+              "startMs": 327,
+              "phases": {
+                "revision": 6,
+                "update_ns": 109011,
+                "materialise_ns": 8542,
+                "measure_ns": 26302,
+                "relayout_ns": 62708,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 162187,
+                "upload_ns": 22709,
+                "acquire_ns": 104323,
+                "encode_ns": 1953333,
+                "queue_submit_cpu_ns": 1463646,
+                "queue_present_cpu_ns": 1512865,
+                "frame_ns": 5261666
+              }
+            },
+            {
+              "cpuMs": 27.984528,
+              "startMs": 317,
+              "phases": {
+                "revision": 6,
+                "update_ns": 226823,
+                "materialise_ns": 16042,
+                "measure_ns": 60208,
+                "relayout_ns": 141771,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 133750,
+                "upload_ns": 18750,
+                "acquire_ns": 71354,
+                "encode_ns": 1932291,
+                "queue_submit_cpu_ns": 1104271,
+                "queue_present_cpu_ns": 1493177,
+                "frame_ns": 4796406
+              }
+            },
+            {
+              "cpuMs": 18.715054,
+              "startMs": 328,
+              "phases": {
+                "revision": 6,
+                "update_ns": 225208,
+                "materialise_ns": 15730,
+                "measure_ns": 61458,
+                "relayout_ns": 139740,
+                "nodes_measured": 5,
+                "full_rebuilds": 0,
+                "incremental_rebuilds": 1,
+                "prepare_ns": 91771,
+                "upload_ns": 10417,
+                "acquire_ns": 60156,
+                "encode_ns": 1231667,
+                "queue_submit_cpu_ns": 625781,
+                "queue_present_cpu_ns": 990313,
+                "frame_ns": 3028802
+              }
+            }
+          ],
+          "cpuMeanMs": 25.19402612,
+          "cpuMedianMs": 27.927656,
+          "cpuP95Ms": 30.133642,
+          "startMedianMs": 323,
+          "phases": {
+            "revision": {
+              "mean": 6,
+              "median": 6,
+              "p95": 6
+            },
+            "update_ns": {
+              "mean": 201400,
+              "median": 204375,
+              "p95": 293541
+            },
+            "materialise_ns": {
+              "mean": 13827.2,
+              "median": 14115,
+              "p95": 16406
+            },
+            "measure_ns": {
+              "mean": 55420.92,
+              "median": 57969,
+              "p95": 62186
+            },
+            "relayout_ns": {
+              "mean": 128222.88,
+              "median": 130729,
+              "p95": 207812
+            },
+            "nodes_measured": {
+              "mean": 5,
+              "median": 5,
+              "p95": 5
+            },
+            "full_rebuilds": {
+              "mean": 0,
+              "median": 0,
+              "p95": 0
+            },
+            "incremental_rebuilds": {
+              "mean": 1,
+              "median": 1,
+              "p95": 1
+            },
+            "prepare_ns": {
+              "mean": 126995.88,
+              "median": 135573,
+              "p95": 171406
+            },
+            "upload_ns": {
+              "mean": 15997.88,
+              "median": 16719,
+              "p95": 22709
+            },
+            "acquire_ns": {
+              "mean": 77289.68,
+              "median": 79114,
+              "p95": 103282
+            },
+            "encode_ns": {
+              "mean": 1569947.88,
+              "median": 1662292,
+              "p95": 2019062
+            },
+            "queue_submit_cpu_ns": {
+              "mean": 915693.64,
+              "median": 919739,
+              "p95": 1404479
+            },
+            "queue_present_cpu_ns": {
+              "mean": 1254293.96,
+              "median": 1287553,
+              "p95": 1709687
+            },
+            "frame_ns": {
+              "mean": 3993185.48,
+              "median": 4294635,
+              "p95": 5455625
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
