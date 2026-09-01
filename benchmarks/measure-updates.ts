@@ -230,9 +230,22 @@ for (const packageName of packagesToStop) {
 shell("input keyevent 224");
 sleep(300);
 shell("input swipe 540 1150 540 300 300");
-sleep(300);
-if (!shell("dumpsys power").includes("mWakefulness=Awake")) {
-  throw new Error("Device did not remain awake after the unlock gesture");
+const unlockDeadline = performance.now() + 5_000;
+while (performance.now() < unlockDeadline) {
+  const power = shell("dumpsys power");
+  const windows = shell("dumpsys window");
+  const lumaHasFocus = /mCurrentFocus=.*com\.vandam\.luma/.test(windows);
+  const lumaObscures = /mObscuringWindow=.*Luma Unlock Gate/.test(windows);
+  if (power.includes("mWakefulness=Awake") && !lumaHasFocus && !lumaObscures) break;
+  sleep(100);
+}
+const unlockedWindows = shell("dumpsys window");
+if (
+  !shell("dumpsys power").includes("mWakefulness=Awake") ||
+  /mCurrentFocus=.*com\.vandam\.luma/.test(unlockedWindows) ||
+  /mObscuringWindow=.*Luma Unlock Gate/.test(unlockedWindows)
+) {
+  throw new Error("The Luma unlock gate remained visible after the unlock gesture");
 }
 const startingThermalStatus = thermalStatus();
 if (startingThermalStatus !== 0) {

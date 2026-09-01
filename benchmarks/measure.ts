@@ -207,10 +207,16 @@ function wakeAndUnlock() {
   shell("input keyevent 224");
   sleep(300);
   shell("input swipe 540 1150 540 300 300");
-  sleep(500);
-  if (!shell("dumpsys power").includes("mWakefulness=Awake")) {
-    throw new Error("Device did not remain awake after the unlock gesture");
+  const deadline = performance.now() + 5_000;
+  while (performance.now() < deadline) {
+    const power = shell("dumpsys power");
+    const windows = shell("dumpsys window");
+    const lumaHasFocus = /mCurrentFocus=.*com\.vandam\.luma/.test(windows);
+    const lumaObscures = /mObscuringWindow=.*Luma Unlock Gate/.test(windows);
+    if (power.includes("mWakefulness=Awake") && !lumaHasFocus && !lumaObscures) return;
+    sleep(100);
   }
+  throw new Error("The Luma unlock gate remained visible after the unlock gesture");
 }
 
 function start(app: App): number {
