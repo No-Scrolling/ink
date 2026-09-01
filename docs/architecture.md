@@ -91,7 +91,7 @@ Ink targets portrait Android apps for the Light Phone III on API 34 or later.
 - Public Sans Regular is the bundled text face.
 - Material Symbols are included by reference; unused symbols are omitted.
 - Text is fully opaque. Bold, italic and arbitrary fonts are not supported.
-- Local PNG and HTTPS images are supported.
+- Bundled PNG and JPEG images and remote HTTPS images are supported.
 - The Android splash is blank and black.
 - Launcher artwork is generated from the app name.
 - Apps contain no JavaScript engine and cannot execute arbitrary JavaScript packages.
