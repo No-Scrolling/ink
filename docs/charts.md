@@ -1,6 +1,7 @@
 ---
 title: "Charts"
 description: "Render accessible line, bar, and scatter charts from typed data."
+tag: "Planned"
 ---
 
 `@ink/charts` validates typed data and renders line, bar, and scatter charts with axes, legends, value formatting, and accessible point navigation.

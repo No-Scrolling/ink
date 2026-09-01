@@ -1,6 +1,7 @@
 ---
 title: "Secure store"
 description: "Store small secrets behind opaque handles."
+tag: "Planned"
 ---
 
 `@ink/secure-store` saves credentials and small key material without returning restored secret text to app state.

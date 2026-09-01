@@ -1,6 +1,7 @@
 ---
 title: "Maps"
 description: "Render a native map with camera controls and typed annotations."
+tag: "Planned"
 ---
 
 `@ink/maps` renders an interactive native map. Use a map controller to read and move the camera, and pass markers, circles, or polylines to `MapView`.

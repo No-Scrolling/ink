@@ -1,6 +1,7 @@
 ---
 title: "Build an Open-Meteo module"
 description: "Create a TypeScript-only Ink module for weather forecasts, place search, and air quality."
+tag: "Planned"
 ---
 
 This guide builds `@example/ink-open-meteo`, a source module that uses `@ink/network`. It does not need a native adapter because Ink already provides the required HTTP and cache capabilities.

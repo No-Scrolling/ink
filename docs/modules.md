@@ -1,6 +1,7 @@
 ---
 title: "Third-party modules"
 description: "Install Ink modules that add screens, data sources, and native device capabilities."
+tag: "Planned"
 ---
 
 Ink modules are npm packages compiled into your app. They can provide components, screens, data sources, or native device capabilities without adding a JavaScript runtime.

@@ -1,6 +1,7 @@
 ---
 title: "Files"
 description: "Read, write, import, export, and share app files."
+tag: "Planned"
 ---
 
 `@ink/files` manages app-private files and hands files to or from other apps through opaque `FileHandle` values.

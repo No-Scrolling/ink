@@ -1,6 +1,7 @@
 ---
 title: "Network"
 description: "Read and update typed JSON over HTTPS."
+tag: "Partial"
 ---
 
 `@ink/network` provides typed JSON reads, durable response caching, explicit mutations, and authenticated requests. Ink validates every response against its TypeScript type before it reaches your app.

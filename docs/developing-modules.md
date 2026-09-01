@@ -1,6 +1,7 @@
 ---
 title: "Develop an Ink module"
 description: "Publish reusable TypeScript packages and native Android capabilities for Ink apps."
+tag: "Planned"
 ---
 
 An Ink module is an npm package with an `ink` export. Start with a source module when you can build the capability from existing Ink APIs. Add a native adapter only when you need an Android SDK, platform component, hardware API, or native view.

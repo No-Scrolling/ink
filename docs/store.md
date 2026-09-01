@@ -1,6 +1,7 @@
 ---
 title: "Store"
 description: "Persist typed app values and cache disposable data."
+tag: "Planned"
 ---
 
 `@ink/store` saves non-sensitive typed values across app restarts and keeps bounded cache entries that your app can recreate.

@@ -1,6 +1,7 @@
 ---
 title: "Barcode"
 description: "Scan supported barcodes and generate barcode images."
+tag: "Planned"
 ---
 
 `@ink/barcode` scans barcodes through a native camera view and generates barcode images for display. Scanning uses camera permission from `@ink/camera`; generation does not use the camera.

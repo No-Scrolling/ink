@@ -1,6 +1,7 @@
 ---
 title: "Sensors"
 description: "Read sampled motion, orientation, environmental, and step sensor values."
+tag: "Planned"
 ---
 
 `@ink/sensors` provides rate-limited streams for common device sensors. Streams use portable units and publish only their latest sample.

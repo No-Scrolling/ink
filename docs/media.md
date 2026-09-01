@@ -1,6 +1,7 @@
 ---
 title: "Media"
 description: "Pick, inspect, transform, and present photos and video."
+tag: "Planned"
 ---
 
 `@ink/media` picks photos and video into app-readable files, reads their metadata, creates image variants and video thumbnails, and presents them in a native media view.

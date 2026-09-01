@@ -1,6 +1,7 @@
 ---
 title: "Bluetooth"
 description: "Discover and communicate with Bluetooth Low Energy devices."
+tag: "Planned"
 ---
 
 `@ink/bluetooth` discovers nearby Bluetooth Low Energy devices, connects to one device, and reads, writes, or subscribes to its GATT characteristics through one controller.

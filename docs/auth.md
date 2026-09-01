@@ -1,6 +1,7 @@
 ---
 title: "Auth"
 description: "Sign in through a browser and use an authenticated session."
+tag: "Planned"
 ---
 
 `@ink/auth` runs OAuth and OpenID Connect sign-in for public native clients. It restores and refreshes sessions without exposing access or refresh tokens to app code.

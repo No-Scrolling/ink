@@ -1,6 +1,7 @@
 ---
 title: "Crypto"
 description: "Hash, sign, verify, and generate secure tokens."
+tag: "Planned"
 ---
 
 `@ink/crypto` provides fixed, portable cryptographic operations with stable encodings. Text input uses UTF-8.

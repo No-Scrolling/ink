@@ -1,6 +1,7 @@
 ---
 title: "Reader"
 description: "Present long-form and paginated EPUB, text, and PDF documents."
+tag: "Planned"
 ---
 
 `@ink/reader` opens EPUB, plain-text, and PDF files in a native reading view. It provides document structure, page or scroll navigation, appearance controls, and resumable reading progress.

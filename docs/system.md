@@ -1,6 +1,7 @@
 ---
 title: "System"
 description: "Check device capabilities and open settings, links, the dialler, and email."
+tag: "Planned"
 ---
 
 `@ink/system` checks whether Ink capabilities are available and opens supported settings and apps.

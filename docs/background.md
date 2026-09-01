@@ -1,6 +1,7 @@
 ---
 title: "Background work"
 description: "Run constrained deferred and periodic work with Android JobScheduler."
+tag: "Partial"
 ---
 
 `@ink/background` runs declarative work plans after the app leaves the foreground. Background tasks can fetch typed data and persist a result without running app JavaScript.

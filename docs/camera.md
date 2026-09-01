@@ -1,6 +1,7 @@
 ---
 title: "Camera"
 description: "Request camera access and capture photos or video."
+tag: "Partial"
 ---
 
 `@ink/camera` captures photos and video through a native camera view. The preview uses Ink's standard `Screen` header and fills the remaining content area.
