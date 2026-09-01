@@ -116,7 +116,7 @@ Ink uses Public Sans throughout the app. Emoji use the device's system emoji fon
 
 Set `align` to `"start"`, `"center"`, `"end"`, or `"justify"`. Justification expands only wrapped lines; the final line remains start-aligned.
 
-Buttons, field values, headers, and text inputs stay on one line and use an ellipsis when their content is too wide.
+Buttons, field values, and headers stay on one line and use an ellipsis when their content is too wide.
 
 Core controls are:
 
@@ -150,6 +150,8 @@ const query = state("");
 `action` controls the bottom-right keyboard key and accepts `"search"`, `"return"`, or `"done"`. The emoji keyboard uses the same system emoji as app text and follows the configured LightOS emoji list when LightOS integration is enabled. Apps without `TextInput` do not include the keyboard.
 
 Add `autoFocus` to select an input and open the keyboard when its screen becomes active. It focuses once per screen visit, so dismissing the keyboard does not immediately reopen it.
+
+When the value is wider than the input, it scrolls horizontally to keep the latest characters and cursor visible. A clear button appears at the end of non-empty inputs.
 
 ## Images
 

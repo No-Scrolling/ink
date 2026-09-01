@@ -8,7 +8,8 @@ use ink_app_format as format;
 
 use crate::{
     design::{
-        BUTTON_ICON_SIZE, DEFAULT_ICON_SIZE, HEADER_BACK_ICON_SIZE, TAB_ICON_SIZE, TOGGLE_ICON_SIZE,
+        BUTTON_ICON_SIZE, DEFAULT_ICON_SIZE, HEADER_BACK_ICON_SIZE, TAB_ICON_SIZE,
+        TEXT_INPUT_CLEAR_ICON_SIZE, TOGGLE_ICON_SIZE,
     },
     icons, ir,
     schema::{hash_bytes, state_shape_name},
@@ -128,6 +129,7 @@ impl<'a> Emitter<'a> {
                 state: state_id(*state)?,
                 action: text_input_action(*action),
                 auto_focus: *auto_focus,
+                clear: self.mask("close", TEXT_INPUT_CLEAR_ICON_SIZE, false)?,
             },
             ir::Node::Button {
                 label,

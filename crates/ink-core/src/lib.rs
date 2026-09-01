@@ -26,6 +26,8 @@ const DEFAULT_TEXT_SIZE: f32 = 30.0;
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
 const TEXT_INPUT_HEIGHT: f32 = 38.0;
 const TEXT_INPUT_BOTTOM_PADDING: f32 = 6.0;
+const TEXT_INPUT_CLEAR_ICON_SIZE: f32 = 24.0;
+const TEXT_INPUT_CLEAR_PADDING: f32 = 5.0;
 const CONTROL_LINE_HEIGHT: f32 = 1.0;
 const DEFAULT_ICON_SIZE: f32 = 28.0;
 const BUTTON_HEIGHT: f32 = 40.0;
@@ -962,6 +964,7 @@ enum NodeKind {
         state: StateId,
         action: TextInputAction,
         auto_focus: bool,
+        clear: Mask,
     },
     Button {
         label: Vec<TextPart>,
@@ -1086,6 +1089,7 @@ impl Node {
         state: StateId,
         action: TextInputAction,
         auto_focus: bool,
+        clear: Mask,
     ) -> Self {
         Self {
             identity: NodeIdentity(0),
@@ -1094,6 +1098,7 @@ impl Node {
                 state,
                 action,
                 auto_focus,
+                clear,
             },
         }
     }
@@ -4041,8 +4046,9 @@ impl Engine {
                 placeholder,
                 state,
                 action,
+                clear,
                 ..
-            } => self.layout_text_input(placeholder, *state, *action, rect),
+            } => self.layout_text_input(placeholder, *state, *action, clear, rect),
             NodeKind::Button {
                 label,
                 icon,
@@ -4943,6 +4949,7 @@ impl Engine {
         placeholder: &str,
         state: StateId,
         action: TextInputAction,
+        clear: &Mask,
         rect: Rect,
     ) {
         let value = match self.state.get(state.0) {
@@ -4957,14 +4964,27 @@ impl Engine {
         };
         let text_height = (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0);
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let visible_text = self.ellipsize(text, font_size, rect.width);
+        let clear_button_width = if value.is_empty() {
+            0.0
+        } else {
+            self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE + TEXT_INPUT_CLEAR_PADDING * 2.0)
+        };
+        let cursor_width = if focused { self.scaled(1.0) } else { 0.0 };
+        let text_viewport = Rect {
+            width: (rect.width - clear_button_width - cursor_width).max(0.0),
+            height: text_height,
+            ..rect
+        };
+        let text_width = self.text_width(text, font_size);
+        let overflow = (text_width - text_viewport.width).max(0.0);
         self.scene.text.push(TextRun {
-            text: visible_text.clone(),
+            text: text.to_owned(),
             rect: Rect {
-                height: text_height,
-                ..rect
+                x: text_viewport.x - overflow,
+                width: text_width.max(text_viewport.width),
+                ..text_viewport
             },
-            clip: self.clip,
+            clip: text_viewport.intersection(self.clip),
             font_size,
             colour: Colour::WHITE,
             align: TextAlign::Start,
@@ -4973,12 +4993,12 @@ impl Engine {
         if focused {
             self.scene.text_cursor = Some(Quad {
                 rect: Rect {
-                    x: rect.x + self.text_width(&visible_text, font_size),
+                    x: text_viewport.x + text_width.min(text_viewport.width),
                     y: rect.y + self.scaled(2.0),
-                    width: self.scaled(1.0),
+                    width: cursor_width,
                     height: (text_height - self.scaled(4.0)).max(0.0),
                 },
-                clip: self.clip,
+                clip: rect.intersection(self.clip),
                 colour: Colour::WHITE,
                 scrolling: self.scrolling,
             });
@@ -4996,6 +5016,37 @@ impl Engine {
             scrolling: self.scrolling,
         });
         self.push_hit_region(rect, Action::FocusTextInput { state, action });
+        if !value.is_empty() {
+            let icon_size = self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE);
+            let clear_rect = Rect {
+                x: rect.x + rect.width - clear_button_width,
+                y: rect.y,
+                width: clear_button_width,
+                height: rect.height,
+            };
+            self.scene.masks.push(MaskRun {
+                mask: clear.clone(),
+                rect: Rect {
+                    x: clear_rect.x + self.scaled(TEXT_INPUT_CLEAR_PADDING),
+                    y: rect.y + (text_height - icon_size) / 2.0,
+                    width: icon_size,
+                    height: icon_size,
+                },
+                clip: rect.intersection(self.clip),
+                colour: Colour::WHITE,
+                scrolling: self.scrolling,
+            });
+            self.push_hit_region(
+                clear_rect,
+                Action::Sequence(vec![
+                    Action::SetValue {
+                        state,
+                        value: Value::String(String::new()),
+                    },
+                    Action::FocusTextInput { state, action },
+                ]),
+            );
+        }
     }
 
     fn layout_toggle(

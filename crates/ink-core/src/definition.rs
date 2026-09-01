@@ -130,11 +130,13 @@ impl Converter {
                 state,
                 action,
                 auto_focus,
+                clear,
             } => Node::text_input(
                 placeholder,
                 state_id(state),
                 text_input_action(action),
                 auto_focus,
+                self.mask(clear),
             ),
             wire::Node::Button {
                 label,

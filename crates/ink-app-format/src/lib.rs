@@ -6,7 +6,7 @@ const MAGIC: [u8; 4] = *b"INKA";
 const HEADER_SIZE: usize = 6;
 const MAX_DEFINITION_SIZE: usize = 64 * 1024 * 1024;
 const MAX_TREE_DEPTH: usize = 256;
-pub const FORMAT_VERSION: u16 = 3;
+pub const FORMAT_VERSION: u16 = 4;
 pub const ASSET_NAME: &str = "app.ink";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -215,6 +215,7 @@ pub enum Node {
         state: StateId,
         action: TextInputAction,
         auto_focus: bool,
+        clear: MaskId,
     },
     Button {
         label: Vec<TextPart>,
@@ -696,7 +697,12 @@ fn validate_node(application: &Application, node: &Node, depth: usize) -> Result
             }
             validate_text_parts(application, parts, depth)
         }
-        Node::TextInput { state: id, .. } => state(application, *id),
+        Node::TextInput {
+            state: id, clear, ..
+        } => {
+            state(application, *id)?;
+            mask(application, *clear)
+        }
         Node::Button {
             label,
             icon,
