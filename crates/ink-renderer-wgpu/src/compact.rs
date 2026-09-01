@@ -146,6 +146,7 @@ impl From<&ink_core::MaskRun> for PreparedMaskRun {
 #[derive(Clone, Copy, PartialEq)]
 struct PreparedImageRun {
     id: u64,
+    generation: u64,
     zoom_id: Option<usize>,
     rect: Rect,
     clip: Rect,
@@ -158,6 +159,7 @@ impl From<&ImageRun> for PreparedImageRun {
     fn from(run: &ImageRun) -> Self {
         Self {
             id: run.image.id(),
+            generation: run.image.generation(),
             zoom_id: run.zoom_id,
             rect: run.rect,
             clip: run.clip,
@@ -202,6 +204,7 @@ struct CachedImage {
     bind_group: wgpu::BindGroup,
     width: u32,
     height: u32,
+    generation: u64,
     bytes: usize,
     last_used: u64,
 }
@@ -228,6 +231,14 @@ impl ImageCache {
         image: &ImageData,
     ) -> Result<&CachedImage> {
         let id = image.id();
+        let generation = image.generation();
+        if self
+            .images
+            .get(&id)
+            .is_some_and(|cached| cached.generation != generation)
+        {
+            self.images.remove(&id);
+        }
         if !self.images.contains_key(&id) {
             let (pixels, width, height) = match image {
                 ImageData::Asset(asset) => match asset.encoding {
@@ -320,6 +331,7 @@ impl ImageCache {
                     bind_group,
                     width,
                     height,
+                    generation,
                     bytes: expected_length,
                     last_used: self.frame,
                 },
@@ -594,7 +606,8 @@ pub struct RenderPerfMetrics {
     pub upload_ns: u64,
     pub acquire_ns: u64,
     pub encode_ns: u64,
-    pub submit_ns: u64,
+    pub queue_submit_cpu_ns: u64,
+    pub queue_present_cpu_ns: u64,
     pub frame_ns: u64,
 }
 
@@ -1199,12 +1212,18 @@ impl Renderer {
             self.perf.encode_ns += elapsed_ns(encode_started);
         }
         #[cfg(feature = "perf")]
-        let submit_started = Instant::now();
+        let queue_submit_started = Instant::now();
         self.queue.submit(Some(command_buffer));
+        #[cfg(feature = "perf")]
+        {
+            self.perf.queue_submit_cpu_ns += elapsed_ns(queue_submit_started);
+        }
+        #[cfg(feature = "perf")]
+        let queue_present_started = Instant::now();
         self.queue.present(frame);
         #[cfg(feature = "perf")]
         {
-            self.perf.submit_ns += elapsed_ns(submit_started);
+            self.perf.queue_present_cpu_ns += elapsed_ns(queue_present_started);
             self.perf.frame_ns += elapsed_ns(frame_started);
         }
         Ok(RenderOutcome::Presented)

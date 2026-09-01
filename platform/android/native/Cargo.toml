@@ -15,7 +15,7 @@ audio = ["dep:ink-audio", "dep:serde_json"]
 background = []
 benchmark = ["ink-core/perf", "ink-renderer-wgpu/perf"]
 image = ["ink-renderer-wgpu/image"]
-network = ["image"]
+network = []
 camera-photo = ["image"]
 
 [dependencies]

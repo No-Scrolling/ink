@@ -181,6 +181,7 @@ function histogramCountAfter(line: string | undefined, milliseconds: number): nu
 
 function apkBreakdown(apk: string) {
   const bytes = Bun.file(apk).size;
+  const sha256 = run(["shasum", "-a", "256", apk], true).split(/\s+/)[0];
   const listing = run(["unzip", "-l", apk], true);
   const groups = { dex: 0, native: 0, resources: 0, assets: 0, other: 0 };
   for (const line of listing.split("\n")) {
@@ -194,18 +195,25 @@ function apkBreakdown(apk: string) {
     else if (name.startsWith("assets/")) groups.assets += size;
     else groups.other += size;
   }
-  return { bytes, uncompressedBytes: Object.values(groups).reduce((a, b) => a + b, 0), ...groups };
+  return {
+    bytes,
+    sha256,
+    uncompressedBytes: Object.values(groups).reduce((a, b) => a + b, 0),
+    ...groups,
+  };
 }
 
 function wakeAndUnlock() {
   shell("input keyevent 224");
-  sleep(100);
+  sleep(300);
   shell("input swipe 540 1150 540 300 300");
-  sleep(100);
+  sleep(500);
+  if (!shell("dumpsys power").includes("mWakefulness=Awake")) {
+    throw new Error("Device did not remain awake after the unlock gesture");
+  }
 }
 
 function start(app: App): number {
-  wakeAndUnlock();
   for (const candidate of apps) {
     shell(`am force-stop ${candidate.packageName}`);
   }
@@ -306,22 +314,32 @@ function continuousScroll(app: App): ContinuousScrollSample {
 }
 
 run([...adbCommand, "wait-for-device"], true);
-const originalStayOn = shell("settings get global stay_on_while_plugged_in").trim();
-let restorePowerSetting = true;
-function restorePower() {
-  if (!restorePowerSetting) return;
-  restorePowerSetting = false;
-  Bun.spawnSync([
-    ...adbCommand,
-    "shell",
-    "settings",
-    "put",
-    "global",
-    "stay_on_while_plugged_in",
-    originalStayOn,
-  ]);
+const settings = [
+  "stay_on_while_plugged_in",
+  "window_animation_scale",
+  "transition_animation_scale",
+  "animator_duration_scale",
+] as const;
+const originalSettings = Object.fromEntries(
+  settings.map((setting) => [setting, shell(`settings get global ${setting}`).trim()]),
+);
+let restoreSettings = true;
+function restoreDeviceSettings() {
+  if (!restoreSettings) return;
+  restoreSettings = false;
+  for (const setting of settings) {
+    Bun.spawnSync([
+      ...adbCommand,
+      "shell",
+      "settings",
+      "put",
+      "global",
+      setting,
+      originalSettings[setting],
+    ]);
+  }
 }
-process.on("exit", restorePower);
+process.on("exit", restoreDeviceSettings);
 shell("settings put global stay_on_while_plugged_in 7");
 clockTicksPerSecond = Number(shell("getconf CLK_TCK").trim());
 if (!Number.isFinite(clockTicksPerSecond) || clockTicksPerSecond <= 0) {
@@ -330,6 +348,10 @@ if (!Number.isFinite(clockTicksPerSecond) || clockTicksPerSecond <= 0) {
 shell("settings put global window_animation_scale 0");
 shell("settings put global transition_animation_scale 0");
 shell("settings put global animator_duration_scale 0");
+for (const app of apps) {
+  shell(`am force-stop ${app.packageName}`);
+}
+wakeAndUnlock();
 shell("dumpsys SurfaceFlinger --timestats -enable");
 const thermalStatusStart = thermalStatus();
 if (thermalStatusStart !== 0) {
@@ -459,6 +481,8 @@ const results = apps.map((app) => {
 });
 
 const protocol = {
+  harnessRevision: run(["git", "rev-parse", "HEAD"], true).trim(),
+  dirtyWorkingTree: Boolean(run(["git", "status", "--porcelain"], true).trim()),
   stacks: [...selectedStacks],
   scenarios: [...selectedScenarios],
   startupRuns: 15,
@@ -474,5 +498,5 @@ await Bun.write(
   output,
   `${JSON.stringify({ environment, protocol, results }, null, 2)}\n`,
 );
-restorePower();
+restoreDeviceSettings();
 console.log(`Wrote ${output}`);

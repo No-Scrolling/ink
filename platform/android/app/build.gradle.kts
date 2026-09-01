@@ -22,6 +22,8 @@ val inkCapabilitiesFile = inkCapabilitiesManifest.map(::file)
 val inkBenchmark = providers.environmentVariable("INK_BENCHMARK")
     .map { it == "1" }
     .orElse(false)
+val inkBenchmarkRevision = providers.environmentVariable("INK_BENCHMARK_REVISION")
+    .orElse("unknown")
 val supportedInkCapabilities = setOf(
     "audio",
     "audio-detached",
@@ -434,6 +436,7 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
     description = "Builds the Ink runtime for the arm64 LP3 emulator."
     workingDir(repositoryRoot)
     inputs.property("inkBenchmark", inkBenchmark)
+    inputs.property("inkBenchmarkRevision", inkBenchmarkRevision)
     commandLine(buildList {
         addAll(
             listOf(
@@ -476,6 +479,7 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
     description = "Builds the Ink runtime for the LP3 arm64 ABI."
     workingDir(repositoryRoot)
     inputs.property("inkBenchmark", inkBenchmark)
+    inputs.property("inkBenchmarkRevision", inkBenchmarkRevision)
     commandLine(buildList {
         addAll(
             listOf(

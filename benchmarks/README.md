@@ -119,4 +119,14 @@ To verify an existing Ink-only result against its device budget, run:
 bun benchmarks/verify.ts benchmarks/results/ink.json benchmarks/results/ink-build.csv
 ```
 
+For the focused state-to-frame benchmark, use the wrapper so the APK embeds its
+source revision and the harness verifies both that revision and the APK hash:
+
+```bash
+./benchmarks/measure-updates.sh
+```
+
+Set `UPDATE_BENCHMARK_ROUNDS` to change the default 25 balanced rounds. The
+harness fails if a tap produces no instrumented update frame or no scene rebuild.
+
 Uninstall the six benchmark apps when the run finishes.

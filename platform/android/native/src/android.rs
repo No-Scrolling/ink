@@ -341,7 +341,8 @@ impl AndroidEngine {
             android_log(
                 ANDROID_LOG_INFO,
                 &format!(
-                    "Perf update_ns={} materialise_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} submit_ns={} frame_ns={}",
+                    "Perf revision={} update_ns={} materialise_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} queue_submit_cpu_ns={} queue_present_cpu_ns={} frame_ns={}",
+                    option_env!("INK_BENCHMARK_REVISION").unwrap_or("unknown"),
                     self.update_ns,
                     core.materialise_ns,
                     core.measure_ns,
@@ -353,7 +354,8 @@ impl AndroidEngine {
                     renderer.upload_ns,
                     renderer.acquire_ns,
                     renderer.encode_ns,
-                    renderer.submit_ns,
+                    renderer.queue_submit_cpu_ns,
+                    renderer.queue_present_cpu_ns,
                     renderer.frame_ns,
                 ),
             );

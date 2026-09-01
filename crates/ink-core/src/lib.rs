@@ -826,6 +826,7 @@ impl AsRef<[u8]> for AssetBytes {
 #[derive(Clone, Debug, PartialEq)]
 pub struct RemoteImage {
     pub id: u64,
+    pub generation: u64,
     pub width: u32,
     pub height: u32,
     pub pixels: Arc<[u8]>,
@@ -842,6 +843,13 @@ impl ImageData {
         match self {
             Self::Asset(asset) => asset.id,
             Self::Remote(image) => image.id,
+        }
+    }
+
+    pub const fn generation(&self) -> u64 {
+        match self {
+            Self::Asset(_) => 0,
+            Self::Remote(image) => image.generation,
         }
     }
 
@@ -1702,6 +1710,7 @@ pub struct Engine {
     image_pinch: Option<ImagePinch>,
     last_native_request: Option<NativeRequest>,
     next_request_id: u64,
+    next_image_generation: u64,
     back_icon: Option<Mask>,
     font: FontRef<'static>,
     #[cfg(feature = "perf")]
@@ -1805,6 +1814,7 @@ impl Engine {
             image_pinch: None,
             last_native_request: None,
             next_request_id: 1,
+            next_image_generation: 1,
             back_icon: None,
             font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
             #[cfg(feature = "perf")]
@@ -2023,10 +2033,13 @@ impl Engine {
             return false;
         }
         let id = image_id(&key);
+        let generation = self.next_image_generation;
+        self.next_image_generation = self.next_image_generation.wrapping_add(1).max(1);
         self.remote_images.insert(
             key,
             RemoteImageState::Ready(RemoteImage {
                 id,
+                generation,
                 width,
                 height,
                 pixels: pixels.into(),

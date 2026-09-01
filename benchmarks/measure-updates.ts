@@ -5,11 +5,32 @@ const adbCommand = device ? [adb, "-s", device] : [adb];
 const output = process.env.BENCHMARK_OUTPUT ??
   "benchmarks/results/ink-updates.json";
 const rounds = Number(process.env.UPDATE_BENCHMARK_ROUNDS ?? 25);
-const packageName = "com.vandam.benchmark.ink.updates";
-const component = `${packageName}/com.vandam.ink.MainActivity`;
-const apk = process.env.INK_UPDATES_APK ??
-  "benchmarks/apps/ink-updates/dist/ink-updates-benchmark-1.0.0-arm64.apk";
 const routeExtra = "com.vandam.ink.notification.HREF";
+
+type Variant = {
+  name: string;
+  packageName: string;
+  apk: string;
+  revision: string;
+  expectedSha256?: string;
+  component: string;
+  bytes: number;
+  sha256: string;
+};
+
+type VariantInput = Omit<Variant, "component" | "bytes" | "sha256">;
+
+const defaultPackageName = "com.vandam.benchmark.ink.updates";
+const variantInputs: VariantInput[] = process.env.INK_UPDATE_VARIANTS
+  ? JSON.parse(process.env.INK_UPDATE_VARIANTS)
+  : [{
+      name: "current",
+      packageName: defaultPackageName,
+      apk: process.env.INK_UPDATES_APK ??
+        "benchmarks/apps/ink-updates/dist/ink-updates-benchmark-1.0.0-arm64.apk",
+      revision: process.env.INK_BENCHMARK_REVISION ?? "",
+      expectedSha256: process.env.INK_UPDATES_APK_SHA256,
+    }];
 
 type Scenario = {
   name: string;
@@ -20,7 +41,7 @@ type Scenario = {
 type Sample = {
   cpuMs: number;
   startMs: number;
-  phases?: Record<string, number>;
+  phases: Record<string, number>;
 };
 
 const scenarios: Scenario[] = [
@@ -66,39 +87,59 @@ function thermalStatus(): number {
   );
 }
 
-function processCpuNanoseconds(): number {
-  const pid = shell(`pidof -s ${packageName}`).trim();
+function processCpuNanoseconds(variant: Variant): number {
+  const pid = shell(`pidof -s ${variant.packageName}`).trim();
   if (!/^\d+$/.test(pid)) {
-    throw new Error(`Could not find ${packageName}`);
+    throw new Error(`Could not find ${variant.packageName}`);
   }
   const value = shell(
     `awk '{ total += $1 } END { printf "%.0f", total }' /proc/${pid}/task/*/schedstat`,
   ).trim();
   const nanoseconds = Number(value);
   if (!Number.isFinite(nanoseconds)) {
-    throw new Error(`Could not read CPU time for ${packageName}`);
+    throw new Error(`Could not read CPU time for ${variant.packageName}`);
   }
   return nanoseconds;
 }
 
-function performancePhases(): Record<string, number> | undefined {
+function performancePhases(): { revision: string; phases: Record<string, number> } | undefined {
   const lines = shell("logcat -d -s Ink:I '*:S'")
     .split("\n")
-    .filter((line) => line.includes("Perf update_ns="));
-  const line = lines.at(-1);
+    .filter((line) => line.includes("Perf revision="));
+  const line = lines.findLast((candidate) => {
+    const update = candidate.match(/update_ns=(\d+)/)?.[1];
+    return update !== undefined && Number(update) > 0;
+  });
   if (!line) return undefined;
-  return Object.fromEntries(
-    [...line.matchAll(/([a-z_]+)=(\d+)/g)].map((match) => [
-      match[1],
-      Number(match[2]),
-    ]),
-  );
+  const revision = line.match(/revision=([^\s]+)/)?.[1];
+  if (!revision) return undefined;
+  return {
+    revision,
+    phases: Object.fromEntries(
+      [...line.matchAll(/([a-z_]+)=(\d+)/g)].map((match) => [
+        match[1],
+        Number(match[2]),
+      ]),
+    ),
+  };
 }
 
-function start(route: string): number {
-  shell(`am force-stop ${packageName}`);
+function waitForPerformancePhases() {
+  const deadline = performance.now() + 2_000;
+  while (performance.now() < deadline) {
+    const performance = performancePhases();
+    if (performance) return performance;
+    sleep(25);
+  }
+  throw new Error("The benchmark tap produced no instrumented update frame");
+}
+
+function start(variant: Variant, route: string): number {
+  for (const candidate of variants) {
+    shell(`am force-stop ${candidate.packageName}`);
+  }
   const result = shell(
-    `am start -W -n ${component} --es ${routeExtra} ${route}`,
+    `am start -W -n ${variant.component} --es ${routeExtra} ${route}`,
   );
   const match = result.match(/^(?:TotalTime|WaitTime):\s+(\d+)/m);
   if (!match) throw new Error(`No launch time for ${route}:\n${result}`);
@@ -108,8 +149,28 @@ function start(route: string): number {
 if (!Number.isInteger(rounds) || rounds < 1) {
   throw new Error("UPDATE_BENCHMARK_ROUNDS must be a positive integer");
 }
-if (!Bun.file(apk).size) {
-  throw new Error(`Could not find ${apk}`);
+if (!Array.isArray(variantInputs) || variantInputs.length === 0) {
+  throw new Error("INK_UPDATE_VARIANTS must contain at least one variant");
+}
+const variants = variantInputs.map((variant): Variant => {
+  if (!variant.name || !variant.packageName || !variant.apk || !variant.revision) {
+    throw new Error("Each update benchmark variant needs a name, package, APK, and revision");
+  }
+  const bytes = Bun.file(variant.apk).size;
+  if (!bytes) throw new Error(`Could not find ${variant.apk}`);
+  const sha256 = run(["shasum", "-a", "256", variant.apk], true).split(/\s+/)[0];
+  if (variant.expectedSha256 && sha256 !== variant.expectedSha256) {
+    throw new Error(`${variant.name} APK SHA-256 is ${sha256}; expected ${variant.expectedSha256}`);
+  }
+  return {
+    ...variant,
+    component: `${variant.packageName}/com.vandam.ink.MainActivity`,
+    bytes,
+    sha256,
+  };
+});
+if (new Set(variants.flatMap((variant) => [variant.name, variant.packageName])).size !== variants.length * 2) {
+  throw new Error("Update benchmark variant names and package names must be unique");
 }
 
 run([...adbCommand, "wait-for-device"], true);
@@ -130,81 +191,127 @@ function restorePower() {
 }
 process.on("exit", restorePower);
 shell("settings put global stay_on_while_plugged_in 7");
+for (const variant of variants) {
+  shell(`am force-stop ${variant.packageName}`);
+}
 shell("input keyevent 224");
 sleep(300);
 shell("input swipe 540 1150 540 300 300");
 sleep(300);
+if (!shell("dumpsys power").includes("mWakefulness=Awake")) {
+  throw new Error("Device did not remain awake after the unlock gesture");
+}
 const startingThermalStatus = thermalStatus();
 if (startingThermalStatus !== 0) {
   throw new Error(
     `Device thermal status is ${startingThermalStatus}; expected 0`,
   );
 }
-run([...adbCommand, "install", "-r", apk], true);
-
-const results = [];
-for (const scenario of scenarios) {
-  const samples: Sample[] = [];
-  for (let round = 0; round < rounds; round += 1) {
-    const startMs = start(scenario.route);
-    sleep(500);
-    shell("logcat -c");
-    const cpuBefore = processCpuNanoseconds();
-    shell(`input tap 540 ${scenario.tapY}`);
-    sleep(250);
-    const cpuMs = (processCpuNanoseconds() - cpuBefore) / 1_000_000;
-    const phases = performancePhases();
-    samples.push({ cpuMs, startMs, ...(phases ? { phases } : {}) });
-  }
-  const cpu = samples.map((sample) => sample.cpuMs);
-  const starts = samples.map((sample) => sample.startMs);
-  const phaseNames = new Set(
-    samples.flatMap((sample) => Object.keys(sample.phases ?? {})),
-  );
-  const summary = {
-    name: scenario.name,
-    route: scenario.route,
-    samples,
-    cpuMeanMs: mean(cpu),
-    cpuMedianMs: percentile(cpu, 0.5),
-    cpuP95Ms: percentile(cpu, 0.95),
-    startMedianMs: percentile(starts, 0.5),
-    phases: Object.fromEntries(
-      [...phaseNames].map((name) => {
-        const values = samples.flatMap((sample) =>
-          sample.phases?.[name] === undefined ? [] : [sample.phases[name]],
-        );
-        return [
-          name,
-          {
-            mean: mean(values),
-            median: percentile(values, 0.5),
-            p95: percentile(values, 0.95),
-          },
-        ];
-      }),
-    ),
-  };
-  results.push(summary);
-  console.log(
-    `${scenario.name}: ${summary.cpuMeanMs.toFixed(2)} ms mean CPU, ` +
-      `${summary.cpuP95Ms.toFixed(2)} ms P95`,
-  );
+for (const variant of variants) {
+  run([...adbCommand, "install", "-r", variant.apk], true);
 }
+
+const samplesByVariant = new Map(
+  variants.map((variant) => [
+    variant.name,
+    new Map(scenarios.map((scenario) => [scenario.name, [] as Sample[]])),
+  ]),
+);
+for (let round = 0; round < rounds; round += 1) {
+  const direction = round % 2 === 0 ? scenarios : [...scenarios].reverse();
+  const offset = Math.floor(round / 2) % scenarios.length;
+  const order = [...direction.slice(offset), ...direction.slice(0, offset)];
+  for (let scenarioIndex = 0; scenarioIndex < order.length; scenarioIndex += 1) {
+    const scenario = order[scenarioIndex];
+    const variantOffset = (round + scenarioIndex) % variants.length;
+    const variantOrder = [
+      ...variants.slice(variantOffset),
+      ...variants.slice(0, variantOffset),
+    ];
+    for (const variant of variantOrder) {
+      const startMs = start(variant, scenario.route);
+      sleep(500);
+      shell("logcat -c");
+      const cpuBefore = processCpuNanoseconds(variant);
+      shell(`input tap 540 ${scenario.tapY}`);
+      const performance = waitForPerformancePhases();
+      const cpuMs = (processCpuNanoseconds(variant) - cpuBefore) / 1_000_000;
+      if (performance.revision !== variant.revision) {
+        throw new Error(
+          `${variant.name} APK reports revision ${performance.revision}; expected ${variant.revision}`,
+        );
+      }
+      if (
+        (performance.phases.full_rebuilds ?? 0) +
+          (performance.phases.incremental_rebuilds ?? 0) ===
+        0
+      ) {
+        throw new Error(`${variant.name} ${scenario.name} did not rebuild after its benchmark tap`);
+      }
+      samplesByVariant.get(variant.name)?.get(scenario.name)?.push({
+        cpuMs,
+        startMs,
+        phases: performance.phases,
+      });
+    }
+  }
+  console.log(`Update round ${round + 1}/${rounds}`);
+}
+
+const results = variants.map((variant) => ({
+  name: variant.name,
+  revision: variant.revision,
+  apk: {
+    path: variant.apk,
+    bytes: variant.bytes,
+    sha256: variant.sha256,
+  },
+  scenarios: scenarios.map((scenario) => {
+    const samples = samplesByVariant.get(variant.name)?.get(scenario.name) ?? [];
+    const cpu = samples.map((sample) => sample.cpuMs);
+    const starts = samples.map((sample) => sample.startMs);
+    const phaseNames = new Set(samples.flatMap((sample) => Object.keys(sample.phases)));
+    const summary = {
+      name: scenario.name,
+      route: scenario.route,
+      samples,
+      cpuMeanMs: mean(cpu),
+      cpuMedianMs: percentile(cpu, 0.5),
+      cpuP95Ms: percentile(cpu, 0.95),
+      startMedianMs: percentile(starts, 0.5),
+      phases: Object.fromEntries(
+        [...phaseNames].map((name) => {
+          const values = samples.flatMap((sample) =>
+            sample.phases[name] === undefined ? [] : [sample.phases[name]],
+          );
+          return [
+            name,
+            {
+              mean: mean(values),
+              median: percentile(values, 0.5),
+              p95: percentile(values, 0.95),
+            },
+          ];
+        }),
+      ),
+    };
+    console.log(
+      `${variant.name} ${scenario.name}: ${summary.cpuMeanMs.toFixed(2)} ms mean CPU, ` +
+        `${summary.cpuP95Ms.toFixed(2)} ms P95`,
+    );
+    return summary;
+  }),
+}));
 
 const payload = {
   timestamp: new Date().toISOString(),
-  revision: run(["git", "rev-parse", "HEAD"], true).trim(),
+  harnessRevision: run(["git", "rev-parse", "HEAD"], true).trim(),
   environment: {
     device: device ?? "default",
     model: shell("getprop ro.product.model").trim(),
     sdk: Number(shell("getprop ro.build.version.sdk").trim()),
     thermalStatusStart: startingThermalStatus,
     thermalStatusEnd: thermalStatus(),
-  },
-  apk: {
-    path: apk,
-    bytes: Bun.file(apk).size,
   },
   rounds,
   results,
