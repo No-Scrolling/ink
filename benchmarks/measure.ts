@@ -206,7 +206,13 @@ function apkBreakdown(apk: string) {
 function wakeAndUnlock() {
   shell("input keyevent 224");
   sleep(300);
-  shell("input swipe 540 1150 540 300 300");
+  const initialWindows = shell("dumpsys window");
+  if (
+    /mCurrentFocus=.*com\.vandam\.luma/.test(initialWindows) ||
+    /mObscuringWindow=.*Luma Unlock Gate/.test(initialWindows)
+  ) {
+    shell("input swipe 540 1150 540 300 300");
+  }
   const deadline = performance.now() + 5_000;
   while (performance.now() < deadline) {
     const power = shell("dumpsys power");

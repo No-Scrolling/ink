@@ -229,7 +229,13 @@ for (const packageName of packagesToStop) {
 }
 shell("input keyevent 224");
 sleep(300);
-shell("input swipe 540 1150 540 300 300");
+const initialWindows = shell("dumpsys window");
+if (
+  /mCurrentFocus=.*com\.vandam\.luma/.test(initialWindows) ||
+  /mObscuringWindow=.*Luma Unlock Gate/.test(initialWindows)
+) {
+  shell("input swipe 540 1150 540 300 300");
+}
 const unlockDeadline = performance.now() + 5_000;
 while (performance.now() < unlockDeadline) {
   const power = shell("dumpsys power");
