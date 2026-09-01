@@ -27,6 +27,7 @@ const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
 const TEXT_INPUT_HEIGHT: f32 = 38.0;
 const TEXT_INPUT_BOTTOM_PADDING: f32 = 6.0;
 const TEXT_INPUT_CLEAR_ICON_SIZE: f32 = 24.0;
+const TEXT_INPUT_CLEAR_GAP: f32 = 20.0;
 const TEXT_INPUT_CLEAR_PADDING: f32 = 5.0;
 const CONTROL_LINE_HEIGHT: f32 = 1.0;
 const DEFAULT_ICON_SIZE: f32 = 28.0;
@@ -1483,6 +1484,18 @@ struct HitRegion {
     scrolling: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TextInputLayout {
+    state: StateId,
+    action: TextInputAction,
+    text_run: usize,
+    hit_rect: Rect,
+    text_rect: Rect,
+    scroll_offset: f32,
+    scroll_max: f32,
+    scrolling: bool,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PointerOutcome {
     pub changed: bool,
@@ -1537,6 +1550,15 @@ struct ContentPointer {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct TextInputPointer {
+    input: TextInputLayout,
+    start_x: f32,
+    start_y: f32,
+    content_offset: f32,
+    dragging: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
 struct ImagePanPointer {
     image: NodeIdentity,
     start_x: f32,
@@ -1548,6 +1570,7 @@ struct ImagePanPointer {
 #[derive(Clone, Copy, Debug)]
 enum Pointer {
     Content(ContentPointer),
+    TextInput(TextInputPointer),
     ImagePan(ImagePanPointer),
     ScrollThumb {
         grab_offset: f32,
@@ -1642,6 +1665,8 @@ pub struct Engine {
     materialised_root: Option<Node>,
     virtual_lists: HashMap<NodeIdentity, VirtualListLayout>,
     hit_regions: Vec<HitRegion>,
+    text_inputs: Vec<TextInputLayout>,
+    text_input_scroll_offsets: HashMap<StateId, f32>,
     clip: Rect,
     scrolling: bool,
     scroll_origin: f32,
@@ -1650,6 +1675,7 @@ pub struct Engine {
     pointer: Option<Pointer>,
     focused_input: Option<StateId>,
     focused_input_action: TextInputAction,
+    focused_input_cursor: usize,
     auto_focus_node: Option<NodeIdentity>,
     navigation: Vec<NavigationEntry>,
     queued_requests: VecDeque<QueuedRequest>,
@@ -1738,6 +1764,8 @@ impl Engine {
             materialised_root: None,
             virtual_lists: HashMap::new(),
             hit_regions: Vec::new(),
+            text_inputs: Vec::new(),
+            text_input_scroll_offsets: HashMap::new(),
             clip: Rect::default(),
             scrolling: false,
             scroll_origin: 0.0,
@@ -1746,6 +1774,7 @@ impl Engine {
             pointer: None,
             focused_input: None,
             focused_input_action: TextInputAction::default(),
+            focused_input_cursor: 0,
             auto_focus_node: None,
             navigation,
             queued_requests: VecDeque::new(),
@@ -2326,6 +2355,17 @@ impl Engine {
             return PointerOutcome::default().captured();
         }
 
+        if let Some(input) = self.text_input_at(x, y) {
+            self.pointer = Some(Pointer::TextInput(TextInputPointer {
+                input,
+                start_x: x,
+                start_y: y,
+                content_offset: self.scroll_offset,
+                dragging: false,
+            }));
+            return PointerOutcome::default();
+        }
+
         self.pointer = Some(Pointer::Content(ContentPointer {
             start_x: x,
             start_y: y,
@@ -2344,6 +2384,7 @@ impl Engine {
 
         match pointer {
             Pointer::Content(pointer) => self.move_content_pointer(pointer, x, y, tap_slop),
+            Pointer::TextInput(pointer) => self.move_text_input_pointer(pointer, x, y, tap_slop),
             Pointer::ImagePan(pointer) => {
                 let Some(zoom) = self.image_zooms.get(&pointer.image).copied() else {
                     return PointerOutcome::default();
@@ -2407,8 +2448,12 @@ impl Engine {
                 state: EdgeBackState::Pending,
                 ..
             }) => PointerOutcome::activated(self.tap(x, y)),
+            Pointer::TextInput(pointer) if !pointer.dragging => {
+                PointerOutcome::activated(self.focus_text_input(pointer.input, x))
+            }
             Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
+            | Pointer::TextInput(_)
             | Pointer::ImagePan(_)
             | Pointer::EdgeBack(EdgeBackPointer {
                 state: EdgeBackState::Claimed,
@@ -2561,6 +2606,163 @@ impl Engine {
         true
     }
 
+    fn text_input_at(&self, x: f32, y: f32) -> Option<TextInputLayout> {
+        self.text_inputs.iter().rev().copied().find(|input| {
+            if input.scrolling
+                && !self
+                    .scene
+                    .scroll_clip
+                    .is_some_and(|clip| clip.contains(x, y))
+            {
+                return false;
+            }
+            let y = if input.scrolling {
+                y + self.scroll_offset - self.scroll_origin
+            } else {
+                y
+            };
+            input.hit_rect.contains(x, y)
+        })
+    }
+
+    fn focus_text_input(&mut self, input: TextInputLayout, x: f32) -> bool {
+        let Some(StateValue::String(value)) = self.state.get(input.state.0) else {
+            return false;
+        };
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let target = (x - input.text_rect.x + input.scroll_offset)
+            .clamp(0.0, self.text_width(value, font_size));
+        let cursor = self.text_cursor_for_offset(value, font_size, target);
+        let changed = self.focused_input != Some(input.state)
+            || self.focused_input_action != input.action
+            || self.focused_input_cursor != cursor;
+        if !changed {
+            return false;
+        }
+        self.focused_input = Some(input.state);
+        self.focused_input_action = input.action;
+        self.focused_input_cursor = cursor;
+        self.text_input_scroll_offsets
+            .insert(input.state, input.scroll_offset);
+        self.relayout_scene();
+        true
+    }
+
+    fn focus_text_input_at_end(&mut self, state: StateId, action: TextInputAction) {
+        self.focused_input = Some(state);
+        self.focused_input_action = action;
+        self.focused_input_cursor = match self.state.get(state.0) {
+            Some(StateValue::String(value)) => value.len(),
+            _ => 0,
+        };
+        self.text_input_scroll_offsets.remove(&state);
+    }
+
+    fn move_text_input_pointer(
+        &mut self,
+        mut pointer: TextInputPointer,
+        x: f32,
+        y: f32,
+        tap_slop: f32,
+    ) -> PointerOutcome {
+        let horizontal = pointer.start_x - x;
+        let vertical = pointer.start_y - y;
+        if !pointer.dragging {
+            if horizontal.abs() <= tap_slop && vertical.abs() <= tap_slop {
+                self.pointer = Some(Pointer::TextInput(pointer));
+                return PointerOutcome::default();
+            }
+            if vertical.abs() > horizontal.abs() {
+                return self.move_content_pointer(
+                    ContentPointer {
+                        start_x: pointer.start_x,
+                        start_y: pointer.start_y,
+                        start_offset: pointer.content_offset,
+                        dragging: false,
+                        cancelled: false,
+                    },
+                    x,
+                    y,
+                    tap_slop,
+                );
+            }
+            pointer.start_x -= horizontal.signum() * tap_slop;
+            pointer.dragging = true;
+        }
+        self.pointer = Some(Pointer::TextInput(pointer));
+        let next = (pointer.input.scroll_offset + pointer.start_x - x)
+            .clamp(0.0, pointer.input.scroll_max);
+        PointerOutcome::changed(self.set_text_input_scroll(pointer.input.state, next)).captured()
+    }
+
+    fn set_text_input_scroll(&mut self, state: StateId, offset: f32) -> bool {
+        let current = self
+            .text_input_scroll_offsets
+            .get(&state)
+            .copied()
+            .or_else(|| {
+                self.text_inputs
+                    .iter()
+                    .find(|input| input.state == state)
+                    .map(|input| input.scroll_offset)
+            })
+            .expect("visible text input has a scroll offset");
+        if (current - offset).abs() < f32::EPSILON {
+            return false;
+        }
+        self.text_input_scroll_offsets.insert(state, offset);
+        let delta = offset - current;
+        for input in self
+            .text_inputs
+            .iter_mut()
+            .filter(|input| input.state == state)
+        {
+            input.scroll_offset = offset;
+            self.scene.text[input.text_run].rect.x -= delta;
+        }
+        if self.focused_input == Some(state)
+            && let Some(cursor) = &mut self.scene.text_cursor
+        {
+            cursor.rect.x -= delta;
+        }
+        self.scene.revision = self.scene.revision.wrapping_add(1);
+        true
+    }
+
+    fn reveal_text_cursor(&mut self, state: StateId) {
+        let Some(input) = self
+            .text_inputs
+            .iter()
+            .rev()
+            .find(|input| input.state == state)
+            .copied()
+        else {
+            return;
+        };
+        let Some(StateValue::String(value)) = self.state.get(state.0) else {
+            return;
+        };
+        let cursor = self.focused_input_cursor;
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let cursor_offset = self.text_width(&value[..cursor], font_size);
+        let scroll_max = (self.text_width(value, font_size) - input.text_rect.width).max(0.0);
+        let current = self
+            .text_input_scroll_offsets
+            .get(&state)
+            .copied()
+            .unwrap_or(input.scroll_offset)
+            .clamp(0.0, scroll_max);
+        let next = if cursor_offset < current {
+            cursor_offset
+        } else if cursor_offset > current + input.text_rect.width {
+            cursor_offset - input.text_rect.width
+        } else {
+            current
+        };
+        self.text_input_scroll_offsets
+            .insert(state, next.clamp(0.0, scroll_max));
+    }
+
     fn move_content_pointer(
         &mut self,
         mut pointer: ContentPointer,
@@ -2692,21 +2894,31 @@ impl Engine {
         let mut mutated = false;
         let changed = match edit {
             TextEdit::Insert(text) if !text.chars().any(char::is_control) => {
+                let cursor = self.focused_input_cursor;
                 let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
                     return false;
                 };
-                value.push_str(&text);
+                let cursor = text_cursor_boundary(value, cursor);
+                value.insert_str(cursor, &text);
+                self.focused_input_cursor = next_text_cursor_boundary(value, cursor + text.len());
                 mutated = true;
                 true
             }
             TextEdit::Backspace => {
+                let cursor = self.focused_input_cursor;
                 let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
                     return false;
                 };
-                let Some(last) = value.grapheme_indices(true).next_back() else {
+                let cursor = text_cursor_boundary(value, cursor);
+                let Some(previous) = value[..cursor]
+                    .grapheme_indices(true)
+                    .next_back()
+                    .map(|(index, _)| index)
+                else {
                     return false;
                 };
-                value.truncate(last.0);
+                value.replace_range(previous..cursor, "");
+                self.focused_input_cursor = previous;
                 mutated = true;
                 true
             }
@@ -2718,6 +2930,7 @@ impl Engine {
         };
         if changed {
             if mutated {
+                self.reveal_text_cursor(state);
                 self.mark_persisted(state);
                 self.refresh_dependent_resources(state);
             }
@@ -2745,6 +2958,13 @@ impl Engine {
     fn apply(&mut self, action: Action) -> (bool, Vec<StateId>) {
         let mut states = Vec::new();
         let changed = self.apply_inner(action, &mut states);
+        if let Some(state) = self.focused_input
+            && states.contains(&state)
+            && let Some(StateValue::String(value)) = self.state.get(state.0)
+        {
+            self.focused_input_cursor = text_cursor_boundary(value, self.focused_input_cursor);
+            self.reveal_text_cursor(state);
+        }
         (changed, states)
     }
 
@@ -2858,8 +3078,7 @@ impl Engine {
                 if self.focused_input == Some(state) && self.focused_input_action == action {
                     return false;
                 }
-                self.focused_input = Some(state);
-                self.focused_input_action = action;
+                self.focus_text_input_at_end(state, action);
             }
             Action::ReloadResource { resource } => {
                 return self.queue_resource(resource);
@@ -3625,6 +3844,7 @@ impl Engine {
         self.scene.scroll_bar = None;
         self.scene.text_cursor = None;
         self.hit_regions.clear();
+        self.text_inputs.clear();
         self.visible_images.clear();
         self.visible_zoom_images.clear();
         self.scroll_max = 0.0;
@@ -3643,8 +3863,8 @@ impl Engine {
         if auto_focus_node != self.auto_focus_node {
             self.auto_focus_node = auto_focus_node;
             self.focused_input = auto_focus.map(|(_, state, _)| state);
-            if let Some((_, _, action)) = auto_focus {
-                self.focused_input_action = action;
+            if let Some((_, state, action)) = auto_focus {
+                self.focus_text_input_at_end(state, action);
             }
         }
         self.clip = Rect {
@@ -4969,18 +5189,37 @@ impl Engine {
         } else {
             self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE + TEXT_INPUT_CLEAR_PADDING * 2.0)
         };
-        let cursor_width = if focused { self.scaled(1.0) } else { 0.0 };
+        let clear_gap = if value.is_empty() {
+            0.0
+        } else {
+            self.scaled(TEXT_INPUT_CLEAR_GAP)
+        };
+        let cursor_width = self.scaled(1.0);
         let text_viewport = Rect {
-            width: (rect.width - clear_button_width - cursor_width).max(0.0),
+            width: (rect.width - clear_button_width - clear_gap - cursor_width).max(0.0),
             height: text_height,
             ..rect
         };
         let text_width = self.text_width(text, font_size);
-        let overflow = (text_width - text_viewport.width).max(0.0);
+        let scroll_max = if value.is_empty() {
+            0.0
+        } else {
+            (text_width - text_viewport.width).max(0.0)
+        };
+        let scroll_offset = if value.is_empty() {
+            0.0
+        } else {
+            self.text_input_scroll_offsets
+                .get(&state)
+                .copied()
+                .unwrap_or(scroll_max)
+                .clamp(0.0, scroll_max)
+        };
+        let text_run = self.scene.text.len();
         self.scene.text.push(TextRun {
             text: text.to_owned(),
             rect: Rect {
-                x: text_viewport.x - overflow,
+                x: text_viewport.x - scroll_offset,
                 width: text_width.max(text_viewport.width),
                 ..text_viewport
             },
@@ -4991,14 +5230,20 @@ impl Engine {
             scrolling: self.scrolling,
         });
         if focused {
+            let cursor = self.focused_input_cursor;
+            let cursor_offset = self.text_width(&value[..cursor], font_size);
+            let cursor_clip = Rect {
+                width: text_viewport.width + cursor_width,
+                ..text_viewport
+            };
             self.scene.text_cursor = Some(Quad {
                 rect: Rect {
-                    x: text_viewport.x + text_width.min(text_viewport.width),
+                    x: text_viewport.x + cursor_offset - scroll_offset,
                     y: rect.y + self.scaled(2.0),
                     width: cursor_width,
                     height: (text_height - self.scaled(4.0)).max(0.0),
                 },
-                clip: rect.intersection(self.clip),
+                clip: cursor_clip.intersection(self.clip),
                 colour: Colour::WHITE,
                 scrolling: self.scrolling,
             });
@@ -5013,6 +5258,20 @@ impl Engine {
             },
             clip: self.clip,
             colour: Colour::WHITE,
+            scrolling: self.scrolling,
+        });
+        self.text_inputs.push(TextInputLayout {
+            state,
+            action,
+            text_run,
+            hit_rect: Rect {
+                width: (rect.width - clear_button_width).max(0.0),
+                ..rect
+            }
+            .intersection(self.clip),
+            text_rect: text_viewport,
+            scroll_offset,
+            scroll_max,
             scrolling: self.scrolling,
         });
         self.push_hit_region(rect, Action::FocusTextInput { state, action });
@@ -5626,6 +5885,32 @@ impl Engine {
         })
     }
 
+    fn text_cursor_for_offset(&self, text: &str, font_size: f32, offset: f32) -> usize {
+        let scaled = self.font.as_scaled(PxScale::from(font_size));
+        let mut previous = None;
+        let mut width = 0.0;
+        for (index, grapheme) in text.grapheme_indices(true) {
+            let start = width;
+            if is_emoji_grapheme(grapheme) {
+                width += font_size;
+                previous = None;
+            } else {
+                for character in grapheme.chars() {
+                    let glyph = scaled.glyph_id(character);
+                    width += previous
+                        .map(|previous| scaled.kern(previous, glyph))
+                        .unwrap_or_default()
+                        + scaled.h_advance(glyph);
+                    previous = Some(glyph);
+                }
+            }
+            if offset < (start + width) / 2.0 {
+                return index;
+            }
+        }
+        text.len()
+    }
+
     fn ellipsize(&self, text: &str, font_size: f32, available_width: f32) -> String {
         if self.text_width(text, font_size) <= available_width {
             return text.to_owned();
@@ -5654,7 +5939,9 @@ impl Engine {
     }
 
     fn scaled_font(&self, value: f32) -> f32 {
-        self.scaled(value) * PUBLIC_SANS_RASTER_SCALE
+        (self.scaled(value) * PUBLIC_SANS_RASTER_SCALE)
+            .round()
+            .clamp(1.0, u16::MAX as f32)
     }
 
     fn control_line_height(&self) -> f32 {
@@ -5703,6 +5990,26 @@ fn evaluate_binary(
 
 fn finite_number(value: f64) -> Option<StateValue> {
     value.is_finite().then_some(StateValue::Number(value))
+}
+
+fn text_cursor_boundary(text: &str, cursor: usize) -> usize {
+    let cursor = cursor.min(text.len());
+    if cursor == text.len() {
+        return cursor;
+    }
+    text.grapheme_indices(true)
+        .map(|(index, _)| index)
+        .take_while(|index| *index <= cursor)
+        .last()
+        .unwrap_or_default()
+}
+
+fn next_text_cursor_boundary(text: &str, cursor: usize) -> usize {
+    text.grapheme_indices(true)
+        .map(|(index, _)| index)
+        .chain(std::iter::once(text.len()))
+        .find(|index| *index >= cursor)
+        .unwrap_or(text.len())
 }
 
 pub fn is_emoji_grapheme(grapheme: &str) -> bool {

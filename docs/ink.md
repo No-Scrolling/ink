@@ -151,7 +151,7 @@ const query = state("");
 
 Add `autoFocus` to select an input and open the keyboard when its screen becomes active. It focuses once per screen visit, so dismissing the keyboard does not immediately reopen it.
 
-When the value is wider than the input, it scrolls horizontally to keep the latest characters and cursor visible. A clear button appears at the end of non-empty inputs.
+When the value is wider than the input, it scrolls horizontally to keep the cursor visible. Drag within the input to move through the value, or tap the text to reposition the cursor. A clear button appears at the end of non-empty inputs.
 
 ## Images
 
