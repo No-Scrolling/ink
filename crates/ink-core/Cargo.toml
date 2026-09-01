@@ -8,6 +8,9 @@ rust-version.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+perf = []
+
 [dependencies]
 ab_glyph.workspace = true
 ink-app-format = { path = "../ink-app-format" }

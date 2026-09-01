@@ -13,7 +13,8 @@ path = "src/lib.rs"
 [features]
 audio = ["dep:ink-audio", "dep:serde_json"]
 background = []
-image = []
+benchmark = ["ink-core/perf", "ink-renderer-wgpu/perf"]
+image = ["ink-renderer-wgpu/image"]
 network = ["image"]
 camera-photo = ["image"]
 

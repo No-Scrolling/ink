@@ -440,6 +440,7 @@ fn detect_capabilities(app: &ir::App) -> Capabilities {
         uses_remote_image(&app.root) || audio_playback,
         Capability::Network,
     );
+    include(uses_image(&app.root), Capability::Image);
     include(uses_text_input(&app.root), Capability::TextInput);
     include(
         app.android_permissions
@@ -492,6 +493,33 @@ fn write_background_registry(project: &Project, app: &ir::App) -> Result<()> {
         "jobs": jobs.into_values().collect::<Vec<_>>(),
     });
     write_if_changed(&path, registry.to_string().as_bytes())
+}
+
+fn uses_image(node: &ir::Node) -> bool {
+    match node {
+        ir::Node::Image { .. } => true,
+        ir::Node::Screen { children, .. } | ir::Node::Stack { children, .. } => {
+            children.iter().any(uses_image)
+        }
+        ir::Node::Tabs { tabs, .. } => tabs.iter().any(|tab| uses_image(&tab.screen)),
+        ir::Node::Navigator { routes } => routes.iter().any(|route| uses_image(&route.screen)),
+        ir::Node::Conditional {
+            consequent,
+            alternate,
+            ..
+        } => uses_image(consequent) || alternate.as_deref().is_some_and(uses_image),
+        ir::Node::ForEach { template, .. } => uses_image(template),
+        ir::Node::Text { .. }
+        | ir::Node::TextInput { .. }
+        | ir::Node::Button { .. }
+        | ir::Node::Field { .. }
+        | ir::Node::Icon { .. }
+        | ir::Node::CameraPreview { .. }
+        | ir::Node::Toggle { .. } => false,
+        ir::Node::ScreenModule { .. } => {
+            unreachable!("screen modules are expanded before feature detection")
+        }
+    }
 }
 
 fn uses_remote_image(node: &ir::Node) -> bool {

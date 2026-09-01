@@ -19,6 +19,9 @@ val inkAndroidResources = providers.gradleProperty("inkAndroidResources")
 val inkAndroidAssets = providers.gradleProperty("inkAndroidAssets")
 val inkCapabilitiesManifest = providers.gradleProperty("inkCapabilitiesManifest")
 val inkCapabilitiesFile = inkCapabilitiesManifest.map(::file)
+val inkBenchmark = providers.environmentVariable("INK_BENCHMARK")
+    .map { it == "1" }
+    .orElse(false)
 val supportedInkCapabilities = setOf(
     "audio",
     "audio-detached",
@@ -26,6 +29,7 @@ val supportedInkCapabilities = setOf(
     "background",
     "camera-permission",
     "code-scanner",
+    "image",
     "light-sdk",
     "light-sdk-push",
     "light-sdk-ringtone",
@@ -78,6 +82,7 @@ val inkUsesDetachedAudio = inkUses("audio-detached")
 val inkUsesCameraPermission = inkUses("camera-permission")
 val inkUsesPhotoCapture = inkUses("photo-capture")
 val inkUsesCodeScanner = inkUses("code-scanner")
+val inkUsesImage = inkUses("image")
 val inkUsesMicrophonePermission = inkUses("microphone-permission")
 val inkUsesLocation = inkUses("location")
 val inkUsesNfc = inkUses("nfc")
@@ -428,6 +433,7 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
     group = "rust"
     description = "Builds the Ink runtime for the arm64 LP3 emulator."
     workingDir(repositoryRoot)
+    inputs.property("inkBenchmark", inkBenchmark)
     commandLine(buildList {
         addAll(
             listOf(
@@ -447,6 +453,9 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
         if (inkUsesNetwork.get()) {
             addAll(listOf("--features", "network"))
         }
+        if (inkUsesImage.get()) {
+            addAll(listOf("--features", "image"))
+        }
         if (inkUsesAudio.get()) {
             addAll(listOf("--features", "audio"))
         }
@@ -456,6 +465,9 @@ val cargoBuildDebug by tasks.registering(Exec::class) {
         if (inkUsesPhotoCapture.get()) {
             addAll(listOf("--features", "camera-photo"))
         }
+        if (inkBenchmark.get()) {
+            addAll(listOf("--features", "benchmark"))
+        }
     })
 }
 
@@ -463,6 +475,7 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
     group = "rust"
     description = "Builds the Ink runtime for the LP3 arm64 ABI."
     workingDir(repositoryRoot)
+    inputs.property("inkBenchmark", inkBenchmark)
     commandLine(buildList {
         addAll(
             listOf(
@@ -481,6 +494,9 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
         if (inkUsesNetwork.get()) {
             addAll(listOf("--features", "network"))
         }
+        if (inkUsesImage.get()) {
+            addAll(listOf("--features", "image"))
+        }
         if (inkUsesAudio.get()) {
             addAll(listOf("--features", "audio"))
         }
@@ -489,6 +505,9 @@ val cargoBuildRelease by tasks.registering(Exec::class) {
         }
         if (inkUsesPhotoCapture.get()) {
             addAll(listOf("--features", "camera-photo"))
+        }
+        if (inkBenchmark.get()) {
+            addAll(listOf("--features", "benchmark"))
         }
     })
 }

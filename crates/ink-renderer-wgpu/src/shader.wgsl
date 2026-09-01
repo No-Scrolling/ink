@@ -10,11 +10,26 @@ struct Transform {
 @group(0) @binding(0)
 var<uniform> transform: Transform;
 
+fn unit_corner(vertex_index: u32) -> vec2<f32> {
+    let corners = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(1.0, 0.0),
+    );
+    return corners[vertex_index];
+}
+
 @vertex
 fn quad_vertex(
-    @location(0) position: vec2<f32>,
+    @builtin(vertex_index) vertex_index: u32,
+    @location(0) rect: vec4<f32>,
     @location(1) colour: vec4<f32>,
 ) -> QuadOutput {
+    let corner = unit_corner(vertex_index);
+    let position = rect.xy + corner * (rect.zw - rect.xy);
     var output: QuadOutput;
     output.position = vec4<f32>(position + transform.translation.xy, 0.0, 1.0);
     output.colour = colour;
@@ -34,13 +49,16 @@ struct TextOutput {
 
 @vertex
 fn text_vertex(
-    @location(0) position: vec2<f32>,
-    @location(1) uv: vec2<f32>,
+    @builtin(vertex_index) vertex_index: u32,
+    @location(0) rect: vec4<f32>,
+    @location(1) uv_rect: vec4<f32>,
     @location(2) colour: vec4<f32>,
 ) -> TextOutput {
+    let corner = unit_corner(vertex_index);
+    let position = rect.xy + corner * (rect.zw - rect.xy);
     var output: TextOutput;
     output.position = vec4<f32>(position + transform.translation.xy, 0.0, 1.0);
-    output.uv = uv;
+    output.uv = uv_rect.xy + corner * (uv_rect.zw - uv_rect.xy);
     output.colour = colour;
     return output;
 }

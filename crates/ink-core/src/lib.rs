@@ -1,3 +1,5 @@
+#[cfg(feature = "perf")]
+use std::time::Instant;
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     fmt,
@@ -1652,6 +1654,17 @@ enum QueuedRequest {
     Cancel(NativeRequest),
 }
 
+#[cfg(feature = "perf")]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CorePerfMetrics {
+    pub materialise_ns: u64,
+    pub measure_ns: u64,
+    pub relayout_ns: u64,
+    pub nodes_measured: u32,
+    pub full_rebuilds: u32,
+    pub incremental_rebuilds: u32,
+}
+
 pub struct Engine {
     definition: AppDefinition,
     state: Vec<StateValue>,
@@ -1691,6 +1704,10 @@ pub struct Engine {
     next_request_id: u64,
     back_icon: Option<Mask>,
     font: FontRef<'static>,
+    #[cfg(feature = "perf")]
+    perf: CorePerfMetrics,
+    #[cfg(feature = "perf")]
+    measure_depth: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -1790,6 +1807,10 @@ impl Engine {
             next_request_id: 1,
             back_icon: None,
             font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
+            #[cfg(feature = "perf")]
+            perf: CorePerfMetrics::default(),
+            #[cfg(feature = "perf")]
+            measure_depth: 0,
         };
         engine.sync_active_resources();
         (engine, hydration)
@@ -1806,6 +1827,11 @@ impl Engine {
         };
         self.last_native_request = Some(request.clone());
         Some(request)
+    }
+
+    #[cfg(feature = "perf")]
+    pub fn take_perf_metrics(&mut self) -> CorePerfMetrics {
+        std::mem::take(&mut self.perf)
     }
 
     pub fn native_request(&self, id: u64) -> Option<&NativeRequest> {
@@ -3631,6 +3657,10 @@ impl Engine {
     }
 
     fn rebuild_scene(&mut self) {
+        #[cfg(feature = "perf")]
+        {
+            self.perf.full_rebuilds += 1;
+        }
         self.sync_active_resources();
         self.virtual_lists.clear();
         if self.viewport.width == 0 || self.viewport.height == 0 {
@@ -3650,7 +3680,13 @@ impl Engine {
             }
             _ => (&self.definition.root, None),
         };
+        #[cfg(feature = "perf")]
+        let materialise_started = Instant::now();
         let mut roots = self.materialise(root, None);
+        #[cfg(feature = "perf")]
+        {
+            self.perf.materialise_ns += elapsed_ns(materialise_started);
+        }
         assert_eq!(roots.len(), 1, "an app route has exactly one root");
         self.materialised_root = Some(roots.remove(0));
         self.back_icon = if self.navigation.len() > 1 {
@@ -3714,12 +3750,22 @@ impl Engine {
         if !subtree_contains_target(root, &targets) {
             return;
         }
+        #[cfg(feature = "perf")]
+        {
+            self.perf.incremental_rebuilds += 1;
+        }
         self.virtual_lists.clear();
         let previous = self.materialised_root.take();
+        #[cfg(feature = "perf")]
+        let materialise_started = Instant::now();
         let mut roots = previous.as_ref().map_or_else(
             || self.materialise(root, None),
             |previous| self.materialise_incremental(root, previous, &targets),
         );
+        #[cfg(feature = "perf")]
+        {
+            self.perf.materialise_ns += elapsed_ns(materialise_started);
+        }
         assert_eq!(roots.len(), 1, "an app route has exactly one root");
         self.materialised_root = Some(roots.remove(0));
         self.relayout_scene();
@@ -3829,6 +3875,16 @@ impl Engine {
     }
 
     fn relayout_scene(&mut self) {
+        #[cfg(feature = "perf")]
+        let started = Instant::now();
+        self.relayout_scene_inner();
+        #[cfg(feature = "perf")]
+        {
+            self.perf.relayout_ns += elapsed_ns(started);
+        }
+    }
+
+    fn relayout_scene_inner(&mut self) {
         self.scene.revision = self.scene.revision.wrapping_add(1);
         self.scene.width = self.viewport.width;
         self.scene.height = self.viewport.height;
@@ -3923,6 +3979,25 @@ impl Engine {
     }
 
     fn measure(&mut self, node: &Node, available: Rect) -> MeasuredSize {
+        #[cfg(feature = "perf")]
+        let started = (self.measure_depth == 0).then(Instant::now);
+        #[cfg(feature = "perf")]
+        {
+            self.measure_depth += 1;
+            self.perf.nodes_measured += 1;
+        }
+        let measured = self.measure_inner(node, available);
+        #[cfg(feature = "perf")]
+        {
+            self.measure_depth -= 1;
+            if let Some(started) = started {
+                self.perf.measure_ns += elapsed_ns(started);
+            }
+        }
+        measured
+    }
+
+    fn measure_inner(&mut self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
             NodeKind::Screen { .. } | NodeKind::Tabs { .. } | NodeKind::Navigator { .. } => {
                 MeasuredSize {
@@ -6522,4 +6597,9 @@ fn distribution(
         Justification::SpaceBetween if count > 1 => (origin, gap + remaining / (count - 1) as f32),
         Justification::SpaceBetween => (origin, gap),
     }
+}
+
+#[cfg(feature = "perf")]
+fn elapsed_ns(started: Instant) -> u64 {
+    started.elapsed().as_nanos() as u64
 }

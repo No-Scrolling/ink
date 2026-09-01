@@ -197,7 +197,15 @@ function apkBreakdown(apk: string) {
   return { bytes, uncompressedBytes: Object.values(groups).reduce((a, b) => a + b, 0), ...groups };
 }
 
+function wakeAndUnlock() {
+  shell("input keyevent 224");
+  sleep(100);
+  shell("input swipe 540 1150 540 300 300");
+  sleep(100);
+}
+
 function start(app: App): number {
+  wakeAndUnlock();
   for (const candidate of apps) {
     shell(`am force-stop ${candidate.packageName}`);
   }
@@ -298,6 +306,23 @@ function continuousScroll(app: App): ContinuousScrollSample {
 }
 
 run([...adbCommand, "wait-for-device"], true);
+const originalStayOn = shell("settings get global stay_on_while_plugged_in").trim();
+let restorePowerSetting = true;
+function restorePower() {
+  if (!restorePowerSetting) return;
+  restorePowerSetting = false;
+  Bun.spawnSync([
+    ...adbCommand,
+    "shell",
+    "settings",
+    "put",
+    "global",
+    "stay_on_while_plugged_in",
+    originalStayOn,
+  ]);
+}
+process.on("exit", restorePower);
+shell("settings put global stay_on_while_plugged_in 7");
 clockTicksPerSecond = Number(shell("getconf CLK_TCK").trim());
 if (!Number.isFinite(clockTicksPerSecond) || clockTicksPerSecond <= 0) {
   throw new Error("Could not read the device clock tick rate");
@@ -449,4 +474,5 @@ await Bun.write(
   output,
   `${JSON.stringify({ environment, protocol, results }, null, 2)}\n`,
 );
+restorePower();
 console.log(`Wrote ${output}`);

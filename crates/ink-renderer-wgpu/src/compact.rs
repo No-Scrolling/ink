@@ -1,3 +1,5 @@
+#[cfg(feature = "perf")]
+use std::time::Instant;
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
@@ -25,16 +27,16 @@ const IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C)]
-struct QuadVertex {
-    position: [f32; 2],
+struct QuadInstance {
+    rect: [f32; 4],
     colour: [f32; 4],
 }
 
 #[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C)]
-struct TextVertex {
-    position: [f32; 2],
-    uv: [f32; 2],
+struct TextInstance {
+    rect: [f32; 4],
+    uv: [f32; 4],
     colour: [f32; 4],
 }
 
@@ -44,44 +46,44 @@ struct TransformUniform {
     translation: [f32; 4],
 }
 
-struct VertexBuffer<T> {
+struct InstanceBuffer<T> {
     buffer: wgpu::Buffer,
     capacity: usize,
-    vertices: Vec<T>,
+    instances: Vec<T>,
     label: &'static str,
 }
 
-impl<T: Pod + PartialEq> VertexBuffer<T> {
+impl<T: Pod + PartialEq> InstanceBuffer<T> {
     fn new(device: &wgpu::Device, label: &'static str, capacity: usize) -> Self {
         Self {
-            buffer: raw_vertex_buffer::<T>(device, label, capacity),
+            buffer: raw_instance_buffer::<T>(device, label, capacity),
             capacity,
-            vertices: Vec::new(),
+            instances: Vec::new(),
             label,
         }
     }
 
-    fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, vertices: &[T]) {
-        let resized = vertices.len() > self.capacity;
+    fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, instances: &[T]) {
+        let resized = instances.len() > self.capacity;
         if resized {
-            self.capacity = vertices.len().next_power_of_two();
-            self.buffer = raw_vertex_buffer::<T>(device, self.label, self.capacity);
+            self.capacity = instances.len().next_power_of_two();
+            self.buffer = raw_instance_buffer::<T>(device, self.label, self.capacity);
         }
         let start = if resized {
             0
         } else {
-            self.vertices
+            self.instances
                 .iter()
-                .zip(vertices)
+                .zip(instances)
                 .position(|(current, next)| current != next)
-                .unwrap_or(self.vertices.len().min(vertices.len()))
+                .unwrap_or(self.instances.len().min(instances.len()))
         };
-        let end = if resized || self.vertices.len() != vertices.len() {
-            vertices.len()
+        let end = if resized || self.instances.len() != instances.len() {
+            instances.len()
         } else {
-            self.vertices
+            self.instances
                 .iter()
-                .zip(vertices)
+                .zip(instances)
                 .rposition(|(current, next)| current != next)
                 .map_or(start, |index| index + 1)
         };
@@ -89,11 +91,11 @@ impl<T: Pod + PartialEq> VertexBuffer<T> {
             queue.write_buffer(
                 &self.buffer,
                 (start * size_of::<T>()) as u64,
-                bytemuck::cast_slice(&vertices[start..end]),
+                bytemuck::cast_slice(&instances[start..end]),
             );
         }
-        self.vertices.clear();
-        self.vertices.extend_from_slice(vertices);
+        self.instances.clear();
+        self.instances.extend_from_slice(instances);
     }
 }
 
@@ -101,7 +103,12 @@ impl<T: Pod + PartialEq> VertexBuffer<T> {
 struct PreparedScene {
     revision: u64,
     image_revision: u64,
+    width: u32,
+    height: u32,
     ready: bool,
+    quads: Vec<ink_core::Quad>,
+    masks: Vec<PreparedMaskRun>,
+    images: Vec<PreparedImageRun>,
     quad_fixed: Range<u32>,
     quad_scroll: Range<u32>,
     text_fixed: Range<u32>,
@@ -111,15 +118,65 @@ struct PreparedScene {
     text_runs: Vec<PreparedTextRun>,
 }
 
-struct PreparedTextRun {
-    run: TextRun,
-    text: Vec<TextVertex>,
-    system_glyphs: Vec<SystemGlyphVertices>,
+#[derive(Clone, Copy, PartialEq)]
+struct PreparedMaskRun {
+    id: u64,
+    width: u16,
+    height: u16,
+    rect: Rect,
+    clip: Rect,
+    colour: Colour,
+    scrolling: bool,
 }
 
-struct SystemGlyphVertices {
+impl From<&ink_core::MaskRun> for PreparedMaskRun {
+    fn from(run: &ink_core::MaskRun) -> Self {
+        Self {
+            id: run.mask.id,
+            width: run.mask.width,
+            height: run.mask.height,
+            rect: run.rect,
+            clip: run.clip,
+            colour: run.colour,
+            scrolling: run.scrolling,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct PreparedImageRun {
+    id: u64,
+    zoom_id: Option<usize>,
+    rect: Rect,
+    clip: Rect,
+    fit: ImageFit,
+    scrolling: bool,
+    transform: ink_core::ImageTransform,
+}
+
+impl From<&ImageRun> for PreparedImageRun {
+    fn from(run: &ImageRun) -> Self {
+        Self {
+            id: run.image.id(),
+            zoom_id: run.zoom_id,
+            rect: run.rect,
+            clip: run.clip,
+            fit: run.fit,
+            scrolling: run.scrolling,
+            transform: run.transform,
+        }
+    }
+}
+
+struct PreparedTextRun {
+    run: TextRun,
+    text: Vec<TextInstance>,
+    system_glyphs: Vec<SystemGlyphInstances>,
+}
+
+struct SystemGlyphInstances {
     page: usize,
-    vertices: Vec<TextVertex>,
+    instances: Vec<TextInstance>,
 }
 
 #[derive(Clone, Copy)]
@@ -312,13 +369,13 @@ fn decode_encoded_image(_bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
 
 struct ImageDraw {
     id: u64,
-    vertices: Range<u32>,
+    instances: Range<u32>,
     scrolling: bool,
 }
 
 struct SystemGlyphDraw {
     page: usize,
-    vertices: Range<u32>,
+    instances: Range<u32>,
     scrolling: bool,
 }
 
@@ -530,6 +587,17 @@ pub enum RenderOutcome {
     NeedsSystemGlyph(SystemGlyphRequest),
 }
 
+#[cfg(feature = "perf")]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RenderPerfMetrics {
+    pub prepare_ns: u64,
+    pub upload_ns: u64,
+    pub acquire_ns: u64,
+    pub encode_ns: u64,
+    pub submit_ns: u64,
+    pub frame_ns: u64,
+}
+
 pub struct Renderer {
     _instance: wgpu::Instance,
     surface: wgpu::Surface<'static>,
@@ -540,18 +608,20 @@ pub struct Renderer {
     scroll_transform: wgpu::BindGroup,
     scroll_transform_buffer: wgpu::Buffer,
     quad_pipeline: wgpu::RenderPipeline,
-    quad_buffer: VertexBuffer<QuadVertex>,
-    overlay_buffer: VertexBuffer<QuadVertex>,
-    overlay_vertices: Vec<QuadVertex>,
+    quad_buffer: InstanceBuffer<QuadInstance>,
+    overlay_buffer: InstanceBuffer<QuadInstance>,
+    overlay_instances: Vec<QuadInstance>,
     text_pipeline: wgpu::RenderPipeline,
-    text_buffer: VertexBuffer<TextVertex>,
+    text_buffer: InstanceBuffer<TextInstance>,
     image_pipeline: wgpu::RenderPipeline,
-    image_buffer: VertexBuffer<TextVertex>,
+    image_buffer: InstanceBuffer<TextInstance>,
     image_cache: ImageCache,
-    system_glyph_buffer: VertexBuffer<TextVertex>,
+    system_glyph_buffer: InstanceBuffer<TextInstance>,
     system_glyph_atlas: SystemGlyphAtlas,
     glyph_atlas: GlyphAtlas,
     prepared: PreparedScene,
+    #[cfg(feature = "perf")]
+    perf: RenderPerfMetrics,
 }
 
 impl Renderer {
@@ -694,17 +764,17 @@ impl Renderer {
                 entry_point: Some("quad_vertex"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: size_of::<QuadVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
+                    array_stride: size_of::<QuadInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
+                            format: wgpu::VertexFormat::Float32x4,
                             offset: 0,
                             shader_location: 0,
                         },
                         wgpu::VertexAttribute {
                             format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 2]>() as u64,
+                            offset: size_of::<[f32; 4]>() as u64,
                             shader_location: 1,
                         },
                     ],
@@ -735,22 +805,22 @@ impl Renderer {
                 entry_point: Some("text_vertex"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: size_of::<TextVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
+                    array_stride: size_of::<TextInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
+                            format: wgpu::VertexFormat::Float32x4,
                             offset: 0,
                             shader_location: 0,
                         },
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: size_of::<[f32; 2]>() as u64,
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: size_of::<[f32; 4]>() as u64,
                             shader_location: 1,
                         },
                         wgpu::VertexAttribute {
                             format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 4]>() as u64,
+                            offset: size_of::<[f32; 8]>() as u64,
                             shader_location: 2,
                         },
                     ],
@@ -803,22 +873,22 @@ impl Renderer {
                 entry_point: Some("text_vertex"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: size_of::<TextVertex>() as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
+                    array_stride: size_of::<TextInstance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
+                            format: wgpu::VertexFormat::Float32x4,
                             offset: 0,
                             shader_location: 0,
                         },
                         wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: size_of::<[f32; 2]>() as u64,
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: size_of::<[f32; 4]>() as u64,
                             shader_location: 1,
                         },
                         wgpu::VertexAttribute {
                             format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 4]>() as u64,
+                            offset: size_of::<[f32; 8]>() as u64,
                             shader_location: 2,
                         },
                     ],
@@ -857,14 +927,14 @@ impl Renderer {
                 translation: [0.0; 4],
             }),
         );
-        let quad_buffer = VertexBuffer::new(&device, "Ink quad vertices", MAX_QUADS * 6);
-        let overlay_buffer = VertexBuffer::new(&device, "Ink overlay vertices", 18);
-        let text_buffer = VertexBuffer::new(&device, "Ink text vertices", MAX_GLYPHS * 6);
-        let image_buffer = VertexBuffer::new(&device, "Ink image vertices", MAX_QUADS * 6);
+        let quad_buffer = InstanceBuffer::new(&device, "Ink quad instances", MAX_QUADS);
+        let overlay_buffer = InstanceBuffer::new(&device, "Ink overlay instances", 3);
+        let text_buffer = InstanceBuffer::new(&device, "Ink text instances", MAX_GLYPHS);
+        let image_buffer = InstanceBuffer::new(&device, "Ink image instances", MAX_QUADS);
         let system_glyph_atlas = SystemGlyphAtlas::new(image_bind_group_layout.clone());
         let image_cache = ImageCache::new(image_bind_group_layout);
         let system_glyph_buffer =
-            VertexBuffer::new(&device, "Ink system glyph vertices", MAX_GLYPHS * 6);
+            InstanceBuffer::new(&device, "Ink system glyph instances", MAX_GLYPHS);
         let glyph_atlas = GlyphAtlas::new(&device, &glyph_bind_group_layout)?;
 
         Ok(Self {
@@ -879,7 +949,7 @@ impl Renderer {
             quad_pipeline,
             quad_buffer,
             overlay_buffer,
-            overlay_vertices: Vec::with_capacity(12),
+            overlay_instances: Vec::with_capacity(2),
             text_pipeline,
             text_buffer,
             image_pipeline,
@@ -889,6 +959,8 @@ impl Renderer {
             system_glyph_atlas,
             glyph_atlas,
             prepared: PreparedScene::default(),
+            #[cfg(feature = "perf")]
+            perf: RenderPerfMetrics::default(),
         })
     }
 
@@ -902,6 +974,8 @@ impl Renderer {
     }
 
     pub fn render(&mut self, scene: &Scene, text_cursor_visible: bool) -> Result<RenderOutcome> {
+        #[cfg(feature = "perf")]
+        let frame_started = Instant::now();
         if scene.width == 0 || scene.height == 0 {
             return Ok(RenderOutcome::Skipped);
         }
@@ -912,10 +986,24 @@ impl Renderer {
             if let Some(request) = self.system_glyph_atlas.request(scene) {
                 return Ok(RenderOutcome::NeedsSystemGlyph(request));
             }
+            #[cfg(feature = "perf")]
+            let prepare_started = Instant::now();
             self.prepare(scene)?;
+            #[cfg(feature = "perf")]
+            {
+                self.perf.prepare_ns += elapsed_ns(prepare_started);
+            }
         } else if self.prepared.image_revision != scene.image_revision {
+            #[cfg(feature = "perf")]
+            let prepare_started = Instant::now();
             self.refresh_images(scene)?;
+            #[cfg(feature = "perf")]
+            {
+                self.perf.prepare_ns += elapsed_ns(prepare_started);
+            }
         }
+        #[cfg(feature = "perf")]
+        let upload_started = Instant::now();
         let scroll_y = if scene.height == 0 {
             0.0
         } else {
@@ -928,16 +1016,22 @@ impl Renderer {
                 translation: [0.0, scroll_y, 0.0, 0.0],
             }),
         );
-        self.overlay_vertices.clear();
+        self.overlay_instances.clear();
         if text_cursor_visible && let Some(cursor) = &scene.text_cursor {
-            push_quad_vertices(&mut self.overlay_vertices, scene, cursor);
+            push_quad_instance(&mut self.overlay_instances, scene, cursor);
         }
-        let cursor_end = self.overlay_vertices.len() as u32;
-        push_scrollbar_vertices(scene, &mut self.overlay_vertices);
-        let overlay_end = self.overlay_vertices.len() as u32;
+        let cursor_end = self.overlay_instances.len() as u32;
+        push_scrollbar_instances(scene, &mut self.overlay_instances);
+        let overlay_end = self.overlay_instances.len() as u32;
         self.overlay_buffer
-            .write(&self.device, &self.queue, &self.overlay_vertices);
+            .write(&self.device, &self.queue, &self.overlay_instances);
+        #[cfg(feature = "perf")]
+        {
+            self.perf.upload_ns += elapsed_ns(upload_started);
+        }
 
+        #[cfg(feature = "perf")]
+        let acquire_started = Instant::now();
         let mut retried_outdated_surface = false;
         let frame = loop {
             match self.surface.get_current_texture() {
@@ -956,6 +1050,12 @@ impl Renderer {
                 }
             }
         };
+        #[cfg(feature = "perf")]
+        {
+            self.perf.acquire_ns += elapsed_ns(acquire_started);
+        }
+        #[cfg(feature = "perf")]
+        let encode_started = Instant::now();
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -985,14 +1085,14 @@ impl Renderer {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
                 pass.set_vertex_buffer(0, self.quad_buffer.buffer.slice(..));
-                pass.draw(self.prepared.quad_fixed.clone(), 0..1);
+                pass.draw(0..6, self.prepared.quad_fixed.clone());
             }
             if !self.prepared.quad_scroll.is_empty() {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.scroll_transform, &[]);
                 pass.set_vertex_buffer(0, self.quad_buffer.buffer.slice(..));
                 set_scroll_scissor(&mut pass, scene);
-                pass.draw(self.prepared.quad_scroll.clone(), 0..1);
+                pass.draw(0..6, self.prepared.quad_scroll.clone());
                 reset_scissor(&mut pass, scene);
             }
             if !self.prepared.image_draws.is_empty() {
@@ -1019,7 +1119,7 @@ impl Renderer {
                     } else {
                         reset_scissor(&mut pass, scene);
                     }
-                    pass.draw(draw.vertices.clone(), 0..1);
+                    pass.draw(0..6, draw.instances.clone());
                 }
                 reset_scissor(&mut pass, scene);
             }
@@ -1042,7 +1142,7 @@ impl Renderer {
                     } else {
                         reset_scissor(&mut pass, scene);
                     }
-                    pass.draw(draw.vertices.clone(), 0..1);
+                    pass.draw(0..6, draw.instances.clone());
                 }
                 reset_scissor(&mut pass, scene);
             }
@@ -1051,7 +1151,7 @@ impl Renderer {
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
                 pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
                 pass.set_vertex_buffer(0, self.text_buffer.buffer.slice(..));
-                pass.draw(self.prepared.text_fixed.clone(), 0..1);
+                pass.draw(0..6, self.prepared.text_fixed.clone());
             }
             if !self.prepared.text_scroll.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
@@ -1059,7 +1159,7 @@ impl Renderer {
                 pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
                 pass.set_vertex_buffer(0, self.text_buffer.buffer.slice(..));
                 set_scroll_scissor(&mut pass, scene);
-                pass.draw(self.prepared.text_scroll.clone(), 0..1);
+                pass.draw(0..6, self.prepared.text_scroll.clone());
                 reset_scissor(&mut pass, scene);
             }
             if cursor_end > 0 {
@@ -1081,7 +1181,7 @@ impl Renderer {
                 if scrolling {
                     set_scroll_scissor(&mut pass, scene);
                 }
-                pass.draw(0..cursor_end, 0..1);
+                pass.draw(0..6, 0..cursor_end);
                 if scrolling {
                     reset_scissor(&mut pass, scene);
                 }
@@ -1090,12 +1190,29 @@ impl Renderer {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
                 pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
-                pass.draw(cursor_end..overlay_end, 0..1);
+                pass.draw(0..6, cursor_end..overlay_end);
             }
         }
-        self.queue.submit(Some(encoder.finish()));
+        let command_buffer = encoder.finish();
+        #[cfg(feature = "perf")]
+        {
+            self.perf.encode_ns += elapsed_ns(encode_started);
+        }
+        #[cfg(feature = "perf")]
+        let submit_started = Instant::now();
+        self.queue.submit(Some(command_buffer));
         self.queue.present(frame);
+        #[cfg(feature = "perf")]
+        {
+            self.perf.submit_ns += elapsed_ns(submit_started);
+            self.perf.frame_ns += elapsed_ns(frame_started);
+        }
         Ok(RenderOutcome::Presented)
+    }
+
+    #[cfg(feature = "perf")]
+    pub fn take_perf_metrics(&mut self) -> RenderPerfMetrics {
+        std::mem::take(&mut self.perf)
     }
 
     pub fn install_system_glyph(&mut self, request_id: u64, pixels: Option<&[u8]>) -> Result<()> {
@@ -1104,88 +1221,131 @@ impl Renderer {
     }
 
     fn prepare(&mut self, scene: &Scene) -> Result<()> {
-        let mut quads = quad_vertices(scene, false);
-        let quad_fixed_end = quads.len() as u32;
-        quads.extend(quad_vertices(scene, true));
+        let viewport_changed =
+            self.prepared.width != scene.width || self.prepared.height != scene.height;
+        if viewport_changed {
+            self.prepared.text_runs.clear();
+        }
+        if !self.prepared.ready || viewport_changed || self.prepared.quads != scene.quads {
+            let mut quads = quad_instances(scene, false);
+            let fixed_end = quads.len() as u32;
+            quads.extend(quad_instances(scene, true));
+            self.quad_buffer.write(&self.device, &self.queue, &quads);
+            self.prepared.quad_fixed = 0..fixed_end;
+            self.prepared.quad_scroll = fixed_end..quads.len() as u32;
+            self.prepared.quads.clone_from(&scene.quads);
+        }
 
-        let text_runs = self.prepare_text_runs(scene)?;
-        let mut text = text_runs
-            .iter()
-            .filter(|run| !run.run.scrolling)
-            .flat_map(|run| run.text.iter().copied())
-            .collect::<Vec<_>>();
-        text.extend(self.mask_vertices(scene, false)?);
-        let text_fixed_end = text.len() as u32;
-        text.extend(
-            text_runs
+        let text_changed = self.prepared.text_runs.len() != scene.text.len()
+            || self
+                .prepared
+                .text_runs
                 .iter()
-                .filter(|run| run.run.scrolling)
-                .flat_map(|run| run.text.iter().copied()),
-        );
-        text.extend(self.mask_vertices(scene, true)?);
+                .zip(&scene.text)
+                .any(|(prepared, run)| prepared.run != *run);
+        if !self.prepared.ready
+            || viewport_changed
+            || text_changed
+            || !prepared_masks_match(&self.prepared.masks, &scene.masks)
+        {
+            let text_runs = self.prepare_text_runs(scene)?;
+            let mut text = text_runs
+                .iter()
+                .filter(|run| !run.run.scrolling)
+                .flat_map(|run| run.text.iter().copied())
+                .collect::<Vec<_>>();
+            text.extend(self.mask_instances(scene, false)?);
+            let fixed_end = text.len() as u32;
+            text.extend(
+                text_runs
+                    .iter()
+                    .filter(|run| run.run.scrolling)
+                    .flat_map(|run| run.text.iter().copied()),
+            );
+            text.extend(self.mask_instances(scene, true)?);
 
-        let mut system_glyph_groups = HashMap::<(bool, usize), Vec<TextVertex>>::new();
-        for run in &text_runs {
-            for glyphs in &run.system_glyphs {
-                system_glyph_groups
-                    .entry((run.run.scrolling, glyphs.page))
-                    .or_default()
-                    .extend_from_slice(&glyphs.vertices);
+            let mut groups = HashMap::<(bool, usize), Vec<TextInstance>>::new();
+            for run in &text_runs {
+                for glyphs in &run.system_glyphs {
+                    groups
+                        .entry((run.run.scrolling, glyphs.page))
+                        .or_default()
+                        .extend_from_slice(&glyphs.instances);
+                }
             }
-        }
-        let mut system_glyph_groups = system_glyph_groups.into_iter().collect::<Vec<_>>();
-        system_glyph_groups.sort_by_key(|((scrolling, page), _)| (*scrolling, *page));
-        let mut system_glyph_vertices = Vec::new();
-        let mut system_glyph_draws = Vec::with_capacity(system_glyph_groups.len());
-        for ((scrolling, page), vertices) in system_glyph_groups {
-            let start = system_glyph_vertices.len() as u32;
-            system_glyph_vertices.extend(vertices);
-            system_glyph_draws.push(SystemGlyphDraw {
-                page,
-                vertices: start..system_glyph_vertices.len() as u32,
-                scrolling,
-            });
+            let mut groups = groups.into_iter().collect::<Vec<_>>();
+            groups.sort_by_key(|((scrolling, page), _)| (*scrolling, *page));
+            let mut system_glyph_instances = Vec::new();
+            let mut system_glyph_draws = Vec::with_capacity(groups.len());
+            for ((scrolling, page), instances) in groups {
+                let start = system_glyph_instances.len() as u32;
+                system_glyph_instances.extend(instances);
+                system_glyph_draws.push(SystemGlyphDraw {
+                    page,
+                    instances: start..system_glyph_instances.len() as u32,
+                    scrolling,
+                });
+            }
+
+            self.text_buffer.write(&self.device, &self.queue, &text);
+            self.system_glyph_buffer
+                .write(&self.device, &self.queue, &system_glyph_instances);
+            self.prepared.text_fixed = 0..fixed_end;
+            self.prepared.text_scroll = fixed_end..text.len() as u32;
+            self.prepared.text_runs = text_runs;
+            self.prepared.system_glyph_draws = system_glyph_draws;
+            self.prepared.masks.clear();
+            self.prepared
+                .masks
+                .extend(scene.masks.iter().map(PreparedMaskRun::from));
         }
 
-        let (images, image_draws) = self.image_scene_vertices(scene)?;
+        if !self.prepared.ready
+            || viewport_changed
+            || self.prepared.image_revision != scene.image_revision
+            || !prepared_images_match(&self.prepared.images, &scene.images)
+        {
+            let (images, draws) = self.image_scene_instances(scene)?;
+            self.image_buffer.write(&self.device, &self.queue, &images);
+            self.prepared.image_draws = draws;
+            self.prepared.images.clear();
+            self.prepared
+                .images
+                .extend(scene.images.iter().map(PreparedImageRun::from));
+        }
 
-        self.quad_buffer.write(&self.device, &self.queue, &quads);
-        self.text_buffer.write(&self.device, &self.queue, &text);
-        self.image_buffer.write(&self.device, &self.queue, &images);
-        self.system_glyph_buffer
-            .write(&self.device, &self.queue, &system_glyph_vertices);
-        self.prepared = PreparedScene {
-            revision: scene.revision,
-            image_revision: scene.image_revision,
-            ready: true,
-            quad_fixed: 0..quad_fixed_end,
-            quad_scroll: quad_fixed_end..quads.len() as u32,
-            text_fixed: 0..text_fixed_end,
-            text_scroll: text_fixed_end..text.len() as u32,
-            image_draws,
-            system_glyph_draws,
-            text_runs,
-        };
+        self.prepared.revision = scene.revision;
+        self.prepared.image_revision = scene.image_revision;
+        self.prepared.width = scene.width;
+        self.prepared.height = scene.height;
+        self.prepared.ready = true;
         Ok(())
     }
 
     fn refresh_images(&mut self, scene: &Scene) -> Result<()> {
-        let (images, draws) = self.image_scene_vertices(scene)?;
+        let (images, draws) = self.image_scene_instances(scene)?;
         self.image_buffer.write(&self.device, &self.queue, &images);
         self.prepared.image_draws = draws;
+        self.prepared.images.clear();
+        self.prepared
+            .images
+            .extend(scene.images.iter().map(PreparedImageRun::from));
         self.prepared.image_revision = scene.image_revision;
         Ok(())
     }
 
-    fn image_scene_vertices(&mut self, scene: &Scene) -> Result<(Vec<TextVertex>, Vec<ImageDraw>)> {
+    fn image_scene_instances(
+        &mut self,
+        scene: &Scene,
+    ) -> Result<(Vec<TextInstance>, Vec<ImageDraw>)> {
         self.image_cache.begin_frame();
-        let (mut images, mut draws) = self.image_vertices(scene, false)?;
-        let (scroll_images, mut scroll_draws) = self.image_vertices(scene, true)?;
+        let (mut images, mut draws) = self.image_instances(scene, false)?;
+        let (scroll_images, mut scroll_draws) = self.image_instances(scene, true)?;
         let scroll_start = images.len() as u32;
         images.extend(scroll_images);
         for draw in &mut scroll_draws {
-            draw.vertices.start += scroll_start;
-            draw.vertices.end += scroll_start;
+            draw.instances.start += scroll_start;
+            draw.instances.end += scroll_start;
         }
         draws.extend(scroll_draws);
         self.image_cache
@@ -1207,8 +1367,8 @@ impl Renderer {
 
     fn prepare_text_run(&mut self, scene: &Scene, run: &TextRun) -> Result<PreparedTextRun> {
         let font = self.glyph_atlas.font.clone();
-        let mut vertices = Vec::new();
-        let mut system_glyphs = HashMap::<usize, Vec<TextVertex>>::new();
+        let mut instances = Vec::new();
+        let mut system_glyphs = HashMap::<usize, Vec<TextInstance>>::new();
         let clip = intersect(run.rect, run.clip);
         if clip.width > 0.0 && clip.height > 0.0 {
             let size = run.font_size.round().clamp(1.0, u16::MAX as f32) as u16;
@@ -1267,7 +1427,7 @@ impl Renderer {
                     }
                     if let Some(glyph) = self.glyph_atlas.glyph(&self.queue, id, size)? {
                         push_text_quad(
-                            &mut vertices,
+                            &mut instances,
                             scene,
                             clip,
                             Rect {
@@ -1290,43 +1450,43 @@ impl Renderer {
         }
         Ok(PreparedTextRun {
             run: run.clone(),
-            text: vertices,
+            text: instances,
             system_glyphs: system_glyphs
                 .into_iter()
-                .map(|(page, vertices)| SystemGlyphVertices { page, vertices })
+                .map(|(page, instances)| SystemGlyphInstances { page, instances })
                 .collect(),
         })
     }
 
-    fn mask_vertices(&mut self, scene: &Scene, scrolling: bool) -> Result<Vec<TextVertex>> {
-        let mut vertices = Vec::with_capacity(scene.masks.len() * 6);
+    fn mask_instances(&mut self, scene: &Scene, scrolling: bool) -> Result<Vec<TextInstance>> {
+        let mut instances = Vec::with_capacity(scene.masks.len());
         for run in scene.masks.iter().filter(|run| run.scrolling == scrolling) {
             let mask = self.glyph_atlas.mask(&self.queue, &run.mask)?;
-            push_mask_quad(&mut vertices, scene, run.rect, run.clip, mask, run.colour);
+            push_mask_quad(&mut instances, scene, run.rect, run.clip, mask, run.colour);
         }
-        Ok(vertices)
+        Ok(instances)
     }
 
-    fn image_vertices(
+    fn image_instances(
         &mut self,
         scene: &Scene,
         scrolling: bool,
-    ) -> Result<(Vec<TextVertex>, Vec<ImageDraw>)> {
-        let mut vertices = Vec::with_capacity(scene.images.len() * 6);
+    ) -> Result<(Vec<TextInstance>, Vec<ImageDraw>)> {
+        let mut instances = Vec::with_capacity(scene.images.len());
         let mut draws = Vec::with_capacity(scene.images.len());
         for run in scene.images.iter().filter(|run| run.scrolling == scrolling) {
             let image = self
                 .image_cache
                 .prepare(&self.device, &self.queue, &run.image)?;
-            let start = vertices.len() as u32;
-            push_image_quad(&mut vertices, scene, run, image.width, image.height);
+            let start = instances.len() as u32;
+            push_image_quad(&mut instances, scene, run, image.width, image.height);
             draws.push(ImageDraw {
                 id: run.image.id(),
-                vertices: start..vertices.len() as u32,
+                instances: start..instances.len() as u32,
                 scrolling,
             });
         }
-        Ok((vertices, draws))
+        Ok((instances, draws))
     }
 }
 
@@ -1349,6 +1509,22 @@ fn text_run_width<F: Font>(font: &impl ScaleFont<F>, text: &str, emoji_size: f32
         }
     }
     width
+}
+
+fn prepared_masks_match(prepared: &[PreparedMaskRun], current: &[ink_core::MaskRun]) -> bool {
+    prepared.len() == current.len()
+        && prepared
+            .iter()
+            .zip(current)
+            .all(|(prepared, current)| *prepared == PreparedMaskRun::from(current))
+}
+
+fn prepared_images_match(prepared: &[PreparedImageRun], current: &[ImageRun]) -> bool {
+    prepared.len() == current.len()
+        && prepared
+            .iter()
+            .zip(current)
+            .all(|(prepared, current)| *prepared == PreparedImageRun::from(current))
 }
 
 fn colour_target(format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
@@ -1381,14 +1557,14 @@ fn spirv_shader(
     }
 }
 
-fn raw_vertex_buffer<T>(
+fn raw_instance_buffer<T>(
     device: &wgpu::Device,
     label: &'static str,
-    vertices: usize,
+    instances: usize,
 ) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some(label),
-        size: (vertices.max(1) * size_of::<T>()) as u64,
+        size: (instances.max(1) * size_of::<T>()) as u64,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     })
@@ -1419,19 +1595,19 @@ fn transform_bind_group(
     })
 }
 
-fn quad_vertices(scene: &Scene, scrolling: bool) -> Vec<QuadVertex> {
-    let mut vertices = Vec::with_capacity(scene.quads.len() * 6);
+fn quad_instances(scene: &Scene, scrolling: bool) -> Vec<QuadInstance> {
+    let mut instances = Vec::with_capacity(scene.quads.len());
     for quad in scene
         .quads
         .iter()
         .filter(|quad| quad.scrolling == scrolling)
     {
-        push_quad_vertices(&mut vertices, scene, quad);
+        push_quad_instance(&mut instances, scene, quad);
     }
-    vertices
+    instances
 }
 
-fn push_quad_vertices(vertices: &mut Vec<QuadVertex>, scene: &Scene, quad: &ink_core::Quad) {
+fn push_quad_instance(instances: &mut Vec<QuadInstance>, scene: &Scene, quad: &ink_core::Quad) {
     let rect = intersect(quad.rect, quad.clip);
     if rect.width <= 0.0 || rect.height <= 0.0 {
         return;
@@ -1439,35 +1615,13 @@ fn push_quad_vertices(vertices: &mut Vec<QuadVertex>, scene: &Scene, quad: &ink_
     let [left, top] = position(scene, rect.x, rect.y);
     let [right, bottom] = position(scene, rect.x + rect.width, rect.y + rect.height);
     let colour = colour(quad.colour);
-    vertices.extend_from_slice(&[
-        QuadVertex {
-            position: [left, top],
-            colour,
-        },
-        QuadVertex {
-            position: [left, bottom],
-            colour,
-        },
-        QuadVertex {
-            position: [right, bottom],
-            colour,
-        },
-        QuadVertex {
-            position: [left, top],
-            colour,
-        },
-        QuadVertex {
-            position: [right, bottom],
-            colour,
-        },
-        QuadVertex {
-            position: [right, top],
-            colour,
-        },
-    ]);
+    instances.push(QuadInstance {
+        rect: [left, top, right, bottom],
+        colour,
+    });
 }
 
-fn push_scrollbar_vertices(scene: &Scene, vertices: &mut Vec<QuadVertex>) {
+fn push_scrollbar_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {
     let Some(scrollbar) = scene.scroll_bar else {
         return;
     };
@@ -1487,7 +1641,7 @@ fn push_scrollbar_vertices(scene: &Scene, vertices: &mut Vec<QuadVertex>) {
             scrolling: false,
         },
     ] {
-        push_quad_vertices(vertices, scene, &quad);
+        push_quad_instance(instances, scene, &quad);
     }
 }
 
@@ -1513,7 +1667,7 @@ fn reset_scissor(pass: &mut wgpu::RenderPass<'_>, scene: &Scene) {
 }
 
 fn push_text_quad(
-    vertices: &mut Vec<TextVertex>,
+    instances: &mut Vec<TextInstance>,
     scene: &Scene,
     clip: Rect,
     rect: Rect,
@@ -1541,42 +1695,15 @@ fn push_text_quad(
     let [ndc_left, ndc_top] = top_left;
     let [ndc_right, ndc_bottom] = bottom_right;
     let colour = colour(glyph_colour);
-    vertices.extend_from_slice(&[
-        TextVertex {
-            position: [ndc_left, ndc_top],
-            uv: [u0, v0],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_left, ndc_bottom],
-            uv: [u0, v1],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_right, ndc_bottom],
-            uv: [u1, v1],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_left, ndc_top],
-            uv: [u0, v0],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_right, ndc_bottom],
-            uv: [u1, v1],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_right, ndc_top],
-            uv: [u1, v0],
-            colour,
-        },
-    ]);
+    instances.push(TextInstance {
+        rect: [ndc_left, ndc_top, ndc_right, ndc_bottom],
+        uv: [u0, v0, u1, v1],
+        colour,
+    });
 }
 
 fn push_mask_quad(
-    vertices: &mut Vec<TextVertex>,
+    instances: &mut Vec<TextInstance>,
     scene: &Scene,
     rect: Rect,
     clip: Rect,
@@ -1599,42 +1726,15 @@ fn push_mask_quad(
     let [ndc_right, ndc_bottom] =
         position(scene, visible.x + visible.width, visible.y + visible.height);
     let colour = colour(mask_colour);
-    vertices.extend_from_slice(&[
-        TextVertex {
-            position: [ndc_left, ndc_top],
-            uv: [u0, v0],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_left, ndc_bottom],
-            uv: [u0, v1],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_right, ndc_bottom],
-            uv: [u1, v1],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_left, ndc_top],
-            uv: [u0, v0],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_right, ndc_bottom],
-            uv: [u1, v1],
-            colour,
-        },
-        TextVertex {
-            position: [ndc_right, ndc_top],
-            uv: [u1, v0],
-            colour,
-        },
-    ]);
+    instances.push(TextInstance {
+        rect: [ndc_left, ndc_top, ndc_right, ndc_bottom],
+        uv: [u0, v0, u1, v1],
+        colour,
+    });
 }
 
 fn push_image_quad(
-    vertices: &mut Vec<TextVertex>,
+    instances: &mut Vec<TextInstance>,
     scene: &Scene,
     run: &ImageRun,
     image_width: u32,
@@ -1695,42 +1795,15 @@ fn push_image_quad(
     let [left, top] = position(scene, visible.x, visible.y);
     let [right, bottom] = position(scene, visible.x + visible.width, visible.y + visible.height);
     let colour = [1.0; 4];
-    vertices.extend_from_slice(&[
-        TextVertex {
-            position: [left, top],
-            uv: [clipped_u0, clipped_v0],
-            colour,
-        },
-        TextVertex {
-            position: [left, bottom],
-            uv: [clipped_u0, clipped_v1],
-            colour,
-        },
-        TextVertex {
-            position: [right, bottom],
-            uv: [clipped_u1, clipped_v1],
-            colour,
-        },
-        TextVertex {
-            position: [left, top],
-            uv: [clipped_u0, clipped_v0],
-            colour,
-        },
-        TextVertex {
-            position: [right, bottom],
-            uv: [clipped_u1, clipped_v1],
-            colour,
-        },
-        TextVertex {
-            position: [right, top],
-            uv: [clipped_u1, clipped_v0],
-            colour,
-        },
-    ]);
+    instances.push(TextInstance {
+        rect: [left, top, right, bottom],
+        uv: [clipped_u0, clipped_v0, clipped_u1, clipped_v1],
+        colour,
+    });
 }
 
 fn push_system_glyph_quad(
-    vertices: &mut Vec<TextVertex>,
+    instances: &mut Vec<TextInstance>,
     scene: &Scene,
     rect: Rect,
     clip: Rect,
@@ -1751,38 +1824,11 @@ fn push_system_glyph_quad(
     let [left, top] = position(scene, visible.x, visible.y);
     let [right, bottom] = position(scene, visible.x + visible.width, visible.y + visible.height);
     let colour = [1.0; 4];
-    vertices.extend_from_slice(&[
-        TextVertex {
-            position: [left, top],
-            uv: [clipped_u0, clipped_v0],
-            colour,
-        },
-        TextVertex {
-            position: [left, bottom],
-            uv: [clipped_u0, clipped_v1],
-            colour,
-        },
-        TextVertex {
-            position: [right, bottom],
-            uv: [clipped_u1, clipped_v1],
-            colour,
-        },
-        TextVertex {
-            position: [left, top],
-            uv: [clipped_u0, clipped_v0],
-            colour,
-        },
-        TextVertex {
-            position: [right, bottom],
-            uv: [clipped_u1, clipped_v1],
-            colour,
-        },
-        TextVertex {
-            position: [right, top],
-            uv: [clipped_u1, clipped_v0],
-            colour,
-        },
-    ]);
+    instances.push(TextInstance {
+        rect: [left, top, right, bottom],
+        uv: [clipped_u0, clipped_v0, clipped_u1, clipped_v1],
+        colour,
+    });
 }
 
 fn position(scene: &Scene, x: f32, y: f32) -> [f32; 2] {
@@ -1807,4 +1853,9 @@ fn intersect(first: Rect, second: Rect) -> Rect {
 
 fn colour(colour: Colour) -> [f32; 4] {
     [colour.red, colour.green, colour.blue, colour.alpha]
+}
+
+#[cfg(feature = "perf")]
+fn elapsed_ns(started: Instant) -> u64 {
+    started.elapsed().as_nanos() as u64
 }

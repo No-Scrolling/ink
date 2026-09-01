@@ -85,17 +85,17 @@ Six equivalent arm64 release apps were measured on the same physical Light Phone
 
 | Counter | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| App file size | **3.07 MB** | 32.00 MB | 25.83 MB |
-| Clean release build | **1.29 s** | 36.20 s | 47.92 s |
-| Cold start, typical / slow | **296 / 372 ms** | 516 / 591 ms | 1,186 / 1,226 ms |
-| Active memory while idle | **17.9 MiB** | 66.6 MiB | 18.1 MiB |
+| App file size | **3.00 MB** | 32.00 MB | 25.83 MB |
+| Clean release build | **1.27 s** | 36.20 s | 47.92 s |
+| Cold start, typical / slow | **292 / 314 ms** | 516 / 591 ms | 1,186 / 1,226 ms |
+| Active memory while idle | **17.1 MiB** | 66.6 MiB | 18.1 MiB |
 | CPU time for 100 taps | **860 ms** | 4,300 ms | 3,650 ms |
 
 | 1,000-row scroll | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| App file size | **3.07 MB** | 31.98 MB | 25.93 MB |
-| Active memory while idle | **18.7 MiB** | 116.6 MiB | 32.3 MiB |
-| CPU time for 12 swipes | **1,090 ms** | 2,960 ms | 4,040 ms |
+| App file size | **3.00 MB** | 31.98 MB | 25.93 MB |
+| Active memory while idle | **17.3 MiB** | 116.6 MiB | 32.3 MiB |
+| CPU time for 12 swipes | **890 ms** | 2,960 ms | 4,040 ms |
 | 99% of frame intervals | **≤16 ms** | **≤16 ms** | **≤16 ms** |
 | Intervals longer than 17 ms | **0** | 1 | **0** |
 

@@ -19,3 +19,7 @@ naga = { version = "30.0.1", features = ["spv-out", "wgsl-in"] }
 
 [lib]
 path = "src/lib.rs"
+
+[features]
+image = []
+perf = []

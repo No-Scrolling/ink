@@ -12,11 +12,11 @@ The counter app shows a title, a count, and one button.
 
 | Metric | Ink | Expo | Light SDK | Result |
 | --- | ---: | ---: | ---: | --- |
-| App file size | **3.07 MB** | 32.00 MB | 25.83 MB | Ink is 88% smaller than the next-smallest app. |
-| Clean release build | **1.29 s** | 36.20 s | 47.92 s | Ink builds 28 times faster than the next-fastest app. |
-| Typical cold start | **296 ms** | 516 ms | 1,186 ms | Ink starts fastest. |
-| Slow cold start (95th percentile) | **372 ms** | 591 ms | 1,226 ms | Ink remains fastest in slower runs. |
-| Active memory while idle | **17.9 MiB** | 66.6 MiB | 18.1 MiB | Ink uses slightly less memory than Light SDK and 73% less than Expo. |
+| App file size | **3.00 MB** | 32.00 MB | 25.83 MB | Ink is 88% smaller than the next-smallest app. |
+| Clean release build | **1.27 s** | 36.20 s | 47.92 s | Ink builds 29 times faster than the next-fastest app. |
+| Typical cold start | **292 ms** | 516 ms | 1,186 ms | Ink starts fastest. |
+| Slow cold start (95th percentile) | **314 ms** | 591 ms | 1,226 ms | Ink remains fastest in slower runs. |
+| Active memory while idle | **17.1 MiB** | 66.6 MiB | 18.1 MiB | Ink uses slightly less memory than Light SDK and 74% less than Expo. |
 | CPU time for 100 taps | **860 ms** | 4,300 ms | 3,650 ms | Ink uses 76% less CPU time than the next-best result. |
 
 ### 1,000-row scrolling app
@@ -25,13 +25,13 @@ The scrolling app shows a title and 1,000 text rows.
 
 | Metric | Ink | Expo | Light SDK | Result |
 | --- | ---: | ---: | ---: | --- |
-| App file size | **3.07 MB** | 31.98 MB | 25.93 MB | Ink is at least 88% smaller. |
-| Clean release build | **1.27 s** | 36.39 s | 46.87 s | Ink builds 29 times faster than the next-fastest app. |
-| Rebuild with no code changes | **1.10 s** | 9.99 s | 8.54 s | Ink rebuilds almost eight times faster than the next-fastest app. |
-| Typical cold start | **327 ms** | 476 ms | 1,185 ms | Ink starts fastest. |
-| Slow cold start (95th percentile) | **370 ms** | 1,373 ms | 1,233 ms | Ink remains fastest in slower runs. |
-| Active memory while idle | **18.7 MiB** | 116.6 MiB | 32.3 MiB | Ink uses 42% less memory than the next-best result. |
-| CPU time for 12 swipes | **1,090 ms** | 2,960 ms | 4,040 ms | Ink uses 63% less CPU time than the next-best result. |
+| App file size | **3.00 MB** | 31.98 MB | 25.93 MB | Ink is at least 88% smaller. |
+| Clean release build | **1.26 s** | 36.39 s | 46.87 s | Ink builds 29 times faster than the next-fastest app. |
+| Rebuild with no code changes | **1.11 s** | 9.99 s | 8.54 s | Ink rebuilds almost eight times faster than the next-fastest app. |
+| Typical cold start | **285 ms** | 476 ms | 1,185 ms | Ink starts fastest. |
+| Slow cold start (95th percentile) | **301 ms** | 1,373 ms | 1,233 ms | Ink remains fastest in slower runs. |
+| Active memory while idle | **17.3 MiB** | 116.6 MiB | 32.3 MiB | Ink uses 46% less memory than the next-best result. |
+| CPU time for 12 swipes | **890 ms** | 2,960 ms | 4,040 ms | Ink uses 70% less CPU time than the next-best result. |
 | Average frame rate during swipes | 59.2 fps | 55.7 fps | **59.5 fps** | Light SDK has the highest average rate by 0.3 fps. |
 | 99% of uninterrupted frame intervals are at most | **16 ms** | **16 ms** | **16 ms** | All three stay within one 60 Hz refresh. |
 | Intervals longer than 17 ms during a five-second drag | **0** | 1 | **0** | Ink and Light SDK record no long intervals. |
@@ -53,7 +53,7 @@ All runtime measurements ran on the same Light Phone III (`TLP301`). The device 
 
 All apps were arm64 release builds. Expo used Hermes, code shrinking, and resource shrinking. Light SDK used Compose, code shrinking, and resource shrinking. A common debug certificate signed the release builds so that the harness could install them.
 
-Build times were measured on the same development computer. Dependency installation, native project generation, and toolchain downloads were excluded. The framework versions were Light SDK commit `3df3c24` and Expo source commit `5a5eaad`. The measurements were taken on 31 August 2026.
+Build times were measured on the same development computer. Dependency installation, native project generation, and toolchain downloads were excluded. The framework versions were Light SDK commit `3df3c24` and Expo source commit `5a5eaad`. Expo and Light SDK were measured on 31 August 2026; Ink was refreshed on 1 September 2026.
 
 ### Measurements
 
@@ -108,7 +108,6 @@ bun benchmarks/measure.ts
 To build, measure, and verify only Ink, run:
 
 ```bash
-BENCHMARK_OUTPUT=benchmarks/results/lp3.json \
 ./benchmarks/measure-ink.sh
 ```
 

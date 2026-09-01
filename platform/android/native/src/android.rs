@@ -7,6 +7,8 @@ use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex, Once};
+#[cfg(feature = "benchmark")]
+use std::time::Instant;
 
 #[cfg(feature = "image")]
 use ink_core::ImageFit;
@@ -89,6 +91,8 @@ struct AndroidEngine {
     surface: Option<AttachedSurface>,
     #[cfg(feature = "audio")]
     audio: crate::audio::AudioRuntime,
+    #[cfg(feature = "benchmark")]
+    update_ns: u64,
 }
 
 struct AttachedSurface {
@@ -143,6 +147,8 @@ impl AndroidEngine {
             surface: None,
             #[cfg(feature = "audio")]
             audio: crate::audio::AudioRuntime::default(),
+            #[cfg(feature = "benchmark")]
+            update_ns: 0,
         }
     }
 
@@ -203,6 +209,8 @@ impl AndroidEngine {
     }
 
     fn pointer(&mut self, action: i32, x: f32, y: f32) -> jint {
+        #[cfg(feature = "benchmark")]
+        let started = Instant::now();
         let outcome = match action {
             0 => self.engine.pointer_down(x, y),
             1 => self.engine.pointer_up(x, y),
@@ -213,6 +221,10 @@ impl AndroidEngine {
             }
             _ => PointerOutcome::default(),
         };
+        #[cfg(feature = "benchmark")]
+        if action == 1 && outcome.changed {
+            self.update_ns = elapsed_ns(started);
+        }
         pointer_result(outcome)
     }
 
@@ -301,6 +313,7 @@ impl AndroidEngine {
         let Some(surface) = &mut self.surface else {
             return None;
         };
+        let mut surface_lost = false;
         match surface
             .renderer
             .render(self.engine.scene(), text_cursor_visible)
@@ -311,7 +324,7 @@ impl AndroidEngine {
             }
             Ok(RenderOutcome::SurfaceLost) => {
                 android_log(ANDROID_LOG_ERROR, "Vulkan surface was lost");
-                self.surface = None;
+                surface_lost = true;
             }
             Ok(RenderOutcome::NeedsSystemGlyph(request)) => return Some(request),
             Err(error) => {
@@ -320,6 +333,34 @@ impl AndroidEngine {
                     &format!("failed to render dirty frame: {error:#}"),
                 );
             }
+        }
+        #[cfg(feature = "benchmark")]
+        {
+            let core = self.engine.take_perf_metrics();
+            let renderer = surface.renderer.take_perf_metrics();
+            android_log(
+                ANDROID_LOG_INFO,
+                &format!(
+                    "Perf update_ns={} materialise_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} submit_ns={} frame_ns={}",
+                    self.update_ns,
+                    core.materialise_ns,
+                    core.measure_ns,
+                    core.relayout_ns,
+                    core.nodes_measured,
+                    core.full_rebuilds,
+                    core.incremental_rebuilds,
+                    renderer.prepare_ns,
+                    renderer.upload_ns,
+                    renderer.acquire_ns,
+                    renderer.encode_ns,
+                    renderer.submit_ns,
+                    renderer.frame_ns,
+                ),
+            );
+            self.update_ns = 0;
+        }
+        if surface_lost {
+            self.surface = None;
         }
         None
     }
@@ -1272,4 +1313,9 @@ fn android_log(priority: c_int, message: &str) {
     unsafe {
         __android_log_write(priority, LOG_TAG.as_ptr().cast(), message.as_ptr());
     }
+}
+
+#[cfg(feature = "benchmark")]
+fn elapsed_ns(started: Instant) -> u64 {
+    started.elapsed().as_nanos() as u64
 }
