@@ -4,6 +4,7 @@
   "baseline": {
     "sourceRevision": "8b9d9377ad5607aefe95a471548441acb91219b8",
     "benchmarkRevision": "59b6fd53095000b6498daab0ad650e23701c7c77",
+    "adjustmentPatch": "benchmarks/baselines/8b9d937-jnigraphics.patch",
     "adjustment": "Retain libjnigraphics unconditionally so the parent native library loads on the LP3; no renderer or application behaviour changed."
   },
   "environment": {
