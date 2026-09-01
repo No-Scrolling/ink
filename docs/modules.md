@@ -1,10 +1,10 @@
 ---
 title: "Third-party modules"
-description: "Install Ink modules that add screens, data sources, and native device capabilities."
+description: "Install compiled Ink modules that add domain operations and native capabilities."
 tag: "Planned"
 ---
 
-Ink modules are npm packages compiled into your app. They can provide components, screens, data sources, or native device capabilities without adding a JavaScript runtime.
+Ink modules are npm packages compiled into your app. They can provide components, domain resources, actions, sessions, background plans, or native views without adding a JavaScript runtime.
 
 ## Install a module
 
@@ -14,138 +14,104 @@ Install a module with your package manager:
 npm install @example/ink-open-meteo
 ```
 
-Import it from TypeScript or TSX:
+Import its domain interface:
 
 ```tsx
-import { OpenMeteo, OpenMeteoAttribution } from "@example/ink-open-meteo";
-import { Screen, Stack, Text, match } from "ink";
+import { OpenMeteo } from "@example/ink-open-meteo";
+import { Screen, Text, match } from "ink";
 
-export default function Weather() {
-  const forecast = OpenMeteo.forecast({
-    latitude: 51.5072,
-    longitude: -0.1276,
-    units: "metric",
-  });
+const forecast = OpenMeteo.forecast({
+  latitude: 51.5072,
+  longitude: -0.1276,
+  days: 7,
+});
 
-  return (
-    <Screen title="Weather">
-      {match(forecast, {
-        loading: () => <Text>Loading forecast</Text>,
-        ready: ({ value }) => (
-          <Stack gap={12}>
-            <Text>{value.current.temperature}°</Text>
-            <OpenMeteoAttribution />
-          </Stack>
-        ),
-        error: ({ error }) => <Text>{error.message}</Text>,
-      })}
-    </Screen>
-  );
-}
+<Screen title="Weather">
+  {match(forecast, {
+    loading: () => <Text>Loading forecast</Text>,
+    ready: ({ value }) => <Text>{value.current.temperature}°</Text>,
+    error: ({ error }) => <Text>{error.message}</Text>,
+  })}
+</Screen>
 ```
 
-Ink resolves the module's `ink` export and compiles it with the rest of the app. The package's JavaScript entry point is not executed on the phone.
+Ink resolves the package's `ink` export and specialises reachable source operations into `app.ink`. Package JavaScript is not executed on the phone.
 
-## Module types
-
-Ink supports two module types.
+## Choose a module type
 
 | Type | Use |
 | --- | --- |
-| Source module | Composes Ink components and existing modules with TypeScript or TSX. |
-| Native module | Adds an Android SDK, platform API, background component, or native view. |
+| Source module | Composes components, pure transformations, and existing Ink operations. |
+| Native module | Adds an Android SDK, platform API, worker, hardware session, or native view. |
 
-A weather API client, reusable settings screen, or domain-specific network package is a source module. A maps SDK, health sensor integration, or vendor payment terminal is a native module.
+A weather provider, device-specific Bluetooth protocol, or reusable settings screen can be a source module. A maps renderer, vendor payment SDK, or new hardware integration requires a native module.
 
-Both types expose an ordinary typed import. App code does not use a bridge API or distinguish native results from other Ink resources and controllers.
+Both module types expose ordinary typed imports. App code does not use bridge calls, manifests, dependency layers, or native operation names.
 
-## Check module requirements
+## Use consistent lifecycle shapes
 
-Run `ink info` after installing a module:
+Modules expose three lifecycle forms:
+
+- a **resource** loads one current value with `loading`, `ready`, and `error`;
+- an **action** runs explicit work with `idle`, `running`, `success`, and `error`;
+- a **session** publishes one domain state snapshot and ordered commands.
+
+A ready resource can include freshness, background activity, and a warning without becoming another status. A stream is a session without commands. A native view attaches to a session.
+
+Resources and sessions declare screen or application ownership in the module. Ordinary callers do not pass a generic scope object.
+
+## Compose modules with opaque references
+
+Modules can pass nominal references such as authorisations, secrets, files, bytes, or map content without exposing their contents.
+
+References cannot enter ordinary state, route data, persisted values, or serialised results. Rust owns their namespace, generation, leases, and disposal. Work that survives process death must use a durable reference.
+
+Installing a package does not grant it general access to every reference. Each operation declares the reference kinds it can receive.
+
+## Inspect linked requirements
+
+Run:
 
 ```sh
 ink info
 ```
 
-The output lists:
+The output explains the complete reason chain from an app import to:
 
-- linked modules and versions;
-- native operations used by the app;
-- Android permissions and their reasons;
-- services, receivers, providers, and intent filters;
-- bundled SDKs and their estimated size;
-- app-scoped work such as playback or background tasks.
+- linked source and native operations;
+- Android permissions, components, and foreground-service types;
+- bundled SDK artefacts and estimated size;
+- application-scoped sessions, workers, and durable data;
+- network hosts and opaque capability grants.
 
-Ink includes only capabilities reached from your app's imports. Importing one component does not automatically include every capability in its package.
+Reachability is operation-level. Importing barcode generation does not include Camera, and importing a static map does not include Location. Shared native artefacts can form a capability group when an SDK cannot be split further.
 
-## Permissions
+## Handle permissions and availability
 
-A native module declares each Android permission with a reason and the operation that uses it. Ink merges those declarations into the app and reports conflicts during `ink check`.
+The module that owns a capability also owns its permission and availability interface. A Barcode scanner can share Camera implementation internally without making the app import Camera permission.
 
-The module controls when a permission is required, but your screen controls when to start an action that prompts the user.
+Creating a module value never opens a runtime permission prompt. A standard native view can render an explicit permission action, or a custom app interface can call the module's permission command from a user action.
 
-```tsx
-const scan = Barcode.scanner({ formats: ["qr"] });
-
-<Button onPress={() => scan.start()}>Scan code</Button>
-```
-
-Installing a package does not grant a permission. Android still applies its normal permission and settings behaviour.
-
-## Resource lifecycle
-
-Module resources, streams, controllers, and native views follow Ink's normal screen lifecycle:
-
-- resources load when their screen becomes active;
-- streams subscribe while their owner is active;
-- controllers release their native session when their owner is disposed;
-- leaving a screen cancels work that belongs to it;
-- late results from cancelled work are ignored.
-
-A module can expose an app-scoped capability when work must survive navigation. The method name and documentation identify that behaviour; app code does not pass a generic scope object.
+Packaging is not runtime availability. Use `ink info` to inspect what was linked and the owning module to inspect device or policy availability.
 
 ## Handle module errors
 
-Modules return tagged errors that you can narrow with `match()`.
+Modules return small tagged errors in domain language. They do not expose Android exceptions, HTTP client values, provider payloads, or stack traces.
 
-```tsx
-{match(document, {
-  loading: () => <Text>Opening document</Text>,
-  ready: ({ value }) => <Reader document={value} />,
-  error: ({ error }) => (
-    <Text>
-      {error.kind === "unsupported-format"
-        ? "This document format is not supported"
-        : error.message}
-    </Text>
-  ),
-})}
-```
+`retryable` appears only when the owning resource, action, or session provides a truthful retry operation. Retry times use absolute `retryAtMs` values.
 
-Module errors do not expose Android exception classes, HTTP client objects, or stack traces. Use `ink logs` to inspect development diagnostics for the failing operation.
+## Preview modules
 
-## Preview native modules
+Every operation that depends on a platform or true external provider supplies deterministic preview scenarios. Source provider modules include fixtures for success, empty, malformed, offline, and domain error cases. Native modules implement the same generated contract with a preview adapter.
 
-Native modules include a preview adapter with deterministic data. The preview toolbar lists the scenarios supplied by the package, such as `connected`, `permission-denied`, or `empty`.
+Preview adapters run on the development host and are not included in the APK. A missing adapter produces an unavailable preview state and a warning from `ink check`.
 
-Preview adapters run on the development host and are not included in the APK. If a module does not provide a preview adapter, its native view displays an unavailable state and `ink check` reports the missing development capability.
+## Check compatibility and trust
 
-## Module compatibility
+An Ink module declares compatible compiler, module IR, and native extension versions. The app compiler consumes a versioned data-only manifest; it never runs package build hooks.
 
-An Ink module declares the compiler and native extension API versions it supports. Installation fails before Android compilation when the package requires a newer incompatible version.
+Keep modules in your lockfile. Ink records source, manifest, and native artefact hashes so the same dependency graph links the same capabilities.
 
-Keep modules in your lockfile. Ink records the native manifest and artefact hashes so the same dependency graph produces the same linked capabilities.
+Native code has the same authority as other code in the APK. Before installing it, review its permissions, Android components, SDKs, network behaviour, licence, update policy, and `ink module inspect` output.
 
-## Review a native module
-
-Native code has the same authority as other code in the APK. Before adding a third-party native module, review:
-
-- its permissions and exported Android components;
-- its bundled SDKs and native libraries;
-- its network and data-handling documentation;
-- its licence and update policy;
-- the information shown by `ink module inspect <package>`.
-
-Ink validates declared integration, but it does not sandbox a native adapter from the rest of the Android process.
-
-Read [Develop an Ink module](developing-modules.md) to publish a source or native module.
+Read [Develop an Ink module](developing-modules.md) to create a source or native package.

@@ -1,33 +1,26 @@
 ---
 title: "Build an Open-Meteo module"
-description: "Create a TypeScript-only Ink module for weather forecasts, place search, and air quality."
+description: "Compile a typed weather provider into a small Ink source module."
 tag: "Planned"
 ---
 
-This guide builds `@example/ink-open-meteo`, a source module that uses `@ink/network`. It does not need a native adapter because Ink already provides the required HTTP and cache capabilities.
+This guide builds a source module that exposes one domain resource: `OpenMeteo.forecast()`. The package owns provider query details, response validation, normalisation, caching, errors, attribution, and preview fixtures.
 
-The examples follow the current [Open-Meteo forecast](https://open-meteo.com/en/docs), [geocoding](https://open-meteo.com/en/docs/geocoding-api), and [licence](https://open-meteo.com/en/license) documentation.
+The example deliberately starts with one operation. Add search or air quality only after the forecast interface compiles and works end to end.
 
 ## Create the package
-
-Create this source tree:
 
 ```text
 ink-open-meteo/
 ├── package.json
+├── preview/
+│   ├── forecast.json
+│   └── scenarios.ts
 └── src/
-    ├── index.ts
-    ├── client.ts
     ├── domain.ts
-    ├── errors.ts
-    ├── attribution.tsx
-    └── internal/
-        ├── forecast.ts
-        ├── geocoding.ts
-        └── normalise.ts
+    ├── index.tsx
+    └── provider.ts
 ```
-
-Add the Ink export and networking dependency:
 
 ```json
 {
@@ -36,395 +29,286 @@ Add the Ink export and networking dependency:
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "ink": "./src/index.ts"
+      "ink": "./src/index.tsx"
     }
+  },
+  "ink": {
+    "preview": "./dist/preview.json"
   },
   "peerDependencies": {
     "ink": "*",
-    "@ink/network": "*"
-  },
-  "peerDependenciesMeta": {
-    "@ink/system": { "optional": true }
+    "@ink/network": "*",
+    "@ink/system": "*"
   }
 }
 ```
 
-The package publishes compiler-readable TypeScript. It does not bundle the Open-Meteo JavaScript SDK or run package code on the phone.
+Open-Meteo is a true external dependency. The HTTPS provider is the production adapter and the deterministic fixture is the preview adapter.
 
 ## Define the public model
 
-Keep provider response fields out of app code. Add the public types to `src/domain.ts`:
+Keep provider field names out of the app-facing interface:
 
 ```ts
-export type ForecastInput = {
+export type ForecastRequest = {
   latitude: number;
   longitude: number;
+  days?: number;
+  timezone?: string;
   units?: "metric" | "imperial";
-  days?: 1 | 3 | 5 | 7 | 10 | 14 | 16;
-  timezone?: "auto" | string;
 };
 
 export type Forecast = {
-  location: {
-    latitude: number;
-    longitude: number;
-    elevationMetres: number | null;
-    timezone: string;
+  current: {
+    temperature: number;
+    apparentTemperature: number;
+    weatherCode: number;
+    observedAt: string;
   };
-  units: "metric" | "imperial";
-  current: CurrentConditions;
-  hourly: ReadonlyArray<HourlyConditions>;
-  daily: ReadonlyArray<DailyConditions>;
+  daily: ReadonlyArray<{
+    date: string;
+    minimumTemperature: number;
+    maximumTemperature: number;
+    weatherCode: number;
+  }>;
+  temperatureUnit: "celsius" | "fahrenheit";
+  timezone: string;
 };
-
-export type CurrentConditions = {
-  observedAtMs: number;
-  temperature: number;
-  apparentTemperature: number;
-  precipitation: number;
-  windSpeed: number;
-  weather: WeatherCondition;
-  isDay: boolean;
-};
-
-export type HourlyConditions = {
-  observedAtMs: number;
-  temperature: number;
-  precipitationProbability: number | null;
-  weather: WeatherCondition;
-};
-
-export type DailyConditions = {
-  date: string;
-  minimumTemperature: number;
-  maximumTemperature: number;
-  precipitationProbability: number | null;
-  sunriseAtMs: number;
-  sunsetAtMs: number;
-  weather: WeatherCondition;
-};
-
-export type WeatherCondition =
-  | "clear"
-  | "partly-cloudy"
-  | "overcast"
-  | "fog"
-  | "rain"
-  | "snow"
-  | "thunderstorm"
-  | "unknown";
 ```
 
-Use epoch milliseconds for instants. Keep daily calendar values as ISO `YYYY-MM-DD` strings in the forecast's resolved timezone.
+`days` accepts 1 to 16 and defaults to 7. `timezone` is an IANA timezone string and defaults to `"auto"` internally. Do not type it as `"auto" | string`, which collapses to `string` and gives callers no additional information.
 
 ## Define module errors
 
-Add a small tagged union to `src/errors.ts`:
+Expose errors an app can act on:
 
 ```ts
 export type OpenMeteoError =
-  | { kind: "invalid-input"; field: string; message: string; retryable: false }
-  | { kind: "network"; message: string; retryable: true }
-  | { kind: "rate-limited"; retryAfterMs: number | null; message: string; retryable: true }
-  | { kind: "provider"; reason: string; message: string; retryable: false }
-  | { kind: "invalid-response"; message: string; retryable: true };
+  | {
+      kind: "invalid-request";
+      message: string;
+      field: "latitude" | "longitude" | "days" | "timezone";
+      retryable: false;
+    }
+  | {
+      kind: "offline";
+      message: string;
+      retryable: true;
+    }
+  | {
+      kind: "rate-limited";
+      message: string;
+      retryAtMs: number | null;
+      retryable: true;
+    }
+  | {
+      kind: "provider" | "invalid-response";
+      message: string;
+      retryable: boolean;
+    };
 ```
 
-Translate `@ink/network` errors inside the package. App screens should not depend on HTTP client errors or Open-Meteo's error response shape.
+Use absolute `retryAtMs` consistently with Network. Do not expose provider payloads or HTTP client details.
 
 ## Describe the provider response
 
-Add private response types to `src/internal/forecast.ts`. Include only the fields requested by the package:
+Declare only fields the implementation consumes. Optional provider diagnostics should not make an otherwise valid forecast fail validation.
 
 ```ts
-export type OpenMeteoForecastResponse = {
-  latitude: number;
-  longitude: number;
-  elevation?: number;
-  generationtime_ms: number;
-  utc_offset_seconds: number;
+type OpenMeteoForecastResponse = {
   timezone: string;
+  current_units: {
+    temperature_2m: "°C" | "°F";
+  };
   current: {
     time: string;
     temperature_2m: number;
     apparent_temperature: number;
-    precipitation: number;
     weather_code: number;
-    wind_speed_10m: number;
-    is_day: 0 | 1;
-  };
-  hourly: {
-    time: ReadonlyArray<string>;
-    temperature_2m: ReadonlyArray<number>;
-    precipitation_probability: ReadonlyArray<number | null>;
-    weather_code: ReadonlyArray<number>;
   };
   daily: {
     time: ReadonlyArray<string>;
     temperature_2m_min: ReadonlyArray<number>;
     temperature_2m_max: ReadonlyArray<number>;
-    precipitation_probability_max: ReadonlyArray<number | null>;
-    sunrise: ReadonlyArray<string>;
-    sunset: ReadonlyArray<string>;
     weather_code: ReadonlyArray<number>;
   };
 };
 ```
 
-Ink generates a response schema from this type. A missing required field or incompatible value fails the resource before normalisation runs.
+Ink validates this type before normalisation runs.
 
-## Normalise the forecast
+## Normalise the response
 
-Open-Meteo returns parallel arrays for hourly and daily values. Convert them into records in `src/internal/normalise.ts`:
+Use pure source-module functions:
 
 ```ts
-export function normaliseForecast(
-  response: OpenMeteoForecastResponse,
-  units: "metric" | "imperial",
-): Forecast {
-  assertEqualLengths(response.daily);
-  assertEqualLengths(response.hourly);
+import { parseIsoDateTime, zipExact } from "ink/module";
+
+function normaliseForecast(response: OpenMeteoForecastResponse): Forecast {
+  const daily = zipExact({
+    date: response.daily.time,
+    minimumTemperature: response.daily.temperature_2m_min,
+    maximumTemperature: response.daily.temperature_2m_max,
+    weatherCode: response.daily.weather_code,
+  });
 
   return {
-    location: {
-      latitude: response.latitude,
-      longitude: response.longitude,
-      elevationMetres: response.elevation ?? null,
-      timezone: response.timezone,
+    current: {
+      temperature: response.current.temperature_2m,
+      apparentTemperature: response.current.apparent_temperature,
+      weatherCode: response.current.weather_code,
+      observedAt: parseIsoDateTime(response.current.time),
     },
-    units,
-    current: normaliseCurrent(response.current),
-    hourly: zipHourly(response.hourly),
-    daily: zipDaily(response.daily),
+    daily,
+    temperatureUnit: response.current_units.temperature_2m === "°F"
+      ? "fahrenheit"
+      : "celsius",
+    timezone: response.timezone,
   };
 }
 ```
 
-These helpers use Ink's pure TypeScript subset. The compiler lowers them into schema-checked transformations in `app.ink`; Android does not execute this function as JavaScript.
+`zipExact()` is an approved pure intrinsic that fails when provider arrays have different lengths. `parseIsoDateTime()` validates and normalises an ISO timestamp without reading the current clock.
 
-Map unrecognised WMO weather codes to `unknown`. Reject unequal array lengths and invalid timestamps as `invalid-response` instead of returning partial records.
+## Define the forecast resource
 
-## Create the forecast resource
-
-Add the provider call to `src/client.ts`:
+Use `defineResource()` to declare the app-facing input and domain error:
 
 ```ts
-import { cachedJson } from "@ink/network";
-import type { ForecastInput } from "./domain";
-import type { OpenMeteoForecastResponse } from "./internal/forecast";
-import { normaliseForecast } from "./internal/normalise";
-import { toOpenMeteoError } from "./errors";
+import {
+  defineResource,
+  ianaTimezone,
+  integerBetween,
+  literal,
+  numberBetween,
+  optional,
+  taggedErrors,
+} from "ink/module";
+import { json } from "@ink/network";
 
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 
-export function forecast(input: ForecastInput) {
-  const units = input.units ?? "metric";
-  const request = cachedJson<OpenMeteoForecastResponse>(FORECAST_URL, {
+export const forecast = defineResource<Forecast>({
+  input: {
+    latitude: numberBetween(-90, 90),
+    longitude: numberBetween(-180, 180),
+    days: optional(integerBetween(1, 16)),
+    timezone: optional(ianaTimezone()),
+    units: optional(literal("metric", "imperial")),
+  },
+  errors: taggedErrors<OpenMeteoError>(),
+  load: (input) => json<OpenMeteoForecastResponse>(FORECAST_URL, {
     query: {
       latitude: input.latitude,
       longitude: input.longitude,
+      forecast_days: input.days ?? 7,
+      timezone: input.timezone ?? "auto",
+      temperature_unit: input.units === "imperial" ? "fahrenheit" : "celsius",
       current: [
         "temperature_2m",
         "apparent_temperature",
-        "precipitation",
-        "weather_code",
-        "wind_speed_10m",
-        "is_day",
-      ],
-      hourly: [
-        "temperature_2m",
-        "precipitation_probability",
         "weather_code",
       ],
       daily: [
         "temperature_2m_min",
         "temperature_2m_max",
-        "precipitation_probability_max",
-        "sunrise",
-        "sunset",
         "weather_code",
       ],
-      forecast_days: input.days ?? 7,
-      timezone: input.timezone ?? "auto",
-      temperature_unit: units === "imperial" ? "fahrenheit" : "celsius",
-      wind_speed_unit: units === "imperial" ? "mph" : "kmh",
-      precipitation_unit: units === "imperial" ? "inch" : "mm",
     },
-    maxAgeMs: 15 * 60_000,
-    staleIfErrorMs: 6 * 60 * 60_000,
-  });
-
-  return request
-    .map((response) => normaliseForecast(response, units))
-    .mapError(toOpenMeteoError);
-}
-```
-
-The module owns the requested variables, provider parameter names, units, cache duration, and error translation. A screen receives one `Resource<Forecast, OpenMeteoError>`.
-
-`@ink/network` owns HTTPS, timeouts, cancellation, conditional requests, and safe GET retry policy. Do not reproduce those behaviours in this package.
-
-## Export the client
-
-Add the public object to `src/index.ts`:
-
-```ts
-import { forecast } from "./client";
-
-export const OpenMeteo = {
-  forecast,
-};
-
-export { OpenMeteoAttribution } from "./attribution";
-export type {
-  CurrentConditions,
-  DailyConditions,
-  Forecast,
-  ForecastInput,
-  HourlyConditions,
-  WeatherCondition,
-} from "./domain";
-export type { OpenMeteoError } from "./errors";
-```
-
-Keep internal provider types unexported. This lets the provider response change without forcing every app to change.
-
-## Use the module in an app
-
-Install the local package in an example app, then render the resource:
-
-```tsx
-import { OpenMeteo, OpenMeteoAttribution } from "@example/ink-open-meteo";
-import { Screen, Stack, Text, match } from "ink";
-
-export default function ForecastScreen() {
-  const forecast = OpenMeteo.forecast({
-    latitude: 51.5072,
-    longitude: -0.1276,
-    units: "metric",
-    days: 7,
-  });
-
-  return (
-    <Screen title="Forecast">
-      {match(forecast, {
-        loading: () => <Text>Loading forecast</Text>,
-        ready: ({ value }) => (
-          <Stack gap={12}>
-            <Text>{value.current.temperature}°</Text>
-            <Text>{value.daily[0].maximumTemperature}° high</Text>
-            <OpenMeteoAttribution />
-          </Stack>
-        ),
-        stale: ({ value }) => (
-          <Stack gap={12}>
-            <Text>{value.current.temperature}°</Text>
-            <Text>Forecast may be out of date</Text>
-            <OpenMeteoAttribution />
-          </Stack>
-        ),
-        error: ({ error }) => <Text>{error.message}</Text>,
-      })}
-    </Screen>
-  );
-}
-```
-
-Call `forecast.reload()` from a refresh button when the user wants a new result. The resource does not poll while the screen is inactive.
-
-## Add place search
-
-Use the geocoding endpoint for named places:
-
-```ts
-const places = OpenMeteo.search({
-  query: query.value,
-  language: "en",
-  limit: 8,
+    queryEncoding: "repeat",
+    cache: {
+      freshForMs: 300_000,
+      staleIfErrorForMs: 86_400_000,
+    },
+  }).map(normaliseForecast).mapError(toOpenMeteoError),
 });
 ```
 
-Start requests after the query contains at least two Unicode characters. Debounce changing input for 300 milliseconds and cancel the older request when the query changes.
+`defineResource()` is package-author syntax. Apps still call a normal typed function. The compiler specialises its pure transformation and Network operation into the source-module IR; no callback or JavaScript runtime is shipped.
 
-Return a `Place` with a provider ID, display name, country code, administrative area, coordinates, elevation, and timezone. Convert missing optional fields to `null` so screens receive one stable shape.
+The package owns provider-specific query-list encoding, cache policy, validation, and error translation. Apps can call `reload()` on the returned resource without learning those details.
 
-Cache search results for seven days and allow a 30-day stale fallback. Include normalised query, language, country filter, limit, endpoint, and schema version in the cache key.
-
-## Add air quality
-
-Expose air quality as a separate resource:
-
-```ts
-const air = OpenMeteo.airQuality({
-  latitude,
-  longitude,
-  index: "european",
-  includePollen: true,
-});
-```
-
-Return current index, category, particulate values, UV index, and an hourly series. Use `null` for pollen fields that are unavailable outside a supported region or season.
-
-Keep air-quality cache and attribution metadata separate from the weather forecast because the endpoint and upstream data providers differ.
-
-## Add attribution
-
-Open-Meteo data require attribution. Add a component that opens the provider page through `@ink/system`:
+## Export the domain interface
 
 ```tsx
 import { systemAction } from "@ink/system";
 import { Button } from "ink";
+import { forecast } from "./provider";
+
+export const OpenMeteo = { forecast };
 
 export function OpenMeteoAttribution() {
-  const attribution = systemAction({
+  const website = systemAction({
     kind: "web",
     url: "https://open-meteo.com/",
   });
 
   return (
-    <Button onPress={() => attribution.run()}>
+    <Button onPress={() => website.run()}>
       Weather data by Open-Meteo.com
     </Button>
   );
 }
 ```
 
-Render the attribution with fresh, cached, and stale data. If the module materially changes source data, describe that change next to the attribution.
+The explicit `@ink/system` peer dependency matches this import. Attribution remains part of the module interface rather than copied into each app.
 
-## Support customer and self-hosted endpoints
+## Add preview scenarios
 
-Add a client factory for apps that cannot use the public endpoint:
+Record a small provider fixture containing exactly the fields used by the response type. Then declare deterministic scenarios:
 
 ```ts
-import { secret } from "@ink/secure-store";
-
-const apiKey = secret("open-meteo.api-key");
-
-if (apiKey.status === "ready") {
-  const WeatherProvider = createOpenMeteo({
-    endpoint: "https://customer-api.open-meteo.com",
-    apiKey: apiKey.secret,
-  });
-
-  const forecast = WeatherProvider.forecast({ latitude, longitude });
-}
+export default defineSourcePreview({
+  operations: {
+    forecast: {
+      scenarios: {
+        clear: responseFixture("./forecast.json"),
+        offline: networkError("offline"),
+        rateLimited: networkError("rate-limited", {
+          retryAtMs: 1_800_000_000_000,
+        }),
+        malformed: responseFixture("./forecast-malformed.json"),
+      },
+    },
+  },
+});
 ```
 
-Allow the official public endpoint, official customer endpoint, or an application allow-listed HTTPS self-hosted endpoint. Mark `apikey` as a sensitive query field so `@ink/network` redacts it from logs and diagnostics.
+Preview fixtures are validated against the provider response type during `ink package build`. They do not contact Open-Meteo and are not included in the APK.
 
-A key in a client APK can be extracted. Use a restricted key or an application service when the provider's policy requires stronger protection.
+## Use the module
 
-The public endpoint is for non-commercial use and applies current usage limits. Link to the [Open-Meteo terms](https://open-meteo.com/en/terms) instead of copying limits into package logic.
+```tsx
+const forecast = OpenMeteo.forecast({
+  latitude: 51.5072,
+  longitude: -0.1276,
+  days: 7,
+  units: "metric",
+});
+
+{match(forecast, {
+  loading: () => <Text>Loading forecast</Text>,
+  ready: ({ value, freshness, warning }) => (
+    <Stack gap={12}>
+      <Text>{value.current.temperature}°</Text>
+      {freshness === "stale" ? <Text>Showing saved weather</Text> : null}
+      {warning ? <Button onPress={() => forecast.reload()}>Retry</Button> : null}
+      <OpenMeteoAttribution />
+    </Stack>
+  ),
+  error: ({ error }) => <Text>{error.message}</Text>,
+})}
+```
+
+This app-facing interface stays small while the module implementation owns the true external provider seam.
 
 ## Check the package
-
-Run the compiler and inspect the linked app:
 
 ```sh
 ink package build
 ink check
-ink info
 ink preview
+ink info
 ```
 
-The package should add network and cache capabilities only. If `ink info` shows a native module, Android SDK, or new permission, the implementation has crossed a boundary that this provider does not need.
+The acceptance criterion is stronger than type-checking: install the packed module into an example app and compile every documented snippet through the real source-module pipeline. `ink info` should show only Network and System web actions, with no native module or JavaScript runtime.

@@ -1,9 +1,11 @@
 ---
 title: "Data and effects"
-description: "Model typed asynchronous reads, mutations, caching, and native actions."
+description: "Model typed resources, actions, sessions, caching, and composition."
 ---
 
-Ink represents asynchronous reads as resources and explicit writes as mutations. Both use tagged status values that TypeScript can narrow with `match`.
+Ink represents asynchronous reads as resources, explicit work as actions, and long-lived capabilities as sessions. Their tagged states can be narrowed with `match`.
+
+Resources use `loading`, `ready`, and `error`. A usable cached value remains `ready`; `freshness`, `activity`, and `warning` describe background refresh without forcing another rendering branch. Actions use `idle`, `running`, `success`, and `error`. Sessions expose one domain state snapshot plus ordered commands.
 
 ## Supported data types
 
@@ -59,26 +61,30 @@ URLs must use HTTPS. Query values can be `string`, `number`, or `boolean` litera
 
 ## Cache a read
 
-Use `cachedJson<T>()` when a response can be reused across app launches.
+Pass `cache` to `json<T>()` when a response can be reused across app launches.
 
 ```tsx
-const weather = cachedJson<Weather>("https://example.com/weather", {
-  maxAgeMs: 300_000,
-  staleIfErrorMs: 86_400_000,
+const weather = json<Weather>("https://example.com/weather", {
+  cache: {
+    freshForMs: 300_000,
+    staleIfErrorForMs: 86_400_000,
+  },
 });
 ```
 
 | Option | Meaning | Default |
 | --- | --- | --- |
-| `maxAgeMs` | Return the saved value without a request while it is this fresh. | 5 minutes |
-| `staleIfErrorMs` | Keep an older value available when a refresh fails. | 1 day |
+| `freshForMs` | Return the saved value without a request while it is this fresh. | 5 minutes |
+| `staleIfErrorForMs` | Keep an older value available when a refresh fails. | 1 day |
 
-A cached resource adds two fields and one status:
+A cached ready result adds metadata:
 
+- `freshness` is `"fresh"` or `"stale"`.
+- `activity` is `"idle"` or `"refreshing"`.
 - `updatedAtMs` records when the value was saved.
-- `stale` provides the saved `value`, `updatedAtMs`, and the latest refresh `error`.
+- `warning` contains the latest refresh error while an older value remains usable.
 
-Changing the response schema invalidates an incompatible saved value. Cache settings do not change ordinary `json()` reads.
+Changing the response schema invalidates an incompatible saved value.
 
 ## Send a mutation
 
@@ -102,7 +108,7 @@ export default function Save() {
       {match(save, {
         idle: () => <Button onPress={() => save.run()}>Save location</Button>,
         running: () => <Text>Saving location</Text>,
-        ready: (result) => <Text>Saved {result.value.id}</Text>,
+        success: (result) => <Text>Saved {result.value.id}</Text>,
         error: (result) => <Text>{result.error.message}</Text>,
       })}
     </Screen>
@@ -121,7 +127,7 @@ Ink materialises state values when `run()` starts. Mutations are not retried aut
 
 ## Combine resources
 
-Use `all()` when a screen needs several ordinary resources before it can render.
+Use `all()` when a screen needs several resources before it can render.
 
 ```tsx
 const page = all({ weather, airQuality });
@@ -135,7 +141,7 @@ const page = all({ weather, airQuality });
 })}
 ```
 
-The combined resource is ready only when every member is ready. Its error identifies the failed member and preserves that member's structured error.
+The combined resource is ready when every member has a usable ready value. It preserves freshness and warnings from each member. Its error identifies the failed member and preserves that member's structured error.
 
 ## Compute a value
 
@@ -168,8 +174,10 @@ const params = routeParams<{ city: string }>();
 
 Ink reports unknown, missing, or incorrectly typed route fields at build time.
 
-## Resource lifecycle
+## Lifecycle
 
-Resources declared in a screen are active only while that screen is visible. Leaving the screen cancels active work. Reloading uses single-flight ordering, so an older completion cannot replace a newer request.
+Resources declared in a screen are active only while that screen is visible. Leaving the screen cancels observation and ignores late results; termination of underlying work is best effort. Reloading uses single-flight ordering, so an older completion cannot replace a newer request.
+
+Opaque handles can connect modules without exposing their contents. They cannot enter state, route data, persisted values, or ordinary serialised results. Rust owns their generation and lifetime. An operation that needs to survive process death must use a durable reference rather than a screen-owned handle.
 
 Errors provide `kind`, `message`, and `retryable`. Use `ink logs --resources` to inspect request starts, cancellations, results, and elapsed time. Use `ink info` to list the app's resources and native capabilities.

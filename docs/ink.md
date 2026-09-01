@@ -278,9 +278,9 @@ const params = routeParams<{ city: string }>();
 
 Place `Tabs` inside a route and add one `Tab` for each root screen. The `icon` is a Material Symbol name. Ink owns tab selection and renders its standard bottom navigation.
 
-## Async values
+## Resources, actions, and sessions
 
-Native and network reads expose tagged states such as `loading`, `ready`, and `error`. Use `match` to render every state. TypeScript narrows the value inside each branch and reports a missing branch.
+Native and network reads expose resources with `loading`, `ready`, and `error`. A ready value can include freshness, background activity, and a recoverable warning without adding another status. Use `match` to render every state. TypeScript narrows the value inside each branch and reports a missing branch.
 
 ```tsx
 {match(location, {
@@ -290,11 +290,13 @@ Native and network reads expose tagged states such as `loading`, `ready`, and `e
 })}
 ```
 
-Use `all` when a screen needs several resources before it can render. Read [Data and effects](data.md) for network reads, mutations, caching, and resource composition.
+Explicit work uses actions with `idle`, `running`, `success`, and `error`. Long-lived capabilities use sessions that publish one domain snapshot and ordered commands. A stream is a session without commands, and a native view attaches to a session.
+
+Use `all` when a screen needs several resources before it can render. Read [Data and effects](data.md) for resources, actions, caching, and composition.
 
 ## Errors and permissions
 
-Ink module errors provide a stable `kind`, a plain `message`, and a `retryable` flag. Permission resources add a `request()` action and return `"granted"`, `"denied"`, `"blocked"`, or `"unknown"` when ready. Constructing a permission resource never opens a prompt; call `request()` from a user action.
+Ink module errors provide a stable `kind` and plain `message`. They include `retryable` only when the owning value provides a truthful retry operation. Permission sessions expose a `request()` action and report `"granted"`, `"denied"`, `"blocked"`, or `"unknown"`. Constructing a permission value never opens a prompt; call `request()` from a user action.
 
 ## Supported TypeScript
 

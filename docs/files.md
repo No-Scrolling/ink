@@ -1,111 +1,103 @@
 ---
 title: "Files"
-description: "Read, write, import, export, and share app files."
+description: "Own, import, export, and share app files through safe references."
 tag: "Planned"
 ---
 
-`@ink/files` manages app-private files and hands files to or from other apps through opaque `FileHandle` values.
+`@ink/files` owns app-private files and exchanges files with other apps through opaque handles. Callers never receive filesystem paths, Android URIs, or descriptors.
 
-## Write an app file
+## Manage an app file
 
-Use `managedFile()` for a file that should survive app restarts.
+Use `file()` for a durable file that should survive app restarts:
 
 ```tsx
-import { managedFile } from "@ink/files";
+import { file } from "@ink/files";
 import { Button, Text, state } from "ink";
 
 const noteText = state("");
-const note = managedFile("notes/current.txt");
+const note = file("notes/current.txt");
 
-<Button onPress={() => note.writeText(noteText.value, "text/plain")}>
+<Button onPress={() => note.writeText(noteText.value, {
+  mimeType: "text/plain",
+})}>
   Save note
 </Button>
 
-{note.status === "error" ? <Text>{note.error.message}</Text> : null}
+{note.status === "ready" ? <Text>{note.info.sizeBytes} bytes</Text> : null}
 ```
 
-Names are app-relative. They can use `/` for grouping but cannot be absolute, empty, or contain `.` or `..` segments. Declarations with the same name share one app-wide file controller.
+The managed file owns `writeText()`, `replace()`, `export()`, `share()`, and `remove()`. Each operation is an action with `idle`, `running`, `success`, and `error` states. Replacing or writing a file is atomic.
 
-`writeText()` writes UTF-8 text and replaces the file atomically. `replace(handle)` copies another file into the managed name. `remove()` deletes the managed file. General app files are limited to 32 MiB.
+Names are app-relative. They can use `/` for grouping but cannot be absolute, empty, or contain `.` or `..` segments. Declarations with the same name reconnect to the same application-scoped file.
 
-## Read text
+## Manage a text file
 
-Use `readText()` with a ready handle. The resource defaults to a 1 MiB limit and returns an error for invalid UTF-8.
+Use `textFile()` when reading and writing UTF-8 text is the complete domain operation:
 
 ```tsx
-import { readText } from "@ink/files";
+import { textFile } from "@ink/files";
 import { Text, match } from "ink";
 
-if (note.status === "ready") {
-  const contents = readText(note.file);
+const notes = textFile("notes/current.txt", {
+  initial: "",
+  maximumBytes: 1_048_576,
+});
 
-  return match(contents, {
-    loading: () => <Text>Loading note</Text>,
-    ready: ({ value }) => <Text>{value}</Text>,
-    error: ({ error }) => <Text>{error.message}</Text>,
-  });
-}
+{match(notes, {
+  loading: () => <Text>Loading notes</Text>,
+  ready: ({ value }) => <Text>{value}</Text>,
+  error: ({ error }) => <Text>{error.message}</Text>,
+})}
 ```
 
-`FileHandle` is opaque. It has no filesystem path, Android URI, descriptor, stream, or serialised form. You cannot put it in state, route data, or a store.
+`textFile()` owns opening, UTF-8 validation, atomic writes, and reloads. Use the general `file()` interface for binary content or when another module consumes the file.
 
 ## Import a file
 
-Use `fileImporter()` to return a handle, or `textFileImporter()` to validate and read UTF-8 text in one action.
+Use `filePicker()` to copy a selected file into temporary app storage:
 
 ```tsx
-import { textFileImporter } from "@ink/files";
-import { Button, Text } from "ink";
-
-const importNotes = textFileImporter({
+const picker = filePicker({
   mimeTypes: ["text/plain", "text/markdown"],
-  maxBytes: 1_048_576,
+  maximumBytes: 1_048_576,
 });
 
-<Button onPress={() => importNotes.open()}>Import notes</Button>
+<Button onPress={() => picker.open()}>Import notes</Button>
 
-{importNotes.status === "ready" ? (
-  <Text>{importNotes.value.text}</Text>
-) : null}
-```
-
-The importer copies the selected content into temporary app storage before returning `ready`. A cancelled picker returns to `idle`. Call `clear()` to release the imported copy.
-
-The handle-only importer defaults to a 10 MiB limit. Its ready value includes `file` and `info`. File information contains `name`, `mimeType`, `sizeBytes`, and `modifiedAtMs`.
-
-## Export a file
-
-Use `fileExporter()` to ask where to save a file.
-
-```tsx
-import { fileExporter } from "@ink/files";
-import { Button } from "ink";
-
-const exportNote = fileExporter();
-
-{note.status === "ready" ? (
-  <Button onPress={() => exportNote.save(note.file, {
-    suggestedName: "notes.txt",
-  })}>
-    Export notes
+{picker.status === "success" ? (
+  <Button onPress={() => note.replace(picker.value.file)}>
+    Keep imported file
   </Button>
 ) : null}
 ```
 
-The action is `success` after the platform accepts and copies the file. This does not guarantee that another app will keep or process it.
+The result contains a temporary `FileHandle` and information including `name`, `mimeType`, `sizeBytes`, and `modifiedAtMs`. Closing the system picker returns the action to `idle`.
 
-## Share or remove a file
+Temporary handles belong to their owning action or session. They cannot enter state, route data, Store, or Background work. An operation that accepts a handle acquires a lease before returning. Call `replace()` to copy it into a managed file when it must become durable.
 
-Use `fileSharer().share(file)` to open the Android share sheet. The receiving app gets temporary read access to that file only.
+## Use a durable reference
 
-Use `fileRemover(file)` for a module-owned or imported file, then call `run()` to delete it. Removing one handle does not delete a managed copy previously created with `replace()`.
+A ready managed file exposes `reference`, an opaque `FileReference` that remains valid across navigation and process death. Downloads also return durable references. Reader, Media, and Background accept these references without gaining path access.
+
+Removing the managed file invalidates its reference. Active consumers finish through their existing lease; later operations receive a `missing` error.
+
+## Export or share a file
+
+Call methods on the managed file:
+
+```tsx
+<Button onPress={() => note.export({ suggestedName: "notes.txt" })}>
+  Export notes
+</Button>
+<Button onPress={() => note.share()}>Share notes</Button>
+```
+
+Export asks the user where to create a copy. Share opens the Android share sheet and grants the selected receiving app temporary read access. Neither operation guarantees that another app keeps or processes the file.
 
 ## Lifecycle, permissions, and errors
 
-Managed files survive process death and app upgrades until you remove them or uninstall the app. Imported files may be removed after `clear()`, process exit, or storage pressure.
+Managed files are application-scoped and survive process death and upgrades. Temporary imports are released when their owner is cleared or disposed and can be removed earlier under storage pressure.
 
-`readText()` is screen-scoped. Import, export, and share surfaces continue through a temporary app pause and settle when the app resumes. Only one file surface can be open at a time.
+System file surfaces continue through a temporary app pause and settle when the app resumes. Only one file surface can be open at a time.
 
-The package requests no broad storage permission. The system picker grants access only to the selected source or destination. Sharing grants temporary access only to the receiving app.
-
-Errors distinguish missing files, denied access, interrupted transfers, size limits, invalid text, missing handlers, storage failures, unavailable file surfaces, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
+The module requests no broad storage permission. Errors distinguish missing files, denied access, interrupted transfers, size limits, invalid text, unavailable handlers, storage failures, expired handles, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.

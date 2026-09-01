@@ -1,85 +1,85 @@
 ---
 title: "Auth"
-description: "Sign in through a browser and use an authenticated session."
+description: "Sign in through a browser or device-code flow and use an opaque authorisation."
 tag: "Planned"
 ---
 
-`@ink/auth` runs OAuth and OpenID Connect sign-in for public native clients. It restores and refreshes sessions without exposing access or refresh tokens to app code.
+`@ink/auth` runs OAuth and OpenID Connect flows for public native clients. It restores and refreshes sessions without exposing access or refresh tokens to app code.
 
-## Create a session
+## Create a browser session
 
-Declare one app-wide session with your provider's HTTPS issuer, public client ID, and scopes.
+Declare one application-scoped session with the provider's HTTPS issuer, public client ID, and scopes:
 
 ```tsx
 import { oauthSession } from "@ink/auth";
-import { Button, Text, match } from "ink";
+import { Button, Text } from "ink";
 
 const account = oauthSession({
   key: "primary",
   issuer: "https://accounts.example.com",
   clientId: "ink-mobile",
   scopes: ["openid", "profile", "offline_access"],
+  flow: "browser",
 });
 
-{match(account, {
-  restoring: () => <Text>Restoring account</Text>,
-  "signed-out": () => <Button onPress={() => account.signIn()}>Sign in</Button>,
-  authorising: () => <Text>Complete sign-in in your browser</Text>,
-  exchanging: () => <Text>Completing sign-in</Text>,
-  "signed-in": () => <Text>Signed in</Text>,
-  "signing-out": () => <Text>Signing out</Text>,
-  error: ({ error }) => <Text>{error.message}</Text>,
-})}
+{account.phase === "signed-out" ? (
+  <Button onPress={() => account.signIn()}>Sign in</Button>
+) : null}
+{account.phase === "signing-in" ? <Text>Complete sign-in</Text> : null}
+{account.phase === "signed-in" ? <Text>Signed in</Text> : null}
 ```
 
-Keys must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`. Declarations with the same key share one session and must use identical options.
+The public phases are `restoring`, `signed-out`, `signing-in`, `signed-in`, `signing-out`, and `error`. Browser opening, provider authorisation, code exchange, validation, storage, and refresh remain implementation details inside `signing-in`.
 
-The issuer must provide valid discovery metadata. Ink derives the app redirect and lists it in `ink info`; register that exact value with the provider.
+The browser flow uses an Android Custom Tab or system browser and authorisation code with PKCE S256. Ink validates discovery metadata, redirects, state, nonce, code exchange, and token metadata.
 
-## Sign in
+## Use device-code sign-in
 
-Call `signIn()` from a user action. Ink opens an Android Custom Tab or the system browser and uses the authorisation-code flow with PKCE S256.
+Use a device-code flow for providers designed around a code entered on another device:
 
-Ink validates the provider, redirect, state, nonce, code exchange, and token metadata before the session becomes `signed-in`. Closing the browser or denying consent returns the session to `signed-out`.
+```tsx
+const account = oauthSession({
+  key: "television",
+  clientId: "ink-tv",
+  scopes: ["playback"],
+  flow: {
+    kind: "device-code",
+    deviceAuthorizationEndpoint: "https://accounts.example.com/device/code",
+    tokenEndpoint: "https://accounts.example.com/token",
+  },
+});
+```
 
-Only one browser sign-in can be active in the app. Calling `signIn()` again while a flow is active has no effect.
+While signing in, `account.prompt` contains the user code, verification URL, and expiry when the provider supplies them. Ink owns polling intervals, slow-down responses, expiry, cancellation, and token validation.
+
+Provider packages should hide endpoint and scope configuration behind a domain interface when the same setup would otherwise be repeated by every app.
 
 ## Make an authenticated request
 
-Pass the session's opaque authorisation to `@ink/network`:
+Every session exposes a stable `authorization` reference:
 
 ```tsx
-import { json } from "@ink/network";
-
-type Profile = { name: string };
-
-if (account.status === "signed-in") {
-  const profile = json<Profile>("https://api.example/profile", {
-    authorization: account.value.authorization,
-  });
-}
+const profile = json<Profile>("https://api.example/profile", {
+  authorization: account.authorization,
+});
 ```
 
-`authorization` identifies the session but contains no readable token. Ink refreshes an expiring access token before the request starts and combines concurrent refreshes into one operation.
+The reference remains stable while the session restores or signs out. Network waits for restoration, refreshes expiring access, combines concurrent refreshes, and reloads consumers after the authorisation generation changes.
 
-The signed-in value also provides `subject` when the provider supplies a validated OpenID Connect subject, plus `expiresAtMs` when the access-token expiry is known. Fetch profile fields through a typed network resource instead of reading token claims.
+The signed-in state can expose validated `subject` and `expiresAtMs`. Fetch profile fields through a typed provider resource instead of reading token claims.
 
-## Sign out
+## Sign out and revoke
 
-Call `signOut()` to invalidate the local authorisation immediately and remove the session from secure storage.
+`signOut()` invalidates the local authorisation immediately and removes its stored credentials. Pass `{ revoke: true }` when the provider declares a compatible revocation endpoint and the app should attempt remote revocation.
 
-```tsx
-<Button onPress={() => account.signOut()}>Sign out</Button>
-```
-
-Local sign-out does not revoke sessions on other devices or guarantee provider-wide logout. If secure deletion fails, `retry()` repeats it while the old authorisation remains invalid.
+Remote revocation is best effort and does not guarantee logout on another device. If secure deletion fails, `retry()` repeats it while the old authorisation remains invalid.
 
 ## Lifecycle, permissions, and errors
 
-Sessions are app-scoped and survive navigation. Tokens are stored through `@ink/secure-store` and survive process death and app upgrades. Refresh happens only when a consumer needs a valid access token; auth does not keep the app awake.
+Sessions are application-scoped and survive navigation. Package-created keys are namespaced to the package. App keys with different provider options create independent accounts.
 
-If refresh requires user interaction, the session returns an `interaction-required` error. Call `signIn()` from a user action to continue.
+Refresh happens only when a consumer needs a valid authorisation. Auth does not keep the app awake. Background work can use an authorisation only when the session and provider declare it background-safe.
 
-The package requests no Android runtime permission. Sign-in uses the system browser and a package-scoped redirect activity. It never embeds a web view or accepts a client secret.
+The package requests no Android runtime permission. Browser sign-in uses a package-scoped redirect activity and never accepts a client secret.
 
-Errors distinguish an unavailable browser, invalid provider metadata, invalid redirects or responses, failed exchanges or refreshes, required user interaction, secure-store failures, network failures, unavailable auth state, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
+Errors distinguish unavailable browsers, invalid provider metadata, invalid redirects or responses, failed exchanges or refreshes, expired device codes, required interaction, secure-store failures, network failures, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.

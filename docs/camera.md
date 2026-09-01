@@ -1,128 +1,77 @@
 ---
 title: "Camera"
-description: "Request camera access and capture photos or video."
+description: "Capture photos or video through a native camera session."
 tag: "Partial"
 ---
 
-`@ink/camera` captures photos and video through a native camera view. The preview uses Ink's standard `Screen` header and fills the remaining content area.
+`@ink/camera` captures photos and video through one native camera session. `CameraView` owns the standard capture, review, retake, and acceptance interface; the session exposes commands for custom layouts.
 
-## Request permission
+## Capture a photo
 
-`cameraPermission()` returns `"granted"`, `"denied"`, `"blocked"`, or `"unknown"` when ready.
-
-```tsx
-import { cameraPermission } from "@ink/camera";
-import { Button, Text, match } from "ink";
-
-const permission = cameraPermission();
-
-{match(permission, {
-  loading: () => <Text>Checking camera permission</Text>,
-  ready: ({ value }) => <Text>{value}</Text>,
-  error: ({ error }) => <Text>{error.message}</Text>,
-})}
-<Button onPress={() => permission.request()}>Allow camera</Button>
-```
-
-Creating the resource does not open a prompt. On a Light Phone III, Ink uses the LightOS permission screen. On an ordinary Android development device, it uses the Android permission prompt.
-
-Video with sound also needs microphone permission from `@ink/audio`. Request it before opening a video session with `audio: true`.
-
-## Take a photo
-
-Create a controller with `photoCapture()` and pass it to `CameraView`:
+Create a session and pass it to `CameraView`:
 
 ```tsx
-import { CameraView, photoCapture } from "@ink/camera";
+import { CameraView, cameraCapture } from "@ink/camera";
 import { Screen } from "ink";
 
 export default function Photo() {
-  const camera = photoCapture({ facing: "back" });
+  const camera = cameraCapture({
+    kind: "photo",
+    facing: "back",
+    permissionPrompt: "Allow camera to take a photo",
+  });
 
   return (
     <Screen title="Photo">
-      <CameraView controller={camera} />
+      <CameraView session={camera} />
     </Screen>
   );
 }
 ```
 
-Tap the capture control to take a photo. The view then shows **Retake** and **Use photo**. The controller becomes `ready` after the user accepts it.
+The standard view shows an explicit permission action when needed. Creating the session never opens a prompt. On Light Phone III, Ink uses the LightOS permission screen; ordinary Android development devices use the Android prompt.
 
-The ready value contains:
+After capture, the view shows **Retake** and **Use photo**. Accepting produces:
 
 - `source`, an opaque image accepted by `Image.src`;
-- `file`, a temporary `FileHandle` accepted by `@ink/files` and `@ink/media`;
+- `file`, a temporary `FileHandle` accepted by Files and Media;
 - pixel `width` and `height`;
-- `mimeType` as `"image/jpeg"`;
-- `capturedAtMs` as Unix time in milliseconds.
+- `mimeType` and `capturedAtMs`.
 
-Use `managedFile().replace(result.file)` from `@ink/files` when the photo must survive after the camera screen leaves.
-
-Photo options are:
-
-| Option | Values | Default |
-| --- | --- | --- |
-| `facing` | `"back"`, `"front"` | `"back"` |
-| `flash` | `"off"`, `"auto"`, `"on"` | `"off"` |
-| `quality` | `"balanced"`, `"maximum"` | `"balanced"` |
+Call `file("photos/profile.jpg").replace(result.file)` when the capture must become durable.
 
 ## Record video
 
-Create a video controller and pass it to the same view:
+Use the same interface with `kind: "video"`:
 
 ```tsx
-import { CameraView, videoCapture } from "@ink/camera";
-
-const camera = videoCapture({
+const camera = cameraCapture({
+  kind: "video",
   facing: "back",
-  audio: false,
+  audio: true,
   maximumDurationMs: 60_000,
+  permissionPrompt: "Allow camera and microphone to record video",
 });
 
-<CameraView controller={camera} />
+<CameraView session={camera} />
 ```
 
-Call `start()` and `stop()` from buttons or use the view's standard record control. The controller stops automatically at `maximumDurationMs` or its configured size limit.
+Camera owns the composed camera and microphone permission flow for video. Callers do not need to coordinate Audio permission separately.
 
-The ready value contains a temporary `FileHandle`, `mimeType`, pixel dimensions, `durationMs`, `sizeBytes`, and `capturedAtMs`. Pass the file to `@ink/media` for playback, metadata, or a thumbnail.
+The accepted value adds `durationMs` and `sizeBytes`. `maximumDurationMs` accepts 1 second to 30 minutes and defaults to 5 minutes. Video quality is `"compact"`, `"balanced"`, or `"maximum"`.
 
-`maximumDurationMs` accepts 1,000 milliseconds to 30 minutes and defaults to 5 minutes. `quality` is `"compact"`, `"balanced"`, or `"maximum"`.
+## Build a custom camera interface
 
-## Control focus, zoom, and torch
+Use `camera.permission` and its `request()` command when the standard view is not appropriate. The session also provides `capture()`, `startRecording()`, `stopRecording()`, `retake()`, `accept()`, `focus()`, `setZoom()`, `setTorch()`, and `switchFacing()` where supported.
 
-`CameraView` supports tap-to-focus and pinch-to-zoom. The controller also exposes:
-
-- `focus({ x, y })` with logical coordinates inside the view;
-- `setZoom(value)` from `1` to the reported `maximumZoom`;
-- `setTorch("off" | "on")` while the back camera is active;
-- `switchFacing()` when both cameras are available.
-
-Unsupported controls return an `unsupported-control` error without closing the session.
-
-## Session states
-
-A photo or video controller is:
-
-| Status | Meaning |
-| --- | --- |
-| `idle` | The camera view is not active. |
-| `opening` | The camera is starting. |
-| `active` | The preview is ready. |
-| `capturing` | A photo is being processed. |
-| `recording` | Video recording is active. |
-| `reviewing` | The view is presenting captured media for approval. |
-| `ready` | The user accepted the captured media. |
-| `error` | The session failed. |
-
-`open()` retries a failed session. `retake()` removes the temporary capture and returns to `active`. `accept()` publishes the ready value.
+The session publishes one complete snapshot with a domain `phase`: `idle`, `opening`, `active`, `capturing`, `recording`, `reviewing`, `ready`, or `error`. Commands are serialised. Unsupported commands return an action error without closing the session.
 
 ## Lifecycle and errors
 
-Leaving the screen, pressing the standard back button, or moving the app to the background releases the camera and discards an unaccepted capture. An accepted temporary file remains valid for its controller lifetime.
+Leaving the screen or moving the app to the background releases the camera and discards an unaccepted capture. An accepted temporary handle remains valid for the session lifetime. Consumers acquire a lease before the session releases it.
 
-Only one camera-backed controller can be active. This includes barcode scanners from `@ink/barcode`. A second controller receives a `busy` error.
+Only one camera-backed session can be active, including Barcode scanners. A second session receives `busy`.
 
-Errors distinguish denied or blocked permission, unavailable or busy camera, unsupported controls, capture, recording, microphone, storage, size limits, interrupted sessions, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
+Errors distinguish denied or blocked permission, unavailable or busy hardware, unsupported controls, capture and recording failures, storage and size limits, interruption, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
 
-Use [Barcode](barcode.md) to scan codes. Barcode generation does not include camera capability.
+Use [Barcode](barcode.md) to scan codes. Barcode generation does not link camera capability.

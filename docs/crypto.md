@@ -1,100 +1,75 @@
 ---
 title: "Crypto"
-description: "Hash, sign, verify, and generate secure tokens."
+description: "Hash, verify, generate secure tokens, and use non-exportable signing identities."
 tag: "Planned"
 ---
 
-`@ink/crypto` provides fixed, portable cryptographic operations with stable encodings. Text input uses UTF-8.
+`@ink/crypto` provides a small set of fixed, portable cryptographic operations with stable encodings. Text input uses UTF-8.
 
 ## Hash a value
 
-Use `sha256()` to create a content digest. The ready value is 64 lower-case hexadecimal characters.
+`sha256()` is a pure computed operation. It does not start a screen resource:
 
 ```tsx
 import { sha256 } from "@ink/crypto";
-import { Text, match, state } from "ink";
+import { Text, state } from "ink";
 
 const note = state("");
 const digest = sha256(note.value);
 
-{match(digest, {
-  loading: () => <Text>Calculating digest</Text>,
-  ready: ({ value }) => <Text>{value}</Text>,
-  error: ({ error }) => <Text>{error.message}</Text>,
-})}
+{digest.ok ? <Text>{digest.value}</Text> : <Text>{digest.error.message}</Text>}
 ```
 
-Inputs are limited to 1 MiB. SHA-256 is suitable for content identity and checks against a trusted digest. Do not use it to store passwords.
+The value is 64 lower-case hexadecimal characters. Inputs are limited to 1 MiB. SHA-256 is suitable for content identity and checks against a trusted digest. Do not use it to store passwords.
 
 ## Generate a token
 
-Use `randomToken()` to generate a 256-bit value encoded as unpadded Base64url.
+Use `randomToken()` for explicit secure randomness:
 
 ```tsx
-import { randomToken } from "@ink/crypto";
-import { Button, Text } from "ink";
+const token = randomToken({ bytes: 32, encoding: "base64url" });
 
-const token = randomToken();
-
-<Button onPress={() => token.generate()}>Generate token</Button>
-
-{token.status === "ready" ? <Text>{token.value}</Text> : null}
+<Button onPress={() => token.run()}>Generate token</Button>
 ```
 
-Each `generate()` call replaces the previous value. Calling it while generation is active has no effect. Generated tokens belong to the declaring screen and are not persisted.
+The action uses `idle`, `running`, `success`, and `error`. Generated values belong to the declaring screen and are not persisted automatically.
 
-## Sign a message
+## Create a signing identity
 
-Use `signingKey()` to create or restore an Ed25519 key and sign UTF-8 messages.
+Use `signingIdentity()` to create or restore a purpose-bound, non-exportable Ed25519 identity in Android Keystore:
 
 ```tsx
-import { signingKey } from "@ink/crypto";
-import { Button, Text, state } from "ink";
+const device = signingIdentity("device.identity", {
+  purpose: "api-request-signing",
+});
 
-const payload = state("");
-const deviceKey = signingKey("device.identity");
-
-<Button onPress={() => deviceKey.sign(payload.value)}>Sign payload</Button>
-
-{deviceKey.status === "signed" ? (
-  <Text>{deviceKey.signature}</Text>
-) : null}
+<Button onPress={() => device.sign(payload.value)}>Sign payload</Button>
 ```
 
-The first declaration creates a key when none exists. Its private key remains in `@ink/secure-store`. The controller exposes only the public key and signatures, encoded as unpadded Base64url.
+The ready identity exposes its public key and a signing action. Private key bytes never enter Secure store, app state, diagnostics, or `app.ink`.
 
-Keys must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`. Messages are limited to 1 MiB. Declarations with the same key share one app-wide signing key.
+`rotate()` creates a new generation and invalidates future use of the old identity. `remove()` invalidates and deletes every retained generation. Pass an explicit retention policy when a protocol needs a previous public key during rotation.
+
+Package-created keys are namespaced to the package. Intentional sharing requires an exported typed identity key.
 
 ## Verify a signature
 
-Use `verifyEd25519()` with the original message, signature, and public key.
+`verifyEd25519()` is a pure computed operation:
 
 ```tsx
-import { verifyEd25519 } from "@ink/crypto";
-import { Text, match, state } from "ink";
-
-const payload = state("");
-const receivedSignature = state("");
-const senderPublicKey = state("");
 const verified = verifyEd25519({
   message: payload.value,
   signature: receivedSignature.value,
   publicKey: senderPublicKey.value,
 });
 
-{match(verified, {
-  loading: () => <Text>Checking signature</Text>,
-  ready: ({ value }) => <Text>{value ? "Valid" : "Invalid"}</Text>,
-  error: ({ error }) => <Text>{error.message}</Text>,
-})}
+{verified.ok ? <Text>{verified.value ? "Valid" : "Invalid"}</Text> : null}
 ```
 
-A correctly encoded signature that does not match returns `false`. Malformed Base64url, wrong decoded lengths, and oversized messages return errors.
+A correctly encoded signature that does not match returns `false`. Malformed Base64url, wrong decoded lengths, and oversized messages return a typed result error.
 
 ## Lifecycle and errors
 
-Hash and verification resources are screen-scoped. Leaving the screen cancels active work and ignores late results.
+Pure operations recompute when their inputs change and have no cancellation or platform lifecycle. Signing identities are application-scoped and survive process death and upgrades, but not app-data clearing or uninstall. Calls for one identity are serialised.
 
-Signing keys are app-scoped and survive process death and app upgrades. They do not survive app-data clearing or uninstall. Calls for one key are serialised, and only the latest completed signature is published.
-
-Errors distinguish invalid encodings, oversized input, unavailable keys, secure-store failures, unavailable cryptography, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
+Errors distinguish invalid encodings, oversized inputs, unavailable or invalidated identities, Keystore failures, unavailable cryptography, and unexpected failures. Action and session errors provide `kind`, `message`, `retryable`, and `operation`.

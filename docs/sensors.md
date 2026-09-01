@@ -1,89 +1,57 @@
 ---
 title: "Sensors"
-description: "Read sampled motion, orientation, environmental, and step sensor values."
+description: "Read sampled motion, orientation, environmental, and step values."
 tag: "Planned"
 ---
 
-`@ink/sensors` provides rate-limited streams for common device sensors. Streams use portable units and publish only their latest sample.
+`@ink/sensors` provides screen-owned sensor sessions with explicit latest-value delivery. Values use portable units and monotonic timestamps.
 
 ## Read a sensor
 
-Declare a stream on the screen that needs it:
+Declare a session on the screen that needs it:
 
 ```tsx
-import { sensorStream } from "@ink/sensors";
-import { Text } from "ink";
-
-const motion = sensorStream("accelerometer", { frequencyHz: 10 });
+const motion = sensor("accelerometer", { frequencyHz: 10 });
 
 <Text>X {motion.sample?.x ?? 0} m/s²</Text>
 <Text>Y {motion.sample?.y ?? 0} m/s²</Text>
 <Text>Z {motion.sample?.z ?? 0} m/s²</Text>
 ```
 
-`frequencyHz` accepts 1 to 100 and defaults to 10. `actualFrequencyHz` reports the measured publication rate once the stream becomes active.
+`frequencyHz` accepts 1 to 100 and defaults to 10. The session phases are `starting`, `active`, `paused`, and `error`. It publishes only its latest sample because intermediate raw sensor samples are replaceable.
 
-Each stream exposes:
-
-| Field | Meaning |
-| --- | --- |
-| `status` | `starting`, `active`, `paused`, or `error`. |
-| `sample` | The latest sample, or `null` before one arrives. |
-| `sequence` | Increments for every published sample, including equal values. |
-| `actualFrequencyHz` | The measured rate, or `0` before sampling starts. |
-
-The stream keeps no history. Store only the values your app needs rather than copying every sample into state.
+Each sample includes `elapsedRealtimeMs`, a monotonic timestamp suitable for measuring intervals. Optional `capturedAtMs` is wall-clock Unix time and must not be used for duration calculations. `sequence` increments for every published sample, including equal values.
 
 ## Choose a sensor
 
-`sensorStream()` accepts these kinds:
+Supported kinds include accelerometer, linear acceleration, gyroscope, magnetic field, rotation, light, pressure, proximity, and step counter. Vector axes use the portrait device frame and report documented SI units.
 
-| Kind | Sample | Unit |
-| --- | --- | --- |
-| `"accelerometer"` | `x`, `y`, `z`, `accuracy` | Metres per second squared, including gravity. |
-| `"linear-acceleration"` | `x`, `y`, `z`, `accuracy` | Metres per second squared, excluding gravity. |
-| `"gyroscope"` | `x`, `y`, `z`, `accuracy` | Radians per second. |
-| `"magnetic-field"` | `x`, `y`, `z`, `accuracy` | Microteslas. |
-| `"rotation"` | `x`, `y`, `z`, `w`, `accuracy` | Unit quaternion. |
-| `"light"` | `value`, `accuracy` | Lux. |
-| `"pressure"` | `value`, `accuracy` | Hectopascals. |
-| `"proximity"` | `value`, `accuracy` | Centimetres. |
-| `"step-counter"` | `stepsSinceBoot` | Steps since the last device boot. |
+Accuracy is `"unreliable"`, `"low"`, `"medium"`, or `"high"` where Android supplies it. `actualFrequencyHz` reports the measured publication rate after sampling starts.
 
-Every sample includes `timestampMs` as Unix time in milliseconds. Accuracy is `"unreliable"`, `"low"`, `"medium"`, or `"high"` where the sensor reports it.
+## Reduce samples natively
 
-Vector axes use a portrait device frame. Positive X points right, positive Y points towards the top edge, and positive Z points out of the screen.
+Use a reduction when an app needs a threshold or window summary rather than raw samples:
+
+```tsx
+const movement = sensor("accelerometer", {
+  frequencyHz: 50,
+  publish: {
+    everyMs: 250,
+    reduction: "root-mean-square",
+  },
+});
+```
+
+Supported reductions are defined per sensor and run before values cross into the Ink value graph. This avoids copying high-rate history into app state.
 
 ## Request activity permission
 
-Most sensors need no runtime permission. Step counting needs activity-recognition permission on devices that require it.
+Most sensors need no runtime permission. The step counter exposes its own permission state and `request()` command. Creating a sensor never opens a prompt.
 
-```tsx
-import { activityPermission } from "@ink/sensors";
-import { Button, Text, match } from "ink";
+## Lifecycle, errors, and accessibility
 
-const activity = activityPermission();
+The session starts when its screen becomes active, pauses in the background, and stops when the screen leaves. Returning to the same screen keeps the previous sample until a new one arrives.
 
-{match(activity, {
-  loading: () => <Text>Checking activity access</Text>,
-  ready: (result) => <Text>{result.value}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-<Button onPress={() => activity.request()}>Allow activity access</Button>
-```
+Errors distinguish denied or blocked permission, unavailable hardware, unsupported rates or reductions, interruption, invalid samples, and unexpected failures. Every error has `kind`, `message`, `retryable`, and the sensor kind.
 
-Creating the permission resource or a step stream never opens a prompt. Call `request()` from a user action.
-
-## Lifecycle and errors
-
-A stream starts when its screen becomes active. Moving the app to the background pauses it. Returning to the same screen resumes sampling and keeps the previous sample until a new one arrives. Leaving the screen stops the stream completely.
-
-When several streams use the same physical sensor, each still publishes at its requested rate.
-
-Errors distinguish denied or blocked permission, unavailable hardware, unsupported rates, interruption, invalid samples, and unexpected failures. Every error has `kind`, `message`, `retryable`, and the requested sensor kind.
-
-## Accessibility
-
-Do not announce every sensor sample. Present a throttled text summary when assistive technology needs the value.
-
-Do not make motion, orientation, light, or proximity the only way to complete a task. Provide an equivalent button or other direct control.
+Do not announce every sample or make a sensor the only way to complete a task. Present a throttled summary and an equivalent direct control where appropriate.

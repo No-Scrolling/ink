@@ -38,14 +38,14 @@ Ink supplies its runtime, Public Sans, Android project and generated resources. 
 
 ## Compilation
 
-The compiler resolves the complete screen and package graph from `App.tsx`. It parses TypeScript and TSX, validates the supported language, checks routes and typed data, and writes a compact `app.ink` definition.
+The compiler resolves the complete screen and package graph from `App.tsx`. It parses TypeScript and TSX, validates the supported language, specialises reachable source-module functions, checks routes and typed data, and writes a compact `app.ink` definition.
 
 The definition contains the app's:
 
 - screens, layout, and navigation;
 - initial, shared, and persisted state declarations;
 - state-to-UI dependencies;
-- typed resource and native action declarations;
+- typed resources, actions, sessions, handles, and dependency declarations;
 - referenced text, icons, images and other assets;
 - required native capabilities.
 
@@ -58,16 +58,16 @@ The capability list produced by the compiler controls what enters the APK. For e
 - `TextInput` adds the Ink keyboard;
 - `@ink/audio` playback adds the audio player;
 - detached playback also adds the Android media session;
-- `@ink/camera` scanning adds CameraX and code decoding;
+- `@ink/barcode` scanning adds CameraX and code decoding;
 - modules add only the Android permissions and components they use.
 
 An app that does not use a capability does not carry its native implementation. `ink info` shows the capability list and its estimated native cost before a release build.
 
 ## Third-party modules
 
-A source module publishes TypeScript or TSX through the `ink` package export. The compiler validates and lowers that source with the app, so reusable screens and API clients do not need a JavaScript runtime.
+A source module publishes TypeScript or TSX through the `ink` package export. `ink package build` compiles its named exports and pure transformations into a versioned source-module IR. The app compiler specialises the reachable call graph, so reusable screens, provider clients, and device protocols do not need a JavaScript runtime.
 
-A native module also publishes a versioned manifest and Android adapter. The manifest declares typed resources, actions, streams, controllers, native views, permissions, components and native dependencies. Ink validates those declarations, assigns compact operation IDs and generates the adapter registry during the app build.
+A native module also publishes a versioned data-only manifest and Android adapter. The manifest declares typed resources, actions, sessions, native views, workers, opaque handles, ownership, delivery policy, and operation-level Android requirements. Ink validates those declarations, assigns compact operation IDs, and generates the adapter registry during the app build. App builds do not execute module build hooks.
 
 Native modules cannot inject arbitrary Gradle scripts or manifest XML. They use the validated integration fields supported by Ink. Read [Third-party modules](modules.md) to install one or [Develop an Ink module](developing-modules.md) to create one.
 
@@ -79,17 +79,20 @@ Fixed-height vertical lists are virtualised. Text and image geometry is reused w
 
 The renderer turns Ink's display list into Vulkan commands. Android supplies the window, lifecycle, pointer input and native device services through a small adapter.
 
-## Native actions and resources
+## Resources, actions, and sessions
 
-Network responses, location fixes, permissions and other native results return through typed resource states. The runtime:
+Resources use `loading`, `ready`, and `error`. Actions use `idle`, `running`, `success`, and `error`. Sessions publish one complete domain state snapshot plus ordered commands; a stream is a session without commands, and a native view attaches to a session.
+
+The runtime:
 
 - activates screen-scoped work only while its screen is visible;
-- cancels work when the screen leaves or a request reloads;
+- cancels observation when the screen leaves or a request reloads;
 - ignores late results from cancelled or replaced requests;
 - applies timeouts and prevents duplicate in-flight reads;
+- owns opaque handle generations, leases, and disposal ordering;
 - schedules the resulting UI change on the next display frame.
 
-Explicit mutations and native actions remain separate from reads, so an app controls when work that changes external state begins.
+Immediate termination of Android, codec, or network work is best effort unless an operation explicitly guarantees it. Explicit actions remain separate from resources, so an app controls when work that changes external state begins.
 
 ## Platform conventions
 

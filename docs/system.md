@@ -1,63 +1,14 @@
 ---
 title: "System"
-description: "Check device capabilities and open settings, links, the dialler, and email."
+description: "Open settings, links, the dialler, and email through Android."
 tag: "Planned"
 ---
 
-`@ink/system` checks whether Ink capabilities are available and opens supported settings and apps.
-
-## Check a capability
-
-`systemCapability()` returns whether a packaged capability is available on the current device.
-
-```tsx
-import { systemCapability } from "@ink/system";
-import { Button, Text, match } from "ink";
-
-const scanning = systemCapability("barcode.scan");
-
-{match(scanning, {
-  loading: () => <Text>Checking scanner</Text>,
-  ready: (result) => result.value.status === "available" ? (
-    <Button href="/scan">Scan a code</Button>
-  ) : (
-    <Text>Scanning is not available</Text>
-  ),
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-```
-
-An unavailable result includes one reason:
-
-| Reason | Meaning |
-| --- | --- |
-| `"missing-hardware"` | The device lacks required hardware. |
-| `"missing-software"` | The device software does not support the capability. |
-| `"disabled-by-policy"` | Device policy prevents access. |
-| `"not-packaged"` | The app does not include the capability. |
-
-Supported capability names are:
-
-- `"files.import"`, `"files.export"`, and `"files.share"`;
-- `"auth.browser"`;
-- `"background.work"`;
-- `"notifications.local"` and `"notifications.remote"`;
-- `"location.fix"`;
-- `"maps.render"`;
-- `"camera.photo"` and `"camera.video"`;
-- `"barcode.scan"` and `"barcode.generate"`;
-- `"audio.playback"` and `"audio.recording"`;
-- `"media.picker"` and `"media.video"`;
-- `"sensors.accelerometer"`, `"sensors.gyroscope"`, and the other sensor names accepted by `@ink/sensors`;
-- `"bluetooth.le"`;
-- `"reader.epub"`, `"reader.text"`, and `"reader.pdf"`;
-- `"charts.render"`.
-
-Availability does not include permission state. For example, `"camera.photo"` can be available while camera permission is denied. Read permission through the package that owns the capability.
+`@ink/system` opens supported Android settings and external app surfaces. Capability availability belongs to the module that owns the capability rather than a central string registry.
 
 ## Open settings
 
-Create a system action for the settings page, then call `run()` from a user action.
+Create a system action and call `run()` from a user action:
 
 ```tsx
 import { systemAction } from "@ink/system";
@@ -74,20 +25,17 @@ const settings = systemAction({
   idle: () => null,
   running: () => <Text>Opening settings</Text>,
   success: () => null,
-  error: (result) => <Text>{result.error.message}</Text>,
+  error: ({ error }) => <Text>{error.message}</Text>,
 })}
 ```
 
-Settings pages are `"app"`, `"notifications"`, and `"location"`. Opening settings does not report whether the user changed a setting. Permission resources reload when the app returns to the foreground.
+Settings pages are `"app"`, `"notifications"`, `"location"`, `"bluetooth"`, and `"network"`. Opening settings does not report whether the user changed a setting. Modules refresh relevant permission or availability state when the app returns.
 
 ## Open a link, dialler, or email
 
 Pass one target to `systemAction()`:
 
 ```tsx
-import { systemAction } from "@ink/system";
-import { Button } from "ink";
-
 const website = systemAction({
   kind: "web",
   url: "https://example.com/help",
@@ -103,20 +51,20 @@ const email = systemAction({
   to: "support@example.com",
   subject: "Support request",
 });
-
-<Button onPress={() => website.run()}>Open help</Button>
-<Button onPress={() => phone.run()}>Open dialler</Button>
-<Button onPress={() => email.run()}>Email support</Button>
 ```
 
 Web URLs must use HTTPS. Opening the dialler fills the number but does not place a call. Email fields open in the user's chosen email app and do not send a message automatically.
 
-When several apps can handle a target, the device shows its chooser. If none can handle it, the action returns a `no-handler` error.
+When several apps can handle a target, Android shows its chooser. If none can handle it, the action returns `no-handler`.
+
+## Check module availability
+
+Use the interface belonging to the capability. For example, Camera reports camera availability and Connectivity reports connection state. This allows first- and third-party modules to define truthful domain reasons without registering names in System.
+
+Use `ink info` to inspect whether an operation is linked into an app and why. Packaging is a compiler fact, not a runtime System capability.
 
 ## Lifecycle and errors
 
-Capability resources reload when the app returns to the foreground. They do not poll while the app is in the background.
+A system action uses `idle`, `running`, `success`, and `error`. Calling `run()` while it is running has no effect. Leaving the screen stops observing the result but does not close a surface that already opened.
 
-A system action is `idle`, `running`, `success`, or `error`. Calling `run()` while the same action is running has no effect. Leaving the screen stops observing the result but does not close a surface that has already opened.
-
-Errors provide `kind`, `message`, and `retryable`. They distinguish unsupported capabilities, invalid targets, missing handlers, device-policy restrictions, cancellation, and unexpected failures. The package requests no runtime permissions.
+Errors provide `kind`, `message`, and `retryable`. They distinguish invalid targets, missing handlers, unsupported settings, device-policy restrictions, cancellation, and unexpected failures. The package requests no runtime permissions.

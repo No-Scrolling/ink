@@ -4,7 +4,7 @@ description: "Read and update typed JSON over HTTPS."
 tag: "Partial"
 ---
 
-`@ink/network` provides typed JSON reads, durable response caching, explicit mutations, and authenticated requests. Ink validates every response against its TypeScript type before it reaches your app.
+`@ink/network` provides typed JSON resources and explicit mutations. Ink validates every response against its TypeScript type before it reaches your app.
 
 ## Read JSON
 
@@ -30,48 +30,48 @@ const forecast = json<Forecast>("https://weather.example/forecast", {
 </Screen>
 ```
 
-Query values can be strings, numbers, booleans, or lists of those values. Lists are encoded as comma-separated values. Header values can be literal strings or string state values. URLs must use HTTPS, except for emulator loopback addresses.
+Query values can be strings, numbers, booleans, or lists of those values. A provider module owns any provider-specific list encoding. URLs must use HTTPS, except for emulator loopback addresses.
 
 `timeoutMs` accepts 1,000 to 120,000 milliseconds and defaults to 15 seconds. Responses are limited to 1 MiB after decompression.
 
 ## Cache a read
 
-Use `cachedJson<T>()` when a response can be reused across app launches.
+Pass `cache` when a response can be reused across app launches:
 
 ```tsx
-import { cachedJson } from "@ink/network";
-
-const forecast = cachedJson<Forecast>("https://weather.example/forecast", {
-  maxAgeMs: 300_000,
-  staleIfErrorMs: 86_400_000,
+const forecast = json<Forecast>("https://weather.example/forecast", {
+  cache: {
+    freshForMs: 300_000,
+    staleIfErrorForMs: 86_400_000,
+  },
 });
 ```
 
-| Option | Meaning | Default |
-| --- | --- | --- |
-| `maxAgeMs` | Return the saved value without a request while it remains fresh. | 5 minutes |
-| `staleIfErrorMs` | Keep an older value available when a refresh fails. | 1 day |
+`json()` always uses `loading`, `ready`, or `error`. A cached ready result adds:
 
-A cached resource is `ready` while its value is fresh. It becomes `stale` when a refresh fails but an older value is still usable. Both states include `updatedAtMs`.
+- `freshness` as `"fresh"` or `"stale"`;
+- `activity` as `"idle"` or `"refreshing"`;
+- `updatedAtMs`;
+- `warning` when an older value remains usable after a refresh error.
 
-Changing the response type invalidates an incompatible cached value. Call `reload()` to bypass freshness and replace the current request.
+This lets ordinary screens render one ready branch while screens that care about freshness can show it. Changing the response type invalidates an incompatible cached value. Call `reload()` to bypass freshness and replace the current request.
 
 ## Transform a response
 
-Use `map()` to turn a validated response into your app or module's domain model. Use `mapError()` to expose a smaller tagged error contract.
+Use `map()` inside an app or source module to turn a validated provider response into a domain model. Use `mapError()` to expose a smaller tagged error contract.
 
 ```tsx
-const forecast = cachedJson<ProviderForecast>(url, {
-  maxAgeMs: 300_000,
+const forecast = json<ProviderForecast>(url, {
+  cache: { freshForMs: 300_000 },
 }).map((response) => ({
   temperature: response.current.temperature_2m,
   summary: weatherSummary(response.current.weather_code),
 })).mapError(toWeatherError);
 ```
 
-Mapping functions must use Ink's pure TypeScript subset. They can construct objects, map and filter lists, narrow tagged values, and call other pure package functions. They cannot perform I/O, mutate state, read the clock, or call a native capability.
+Mapping uses Ink's closed pure-expression subset. It can construct values, map and filter lists, zip validated lists, narrow tagged values, and call other pure source-module functions. It cannot perform I/O, mutate state, read the clock, or call a native operation.
 
-The resource keeps its original loading, stale, cancellation, and reload behaviour. A mapping failure returns an `invalid-response` error unless `mapError()` translates it.
+Mapping preserves caching, cancellation, and reload behaviour. A failed transformation returns `invalid-response` unless `mapError()` translates it.
 
 ## Send a mutation
 
@@ -90,65 +90,59 @@ const save = mutation<{ id: string }>("https://weather.example/places", {
 {match(save, {
   idle: () => <Button onPress={() => save.run()}>Save place</Button>,
   running: () => <Text>Saving place</Text>,
-  ready: ({ value }) => <Text>Saved {value.id}</Text>,
+  success: ({ value }) => <Text>Saved {value.id}</Text>,
   error: ({ error }) => <Text>{error.message}</Text>,
 })}
 ```
 
-Ink reads state values when `run()` starts. Calling `run()` while the mutation is already running has no effect. Mutations are not retried automatically because repeating a write may not be safe.
+Ink materialises referenced state when `run()` starts. Calling `run()` while the mutation is running has no effect. Mutations are not retried automatically because repeating a write may not be safe.
 
 ## Authenticate a request
 
-Pass an opaque authorisation from `@ink/auth` to a request:
+Pass a stable opaque provider from Auth or Secure store. The resource remains declared while the provider restores, refreshes, or changes generation:
 
 ```tsx
-if (account.status === "signed-in") {
-  const profile = json<Profile>("https://api.example/profile", {
-    authorization: account.value.authorization,
-  });
-}
-```
+const account = oauthSession(options);
 
-For a manually supplied bearer token, save it with `@ink/secure-store` and pass `bearer(saved.secret)`. Ink never exposes the restored token to app code or diagnostics.
-
-Use `sensitiveQuery` when a provider requires a credential in the query string:
-
-```tsx
-const response = json<Result>(url, {
-  query: { apikey: apiKey.secret },
-  sensitiveQuery: ["apikey"],
+const profile = json<Profile>("https://api.example/profile", {
+  authorization: account.authorization,
 });
 ```
 
-Sensitive query values are redacted from logs, errors, cache metadata, and `ink info`. They remain visible to the remote server and can still be extracted from a distributed client app.
+Network waits while an authorisation is restoring. It reloads after the reference changes and returns `authentication-required` when no usable credential exists.
+
+For a manually supplied bearer token, pass a Secure store slot to `bearer()`:
+
+```tsx
+const apiKey = secret("weather.api-key");
+
+const response = json<Result>(url, {
+  query: { apikey: sensitive(apiKey) },
+});
+```
+
+Sensitive values carry their redaction policy with them. Ink redacts them from logs, errors, cache metadata, and `ink info`. They remain visible to the remote server and can still be extracted from a distributed client app.
 
 ## Create a background request plan
 
-Use `getJson<T>()` or `uploadFile()` inside an `@ink/background` task. These functions describe work and do not start a request where they are declared.
+Use `getJson<T>()` as static work inside a Background task. The task owns its latest durable result:
 
 ```tsx
-import { backgroundTask } from "@ink/background";
-import { getJson } from "@ink/network";
-import { replaceStoredValue } from "@ink/store";
-
 const refresh = backgroundTask({
   key: "forecast.refresh",
   schedule: { kind: "periodic", everyMinutes: 30 },
-  work: replaceStoredValue(
-    "forecast.latest",
-    getJson<Forecast>("https://weather.example/forecast"),
-  ),
+  work: getJson<Forecast>("https://weather.example/forecast"),
 });
 ```
 
-Background request plans use literal URLs, query fields, headers, and response types. `uploadFile()` also requires an idempotency key or an endpoint marked safe to repeat. Read [Background work](background.md) for scheduling and retry behaviour.
+`getJson()` describes work and does not start a request where it is declared. Plans can use opaque background-safe authorisation but cannot capture screen state or temporary handles.
 
 The compiler rejects direct `Authorization`, `Cookie`, and proxy credential headers. Authorisation is removed from cross-origin redirects.
 
 ## Lifecycle and errors
 
-Reads are screen-scoped. Leaving the screen or calling `reload()` cancels the active request and ignores any late result. Identical active GET requests share one in-flight operation.
+Reads are screen-scoped. Leaving the screen or calling `reload()` cancels observation and ignores late results. Terminating the underlying request is best effort. Identical active GET requests share one in-flight operation.
 
 GET requests retry one transient connection or server failure within the original timeout. Redirects are limited to five and cannot downgrade from HTTPS to HTTP.
 
-Errors distinguish offline access, timeout, unauthorised and forbidden requests, missing resources, rate limits, server failures, invalid responses, oversized responses, unavailable networking, and unexpected failures. Every error provides `kind`, `message`, and `retryable`. Rate-limit errors also provide `retryAtMs` when the server supplies a valid retry time.
+Errors distinguish offline access, timeout, authentication, forbidden requests, missing resources, rate limits, server failures, invalid responses, oversized responses, unavailable networking, and unexpected failures. Every error provides `kind`, `message`, and `retryable`. Rate-limit errors provide `retryAtMs` when the server supplies a valid retry time.

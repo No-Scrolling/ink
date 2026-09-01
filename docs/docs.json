@@ -36,9 +36,12 @@
         "group": "Modules",
         "pages": [
           "network",
+          "connectivity",
+          "downloads",
           "store",
           "secure-store",
           "files",
+          "clipboard",
           "auth",
           "crypto",
           "system",
@@ -54,8 +57,7 @@
           "notifications",
           "sensors",
           "bluetooth",
-          "reader",
-          "charts"
+          "reader"
         ]
       },
       {

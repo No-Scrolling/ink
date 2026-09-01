@@ -1,149 +1,74 @@
 ---
 title: "Bluetooth"
-description: "Discover and communicate with Bluetooth Low Energy devices."
+description: "Build typed Bluetooth Low Energy modules on a bounded GATT interface."
 tag: "Planned"
 ---
 
-`@ink/bluetooth` discovers nearby Bluetooth Low Energy devices, connects to one device, and reads, writes, or subscribes to its GATT characteristics through one controller.
+`@ink/bluetooth/low-level` is the bounded escape hatch for module authors implementing Bluetooth Low Energy device protocols. Apps should usually install a domain module such as a scale, heart-rate monitor, or lock instead of handling UUIDs and packets directly.
 
-## Request permission
+## Build a device module
 
-Read and request nearby-device permission before scanning:
+A domain module owns discovery filters, packet decoding, reconnect policy, and user-facing errors:
 
 ```tsx
-import { bluetoothPermission } from "@ink/bluetooth";
-import { Button, Text, match } from "ink";
+const scale = SmartScale.session({
+  reconnect: "while-active",
+});
 
-const permission = bluetoothPermission();
-
-{match(permission, {
-  loading: () => <Text>Checking Bluetooth access</Text>,
-  ready: (result) => <Text>{result.value}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-<Button onPress={() => permission.request()}>Allow Bluetooth access</Button>
+<Button onPress={() => scale.findAndConnect()}>Connect scale</Button>
+{scale.phase === "ready" ? <Text>{scale.weightKg} kg</Text> : null}
 ```
 
-The ready value is `"granted"`, `"denied"`, `"blocked"`, or `"unknown"`. Creating the permission resource or starting a scan never opens a prompt. Call `request()` from a user action.
+The app does not need to know GATT UUIDs, byte order, MTU, operation sequencing, or notification framing. Use the low-level interface only while developing that domain module.
 
-Permission does not enable Bluetooth. Operations return a `disabled` error while the device radio is off.
+## Discover and connect
 
-## Discover devices
-
-Create one controller for scanning, connecting, and GATT work:
+Create a BLE session with declared service filters and ownership:
 
 ```tsx
-import { bluetoothController } from "@ink/bluetooth";
-import { Button, Text } from "ink";
-
-const bluetooth = bluetoothController();
-
-<Button onPress={() => bluetooth.startScan({
-  serviceUuids: ["180f"],
-  timeoutMs: 15_000,
-})}>
-  Find battery devices
-</Button>
-
-{bluetooth.scan.devices.map((device) => (
-  <Button onPress={() => bluetooth.connect(device.id)}>
-    {device.name ?? "Unnamed device"} {device.rssi} dBm
-  </Button>
-))}
+const connection = bleSession({
+  services: [uuid16("180f")],
+  owner: "screen",
+  reconnect: "never",
+});
 ```
 
-`serviceUuids` filters advertised services. `namePrefix` filters the advertised name. UUIDs may use 16-bit form such as `"180f"` or lower-case canonical form such as `"0000180f-0000-1000-8000-00805f9b34fb"`.
+The session owns permission, scanning, connection, service discovery, and disconnect. Creating it never opens a permission prompt. A domain view or app action calls `connection.permission.request()` explicitly.
 
-`timeoutMs` accepts 1,000 to 120,000 and defaults to 15,000 milliseconds. Reaching the scan timeout returns the scan to `idle`; it is not an error. Call `stopScan()` to stop earlier.
+Use `owner: "application"` only in a module whose interface promises a connection that survives navigation. Rust enforces ownership and disposes the Android adapter when the owner ends.
 
-The scan state contains:
+Device identifiers are opaque and are not stable identities unless the device protocol provides its own identifier.
 
-| Status | Meaning |
-| --- | --- |
-| `idle` | No scan is active. Previous results remain available. |
-| `scanning` | Results update as advertisements arrive. |
-| `error` | Scanning failed. Previous results remain available. |
+## Read and write bytes
 
-Each device has an opaque `id`, optional `name`, `rssi`, advertised service UUIDs, `connectable`, and `lastSeenAtMs`. Device IDs belong to the active controller and cannot be persisted as a stable identity.
-
-## Connect to a device
-
-Call `connect(device.id)` from a discovered device. Connecting stops the active scan and discovers the device's services and characteristics.
-
-| Status | Meaning |
-| --- | --- |
-| `disconnected` | No device is connected. |
-| `connecting` | A link is opening. |
-| `discovering` | The link is open and GATT discovery is running. |
-| `connected` | `services` contains the complete service snapshot. |
-| `error` | Connection or discovery failed. |
-
-Pass `{ timeoutMs }` as the second argument to `connect()` to change the 15-second connection timeout. Call `disconnect()` to cancel connection work, unsubscribe, clear services, and close the link.
-
-Each service contains its UUID and characteristics. A characteristic contains its service UUID, characteristic UUID, and any supported `read`, `write`, `write-without-response`, `notify`, or `indicate` properties.
-
-## Read and write a characteristic
-
-Use the service and characteristic UUIDs shown after discovery:
+Ink provides an opaque immutable `Bytes` value with approved pure operations for slicing, concatenation, integer encoding and decoding, UTF-8, hexadecimal, and Base64 conversion.
 
 ```tsx
-const batteryLevel = {
-  serviceUuid: "180f",
-  characteristicUuid: "2a19",
-};
-
-<Button onPress={() => bluetooth.read(batteryLevel)}>
-  Read battery
-</Button>
-
-<Text>{bluetooth.operation.status === "ready"
-  ? bluetooth.operation.dataBase64
-  : "No battery reading"}</Text>
-```
-
-Reads and writes are serial. Starting another while one is running returns a `busy` error and leaves the active operation unchanged.
-
-Write bytes as padded Base64 without line breaks:
-
-```tsx
-<Button onPress={() => bluetooth.write(mode, {
-  dataBase64: "AQ==",
+connection.write(modeCharacteristic, {
+  data: bytes([1]),
   response: "required",
-})}>
-  Set mode
-</Button>
+});
 ```
 
-`response` is `"required"` by default or `"not-required"` for a characteristic that supports unacknowledged writes. Read and write timeouts default to 10 seconds.
+GATT reads, writes, descriptor changes, and subscription setup are queued and executed serially. Callers do not receive `busy` merely because another operation is active. Queue limits and operation timeouts are declared when the session is created.
 
-The package sends one characteristic value per write. Split or combine values according to the device protocol before calling `write()`.
+## Receive notifications
 
-## Subscribe to notifications
-
-Call `subscribe(characteristic)` after the controller is connected:
+Each subscribed characteristic exposes its own event session. Protocol deltas use bounded delivery rather than latest-only delivery:
 
 ```tsx
-<Button onPress={() => bluetooth.subscribe(measurement)}>
-  Start measurements
-</Button>
-
-<Text>{bluetooth.notifications.sample?.dataBase64 ?? "No measurement"}</Text>
+const measurements = connection.notifications(measurement, {
+  capacity: 32,
+  overflow: "error",
+});
 ```
 
-The notification stream keeps only the latest event. `sequence` increments for every event, including repeated values. Each sample contains the characteristic, Base64 data, and `receivedAtMs`.
+Delivery can be `"latest"`, `"drop-oldest"`, or `"error"`. Use `"latest"` only when values are complete replaceable snapshots. Each event contains bytes, a sequence number, monotonic receive time, and dropped count where applicable.
 
-Several characteristics can be subscribed on one connection. Call `unsubscribe(characteristic)` to stop one of them.
+## Lifecycle, errors, and accessibility
 
-## Lifecycle and errors
+Screen-owned sessions stop scanning, cancel queued GATT work, unsubscribe, and disconnect when their screen leaves. Application-owned sessions follow the domain module's documented foreground and reconnect policy.
 
-The controller belongs to its declaring screen. Leaving the screen stops scanning, cancels GATT work, unsubscribes, and disconnects. Moving the app to the background stops scanning and pauses notifications before closing the connection. Return to the screen and call `connect()` again when needed.
+Errors distinguish permission, unavailable or disabled Bluetooth, scan, connection, discovery, timeout, queue overflow, GATT operations, invalid packets, and unexpected failures. Low-level errors preserve operation and characteristic identity for the domain module to translate.
 
-The controller does not reconnect automatically after an unexpected link loss. Late updates from a closed or replaced connection are ignored.
-
-Errors distinguish permission, unavailable or disabled Bluetooth, scan, connection, timeout, GATT, unsupported operations, invalid data, busy state, and unexpected failures. Every error has `kind`, `message`, `retryable`, and an operation such as `"scan"`, `"connect"`, `"read"`, or `"write"`.
-
-## Accessibility
-
-Show text for scanning, connecting, connected, and disconnected states. Give unnamed devices a screen-local label such as `Device 1`; do not display a hardware address.
-
-Do not announce every advertisement or notification. Announce only stable connection changes and user-relevant measurements at a suitable rate.
+Domain modules should present stable connection text and user-relevant measurements. Do not announce every advertisement or packet, and do not display hardware addresses as device names.

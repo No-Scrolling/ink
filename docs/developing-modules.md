@@ -1,38 +1,36 @@
 ---
 title: "Develop an Ink module"
-description: "Publish reusable TypeScript packages and native Android capabilities for Ink apps."
+description: "Publish source packages and native Android capabilities for Ink apps."
 tag: "Planned"
 ---
 
-An Ink module is an npm package with an `ink` export. Start with a source module when you can build the capability from existing Ink APIs. Add a native adapter only when you need an Android SDK, platform component, hardware API, or native view.
+An Ink module is an npm package with an `ink` export. Start with a source module when existing Ink operations can implement the domain capability. Add a native adapter only for an Android SDK, platform API, background worker, hardware session, or directly manipulated native view.
 
 ## Choose a module type
-
-Use this decision table before creating the package.
 
 | Requirement | Module type |
 | --- | --- |
 | Reusable components or screens | Source |
-| HTTP API client | Source |
-| Domain logic over existing Ink resources | Source |
+| HTTP provider client | Source |
+| Pure domain transformation | Source |
+| Device protocol over an existing low-level module | Source |
 | Android or vendor SDK | Native |
 | Service, receiver, provider, or intent filter | Native |
-| New hardware capability | Native |
-| New directly manipulated view | Native |
+| New hardware capability or native view | Native |
 
-Source modules remain smaller and work in preview without a platform implementation. Do not add a native adapter to run a JavaScript-only dependency; Ink apps do not contain a JavaScript runtime.
+Do not add a native adapter only to run a JavaScript dependency. Ink apps contain no JavaScript runtime.
 
 ## Create a source module
-
-Create a package with source, declarations, and an `ink` export:
 
 ```text
 ink-weather/
 ├── package.json
+├── preview/
+│   └── scenarios.ts
 └── src/
     ├── index.ts
     ├── domain.ts
-    └── WeatherCard.tsx
+    └── provider.ts
 ```
 
 ```json
@@ -45,6 +43,9 @@ ink-weather/
       "ink": "./src/index.ts"
     }
   },
+  "ink": {
+    "preview": "./dist/preview.json"
+  },
   "peerDependencies": {
     "ink": "*",
     "@ink/network": "*"
@@ -52,141 +53,97 @@ ink-weather/
 }
 ```
 
-The `types` condition supports TypeScript editors. The `ink` condition gives the compiler the source it validates and links into `app.ink`.
+The `types` condition supports editors. The `ink` condition gives the compiler source to validate and specialise. The app compiler does not execute the package's JavaScript entry point.
 
 ## Write compiler-compatible source
 
-Module source uses the same TypeScript and TSX subset as an app. It can:
+Source modules can:
 
-- export components and zero-argument screens;
-- call resources, actions, streams, and controllers from Ink modules;
+- export typed functions, components, and zero-argument screens;
+- declare resources, actions, sessions, and background plans from Ink modules;
 - derive serialisable values with pure functions;
-- map a resource value or tagged error;
-- combine resources;
-- set static defaults and hide provider-specific options.
+- map and combine resources;
+- construct, filter, and zip lists;
+- narrow tagged values and validate bounded values;
+- call approved pure intrinsics such as date parsing and byte decoding.
 
-It cannot:
+They cannot:
 
-- import Node.js built-ins;
-- use `eval()`, dynamic imports, or runtime code generation;
-- perform file or network I/O while the compiler resolves the package;
-- depend on a JavaScript package that expects a browser or Node.js runtime;
-- read arbitrary environment variables from package initialisation.
+- use Node.js, browser globals, `eval()`, dynamic imports, or runtime code generation;
+- execute file, network, clock, or native I/O during compilation;
+- capture arbitrary closures in resources or background work;
+- depend on a package that requires a JavaScript runtime on the phone.
 
-The compiler reports unsupported source at the package file and line that uses it.
+`ink package build` compiles named exports and pure functions into a versioned source-module IR. At app build time, Ink specialises the reachable call graph and links only the operations it reaches.
 
-Build the package declarations before publishing:
+## Design a deep interface
 
-```sh
-ink package build
+Expose the domain operation an app needs:
+
+```tsx
+const forecast = OpenMeteo.forecast({ latitude, longitude, days: 7 });
 ```
 
-The command validates every exported Ink source file, generates `dist` declarations, and checks that the `types` and `ink` export targets exist. It does not bundle or transpile source for a JavaScript runtime.
+Keep transport, decoding, caching, retries, permissions, credentials, and provider failures behind that interface. Do not require app callers to assemble an effect program, dependency layer, schedule, or scope.
 
-## Design the public interface
+Effect-style schemas, tagged errors, replaceable adapters, and acquisition scopes are useful implementation concepts. In Ink, source schemas and tagged errors provide validation, production and preview adapters occupy replaceable seams, and Rust ownership provides scopes.
 
-Expose the domain operation an app needs. Keep transport, cache, permission, and platform orchestration inside the module.
+## Choose a lifecycle form
 
-```ts
-const forecast = OpenMeteo.forecast({ latitude, longitude });
-```
+Use:
 
-Do not make every screen assemble the same workflow:
-
-```ts
-// Avoid this as an app-facing interface.
-const forecast = Resource.make(
-  "Forecast.load",
-  Effect.gen(function* () {
-    // Provider lookup, decoding, retry, and cache policy.
-  }),
-);
-```
-
-Effect-style ideas are still useful inside Ink: typed dependencies, tagged errors, schemas, scopes, and retry policy all make modules more reliable. The module interface should absorb that complexity and return one resource, action, stream, controller, or view.
-
-## Use capability shapes
-
-Choose the shape that matches the capability's lifecycle.
-
-| Shape | Use |
+| Form | Use |
 | --- | --- |
-| Resource | Load one current value. |
-| Action | Run explicit work when the caller invokes it. |
-| Stream | Receive repeated values or events. |
-| Controller | Own state and commands for one native session. |
-| Native view | Draw and handle direct manipulation through Android. |
+| Resource | Load or observe one current value. |
+| Action | Run explicit work and observe its completion. |
+| Session | Own a stateful capability and ordered commands. |
 
-Do not model a stateful media player as unrelated actions, or model a one-time file export as a long-lived controller.
+A stream is a session with updates and no commands. A native view attaches to a session. Do not introduce another top-level lifecycle shape.
+
+Resources use `loading`, `ready`, and `error`. Put usable stale values, refresh activity, and recoverable refresh failures on the ready value. Actions use `idle`, `running`, `success`, and `error`. Sessions publish complete domain snapshots.
 
 ## Return tagged errors
-
-Give callers a small error union in domain language:
 
 ```ts
 export type WeatherError =
   | { kind: "network"; message: string; retryable: true }
-  | { kind: "rate-limited"; retryAfterMs: number | null; message: string; retryable: true }
-  | { kind: "invalid-response"; message: string; retryable: true };
+  | { kind: "rate-limited"; retryAtMs: number | null; message: string; retryable: true }
+  | { kind: "invalid-response"; message: string; retryable: false };
 ```
 
-Translate lower-level failures inside the module. Preserve provider status codes and native exceptions in development diagnostics, not in the public error type.
+Translate lower-level failures inside the module. Preserve provider payloads, HTTP status codes, and native exceptions only in redacted development diagnostics.
 
-## Develop against the package
+## Compose resource dependencies
 
-Add an example app to the repository and install the package through a workspace or local file dependency. Run:
+Keep declarations stable. Pass a resource, session, or opaque reference as an operation dependency instead of declaring work conditionally:
 
-```sh
-ink check
-ink preview
-ink info
+```tsx
+const account = oauthSession(options);
+
+const profile = json<Profile>(url, {
+  authorization: account.authorization,
+});
 ```
 
-`ink check` validates package source and schemas. `ink preview` loads source-module behaviour and native preview adapters. `ink info` shows which operations, permissions, and native artefacts the example app links.
+The compiler records the dependency edge. Rust activates the consumer when the dependency becomes usable, reloads it when the reference generation changes, and disposes leases in dependency order.
+
+Opaque references are nominal and non-serialisable. A module operation must declare each reference kind it can receive. Durable workers require durable references.
 
 ## Create a native module
 
-Run the module generator when existing packages cannot provide the capability:
+Run:
 
 ```sh
 ink module create @example/ink-battery
 ```
 
-The command creates:
+The generated package contains source bindings, a restricted module declaration, Android adapter code, and a preview adapter. The declaration is compiled during package development into a data-only manifest. App builds consume that manifest and never execute module build logic.
 
-```text
-ink-battery/
-├── package.json
-├── src/
-│   ├── index.ts
-│   └── module.ts
-├── android/
-│   ├── build.gradle.kts
-│   └── src/main/kotlin/example/ink/battery/BatteryAdapter.kt
-└── preview/
-    └── adapter.ts
-```
+## Declare native operations
 
-`src/module.ts` declares the complete compiler-to-native contract. Ink reads the declaration statically; it does not execute it as JavaScript.
-
-## Declare a native interface
-
-Use `defineNativeModule()` and Ink schemas:
+Use `defineNativeModule()` with literal configuration and Ink schemas:
 
 ```ts
-import { Schema, defineNativeModule } from "@ink/native";
-
-const BatteryState = Schema.Struct({
-  level: Schema.Number.pipe(Schema.between(0, 1)),
-  charging: Schema.Boolean,
-  lowPowerMode: Schema.Boolean,
-});
-
-const BatteryError = Schema.TaggedUnion({
-  unavailable: { message: Schema.String },
-  failed: { message: Schema.String, retryable: Schema.Boolean },
-});
-
 export default defineNativeModule({
   name: "@example/ink-battery",
   namespace: "battery",
@@ -195,49 +152,77 @@ export default defineNativeModule({
       input: Schema.Void,
       output: BatteryState,
       errors: BatteryError,
+      owner: "screen",
+      requires: ["battery.read"],
     },
   },
-  streams: {
+  sessions: {
     changes: {
       input: Schema.Void,
-      output: BatteryState,
+      state: BatteryState,
       errors: BatteryError,
-      overflow: "latest",
+      owner: "screen",
+      updates: { delivery: "latest" },
+      commands: {},
+      requires: ["battery.observe"],
     },
   },
 });
 ```
 
-The declaration accepts exported schemas and literal configuration. It cannot inspect the machine, access the network, or generate operations dynamically.
+The manifest supports resources, actions, sessions, native views, workers, opaque handle kinds, and operation-level requirements. It does not accept dynamic operation generation or arbitrary Android configuration.
 
-## Export the app interface
+## Define ownership and delivery
 
-Wrap generated bindings in product language:
+Each resource or session declares `owner: "screen" | "application"`. Use application ownership only when the public interface promises work that survives navigation.
+
+Update delivery is:
+
+- `latest` for replaceable state such as a sensor snapshot;
+- a bounded queue with `drop-oldest` and dropped counts for lossy events;
+- a bounded queue with `error` when losing a protocol event is unsafe.
+
+Document cancellation truthfully. Rust always stops observation and ignores late output. Immediate termination of Android, codec, or network work is best effort unless the adapter contract explicitly guarantees it.
+
+## Define handles and grants
+
+A module can declare nominal handles such as `FileReference`, `StoredSecret`, or a package-owned device session. Handles include namespace, generation, lifetime, and serialisability metadata.
+
+An operation lists the handle kinds it accepts and the access it needs. Android receives a scoped grant, not a path, URI, credential string, or global handle registry. Work that can survive process death accepts only durable references.
+
+## Add a native view
+
+A view declares props, events, its attached session, sizing, focus, and accessibility contract:
 
 ```ts
-import battery from "./module";
-
-export const Battery = {
-  status: () => battery.status(),
-  changes: () => battery.changes(),
-};
+views: {
+  map: {
+    session: "map",
+    props: MapProps,
+    events: MapEvents,
+    sizing: "fill",
+    accessibility: "native-tree",
+    eventDelivery: "coalesced",
+    requires: ["maps.render"],
+  },
+}
 ```
 
-Apps use the result like any other Ink resource:
+Use `native-tree` when the adapter owns complete semantics. Use declared semantic nodes and actions when Ink must expose them. Every view specifies reduced-motion, text-scale, focus restoration, and event-coalescing behaviour.
 
-```tsx
-const battery = Battery.status();
+## Add a background worker
 
-{match(battery, {
-  loading: () => <Text>Reading battery</Text>,
-  ready: ({ value }) => <Text>{Math.round(value.level * 100)}%</Text>,
-  error: ({ error }) => <Text>{error.message}</Text>,
-})}
-```
+A native worker receives a compiler-validated serialisable plan and durable grants. It cannot receive screen state, screen-owned sessions, or temporary handles.
 
-Do not export the generated binding directly when a smaller domain interface can hide operation names, defaults, or SDK details.
+The worker returns a typed result to Background, which owns scheduling, retries, idempotency policy, and durable result state. The adapter owns only execution of its declared operation.
 
-## Generate the adapter contract
+## Attach Android integration to operations
+
+Declare validated artefact groups containing Maven dependencies, AAR files, permissions, features, components, resources, package visibility, redirect intent filters, provider authorities, and foreground-service types.
+
+Attach each group to the operations that require it. Importing an unrelated operation must not include the group. Modules cannot inject arbitrary manifest XML or Gradle scripts.
+
+## Generate adapter contracts
 
 Run:
 
@@ -245,201 +230,19 @@ Run:
 ink module build
 ```
 
-The command:
+The command validates source and schemas, emits TypeScript declarations and source IR, generates Kotlin types and adapter interfaces, writes the versioned data manifest, builds native artefacts, and validates preview adapters.
 
-1. validates the module declaration;
-2. generates TypeScript declarations;
-3. generates Kotlin input, output, error, and adapter types;
-4. writes the versioned native module manifest;
-5. builds the Android artefact;
-6. validates the preview adapter against the same contract.
+Rust owns lifecycle, ordering, cancellation, handle leases, and schema validation. Android adapters own platform APIs and vendor SDKs. Generated registries connect manifest operation IDs to adapters; a central hand-written module switch is not part of the extension interface.
 
-Generated Kotlin exposes a narrow interface:
+## Add production and preview adapters
 
-```kotlin
-interface BatteryModuleAdapter {
-    suspend fun status(
-        context: InkResourceContext,
-        input: Unit,
-    ): InkResult<BatteryState, BatteryError>
+Every true external dependency has at least two adapters: production and deterministic preview. A source provider supplies response fixtures and error scenarios. A native module implements the generated interface for Android and preview.
 
-    fun changes(
-        context: InkStreamContext,
-        input: Unit,
-        emit: (InkResult<BatteryState, BatteryError>) -> Unit,
-    ): InkSubscription
-}
-```
+Include unavailable, denied, empty, malformed, interrupted, and overflow scenarios when the interface can produce them. Preview adapters are development artefacts and are not included in the APK.
 
-The context provides cancellation, approved platform services, and redacted diagnostics. It does not expose the Ink engine or UI tree.
+## Inspect and publish
 
-## Understand the native boundary
-
-Ink links a native module in four layers:
-
-```text
-TypeScript import and generated types
-                ↓
-Compiler-validated module manifest
-                ↓
-app.ink operation IDs and Rust lifecycle
-                ↓
-Generated Android registry and module adapter
-```
-
-The compiler collects only imported operations, assigns compact module and operation IDs, and adds their declared permissions and native artefacts to the Android project.
-
-The Rust runtime owns resource states, controller ordering, cancellation, and disposal. It sends schema-encoded inputs to the generated Android registry. The registry selects the adapter and returns a schema-checked success or tagged error.
-
-No layer evaluates package JavaScript on the phone. Source modules stop at the first two layers because their work lowers to capabilities that the app already includes.
-
-## Implement the Android adapter
-
-Implement the generated interface and mark the entry point:
-
-```kotlin
-@InkModuleAdapter("@example/ink-battery")
-class BatteryAdapter(
-    private val manager: BatteryManager,
-) : BatteryModuleAdapter {
-    override suspend fun status(
-        context: InkResourceContext,
-        input: Unit,
-    ): InkResult<BatteryState, BatteryError> =
-        InkResult.Success(readBatteryState(manager))
-
-    override fun changes(
-        context: InkStreamContext,
-        input: Unit,
-        emit: (InkResult<BatteryState, BatteryError>) -> Unit,
-    ): InkSubscription = observeBattery(context, emit)
-}
-```
-
-The adapter must:
-
-- stop work when the context is cancelled;
-- complete each resource or action once;
-- emit only values accepted by the generated schema;
-- translate Android and SDK failures into declared errors;
-- release listeners, views, files, and sessions when disposed;
-- avoid logging fields marked as sensitive.
-
-Ink selects the operation dispatcher and serialises controller commands. Do not create an unbounded worker pool or a second lifecycle inside the adapter.
-
-## Add a controller
-
-Use a controller when native operations share a session:
-
-```ts
-controllers: {
-  player: {
-    input: PlayerOptions,
-    state: PlayerState,
-    errors: PlayerError,
-    commands: {
-      play: { input: Schema.Void },
-      pause: { input: Schema.Void },
-      seek: { input: Schema.Struct({ positionMs: Schema.Int }) },
-    },
-  },
-}
-```
-
-Ink creates one adapter instance per controller, orders its commands, and disposes it with its owner. Publish complete state snapshots so the runtime does not need to reproduce SDK state transitions.
-
-## Add a native view
-
-Declare serialisable props and events:
-
-```ts
-views: {
-  map: {
-    props: MapProps,
-    events: {
-      cameraChanged: CameraState,
-      annotationPressed: AnnotationId,
-    },
-    controller: "mapController",
-  },
-}
-```
-
-Ink owns layout and mounting. The adapter owns drawing, SDK view lifecycle, and direct gestures. Send application events through declared callbacks rather than mutating the rest of the UI tree.
-
-## Declare Android integration
-
-Add validated Android requirements to `module.ts`:
-
-```ts
-android: {
-  adapter: "example.ink.battery.BatteryAdapter",
-  minSdk: 28,
-  permissions: [],
-  maven: [],
-  components: [],
-  resources: ["res/xml/battery_defaults.xml"],
-}
-```
-
-You can declare permissions, hardware features, Maven dependencies, bundled AAR files, services, receivers, providers, intent filters, native libraries, resources, and shrinking rules.
-
-Modules cannot inject arbitrary Android manifest XML or Gradle scripts. If the SDK needs integration that the declaration cannot express, add that capability to Ink's validated module manifest before publishing the package.
-
-## Add a preview adapter
-
-Implement the same contract with deterministic development data:
-
-```ts
-import battery from "../src/module";
-import { definePreviewAdapter } from "@ink/native/preview";
-
-export default definePreviewAdapter(battery, {
-  scenarios: {
-    normal: {
-      status: () => ({ level: 0.72, charging: false, lowPowerMode: false }),
-    },
-    charging: {
-      status: () => ({ level: 0.48, charging: true, lowPowerMode: false }),
-    },
-  },
-});
-```
-
-Preview code runs on the development host and is not included in the APK. Include unavailable and permission-denied scenarios when the production capability can enter those states.
-
-## Package native artefacts
-
-Add the generated manifest and preview entry to `package.json`:
-
-```json
-{
-  "name": "@example/ink-battery",
-  "version": "1.0.0",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "ink": "./src/index.ts"
-    }
-  },
-  "ink": {
-    "module": "./dist/ink-module.json",
-    "preview": "./dist/preview.js"
-  },
-  "dependencies": {
-    "@ink/native": "^1.0.0"
-  },
-  "peerDependencies": {
-    "ink": "*"
-  }
-}
-```
-
-The generated manifest contains hashes for its contract and native artefacts. It also declares the compatible native extension API range.
-
-## Inspect and publish the module
-
-Run these checks before publishing:
+Run:
 
 ```sh
 ink module build
@@ -448,12 +251,8 @@ ink module inspect .
 npm publish
 ```
 
-`ink module inspect` displays the public operations, permissions, components, dependencies, native size, ABI requirements, and preview scenarios. `ink module verify` checks generated hashes and rejects undeclared build hooks.
+`ink module inspect` shows public operations, ownership, grants, permissions, components, network hosts, artefact groups, native size, and preview scenarios. `ink module verify` checks generated hashes and rejects undeclared build hooks.
 
-Follow semantic versioning for the app-facing API. Removing an operation or error tag, renaming a field, or changing a field type requires a major version.
+Follow semantic versioning for the app-facing interface and manifest contract. Keep modules focused on complete domain operations rather than exposing a wide wrapper around an SDK.
 
-## Keep modules focused
-
-Prefer a package that gives apps a complete domain operation over a wide wrapper around one SDK. A maps module should own map camera and annotation behaviour, but it should not also acquire device location, persist favourites, or make routing API requests unless those features are inseparable from its interface.
-
-Read [Build an Open-Meteo module](open-meteo-module.md) for a complete source-module example.
+Read [Build an Open-Meteo module](open-meteo-module.md) for a source-module example.

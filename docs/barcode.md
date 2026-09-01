@@ -4,85 +4,53 @@ description: "Scan supported barcodes and generate barcode images."
 tag: "Planned"
 ---
 
-`@ink/barcode` scans barcodes through a native camera view and generates barcode images for display. Scanning uses camera permission from `@ink/camera`; generation does not use the camera.
-
-## Request camera permission
-
-Call `cameraPermission()` from `@ink/camera` before opening a scanner.
-
-```tsx
-import { cameraPermission } from "@ink/camera";
-import { Button, Text, match } from "ink";
-
-const permission = cameraPermission();
-
-{match(permission, {
-  loading: () => <Text>Checking camera permission</Text>,
-  ready: (result) => <Text>{result.value}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-
-<Button onPress={() => permission.request()}>Allow camera</Button>
-```
-
-Creating a scanner does not open a permission prompt. Generation requires no permission.
+`@ink/barcode` presents a barcode-owned scanning interface and generates barcode images in process. Its scanner uses the Camera implementation internally, but callers do not coordinate the two modules.
 
 ## Scan a barcode
 
-`barcodeScanner()` scans QR codes by default. Pass its controller to `BarcodeScannerView`.
+Create a scanner and pass it to `BarcodeScannerView`:
 
 ```tsx
 import { BarcodeScannerView, barcodeScanner } from "@ink/barcode";
-import { Button, Screen, Text } from "ink";
+import { Screen, Text } from "ink";
 
-export default function Scan() {
-  const scanner = barcodeScanner({
-    formats: ["qr", "ean-13", "code-128"],
-    timeoutMs: 60_000,
-  });
+const scanner = barcodeScanner({
+  formats: ["qr", "ean-13", "code-128"],
+  permissionPrompt: "Allow camera to scan a barcode",
+  timeoutMs: 60_000,
+});
 
-  return (
-    <Screen title="Scan code">
-      <BarcodeScannerView controller={scanner} />
-      {scanner.status === "ready" ? (
-        <>
-          <Text>{scanner.value.text}</Text>
-          <Button onPress={() => scanner.scanAgain()}>Scan another</Button>
-        </>
-      ) : null}
-    </Screen>
-  );
-}
+<Screen title="Scan code">
+  <BarcodeScannerView session={scanner} />
+  {scanner.phase === "ready" ? <Text>{scanner.value.text}</Text> : null}
+</Screen>
 ```
 
-The first stable result stops scanning and changes the controller to `ready`. Its value contains:
+The standard view presents an explicit permission action, viewfinder, torch control, and timeout state. Creating a scanner never opens a permission prompt. For a custom layout, use `scanner.permission.request()` from a user action.
 
-- `text`, the decoded string;
-- `format`, the recognised format;
-- `cornerPoints`, logical coordinates within the scanner view;
-- `scannedAtMs`, a Unix timestamp in milliseconds.
-
-Call `scanAgain()` to clear the result and resume. Call `setTorch("on")` or `setTorch("off")` while scanning to control the torch.
-
-Scanner options are:
-
-| Option | Values | Default |
-| --- | --- | --- |
-| `formats` | A literal list of supported formats | `["qr"]` |
-| `facing` | `"back"`, `"front"` | `"back"` |
-| `torch` | `"off"`, `"on"` | `"off"` |
-| `timeoutMs` | 1,000 to 120,000 milliseconds | 60,000 milliseconds |
+The first stable result stops analysis and returns `text`, optional raw `bytes`, `format`, `cornerPoints`, and `scannedAtMs`. Call `scanAgain()` to resume.
 
 Supported scan formats are QR, Aztec, Data Matrix, PDF417, Codabar, Code 39, Code 93, Code 128, EAN-8, EAN-13, ITF, UPC-A, and UPC-E.
 
-## Generate a barcode
+## Scan continuously
 
-`barcodeImage()` returns an opaque image source accepted by `Image.src`.
+Pass `mode: "continuous"` for inventory or event workflows. Results are delivered through a bounded event queue:
 
 ```tsx
-import { barcodeImage } from "@ink/barcode";
-import { Image, Text, match } from "ink";
+const scanner = barcodeScanner({
+  formats: ["qr"],
+  mode: "continuous",
+  delivery: { capacity: 16, overflow: "error" },
+});
+```
 
+Ink deduplicates the same stable value while it remains in view. The session reports dropped events only when `overflow: "drop-oldest"` is selected explicitly.
+
+## Generate a barcode
+
+`barcodeImage()` is a pure computed operation and does not create a loading resource:
+
+```tsx
 const ticket = barcodeImage({
   format: "qr",
   value: "https://example.com/ticket/42",
@@ -91,42 +59,17 @@ const ticket = barcodeImage({
   correction: "medium",
 });
 
-{match(ticket, {
-  loading: () => <Text>Generating code</Text>,
-  ready: (result) => (
-    <Image
-      src={result.value.source}
-      width={280}
-      height={280}
-      fit="contain"
-    />
-  ),
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
+{ticket.ok ? (
+  <Image src={ticket.value.source} width={280} height={280} fit="contain" />
+) : (
+  <Text>{ticket.error.message}</Text>
+)}
 ```
 
-Generation supports QR, Aztec, Data Matrix, Code 128, and EAN-13. The value must satisfy the selected format's character, length, and check-digit rules.
+Generation supports QR, Aztec, Data Matrix, Code 128, and EAN-13. It links only the in-process generator artefact, not Camera.
 
-`correction` accepts `"low"`, `"medium"`, `"quartile"`, or `"high"` for formats with error correction. Omit it for Code 128 and EAN-13.
+## Lifecycle and errors
 
-The ready value contains `source`, `format`, `width`, and `height`. The source cannot be read as a bitmap or filesystem path.
+The scanner is a screen-owned session. Leaving the screen or backgrounding the app releases Camera. Only one Camera or Barcode session can be open.
 
-## Scanner states
-
-| Status | Meaning |
-| --- | --- |
-| `idle` | The scanner view is not active. |
-| `opening` | The camera is starting. |
-| `scanning` | The view is analysing supported codes. |
-| `ready` | A stable code was recognised. |
-| `error` | Scanning failed. |
-
-Leaving the screen, pressing the standard back button, or moving the app to the background releases the camera. Only one camera or barcode session can be open. A second session receives a `busy` error.
-
-Generated images are screen-scoped and remain available while their resource is active.
-
-## Errors
-
-Errors provide `kind`, `message`, and `retryable`.
-
-Scanning errors distinguish denied or blocked permission, unsupported formats, a busy or unavailable camera, timeout, decoding failure, and unexpected failures. Generation errors distinguish unsupported formats, invalid values or options, generation failure, and unexpected failures.
+Scanning errors distinguish permission, unavailable or busy Camera, unsupported formats, timeout, decoding, queue overflow, and unexpected failures. Generation errors distinguish invalid values, options, and unsupported formats. Every error provides `kind`, `message`, and `retryable`.

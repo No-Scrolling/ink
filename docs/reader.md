@@ -4,152 +4,64 @@ description: "Present long-form and paginated EPUB, text, and PDF documents."
 tag: "Planned"
 ---
 
-`@ink/reader` opens EPUB, plain-text, and PDF files in a native reading view. It provides document structure, page or scroll navigation, appearance controls, and resumable reading progress.
+`@ink/reader` opens EPUB, plain-text, and PDF files in one native reading session. Opening once produces document information, progress, navigation, appearance controls, and the view.
 
 ## Open a document
 
-Create a reader from a `FileHandle` and pass it to `ReaderView`:
+Create a reader from a temporary file handle or durable file reference:
 
 ```tsx
-import { ReaderView, reader } from "@ink/reader";
-import { Text, match } from "ink";
-
 const book = reader(bookFile, {
   flow: "paginated",
   appearance: {
     textScale: 1.1,
     lineHeight: "relaxed",
   },
-  progress: {
-    key: "reader.the-left-hand-of-darkness",
-  },
+  progress: localReaderProgress("reader.book-42"),
 });
 
-{match(book, {
-  opening: () => <Text>Opening book</Text>,
-  ready: () => (
-    <ReaderView
-      reader={book}
-      accessibilityLabel="The Left Hand of Darkness"
-    />
-  ),
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
+{book.phase === "opening" ? <Text>Opening book</Text> : null}
+{book.phase === "ready" ? (
+  <ReaderView session={book} accessibilityLabel={book.info.title} />
+) : null}
 ```
 
-The file handle can come from `@ink/files` or another Ink package. It has no filesystem path or Android URI.
+The ready snapshot contains `info`, `progress`, and appearance. `info` contains a content fingerprint, format, title, authors, language, and table-of-contents sections. Reader does not parse the same file through a separate metadata resource.
 
-`flow` is `"paginated"` by default or `"scroll"` for a continuous vertical document. EPUB and text reflow to the current width and appearance. PDF keeps its fixed page layout; its flow controls whether pages turn one at a time or continue vertically.
-
-## Read document information
-
-Use `readerInfo()` when you need metadata before opening the reading view:
-
-```tsx
-import { readerInfo } from "@ink/reader";
-import { Text, match } from "ink";
-
-const info = readerInfo(bookFile);
-
-{match(info, {
-  loading: () => <Text>Reading book details</Text>,
-  ready: (result) => <Text>{result.value.title}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-```
-
-The ready value contains:
-
-| Field | Value |
-| --- | --- |
-| `fingerprint` | Stable content identity used to validate progress. |
-| `format` | `"epub"`, `"text"`, or `"pdf"`. |
-| `title` | Document title or a normalised fallback. |
-| `authors` | Available author names. |
-| `language` | Document language, or `null`. |
-| `sections` | Table-of-contents entries with `id`, `title`, and `depth`. |
+EPUB and text reflow to the view and appearance. PDF keeps fixed page layout. EPUB scripts and remote resources do not run.
 
 ## Navigate
 
-The reader controller provides these actions:
+The session provides ordered `next()`, `previous()`, and `goTo()` commands. `goTo()` accepts a section ID, approximate fraction, or opaque locator. A newer navigation replaces one that has not settled.
 
-- `next()` moves one page or viewport forwards.
-- `previous()` moves one page or viewport backwards.
-- `goTo({ sectionId })` opens a section from `info.sections`.
-- `goTo({ fraction })` moves to an approximate position from 0 to 1.
-- `goTo({ locator })` restores an exact semantic position when it still resolves.
+Progress contains a versioned locator, approximate fraction, section, optional page information, and update time. Store or synchronise the locator as a complete string; do not parse or construct it.
 
-Calls at the start or end do nothing. A newer `goTo()` replaces navigation that has not settled yet.
+## Choose progress storage
 
-The current `progress` contains:
+Use `localReaderProgress(key)` for automatic app-local persistence. Pass `initial` when a remote value should seed a document with no local position.
 
-| Field | Value |
-| --- | --- |
-| `locator` | An opaque, versioned position for this document fingerprint. |
-| `fraction` | Approximate position from 0 to 1. |
-| `sectionId`, `sectionTitle` | Current section when available. |
-| `page`, `pageCount` | Current PDF or paginated-layout page, otherwise `null`. |
-| `updatedAtMs` | Unix time when the position last changed. |
-
-Store or synchronise `locator` as a complete string. Do not parse or construct it.
-
-## Resume reading
-
-Pass a stable progress key to save the reading position automatically:
+Provider modules can supply another typed progress adapter that owns reconciliation and synchronisation:
 
 ```tsx
 const book = reader(bookFile, {
-  progress: {
-    key: "reader.book-42",
-    initialLocator: remoteProgress,
-  },
+  progress: ReadingAccount.progress(documentId),
 });
 ```
 
-A saved locator for the same fingerprint takes precedence over `initialLocator`. The initial locator is used when no matching local progress exists. Invalid saved progress falls back to the beginning.
+Reader reports position changes to the adapter after page turns, settled scrolling, and backgrounding. The adapter—not Reader—decides whether local or remote progress wins.
 
-Keys must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`. Progress is saved after a page turn, after scrolling settles, and when the app enters the background.
+Omit `progress` to retain position only for the session lifetime.
 
-Omit `progress` to keep the reading position only for the controller lifetime. Use `book.progress.locator` when your app synchronises progress elsewhere.
+## Change appearance
 
-## Change the appearance
+Call `setAppearance()` with text scale, line height, margins, and theme. Changing appearance keeps the semantic locator while repaginating.
 
-Set initial appearance in `reader()` or change it with `setAppearance()`:
+`ReaderView` fills available width and height unless explicit dimensions are supplied. Page-turn and scroll gestures have equivalent commands.
 
-```tsx
-import { Button } from "ink";
+## Lifecycle, errors, and accessibility
 
-<Button onPress={() => book.setAppearance({
-  textScale: 1.25,
-  lineHeight: "relaxed",
-  margins: "wide",
-  theme: "dark",
-})}>
-  Use large text
-</Button>
-```
+The session acquires a file lease while open. Leaving the screen closes the document; backgrounding saves progress. A durable reference can be reopened after process death.
 
-| Option | Values | Default |
-| --- | --- | --- |
-| `textScale` | 0.8 to 2 | 1 |
-| `lineHeight` | `"compact"`, `"standard"`, `"relaxed"` | `"standard"` |
-| `margins` | `"narrow"`, `"standard"`, `"wide"` | `"standard"` |
-| `theme` | `"light"`, `"dark"`, `"system"` | `"system"` |
+Errors distinguish missing or expired files, unsupported formats, invalid or unsafe documents, missing embedded resources, rendering, storage, invalid locators, progress adapter failures, and unexpected failures. Every error has `kind`, `message`, `retryable`, and `operation`.
 
-Changing appearance keeps the current semantic position while the document repaginates.
-
-## Lifecycle and errors
-
-The reader opens while its screen is active. Leaving the screen closes the document. Moving the app to the background saves progress. Returning to the same screen restores the current locator.
-
-The package requests no runtime permission. It reads only a `FileHandle` already available to the app. EPUB scripts and remote document resources do not run.
-
-Errors distinguish missing files, unsupported formats, invalid or unsafe documents, missing embedded resources, storage, rendering, invalid locators, and unexpected failures. Every error has `kind`, `message`, `retryable`, and the failed operation where available.
-
-## Accessibility
-
-`ReaderView` exposes headings, paragraphs, lists, links, quotations, page boundaries, and reading order when the document provides them. PDFs without usable text are announced as image-only pages.
-
-Page-turn and scroll gestures have equivalent `next()` and `previous()` actions. Text scaling keeps the current locator, and focus returns to the nearest text block after repagination.
-
-Give `ReaderView` an `accessibilityLabel` that names the document. This label does not replace the document's title and structure.
+The native semantic tree exposes headings, paragraphs, lists, links, quotations, page boundaries, and reading order when the document provides them. PDFs without usable text are announced as image-only pages. Focus returns to the nearest text block after repagination.

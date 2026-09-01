@@ -1,14 +1,14 @@
 ---
 title: "Store"
-description: "Persist typed app values and cache disposable data."
+description: "Persist typed app values with schema migration and atomic updates."
 tag: "Planned"
 ---
 
-`@ink/store` saves non-sensitive typed values across app restarts and keeps bounded cache entries that your app can recreate.
+`@ink/store` persists small, non-sensitive app values that need observable loading, migration, or write errors. It does not provide an HTTP cache, file store, or database.
 
 ## Persist a value
 
-Use `storedValue<T>()` when a screen needs to observe loading, saving, or storage errors.
+Use `storedValue<T>()` for a complete serialisable value:
 
 ```tsx
 import { storedValue } from "@ink/store";
@@ -20,94 +20,62 @@ type Settings = {
 };
 
 const settings = storedValue<Settings>("settings", {
-  unit: "celsius",
-  alerts: false,
+  initial: { unit: "celsius", alerts: false },
+  version: 1,
 });
 
 {match(settings, {
   loading: () => <Text>Loading settings</Text>,
   ready: ({ value }) => <Text>{value.unit}</Text>,
-  saving: ({ value }) => <Text>Saving {value.unit}</Text>,
   error: ({ error }) => <Text>{error.message}</Text>,
 })}
 
 <Button onPress={() => settings.set({
   unit: "fahrenheit",
-  alerts: false,
+  alerts: settings.value.alerts,
 })}>
   Use Fahrenheit
 </Button>
 ```
 
-`set()` replaces the complete value. Calls for one key are saved in order, and the latest complete value wins. `reset()` restores the declared initial value and removes the saved record. `retry()` repeats the failed read, write, or removal.
+`set()` replaces the complete value atomically. `update()` applies an Ink pure function to the latest stored value, which prevents two callers from overwriting unrelated changes. `reset()` restores the declared initial value and removes its saved record.
 
-Declarations with the same key share one app-wide value and must use the same type and initial value. Keys must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`.
+A ready value has `activity` as `"idle"` or `"saving"` and an optional `warning` when a write failed but the previous value remains usable.
 
-Use core `persistedState()` for scalar and list state that does not need a visible persistence status:
+Use core `persistedState()` for simple UI preferences that do not need visible loading, migration, or storage errors.
 
-```tsx
-import { persistedState } from "ink";
+## Migrate a stored value
 
-const temperatureUnit = persistedState("settings.temperature", "celsius");
-```
-
-## Cache a value
-
-Use `cachedValue<T>()` for data that may be removed at any time and regenerated.
+Increase `version` when the stored representation changes and provide one migration for each supported previous version:
 
 ```tsx
-import { cachedValue } from "@ink/store";
-import { Button, Text, match } from "ink";
-
-const suggestions = cachedValue<ReadonlyArray<string>>("search.suggestions", {
-  maxAgeMs: 3_600_000,
-});
-
-<Button onPress={() => suggestions.put(["London", "Paris"])}>
-  Save suggestions
-</Button>
-
-{match(suggestions, {
-  loading: () => <Text>Loading suggestions</Text>,
-  empty: () => <Text>No saved suggestions</Text>,
-  ready: ({ value }) => <Text>{value}</Text>,
-  stale: ({ value }) => <Text>{value}</Text>,
-  saving: ({ value }) => <Text>{value}</Text>,
-  error: ({ error }) => <Text>{error.message}</Text>,
-})}
-```
-
-A cache entry is `ready` until `maxAgeMs` passes, then becomes `stale`. Both states include `updatedAtMs`. The cache does not refresh its producer. Call `put()` with a replacement value or `remove()` to return the entry to `empty`.
-
-Stored values are limited to 1 MiB each and share an 8 MiB app quota. Cache entries share a 32 MiB quota and use least-recently-used eviction.
-
-## Persist background results
-
-Use `replaceStoredValue()` with an approved `@ink/background` work plan. This example fetches typed JSON and replaces one stored value when Android runs the task:
-
-```tsx
-import { backgroundTask } from "@ink/background";
-import { getJson } from "@ink/network";
-import { replaceStoredValue } from "@ink/store";
-
-const refresh = backgroundTask({
-  key: "forecast.refresh",
-  schedule: { kind: "periodic", everyMinutes: 30 },
-  work: replaceStoredValue(
-    "forecast.latest",
-    getJson<Forecast>("https://weather.example/forecast"),
-  ),
+const settings = storedValue<Settings>("settings", {
+  initial: { unit: "celsius", alerts: false },
+  version: 2,
+  migrations: {
+    1: (old: V1Settings) => ({ unit: old.unit, alerts: false }),
+  },
 });
 ```
 
-`@ink/background` owns scheduling and retries. The source package validates the result, and store replaces the destination atomically.
+Migrations use Ink's pure-expression subset and run in order before the value becomes ready. A missing or failed migration returns a `migration` error and leaves the original record untouched. Pass `onIncompatible: "reset"` only when losing the old value is acceptable.
+
+Package-created keys are automatically scoped to the package. App keys must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`. Intentional sharing across packages requires an exported typed `StoreKey<T>` rather than repeating a string.
+
+## Choose the right storage module
+
+Use:
+
+- Network cache options for reproducible HTTP responses;
+- Background task results for the latest durable result of scheduled work;
+- Secure store for credentials and secret material;
+- Files for documents, media, and values larger than 1 MiB;
+- a future records module for large queryable collections and atomic multi-record updates.
+
+Store saves one complete value per key. It is not suitable for message histories, outboxes, offline databases, or collections that must update one record without rewriting the rest.
 
 ## Lifecycle and errors
 
-Stored values and cache entries are app-scoped. The first declaration starts one read, and later declarations reconnect to the same in-memory record.
+Stored values are application-scoped. Declarations with the same typed key reconnect to one in-memory value. Writes for one key are serialised and failed writes never expose a partial record.
 
-An incompatible stored schema returns a `schema` error and keeps the declared initial value available. An incompatible cache entry is removed because cache data is disposable. Failed writes never expose a partial record.
-
-Errors distinguish unavailable storage, quota limits, corrupt records, incompatible schemas, storage failures, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
-
-Do not save credentials, tokens, or private keys in this package. Use `@ink/secure-store` for small secrets and `@ink/files` for user-visible documents or media.
+Values are limited to 1 MiB each and share an 8 MiB app quota. Errors distinguish unavailable storage, quota limits, corrupt records, incompatible schemas, failed migrations, storage failures, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
