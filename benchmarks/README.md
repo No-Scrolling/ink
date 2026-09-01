@@ -128,5 +128,8 @@ source revision and the harness verifies both that revision and the APK hash:
 
 Set `UPDATE_BENCHMARK_ROUNDS` to change the default 25 balanced rounds. The
 harness fails if a tap produces no instrumented update frame or no scene rebuild.
+The [paired LP3 result](results/ink-updates-paired.json) contains 30 interleaved
+parent/head rounds. Its baseline records a link-only adjustment required to load
+the parent native library on the device.
 
 Uninstall the six benchmark apps when the run finishes.
