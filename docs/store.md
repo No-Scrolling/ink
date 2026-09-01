@@ -70,7 +70,7 @@ Use:
 - Background task results for the latest durable result of scheduled work;
 - Secure store for credentials and secret material;
 - Files for documents, media, and values larger than 1 MiB;
-- a future records module for large queryable collections and atomic multi-record updates.
+- [Records](records.md) for large queryable collections and atomic multi-record updates.
 
 Store saves one complete value per key. It is not suitable for message histories, outboxes, offline databases, or collections that must update one record without rewriting the rest.
 

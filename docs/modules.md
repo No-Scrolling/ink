@@ -46,6 +46,8 @@ Ink resolves the package's `ink` export and specialises reachable source operati
 
 A weather provider, device-specific Bluetooth protocol, or reusable settings screen can be a source module. A maps renderer, vendor payment SDK, or new hardware integration requires a native module.
 
+A source module can use [Records](records.md) for queryable local collections or a large bundled reference dataset. The module owns its collections, indexes, and migrations, then exposes domain operations such as `Messaging.thread()` or `Transit.searchStops()`.
+
 Both module types expose ordinary typed imports. App code does not use bridge calls, manifests, dependency layers, or native operation names.
 
 ## Use consistent lifecycle shapes

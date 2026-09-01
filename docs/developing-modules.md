@@ -14,6 +14,7 @@ An Ink module is an npm package with an `ink` export. Start with a source module
 | HTTP provider client | Source |
 | Pure domain transformation | Source |
 | Device protocol over an existing low-level module | Source |
+| Queryable local collections or bundled reference data | Source over Records |
 | Android or vendor SDK | Native |
 | Service, receiver, provider, or intent filter | Native |
 | New hardware capability or native view | Native |
@@ -128,6 +129,12 @@ const profile = json<Profile>(url, {
 The compiler records the dependency edge. Rust activates the consumer when the dependency becomes usable, reloads it when the reference generation changes, and disposes leases in dependency order.
 
 Opaque references are nominal and non-serialisable. A module operation must declare each reference kind it can receive. Durable workers require durable references.
+
+## Use Records for large local collections
+
+Use [Records](records.md) when a module needs indexed queries, pagination, atomic multi-record updates, or a large bundled reference dataset. Declare collections, queries, and transactions inside the module, then export domain operations such as `Messaging.thread()` or `Transit.searchStops()`.
+
+Do not expose raw collection access throughout app screens. Keeping query and migration knowledge inside the domain module improves locality and lets the module translate storage errors into its own tagged errors.
 
 ## Create a native module
 
