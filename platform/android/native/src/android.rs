@@ -32,6 +32,21 @@ const POINTER_ACTIVATED: jint = 1 << 1;
 const POINTER_CAPTURED: jint = 1 << 2;
 const LOG_TAG: &[u8] = b"Ink\0";
 static PANIC_HOOK: Once = Once::new();
+
+fn pointer_result(outcome: PointerOutcome) -> jint {
+    (if outcome.changed { POINTER_CHANGED } else { 0 })
+        | (if outcome.activated {
+            POINTER_ACTIVATED
+        } else {
+            0
+        })
+        | (if outcome.captured {
+            POINTER_CAPTURED
+        } else {
+            0
+        })
+}
+
 #[cfg(feature = "image")]
 const IMAGE_DECODER_SUCCESS: c_int = 0;
 #[cfg(feature = "image")]
@@ -198,17 +213,32 @@ impl AndroidEngine {
             }
             _ => PointerOutcome::default(),
         };
-        (if outcome.changed { POINTER_CHANGED } else { 0 })
-            | (if outcome.activated {
-                POINTER_ACTIVATED
+        pointer_result(outcome)
+    }
+
+    fn image_pinch_begin(&mut self, x: f32, y: f32) -> jint {
+        if self.engine.image_pinch_begin(x, y) {
+            POINTER_CAPTURED
+        } else {
+            0
+        }
+    }
+
+    fn image_zoom_target(&self, x: f32, y: f32) -> Option<u64> {
+        self.engine.image_zoom_target(x, y)
+    }
+
+    fn image_pinch_update(&mut self, scale: f32, x: f32, y: f32) -> jint {
+        POINTER_CAPTURED
+            | if self.engine.image_pinch_update(scale, x, y) {
+                POINTER_CHANGED
             } else {
                 0
-            })
-            | (if outcome.captured {
-                POINTER_CAPTURED
-            } else {
-                0
-            })
+            }
+    }
+
+    fn image_double_tap(&mut self, x: f32, y: f32) -> jint {
+        pointer_result(self.engine.image_double_tap(x, y))
     }
 
     fn scroll_by(&mut self, delta: f32) -> bool {
@@ -479,6 +509,73 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePointer(
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .map_or(0, |mut engine| engine.pointer(action, x, y))
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchBegin(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    x: jfloat,
+    y: jfloat,
+) -> jint {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .map_or(0, |mut engine| engine.image_pinch_begin(x, y))
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchUpdate(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    scale: jfloat,
+    x: jfloat,
+    y: jfloat,
+) -> jint {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .map_or(0, |mut engine| engine.image_pinch_update(scale, x, y))
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchEnd(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) {
+    if let Some(engine) = engine(handle)
+        && let Ok(mut engine) = engine.lock()
+    {
+        engine.engine.image_pinch_end();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageZoomTarget(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    x: jfloat,
+    y: jfloat,
+) -> jlong {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|engine| engine.image_zoom_target(x, y))
+        .map_or(0, |target| target as jlong)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageDoubleTap(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    x: jfloat,
+    y: jfloat,
+) -> jint {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .map_or(0, |mut engine| engine.image_double_tap(x, y))
 }
 
 #[unsafe(no_mangle)]

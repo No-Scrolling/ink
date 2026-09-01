@@ -1,21 +1,26 @@
 import "@ink/light-sdk";
 import { Navigator, Route, Tab, Tabs } from "ink";
 import Confirm from "./screens/Confirm";
+import Display from "./screens/Display";
 import Home from "./screens/Home";
 import Modules from "./screens/Modules";
 import Search from "./screens/Search";
 import Settings from "./screens/Settings";
+import Emoji from "./screens/display/Emoji";
+import Harbour from "./screens/display/Harbour";
+import LocalImages from "./screens/display/LocalImages";
+import Typography from "./screens/display/Typography";
+import Wallsocket from "./screens/display/Wallsocket";
+import Wills from "./screens/display/Wills";
 import Audio from "./screens/modules/Audio";
 import Background from "./screens/modules/Background";
 import Camera from "./screens/modules/Camera";
-import Emoji from "./screens/modules/Emoji";
 import LightSdk from "./screens/modules/LightSdk";
 import Location from "./screens/modules/Location";
 import Nfc from "./screens/modules/Nfc";
 import Network from "./screens/modules/Network";
 import Data from "./screens/modules/network/Data";
 import Notifications from "./screens/modules/Notifications";
-import Typography from "./screens/modules/Typography";
 import LocalPlayback from "./screens/modules/audio/LocalPlayback";
 import Microphone from "./screens/modules/audio/Microphone";
 import Recording from "./screens/modules/audio/Recording";
@@ -46,6 +51,9 @@ export default function LightTemplate() {
           </Tab>
           <Tab icon="widgets">
             <Modules />
+          </Tab>
+          <Tab icon="palette">
+            <Display />
           </Tab>
           <Tab icon="settings">
             <Settings />
@@ -94,8 +102,20 @@ export default function LightTemplate() {
       <Route path="/modules/camera/scan">
         <Scan />
       </Route>
-      <Route path="/modules/emoji">
+      <Route path="/display/emoji">
         <Emoji />
+      </Route>
+      <Route path="/display/local-images">
+        <LocalImages />
+      </Route>
+      <Route path="/display/local-images/wallsocket">
+        <Wallsocket />
+      </Route>
+      <Route path="/display/local-images/wills">
+        <Wills />
+      </Route>
+      <Route path="/display/local-images/harbour">
+        <Harbour />
       </Route>
       <Route path="/modules/light-sdk">
         <LightSdk />
@@ -127,7 +147,7 @@ export default function LightTemplate() {
       <Route path="/modules/notifications">
         <Notifications />
       </Route>
-      <Route path="/modules/typography">
+      <Route path="/display/typography">
         <Typography />
       </Route>
       <Route path="/modules/network/remote-image">

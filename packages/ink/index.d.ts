@@ -235,6 +235,7 @@ export namespace Ink {
     src: string | ImageSource;
     fallback?: string;
     bleed?: boolean;
+    zoomable?: boolean;
     width: number;
     height: number;
     fit?: "cover" | "contain";

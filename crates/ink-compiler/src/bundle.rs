@@ -164,6 +164,7 @@ impl<'a> Emitter<'a> {
                 source,
                 fallback,
                 bleed,
+                zoomable,
                 width,
                 height,
                 fit,
@@ -184,6 +185,7 @@ impl<'a> Emitter<'a> {
                     .map(|source| self.image(source))
                     .transpose()?,
                 bleed: *bleed,
+                zoomable: *zoomable,
                 width: *width,
                 height: *height,
                 fit: image_fit(*fit),
@@ -316,23 +318,39 @@ impl<'a> Emitter<'a> {
         if !path.starts_with(self.root) {
             anyhow::bail!("image {source:?} must be inside the Ink application");
         }
-        if path.extension().and_then(|extension| extension.to_str()) != Some("png") {
-            anyhow::bail!("image {source:?} must be a PNG file");
-        }
+        let extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase);
+        let format = match extension.as_deref() {
+            Some("png") => image::ImageFormat::Png,
+            Some("jpg" | "jpeg") => image::ImageFormat::Jpeg,
+            _ => anyhow::bail!("image {source:?} must be a PNG or JPEG file"),
+        };
         if let Some(id) = self.image_ids.get(&path) {
             return Ok(*id);
         }
         let bytes = std::fs::read(&path)
             .with_context(|| format!("could not read image {}", path.display()))?;
-        let pixels = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+        let image_hash = hash_bytes(&bytes);
+        let decoded = image::load_from_memory_with_format(&bytes, format)
             .with_context(|| format!("could not decode image {}", path.display()))?
             .into_rgba8();
         let id = format::ImageId(index(self.images.len(), "image")?);
+        let (encoding, bytes) = if format == image::ImageFormat::Jpeg {
+            (format::ImageAssetEncoding::Jpeg, bytes)
+        } else {
+            (
+                format::ImageAssetEncoding::RgbaZlib,
+                miniz_oxide::deflate::compress_to_vec_zlib(decoded.as_raw(), 9),
+            )
+        };
         self.images.push(format::ImageAsset {
-            id: hash_bytes(&bytes),
-            width: pixels.width(),
-            height: pixels.height(),
-            compressed_pixels: miniz_oxide::deflate::compress_to_vec_zlib(pixels.as_raw(), 9),
+            id: image_hash,
+            width: decoded.width(),
+            height: decoded.height(),
+            encoding,
+            bytes,
         });
         self.image_ids.insert(path, id);
         Ok(id)

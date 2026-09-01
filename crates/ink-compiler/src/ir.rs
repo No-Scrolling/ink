@@ -262,6 +262,7 @@ pub enum Node {
         source: ImageSource,
         fallback: Option<String>,
         bleed: bool,
+        zoomable: bool,
         width: f32,
         height: f32,
         fit: ImageFit,

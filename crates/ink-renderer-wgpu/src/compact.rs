@@ -8,8 +8,8 @@ use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
-    Colour, ImageData, ImageFit, Mask, PUBLIC_SANS, Rect, Scene, TextAlign, TextRun,
-    is_emoji_grapheme,
+    Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene,
+    TextAlign, TextRun, is_emoji_grapheme,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -100,6 +100,7 @@ impl<T: Pod + PartialEq> VertexBuffer<T> {
 #[derive(Default)]
 struct PreparedScene {
     revision: u64,
+    image_revision: u64,
     ready: bool,
     quad_fixed: Range<u32>,
     quad_scroll: Range<u32>,
@@ -172,18 +173,22 @@ impl ImageCache {
         let id = image.id();
         if !self.images.contains_key(&id) {
             let (pixels, width, height) = match image {
-                ImageData::Asset(asset) => (
-                    Cow::Owned(
-                        miniz_oxide::inflate::decompress_to_vec_zlib(
-                            asset.compressed_pixels.as_ref(),
-                        )
-                        .map_err(|error| {
-                            anyhow!("an Ink image could not be decompressed: {error:?}")
-                        })?,
+                ImageData::Asset(asset) => match asset.encoding {
+                    ImageAssetEncoding::RgbaZlib => (
+                        Cow::Owned(
+                            miniz_oxide::inflate::decompress_to_vec_zlib(asset.bytes.as_ref())
+                                .map_err(|error| {
+                                    anyhow!("an Ink image could not be decompressed: {error:?}")
+                                })?,
+                        ),
+                        asset.width,
+                        asset.height,
                     ),
-                    asset.width,
-                    asset.height,
-                ),
+                    ImageAssetEncoding::Jpeg => {
+                        let (width, height, pixels) = decode_encoded_image(asset.bytes.as_ref())?;
+                        (Cow::Owned(pixels), width, height)
+                    }
+                },
                 ImageData::Remote(image) => (
                     Cow::Borrowed(image.pixels.as_ref()),
                     image.width,
@@ -293,6 +298,16 @@ impl ImageCache {
             }
         }
     }
+}
+
+#[cfg(target_os = "android")]
+fn decode_encoded_image(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
+    crate::android_image::decode(bytes)
+}
+
+#[cfg(not(target_os = "android"))]
+fn decode_encoded_image(_bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
+    Err(anyhow!("encoded bundled images require Android"))
 }
 
 struct ImageDraw {
@@ -898,6 +913,8 @@ impl Renderer {
                 return Ok(RenderOutcome::NeedsSystemGlyph(request));
             }
             self.prepare(scene)?;
+        } else if self.prepared.image_revision != scene.image_revision {
+            self.refresh_images(scene)?;
         }
         let scroll_y = if scene.height == 0 {
             0.0
@@ -1130,22 +1147,7 @@ impl Renderer {
             });
         }
 
-        self.image_cache.begin_frame();
-        let (mut images, mut image_draws) = self.image_vertices(scene, false)?;
-        let (scroll_images, mut scroll_draws) = self.image_vertices(scene, true)?;
-        let scroll_start = images.len() as u32;
-        images.extend(scroll_images);
-        for draw in &mut scroll_draws {
-            draw.vertices.start += scroll_start;
-            draw.vertices.end += scroll_start;
-        }
-        image_draws.extend(scroll_draws);
-        self.image_cache.trim(
-            &image_draws
-                .iter()
-                .map(|draw| draw.id)
-                .collect::<HashSet<_>>(),
-        );
+        let (images, image_draws) = self.image_scene_vertices(scene)?;
 
         self.quad_buffer.write(&self.device, &self.queue, &quads);
         self.text_buffer.write(&self.device, &self.queue, &text);
@@ -1154,6 +1156,7 @@ impl Renderer {
             .write(&self.device, &self.queue, &system_glyph_vertices);
         self.prepared = PreparedScene {
             revision: scene.revision,
+            image_revision: scene.image_revision,
             ready: true,
             quad_fixed: 0..quad_fixed_end,
             quad_scroll: quad_fixed_end..quads.len() as u32,
@@ -1164,6 +1167,30 @@ impl Renderer {
             text_runs,
         };
         Ok(())
+    }
+
+    fn refresh_images(&mut self, scene: &Scene) -> Result<()> {
+        let (images, draws) = self.image_scene_vertices(scene)?;
+        self.image_buffer.write(&self.device, &self.queue, &images);
+        self.prepared.image_draws = draws;
+        self.prepared.image_revision = scene.image_revision;
+        Ok(())
+    }
+
+    fn image_scene_vertices(&mut self, scene: &Scene) -> Result<(Vec<TextVertex>, Vec<ImageDraw>)> {
+        self.image_cache.begin_frame();
+        let (mut images, mut draws) = self.image_vertices(scene, false)?;
+        let (scroll_images, mut scroll_draws) = self.image_vertices(scene, true)?;
+        let scroll_start = images.len() as u32;
+        images.extend(scroll_images);
+        for draw in &mut scroll_draws {
+            draw.vertices.start += scroll_start;
+            draw.vertices.end += scroll_start;
+        }
+        draws.extend(scroll_draws);
+        self.image_cache
+            .trim(&draws.iter().map(|draw| draw.id).collect::<HashSet<_>>());
+        Ok((images, draws))
     }
 
     fn prepare_text_runs(&mut self, scene: &Scene) -> Result<Vec<PreparedTextRun>> {
@@ -1292,15 +1319,7 @@ impl Renderer {
                 .image_cache
                 .prepare(&self.device, &self.queue, &run.image)?;
             let start = vertices.len() as u32;
-            push_image_quad(
-                &mut vertices,
-                scene,
-                run.rect,
-                run.clip,
-                image.width,
-                image.height,
-                run.fit,
-            );
+            push_image_quad(&mut vertices, scene, run, image.width, image.height);
             draws.push(ImageDraw {
                 id: run.image.id(),
                 vertices: start..vertices.len() as u32,
@@ -1617,19 +1636,23 @@ fn push_mask_quad(
 fn push_image_quad(
     vertices: &mut Vec<TextVertex>,
     scene: &Scene,
-    mut rect: Rect,
-    clip: Rect,
+    run: &ImageRun,
     image_width: u32,
     image_height: u32,
-    fit: ImageFit,
 ) {
+    let mut rect = run.rect;
+    let clip = if run.zoom_id.is_some() {
+        intersect(run.clip, run.rect)
+    } else {
+        run.clip
+    };
     if rect.width <= 0.0 || rect.height <= 0.0 {
         return;
     }
     let image_aspect = image_width as f32 / image_height as f32;
     let rect_aspect = rect.width / rect.height;
     let (mut u0, mut v0, mut u1, mut v1) = (0.0, 0.0, 1.0, 1.0);
-    match fit {
+    match run.fit {
         ImageFit::Cover if image_aspect > rect_aspect => {
             let visible = rect_aspect / image_aspect;
             u0 = (1.0 - visible) / 2.0;
@@ -1651,6 +1674,13 @@ fn push_image_quad(
             rect.width = width;
         }
     }
+
+    rect = Rect {
+        x: rect.x * run.transform.scale + run.transform.translation_x,
+        y: rect.y * run.transform.scale + run.transform.translation_y,
+        width: rect.width * run.transform.scale,
+        height: rect.height * run.transform.scale,
+    };
 
     let visible = intersect(rect, clip);
     if visible.width <= 0.0 || visible.height <= 0.0 {

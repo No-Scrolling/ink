@@ -14,6 +14,7 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -768,12 +769,56 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
         private val choreographer = Choreographer.getInstance()
-        private val minimumFlingVelocity =
-            ViewConfiguration.get(this@MainActivity).scaledMinimumFlingVelocity
-        private val maximumFlingVelocity =
-            ViewConfiguration.get(this@MainActivity).scaledMaximumFlingVelocity
-        private val touchSlop = ViewConfiguration.get(this@MainActivity).scaledTouchSlop
+        private val viewConfiguration = ViewConfiguration.get(this@MainActivity)
+        private val minimumFlingVelocity = viewConfiguration.scaledMinimumFlingVelocity
+        private val maximumFlingVelocity = viewConfiguration.scaledMaximumFlingVelocity
+        private val touchSlop = viewConfiguration.scaledTouchSlop
+        private val doubleTapSlop = viewConfiguration.scaledDoubleTapSlop
+        private val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
         private val scroller = OverScroller(this@MainActivity)
+        private val scaleGestureDetector = ScaleGestureDetector(
+            this@MainActivity,
+            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                    if (!surfaceAttached || engineHandle == 0L) return false
+                    val result = nativeImagePinchBegin(
+                        engineHandle,
+                        detector.focusX,
+                        detector.focusY,
+                    )
+                    pinchActive = (result and POINTER_CAPTURED) != 0
+                    if (pinchActive) {
+                        hasPendingMove = false
+                        nativePointer(engineHandle, MotionEvent.ACTION_CANCEL, 0f, 0f)
+                        capturedGesture = true
+                        stopFling()
+                    }
+                    return pinchActive
+                }
+
+                override fun onScale(detector: ScaleGestureDetector): Boolean {
+                    if (!pinchActive) return false
+                    val changed = processPointerResult(
+                        nativeImagePinchUpdate(
+                            engineHandle,
+                            detector.scaleFactor,
+                            detector.focusX,
+                            detector.focusY,
+                        ),
+                    )
+                    if (changed) requestFrame()
+                    return true
+                }
+
+                override fun onScaleEnd(detector: ScaleGestureDetector) {
+                    if (pinchActive) nativeImagePinchEnd(engineHandle)
+                    pinchActive = false
+                }
+            },
+        ).apply {
+            isQuickScaleEnabled = false
+            isStylusScaleEnabled = false
+        }
         private var downY = 0f
         private var framePosted = false
         private var renderPending = false
@@ -782,6 +827,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private var hasPendingMove = false
         private var lastFlingY = 0
         private var capturedGesture = false
+        private var pinchActive = false
+        private var imageTapDownX = 0f
+        private var imageTapDownY = 0f
+        private var imageTapTarget = 0L
+        private var previousImageTapTime = 0L
+        private var previousImageTapTarget = 0L
+        private var previousImageTapX = 0f
+        private var previousImageTapY = 0f
         private var textCursorVisible = true
         private var velocityTracker: VelocityTracker? = null
         private val textCursorBlink = object : Runnable {
@@ -827,16 +880,62 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            scaleGestureDetector.onTouchEvent(event)
+            if (pinchActive || event.pointerCount > 1) {
+                resetImageTap()
+                velocityTracker?.recycle()
+                velocityTracker = null
+                postFrame()
+                return true
+            }
             var flingVelocity = 0
+            var imageDoubleTap = 0
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     stopFling()
                     downY = event.y
+                    imageTapDownX = event.x
+                    imageTapDownY = event.y
+                    imageTapTarget = if (engineHandle != 0L && surfaceAttached) {
+                        nativeImageZoomTarget(engineHandle, event.x, event.y)
+                    } else {
+                        0L
+                    }
+                    if (imageTapTarget == 0L) resetImageTap()
                     velocityTracker?.recycle()
                     velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
                 }
-                MotionEvent.ACTION_MOVE -> velocityTracker?.addMovement(event)
+                MotionEvent.ACTION_MOVE -> {
+                    velocityTracker?.addMovement(event)
+                    if (movedBeyond(event.x, event.y, imageTapDownX, imageTapDownY, touchSlop)) {
+                        resetImageTap()
+                    }
+                }
                 MotionEvent.ACTION_UP -> {
+                    if (imageTapTarget != 0L) {
+                        val isSecondTap = previousImageTapTime != 0L &&
+                            previousImageTapTarget == imageTapTarget &&
+                            event.eventTime - previousImageTapTime <= doubleTapTimeout &&
+                            !movedBeyond(
+                                event.x,
+                                event.y,
+                                previousImageTapX,
+                                previousImageTapY,
+                                doubleTapSlop,
+                            )
+                        if (isSecondTap) {
+                            imageDoubleTap = nativeImageDoubleTap(engineHandle, event.x, event.y)
+                            resetImageTap()
+                        } else {
+                            previousImageTapTime = event.eventTime
+                            previousImageTapTarget = imageTapTarget
+                            previousImageTapX = event.x
+                            previousImageTapY = event.y
+                            imageTapTarget = 0L
+                        }
+                    } else {
+                        resetImageTap()
+                    }
                     velocityTracker?.apply {
                         addMovement(event)
                         computeCurrentVelocity(1000, maximumFlingVelocity.toFloat())
@@ -851,13 +950,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     velocityTracker = null
                 }
                 MotionEvent.ACTION_CANCEL -> {
+                    resetImageTap()
                     velocityTracker?.recycle()
                     velocityTracker = null
                 }
             }
             if (engineHandle != 0L && surfaceAttached) {
                 var changed = false
-                if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                if ((imageDoubleTap and POINTER_CAPTURED) != 0) {
+                    hasPendingMove = false
+                    changed = processPointerResult(imageDoubleTap)
+                } else if (event.actionMasked == MotionEvent.ACTION_MOVE) {
                     pendingMoveX = event.x
                     pendingMoveY = event.y
                     hasPendingMove = true
@@ -902,6 +1005,24 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 performClick()
             }
             return true
+        }
+
+        private fun movedBeyond(
+            x: Float,
+            y: Float,
+            originX: Float,
+            originY: Float,
+            slop: Int,
+        ): Boolean {
+            val deltaX = x - originX
+            val deltaY = y - originY
+            return deltaX * deltaX + deltaY * deltaY > slop * slop
+        }
+
+        private fun resetImageTap() {
+            imageTapTarget = 0L
+            previousImageTapTime = 0L
+            previousImageTapTarget = 0L
         }
 
         private fun processPointerResult(result: Int): Boolean {
@@ -1042,6 +1163,30 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativePointer(
             handle: Long,
             action: Int,
+            x: Float,
+            y: Float,
+        ): Int
+
+        @JvmStatic
+        private external fun nativeImagePinchBegin(handle: Long, x: Float, y: Float): Int
+
+        @JvmStatic
+        private external fun nativeImagePinchUpdate(
+            handle: Long,
+            scale: Float,
+            x: Float,
+            y: Float,
+        ): Int
+
+        @JvmStatic
+        private external fun nativeImagePinchEnd(handle: Long)
+
+        @JvmStatic
+        private external fun nativeImageZoomTarget(handle: Long, x: Float, y: Float): Long
+
+        @JvmStatic
+        private external fun nativeImageDoubleTap(
+            handle: Long,
             x: Float,
             y: Float,
         ): Int

@@ -3553,13 +3553,14 @@ fn lower_image(
         .is_some_and(|value| value.contains("://"))
     {
         return Err(CompileError::new(
-            "Image fallback must be a local PNG",
+            "Image fallback must be a local PNG or JPEG",
             attribute(element, "fallback")
                 .expect("fallback exists")
                 .span,
         ));
     }
     let bleed = boolean_attribute(element, "bleed")?;
+    let zoomable = boolean_attribute(element, "zoomable")?;
     let width = required_number_attribute(element, "width")?;
     let height = required_number_attribute(element, "height")?;
     if width == 0.0 || height == 0.0 {
@@ -3575,7 +3576,9 @@ fn lower_image(
     };
     reject_other_attributes(
         element,
-        &["src", "fallback", "bleed", "width", "height", "fit"],
+        &[
+            "src", "fallback", "bleed", "zoomable", "width", "height", "fit",
+        ],
     )?;
     if !element_children(element)?.is_empty() {
         return Err(CompileError::new(
@@ -3587,6 +3590,7 @@ fn lower_image(
         source,
         fallback,
         bleed,
+        zoomable,
         width,
         height,
         fit,

@@ -70,6 +70,7 @@ const BACK_SWIPE_EDGE_WIDTH: f32 = 30.0;
 const BACK_SWIPE_ACTIVATION_DISTANCE: f32 = 12.0;
 const BACK_SWIPE_TRIGGER_DISTANCE: f32 = 80.0;
 const BACK_SWIPE_VERTICAL_RATIO: f32 = 1.5;
+const IMAGE_MAX_SCALE: f32 = 4.0;
 const LP3_REFERENCE_WIDTH: f32 = 1080.0;
 const LP3_REFERENCE_SCALE: f32 = 2.55;
 const PUBLIC_SANS_RASTER_SCALE: f32 = 7.0 / 6.0;
@@ -792,7 +793,14 @@ pub struct ImageAsset {
     pub id: u64,
     pub width: u32,
     pub height: u32,
-    pub compressed_pixels: AssetBytes,
+    pub encoding: ImageAssetEncoding,
+    pub bytes: AssetBytes,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageAssetEncoding {
+    RgbaZlib,
+    Jpeg,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -831,6 +839,43 @@ impl ImageData {
             Self::Remote(image) => image.id,
         }
     }
+
+    const fn width(&self) -> u32 {
+        match self {
+            Self::Asset(asset) => asset.width,
+            Self::Remote(image) => image.width,
+        }
+    }
+
+    const fn height(&self) -> u32 {
+        match self {
+            Self::Asset(asset) => asset.height,
+            Self::Remote(image) => image.height,
+        }
+    }
+}
+
+fn image_content_rect(image: &ImageData, mut rect: Rect, fit: ImageFit) -> Rect {
+    if rect.width <= 0.0 || rect.height <= 0.0 || image.height() == 0 {
+        return rect;
+    }
+    let image_aspect = image.width() as f32 / image.height() as f32;
+    let rect_aspect = rect.width / rect.height;
+    match fit {
+        ImageFit::Cover => rect,
+        ImageFit::Contain if image_aspect > rect_aspect => {
+            let height = rect.width / image_aspect;
+            rect.y += (rect.height - height) / 2.0;
+            rect.height = height;
+            rect
+        }
+        ImageFit::Contain => {
+            let width = rect.height * image_aspect;
+            rect.x += (rect.width - width) / 2.0;
+            rect.width = width;
+            rect
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -846,16 +891,24 @@ impl ImageAsset {
             id,
             width,
             height,
-            compressed_pixels: AssetBytes::Static(compressed_pixels),
+            encoding: ImageAssetEncoding::RgbaZlib,
+            bytes: AssetBytes::Static(compressed_pixels),
         }
     }
 
-    fn owned(id: u64, width: u32, height: u32, compressed_pixels: Vec<u8>) -> Self {
+    fn owned(
+        id: u64,
+        width: u32,
+        height: u32,
+        encoding: ImageAssetEncoding,
+        bytes: Vec<u8>,
+    ) -> Self {
         Self {
             id,
             width,
             height,
-            compressed_pixels: AssetBytes::Owned(compressed_pixels.into()),
+            encoding,
+            bytes: AssetBytes::Owned(bytes.into()),
         }
     }
 }
@@ -879,7 +932,7 @@ pub struct Node {
     kind: NodeKind,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -930,6 +983,7 @@ enum NodeKind {
         source: ImageSource,
         fallback: Option<ImageAsset>,
         bleed: bool,
+        zoomable: bool,
         width: f32,
         height: f32,
         fit: ImageFit,
@@ -1083,6 +1137,7 @@ impl Node {
         source: ImageSource,
         fallback: Option<ImageAsset>,
         bleed: bool,
+        zoomable: bool,
         width: f32,
         height: f32,
         fit: ImageFit,
@@ -1093,6 +1148,7 @@ impl Node {
                 source,
                 fallback,
                 bleed,
+                zoomable,
                 width,
                 height,
                 fit,
@@ -1319,10 +1375,29 @@ pub struct MaskRun {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageRun {
     pub image: ImageData,
+    pub zoom_id: Option<usize>,
     pub rect: Rect,
     pub clip: Rect,
     pub fit: ImageFit,
     pub scrolling: bool,
+    pub transform: ImageTransform,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageTransform {
+    pub scale: f32,
+    pub translation_x: f32,
+    pub translation_y: f32,
+}
+
+impl Default for ImageTransform {
+    fn default() -> Self {
+        Self {
+            scale: 1.0,
+            translation_x: 0.0,
+            translation_y: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1380,6 +1455,7 @@ pub struct CameraPortal {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     pub revision: u64,
+    pub image_revision: u64,
     pub width: u32,
     pub height: u32,
     pub quads: Vec<Quad>,
@@ -1456,8 +1532,18 @@ struct ContentPointer {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct ImagePanPointer {
+    image: NodeIdentity,
+    start_x: f32,
+    start_y: f32,
+    translation_x: f32,
+    translation_y: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
 enum Pointer {
     Content(ContentPointer),
+    ImagePan(ImagePanPointer),
     ScrollThumb {
         grab_offset: f32,
     },
@@ -1467,6 +1553,21 @@ enum Pointer {
         cancelled: bool,
     },
     EdgeBack(EdgeBackPointer),
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ImageZoomState {
+    viewport: Rect,
+    content: Rect,
+    scrolling: bool,
+    transform: ImageTransform,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ImagePinch {
+    image: NodeIdentity,
+    focus_x: f32,
+    focus_y: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -1552,6 +1653,9 @@ pub struct Engine {
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
     camera_reviews: HashMap<ControllerId, String>,
     visible_images: BTreeSet<RemoteImageKey>,
+    image_zooms: HashMap<NodeIdentity, ImageZoomState>,
+    visible_zoom_images: BTreeSet<NodeIdentity>,
+    image_pinch: Option<ImagePinch>,
     last_native_request: Option<NativeRequest>,
     next_request_id: u64,
     back_icon: Option<Mask>,
@@ -1645,6 +1749,9 @@ impl Engine {
             remote_images: HashMap::new(),
             camera_reviews: HashMap::new(),
             visible_images: BTreeSet::new(),
+            image_zooms: HashMap::new(),
+            visible_zoom_images: BTreeSet::new(),
+            image_pinch: None,
             last_native_request: None,
             next_request_id: 1,
             back_icon: None,
@@ -2200,6 +2307,20 @@ impl Engine {
             return PointerOutcome::default();
         }
 
+        if let Some(image) = self.zoomable_image_at(x, y)
+            && let Some(zoom) = self.image_zooms.get(&image).copied()
+            && zoom.transform.scale > 1.0
+        {
+            self.pointer = Some(Pointer::ImagePan(ImagePanPointer {
+                image,
+                start_x: x,
+                start_y: y,
+                translation_x: zoom.transform.translation_x,
+                translation_y: zoom.transform.translation_y,
+            }));
+            return PointerOutcome::default().captured();
+        }
+
         self.pointer = Some(Pointer::Content(ContentPointer {
             start_x: x,
             start_y: y,
@@ -2218,6 +2339,18 @@ impl Engine {
 
         match pointer {
             Pointer::Content(pointer) => self.move_content_pointer(pointer, x, y, tap_slop),
+            Pointer::ImagePan(pointer) => {
+                let Some(zoom) = self.image_zooms.get(&pointer.image).copied() else {
+                    return PointerOutcome::default();
+                };
+                let transform = ImageTransform {
+                    translation_x: pointer.translation_x + x - pointer.start_x,
+                    translation_y: pointer.translation_y + y - pointer.start_y,
+                    ..zoom.transform
+                };
+                PointerOutcome::changed(self.set_image_transform(pointer.image, transform))
+                    .captured()
+            }
             Pointer::ScrollThumb { grab_offset } => {
                 let Some(scroll_bar) = self.scene.scroll_bar else {
                     return PointerOutcome::default();
@@ -2271,6 +2404,7 @@ impl Engine {
             }) => PointerOutcome::activated(self.tap(x, y)),
             Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
+            | Pointer::ImagePan(_)
             | Pointer::EdgeBack(EdgeBackPointer {
                 state: EdgeBackState::Claimed,
                 ..
@@ -2281,6 +2415,145 @@ impl Engine {
 
     pub fn pointer_cancel(&mut self) {
         self.pointer = None;
+    }
+
+    pub fn image_pinch_begin(&mut self, x: f32, y: f32) -> bool {
+        let Some(image) = self.zoomable_image_at(x, y) else {
+            return false;
+        };
+        self.pointer = None;
+        self.image_pinch = Some(ImagePinch {
+            image,
+            focus_x: x,
+            focus_y: y,
+        });
+        true
+    }
+
+    pub fn image_zoom_target(&self, x: f32, y: f32) -> Option<u64> {
+        self.zoomable_image_at(x, y)
+            .map(|identity| identity.0 as u64 + 1)
+    }
+
+    pub fn image_pinch_update(&mut self, scale_factor: f32, x: f32, y: f32) -> bool {
+        if !scale_factor.is_finite() || scale_factor <= 0.0 {
+            return false;
+        }
+        let Some(mut pinch) = self.image_pinch else {
+            return false;
+        };
+        let Some(zoom) = self.image_zooms.get(&pinch.image).copied() else {
+            self.image_pinch = None;
+            return false;
+        };
+        let scroll = if zoom.scrolling {
+            self.scroll_offset - self.scroll_origin
+        } else {
+            0.0
+        };
+        let focus_x = x;
+        let focus_y = y + scroll;
+        let previous_x = pinch.focus_x;
+        let previous_y = pinch.focus_y + scroll;
+        let mut transform = zoom.transform;
+        transform.translation_x += focus_x - previous_x;
+        transform.translation_y += focus_y - previous_y;
+        let scale = (transform.scale * scale_factor).clamp(1.0, IMAGE_MAX_SCALE);
+        let factor = scale / transform.scale;
+        transform.translation_x = focus_x - (focus_x - transform.translation_x) * factor;
+        transform.translation_y = focus_y - (focus_y - transform.translation_y) * factor;
+        transform.scale = scale;
+        pinch.focus_x = x;
+        pinch.focus_y = y;
+        self.image_pinch = Some(pinch);
+        self.set_image_transform(pinch.image, transform)
+    }
+
+    pub fn image_pinch_end(&mut self) {
+        self.image_pinch = None;
+    }
+
+    pub fn image_double_tap(&mut self, x: f32, y: f32) -> PointerOutcome {
+        let Some(image) = self.zoomable_image_at(x, y) else {
+            return PointerOutcome::default();
+        };
+        let Some(zoom) = self.image_zooms.get(&image).copied() else {
+            return PointerOutcome::default();
+        };
+        self.pointer = None;
+        self.image_pinch = None;
+        let next_scale = if zoom.transform.scale >= IMAGE_MAX_SCALE {
+            1.0
+        } else {
+            (zoom.transform.scale.floor() + 1.0).clamp(2.0, IMAGE_MAX_SCALE)
+        };
+        let target = if next_scale == 1.0 {
+            ImageTransform::default()
+        } else {
+            let scroll = if zoom.scrolling {
+                self.scroll_offset - self.scroll_origin
+            } else {
+                0.0
+            };
+            constrain_image_transform(
+                zoom,
+                ImageTransform {
+                    scale: next_scale,
+                    translation_x: x
+                        - (x - zoom.transform.translation_x) * next_scale / zoom.transform.scale,
+                    translation_y: y + scroll
+                        - (y + scroll - zoom.transform.translation_y) * next_scale
+                            / zoom.transform.scale,
+                },
+            )
+        };
+        PointerOutcome::changed(self.set_image_transform(image, target)).captured()
+    }
+
+    fn zoomable_image_at(&self, x: f32, y: f32) -> Option<NodeIdentity> {
+        self.scene.images.iter().rev().find_map(|run| {
+            let identity = NodeIdentity(run.zoom_id?);
+            if run.scrolling
+                && !self
+                    .scene
+                    .scroll_clip
+                    .is_some_and(|clip| clip.contains(x, y))
+            {
+                return None;
+            }
+            let scroll = if run.scrolling {
+                self.scroll_offset - self.scroll_origin
+            } else {
+                0.0
+            };
+            Rect {
+                y: run.rect.y - scroll,
+                ..run.rect
+            }
+            .contains(x, y)
+            .then_some(identity)
+        })
+    }
+
+    fn set_image_transform(&mut self, image: NodeIdentity, transform: ImageTransform) -> bool {
+        let Some(zoom) = self.image_zooms.get(&image).copied() else {
+            return false;
+        };
+        let transform = constrain_image_transform(zoom, transform);
+        if transform == zoom.transform {
+            return false;
+        }
+        self.image_zooms
+            .get_mut(&image)
+            .expect("visible zoom image exists")
+            .transform = transform;
+        for run in &mut self.scene.images {
+            if run.zoom_id == Some(image.0) {
+                run.transform = transform;
+            }
+        }
+        self.scene.image_revision = self.scene.image_revision.wrapping_add(1);
+        true
     }
 
     fn move_content_pointer(
@@ -3348,6 +3621,7 @@ impl Engine {
         self.scene.text_cursor = None;
         self.hit_regions.clear();
         self.visible_images.clear();
+        self.visible_zoom_images.clear();
         self.scroll_max = 0.0;
         self.scene.scroll_max = 0.0;
         self.scrolling = false;
@@ -3385,6 +3659,14 @@ impl Engine {
         );
         self.materialised_root = Some(root);
         self.sync_visible_images();
+        self.image_zooms
+            .retain(|identity, _| self.visible_zoom_images.contains(identity));
+        if self
+            .image_pinch
+            .is_some_and(|pinch| !self.visible_zoom_images.contains(&pinch.image))
+        {
+            self.image_pinch = None;
+        }
     }
 
     fn auto_focus(&self, node: &Node) -> Option<(NodeIdentity, StateId, TextInputAction)> {
@@ -3783,8 +4065,16 @@ impl Engine {
                 source,
                 fallback,
                 fit,
+                zoomable,
                 ..
-            } => self.layout_image(source, fallback.as_ref(), *fit, rect),
+            } => self.layout_image(
+                node.identity,
+                source,
+                fallback.as_ref(),
+                *fit,
+                *zoomable,
+                rect,
+            ),
             NodeKind::CameraPreview { controller, kind } => {
                 self.layout_camera_preview(*controller, *kind, rect)
             }
@@ -3864,6 +4154,7 @@ impl Engine {
                 source,
                 fallback,
                 bleed,
+                zoomable,
                 width,
                 height,
                 fit,
@@ -3879,6 +4170,7 @@ impl Engine {
                 },
                 fallback.clone(),
                 *bleed,
+                *zoomable,
                 *width,
                 *height,
                 *fit,
@@ -4180,7 +4472,7 @@ impl Engine {
             });
         }
 
-        let fills_remaining = children.len() == 1 && camera_preview(&children[0]);
+        let fills_remaining = children.len() == 1 && fills_remaining_screen(&children[0]);
         let inset_start = if fills_remaining {
             0.0
         } else {
@@ -4219,8 +4511,20 @@ impl Engine {
         } else {
             self.scaled(CONTENT_GAP)
         };
-        let (mut sizes, mut content_height) =
-            self.measure_screen_content(children, unbounded_content, gap);
+        let (mut sizes, mut content_height) = if fills_remaining {
+            (
+                vec![VerticalMeasure {
+                    size: MeasuredSize {
+                        width: unbounded_content.width,
+                        height: unbounded_content.height,
+                    },
+                    entries: 1,
+                }],
+                unbounded_content.height,
+            )
+        } else {
+            self.measure_screen_content(children, unbounded_content, gap)
+        };
         let mut inset_bottom = if first_child_is_full_bleed {
             requested_bottom_inset
                 .min((rect.height - header_height - inset_top - content_height).max(0.0))
@@ -4907,9 +5211,11 @@ impl Engine {
 
     fn layout_image(
         &mut self,
+        identity: NodeIdentity,
         source: &ImageSource,
         fallback: Option<&ImageAsset>,
         fit: ImageFit,
+        zoomable: bool,
         rect: Rect,
     ) {
         let visible = rect.intersection(self.clip);
@@ -4970,12 +5276,31 @@ impl Engine {
             }
         };
         if let Some(image) = image {
+            let transform = if zoomable {
+                let content = image_content_rect(&image, rect, fit);
+                let zoom = self.image_zooms.entry(identity).or_insert(ImageZoomState {
+                    viewport: rect,
+                    content,
+                    scrolling: self.scrolling,
+                    transform: ImageTransform::default(),
+                });
+                zoom.viewport = rect;
+                zoom.content = content;
+                zoom.scrolling = self.scrolling;
+                zoom.transform = constrain_image_transform(*zoom, zoom.transform);
+                self.visible_zoom_images.insert(identity);
+                zoom.transform
+            } else {
+                ImageTransform::default()
+            };
             self.scene.images.push(ImageRun {
                 image,
+                zoom_id: zoomable.then_some(identity.0),
                 rect,
                 clip: self.clip,
                 fit,
                 scrolling: self.scrolling,
+                transform,
             });
         }
     }
@@ -4995,9 +5320,11 @@ impl Engine {
         if let Some(source) = self.camera_reviews.get(&controller).cloned() {
             let action_height = self.scaled(CAMERA_REVIEW_ACTION_HEIGHT).min(rect.height);
             self.layout_image(
+                NodeIdentity(0),
                 &ImageSource::Native("camera".to_owned(), vec![TextPart::Literal(source)]),
                 None,
                 ImageFit::Contain,
+                false,
                 Rect {
                     height: (rect.height - action_height).max(0.0),
                     ..rect
@@ -5064,12 +5391,14 @@ impl Engine {
                         &["value".to_owned(), "source".to_owned()],
                     ) {
                         self.layout_image(
+                            NodeIdentity(0),
                             &ImageSource::Native(
                                 "camera".to_owned(),
                                 vec![TextPart::Literal(source)],
                             ),
                             None,
                             ImageFit::Contain,
+                            false,
                             rect,
                         );
                     }
@@ -5761,8 +6090,54 @@ fn full_bleed_image(node: &Node) -> bool {
     }
 }
 
-fn camera_preview(node: &Node) -> bool {
-    matches!(&node.kind, NodeKind::CameraPreview { .. })
+fn constrain_image_transform(
+    zoom: ImageZoomState,
+    mut transform: ImageTransform,
+) -> ImageTransform {
+    transform.scale = transform.scale.clamp(1.0, IMAGE_MAX_SCALE);
+    let content = Rect {
+        x: zoom.content.x * transform.scale + transform.translation_x,
+        y: zoom.content.y * transform.scale + transform.translation_y,
+        width: zoom.content.width * transform.scale,
+        height: zoom.content.height * transform.scale,
+    };
+    transform.translation_x += constrained_axis(
+        content.x,
+        content.width,
+        zoom.viewport.x,
+        zoom.viewport.width,
+    );
+    transform.translation_y += constrained_axis(
+        content.y,
+        content.height,
+        zoom.viewport.y,
+        zoom.viewport.height,
+    );
+    transform
+}
+
+fn constrained_axis(content_start: f32, content_size: f32, view_start: f32, view_size: f32) -> f32 {
+    if content_size <= view_size {
+        view_start + (view_size - content_size) / 2.0 - content_start
+    } else if content_start > view_start {
+        view_start - content_start
+    } else {
+        let content_end = content_start + content_size;
+        let view_end = view_start + view_size;
+        (view_end - content_end).max(0.0)
+    }
+}
+
+fn fills_remaining_screen(node: &Node) -> bool {
+    matches!(
+        &node.kind,
+        NodeKind::CameraPreview { .. }
+            | NodeKind::Image {
+                bleed: true,
+                zoomable: true,
+                ..
+            }
+    )
 }
 
 fn cross_position(origin: f32, available: f32, size: f32, align: Alignment) -> f32 {

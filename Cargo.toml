@@ -20,7 +20,7 @@ anyhow = "1.0.100"
 ab_glyph = { version = "0.2.32", default-features = false, features = ["std"] }
 bytemuck = { version = "1.24.0", features = ["derive"] }
 clap = { version = "4.5.47", features = ["derive"] }
-image = { version = "0.25.8", default-features = false, features = ["png"] }
+image = { version = "0.25.8", default-features = false, features = ["jpeg", "png"] }
 indicatif = "0.18.3"
 jni = "0.22.4"
 miniz_oxide = "0.8.9"

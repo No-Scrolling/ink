@@ -167,6 +167,19 @@ Add `autoFocus` to select an input and open the keyboard when its screen becomes
 
 An HTTPS URL loads a remote image. `fallback` may point to a bundled image shown when the remote request fails. Native modules such as the camera return an opaque `ImageSource` that can be passed directly to `src`.
 
+Bundled images may be PNG or JPEG files. Add `zoomable` to support pinch-to-zoom and one-finger panning while zoomed. Repeated double taps move through 2×, 3×, and 4×, then return to the original size. A full-bleed, zoomable image that is the only item on a screen fills the area below the header. Ink keeps these interactions native and updates only the image transform while it moves.
+
+```tsx
+<Image
+  src="./assets/photo.jpg"
+  width={349}
+  height={349}
+  fit="contain"
+  bleed
+  zoomable
+/>
+```
+
 ## State
 
 Ink provides three kinds of writable state:

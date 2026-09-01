@@ -1,3 +1,5 @@
+#[cfg(target_os = "android")]
+mod android_image;
 mod compact;
 mod system_glyph;
 

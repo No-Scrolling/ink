@@ -37,7 +37,13 @@ impl Converter {
             images: images
                 .into_iter()
                 .map(|image| {
-                    ImageAsset::owned(image.id, image.width, image.height, image.compressed_pixels)
+                    ImageAsset::owned(
+                        image.id,
+                        image.width,
+                        image.height,
+                        image_encoding(image.encoding),
+                        image.bytes,
+                    )
                 })
                 .collect(),
         }
@@ -157,6 +163,7 @@ impl Converter {
                 source,
                 fallback,
                 bleed,
+                zoomable,
                 width,
                 height,
                 fit,
@@ -164,6 +171,7 @@ impl Converter {
                 self.image_source(source),
                 fallback.map(|id| self.image(id)),
                 bleed,
+                zoomable,
                 width,
                 height,
                 image_fit(fit),
@@ -591,6 +599,13 @@ fn camera_preview_kind(kind: wire::CameraPreviewKind) -> CameraPreviewKind {
     match kind {
         wire::CameraPreviewKind::Photo => CameraPreviewKind::Photo,
         wire::CameraPreviewKind::Scanner => CameraPreviewKind::Scanner,
+    }
+}
+
+fn image_encoding(encoding: wire::ImageAssetEncoding) -> ImageAssetEncoding {
+    match encoding {
+        wire::ImageAssetEncoding::RgbaZlib => ImageAssetEncoding::RgbaZlib,
+        wire::ImageAssetEncoding::Jpeg => ImageAssetEncoding::Jpeg,
     }
 }
 

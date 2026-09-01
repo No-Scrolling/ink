@@ -6,7 +6,7 @@ const MAGIC: [u8; 4] = *b"INKA";
 const HEADER_SIZE: usize = 6;
 const MAX_DEFINITION_SIZE: usize = 64 * 1024 * 1024;
 const MAX_TREE_DEPTH: usize = 256;
-pub const FORMAT_VERSION: u16 = 2;
+pub const FORMAT_VERSION: u16 = 3;
 pub const ASSET_NAME: &str = "app.ink";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -236,6 +236,7 @@ pub enum Node {
         source: ImageSource,
         fallback: Option<ImageId>,
         bleed: bool,
+        zoomable: bool,
         width: f32,
         height: f32,
         fit: ImageFit,
@@ -448,7 +449,14 @@ pub struct ImageAsset {
     pub id: u64,
     pub width: u32,
     pub height: u32,
-    pub compressed_pixels: Vec<u8>,
+    pub encoding: ImageAssetEncoding,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ImageAssetEncoding {
+    RgbaZlib,
+    Jpeg,
 }
 
 #[derive(Debug)]
@@ -546,7 +554,7 @@ pub fn validate(application: &Application) -> Result<(), FormatError> {
         }
     }
     for (index, image) in application.images.iter().enumerate() {
-        if image.width == 0 || image.height == 0 || image.compressed_pixels.is_empty() {
+        if image.width == 0 || image.height == 0 || image.bytes.is_empty() {
             return invalid(format!("image {index} is empty"));
         }
     }
