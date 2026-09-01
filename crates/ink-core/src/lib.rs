@@ -22,6 +22,50 @@ pub use definition::AppDefinitionError;
 pub use persistence::PersistenceTooLarge;
 use persistence::{decode_persisted_state, encode_persisted_state};
 
+#[cfg(all(feature = "perf", target_os = "android"))]
+#[link(name = "android")]
+unsafe extern "C" {
+    fn ATrace_beginSection(section_name: *const std::ffi::c_char);
+    fn ATrace_endSection();
+    fn ATrace_setCounter(counter_name: *const std::ffi::c_char, counter_value: i64);
+}
+
+#[cfg(feature = "perf")]
+#[doc(hidden)]
+pub struct PerfTraceSection;
+
+#[cfg(feature = "perf")]
+impl PerfTraceSection {
+    pub fn new(name: &'static [u8]) -> Self {
+        debug_assert_eq!(name.last(), Some(&0));
+        #[cfg(target_os = "android")]
+        unsafe {
+            ATrace_beginSection(name.as_ptr().cast());
+        }
+        Self
+    }
+}
+
+#[cfg(feature = "perf")]
+impl Drop for PerfTraceSection {
+    fn drop(&mut self) {
+        #[cfg(target_os = "android")]
+        unsafe {
+            ATrace_endSection();
+        }
+    }
+}
+
+#[cfg(feature = "perf")]
+#[doc(hidden)]
+pub fn perf_trace_counter(name: &'static [u8], _value: u64) {
+    debug_assert_eq!(name.last(), Some(&0));
+    #[cfg(target_os = "android")]
+    unsafe {
+        ATrace_setCounter(name.as_ptr().cast(), _value.min(i64::MAX as u64) as i64);
+    }
+}
+
 pub const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
 
 const DEFAULT_TEXT_SIZE: f32 = 30.0;
@@ -3694,10 +3738,12 @@ impl Engine {
             _ => (&self.definition.root, None),
         };
         #[cfg(feature = "perf")]
-        let materialise_started = Instant::now();
+        let (materialise_started, materialise_trace) =
+            (Instant::now(), PerfTraceSection::new(b"Ink materialise\0"));
         let mut roots = self.materialise(root, None);
         #[cfg(feature = "perf")]
         {
+            drop(materialise_trace);
             self.perf.materialise_ns += elapsed_ns(materialise_started);
         }
         assert_eq!(roots.len(), 1, "an app route has exactly one root");
@@ -3770,13 +3816,15 @@ impl Engine {
         self.virtual_lists.clear();
         let previous = self.materialised_root.take();
         #[cfg(feature = "perf")]
-        let materialise_started = Instant::now();
+        let (materialise_started, materialise_trace) =
+            (Instant::now(), PerfTraceSection::new(b"Ink materialise\0"));
         let mut roots = previous.as_ref().map_or_else(
             || self.materialise(root, None),
             |previous| self.materialise_incremental(root, previous, &targets),
         );
         #[cfg(feature = "perf")]
         {
+            drop(materialise_trace);
             self.perf.materialise_ns += elapsed_ns(materialise_started);
         }
         assert_eq!(roots.len(), 1, "an app route has exactly one root");
@@ -3889,10 +3937,11 @@ impl Engine {
 
     fn relayout_scene(&mut self) {
         #[cfg(feature = "perf")]
-        let started = Instant::now();
+        let (started, trace) = (Instant::now(), PerfTraceSection::new(b"Ink relayout\0"));
         self.relayout_scene_inner();
         #[cfg(feature = "perf")]
         {
+            drop(trace);
             self.perf.relayout_ns += elapsed_ns(started);
         }
     }
@@ -3995,6 +4044,8 @@ impl Engine {
         #[cfg(feature = "perf")]
         let started = (self.measure_depth == 0).then(Instant::now);
         #[cfg(feature = "perf")]
+        let trace = (self.measure_depth == 0).then(|| PerfTraceSection::new(b"Ink measure\0"));
+        #[cfg(feature = "perf")]
         {
             self.measure_depth += 1;
             self.perf.nodes_measured += 1;
@@ -4003,6 +4054,7 @@ impl Engine {
         #[cfg(feature = "perf")]
         {
             self.measure_depth -= 1;
+            drop(trace);
             if let Some(started) = started {
                 self.perf.measure_ns += elapsed_ns(started);
             }

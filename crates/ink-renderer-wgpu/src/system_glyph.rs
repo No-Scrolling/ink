@@ -47,6 +47,10 @@ pub(crate) struct SystemGlyphAtlas {
     pages: Vec<AtlasPage>,
     glyphs: HashMap<SystemGlyphKey, SystemGlyphEntry>,
     next_request_id: u64,
+    #[cfg(feature = "perf")]
+    cache_misses: u64,
+    #[cfg(feature = "perf")]
+    uploaded_bytes: u64,
 }
 
 impl SystemGlyphAtlas {
@@ -56,6 +60,10 @@ impl SystemGlyphAtlas {
             pages: Vec::new(),
             glyphs: HashMap::new(),
             next_request_id: 1,
+            #[cfg(feature = "perf")]
+            cache_misses: 0,
+            #[cfg(feature = "perf")]
+            uploaded_bytes: 0,
         }
     }
 
@@ -86,6 +94,10 @@ impl SystemGlyphAtlas {
                 self.next_request_id = self.next_request_id.wrapping_add(1).max(1);
                 self.glyphs
                     .insert(key.clone(), SystemGlyphEntry::Pending(id));
+                #[cfg(feature = "perf")]
+                {
+                    self.cache_misses += 1;
+                }
                 return Some(SystemGlyphRequest {
                     id,
                     grapheme: key.grapheme,
@@ -154,7 +166,19 @@ impl SystemGlyphAtlas {
                 size,
             }),
         );
+        #[cfg(feature = "perf")]
+        {
+            self.uploaded_bytes += pixels.len() as u64;
+        }
         Ok(())
+    }
+
+    #[cfg(feature = "perf")]
+    pub fn take_perf(&mut self) -> (u64, u64) {
+        (
+            std::mem::take(&mut self.cache_misses),
+            std::mem::take(&mut self.uploaded_bytes),
+        )
     }
 }
 

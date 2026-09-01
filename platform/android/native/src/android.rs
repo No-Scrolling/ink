@@ -12,6 +12,8 @@ use std::time::Instant;
 
 #[cfg(feature = "image")]
 use ink_core::ImageFit;
+#[cfg(feature = "benchmark")]
+use ink_core::PerfTraceSection;
 use ink_core::{
     AppDefinition, CameraPreviewKind, ControllerId, Engine, Hydration, NativeRequestKind,
     PUBLIC_SANS, PointerOutcome, ResourceError, ResourceErrorKind, StateValue, TextEdit,
@@ -210,6 +212,8 @@ impl AndroidEngine {
 
     fn pointer(&mut self, action: i32, x: f32, y: f32) -> jint {
         #[cfg(feature = "benchmark")]
+        let update_trace = (action == 1).then(|| PerfTraceSection::new(b"Ink pointer update\0"));
+        #[cfg(feature = "benchmark")]
         let started = Instant::now();
         let outcome = match action {
             0 => self.engine.pointer_down(x, y),
@@ -225,6 +229,8 @@ impl AndroidEngine {
         if action == 1 && outcome.changed {
             self.update_ns = elapsed_ns(started);
         }
+        #[cfg(feature = "benchmark")]
+        drop(update_trace);
         pointer_result(outcome)
     }
 
@@ -341,7 +347,7 @@ impl AndroidEngine {
             android_log(
                 ANDROID_LOG_INFO,
                 &format!(
-                    "Perf revision={} update_ns={} materialise_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} queue_submit_cpu_ns={} queue_present_cpu_ns={} frame_ns={}",
+                    "Perf revision={} update_ns={} materialise_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} queue_submit_cpu_ns={} queue_present_cpu_ns={} frame_ns={} instances={} uploaded_bytes={} draw_calls={} cache_misses={}",
                     option_env!("INK_BENCHMARK_REVISION").unwrap_or("unknown"),
                     self.update_ns,
                     core.materialise_ns,
@@ -357,6 +363,10 @@ impl AndroidEngine {
                     renderer.queue_submit_cpu_ns,
                     renderer.queue_present_cpu_ns,
                     renderer.frame_ns,
+                    renderer.instances,
+                    renderer.uploaded_bytes,
+                    renderer.draw_calls,
+                    renderer.cache_misses,
                 ),
             );
             self.update_ns = 0;

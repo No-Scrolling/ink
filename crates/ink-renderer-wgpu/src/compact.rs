@@ -13,6 +13,8 @@ use ink_core::{
     Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene,
     TextAlign, TextRun, is_emoji_grapheme,
 };
+#[cfg(feature = "perf")]
+use ink_core::{PerfTraceSection, perf_trace_counter};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::system_glyph::{
@@ -63,7 +65,7 @@ impl<T: Pod + PartialEq> InstanceBuffer<T> {
         }
     }
 
-    fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, instances: &[T]) {
+    fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, instances: &[T]) -> usize {
         let resized = instances.len() > self.capacity;
         if resized {
             self.capacity = instances.len().next_power_of_two();
@@ -87,15 +89,19 @@ impl<T: Pod + PartialEq> InstanceBuffer<T> {
                 .rposition(|(current, next)| current != next)
                 .map_or(start, |index| index + 1)
         };
-        if start < end {
+        let uploaded_bytes = if start < end {
             queue.write_buffer(
                 &self.buffer,
                 (start * size_of::<T>()) as u64,
                 bytemuck::cast_slice(&instances[start..end]),
             );
-        }
+            (end - start) * size_of::<T>()
+        } else {
+            0
+        };
         self.instances.clear();
         self.instances.extend_from_slice(instances);
+        uploaded_bytes
     }
 }
 
@@ -213,6 +219,10 @@ struct ImageCache {
     bind_group_layout: wgpu::BindGroupLayout,
     images: HashMap<u64, CachedImage>,
     frame: u64,
+    #[cfg(feature = "perf")]
+    cache_misses: u64,
+    #[cfg(feature = "perf")]
+    uploaded_bytes: u64,
 }
 
 impl ImageCache {
@@ -221,6 +231,10 @@ impl ImageCache {
             bind_group_layout,
             images: HashMap::new(),
             frame: 0,
+            #[cfg(feature = "perf")]
+            cache_misses: 0,
+            #[cfg(feature = "perf")]
+            uploaded_bytes: 0,
         }
     }
 
@@ -336,6 +350,11 @@ impl ImageCache {
                     last_used: self.frame,
                 },
             );
+            #[cfg(feature = "perf")]
+            {
+                self.cache_misses += 1;
+                self.uploaded_bytes += expected_length as u64;
+            }
         }
         self.images
             .get_mut(&id)
@@ -348,6 +367,14 @@ impl ImageCache {
 
     fn begin_frame(&mut self) {
         self.frame = self.frame.wrapping_add(1);
+    }
+
+    #[cfg(feature = "perf")]
+    fn take_perf(&mut self) -> (u64, u64) {
+        (
+            std::mem::take(&mut self.cache_misses),
+            std::mem::take(&mut self.uploaded_bytes),
+        )
     }
 
     fn trim(&mut self, protected: &HashSet<u64>) {
@@ -400,6 +427,10 @@ struct GlyphAtlas {
     cursor_x: u32,
     cursor_y: u32,
     row_height: u32,
+    #[cfg(feature = "perf")]
+    cache_misses: u64,
+    #[cfg(feature = "perf")]
+    uploaded_bytes: u64,
 }
 
 impl GlyphAtlas {
@@ -450,6 +481,10 @@ impl GlyphAtlas {
             cursor_x: 0,
             cursor_y: 0,
             row_height: 0,
+            #[cfg(feature = "perf")]
+            cache_misses: 0,
+            #[cfg(feature = "perf")]
+            uploaded_bytes: 0,
         })
     }
 
@@ -527,6 +562,11 @@ impl GlyphAtlas {
         self.cursor_x += width;
         self.row_height = self.row_height.max(height);
         self.glyphs.insert((id, size), glyph);
+        #[cfg(feature = "perf")]
+        {
+            self.cache_misses += 1;
+            self.uploaded_bytes += pixels.len() as u64;
+        }
         Ok(Some(glyph))
     }
 
@@ -587,7 +627,20 @@ impl GlyphAtlas {
         self.cursor_x += padded_width;
         self.row_height = self.row_height.max(padded_height);
         self.masks.insert(mask.id, cached);
+        #[cfg(feature = "perf")]
+        {
+            self.cache_misses += 1;
+            self.uploaded_bytes += mask.pixels.as_ref().len() as u64;
+        }
         Ok(cached)
+    }
+
+    #[cfg(feature = "perf")]
+    fn take_perf(&mut self) -> (u64, u64) {
+        (
+            std::mem::take(&mut self.cache_misses),
+            std::mem::take(&mut self.uploaded_bytes),
+        )
     }
 }
 
@@ -609,6 +662,10 @@ pub struct RenderPerfMetrics {
     pub queue_submit_cpu_ns: u64,
     pub queue_present_cpu_ns: u64,
     pub frame_ns: u64,
+    pub instances: u64,
+    pub uploaded_bytes: u64,
+    pub draw_calls: u64,
+    pub cache_misses: u64,
 }
 
 pub struct Renderer {
@@ -989,6 +1046,8 @@ impl Renderer {
     pub fn render(&mut self, scene: &Scene, text_cursor_visible: bool) -> Result<RenderOutcome> {
         #[cfg(feature = "perf")]
         let frame_started = Instant::now();
+        #[cfg(feature = "perf")]
+        let frame_trace = PerfTraceSection::new(b"Ink frame\0");
         if scene.width == 0 || scene.height == 0 {
             return Ok(RenderOutcome::Skipped);
         }
@@ -1001,22 +1060,30 @@ impl Renderer {
             }
             #[cfg(feature = "perf")]
             let prepare_started = Instant::now();
+            #[cfg(feature = "perf")]
+            let prepare_trace = PerfTraceSection::new(b"Ink prepare\0");
             self.prepare(scene)?;
             #[cfg(feature = "perf")]
             {
+                drop(prepare_trace);
                 self.perf.prepare_ns += elapsed_ns(prepare_started);
             }
         } else if self.prepared.image_revision != scene.image_revision {
             #[cfg(feature = "perf")]
             let prepare_started = Instant::now();
+            #[cfg(feature = "perf")]
+            let prepare_trace = PerfTraceSection::new(b"Ink prepare\0");
             self.refresh_images(scene)?;
             #[cfg(feature = "perf")]
             {
+                drop(prepare_trace);
                 self.perf.prepare_ns += elapsed_ns(prepare_started);
             }
         }
         #[cfg(feature = "perf")]
         let upload_started = Instant::now();
+        #[cfg(feature = "perf")]
+        let upload_trace = PerfTraceSection::new(b"Ink upload\0");
         let scroll_y = if scene.height == 0 {
             0.0
         } else {
@@ -1036,15 +1103,26 @@ impl Renderer {
         let cursor_end = self.overlay_instances.len() as u32;
         push_scrollbar_instances(scene, &mut self.overlay_instances);
         let overlay_end = self.overlay_instances.len() as u32;
-        self.overlay_buffer
-            .write(&self.device, &self.queue, &self.overlay_instances);
+        let _overlay_uploaded_bytes =
+            self.overlay_buffer
+                .write(&self.device, &self.queue, &self.overlay_instances);
         #[cfg(feature = "perf")]
         {
+            drop(upload_trace);
             self.perf.upload_ns += elapsed_ns(upload_started);
+            self.perf.uploaded_bytes +=
+                (size_of::<TransformUniform>() + _overlay_uploaded_bytes) as u64;
+            let (image_misses, image_bytes) = self.image_cache.take_perf();
+            let (glyph_misses, glyph_bytes) = self.glyph_atlas.take_perf();
+            let (system_glyph_misses, system_glyph_bytes) = self.system_glyph_atlas.take_perf();
+            self.perf.cache_misses += image_misses + glyph_misses + system_glyph_misses;
+            self.perf.uploaded_bytes += image_bytes + glyph_bytes + system_glyph_bytes;
         }
 
         #[cfg(feature = "perf")]
         let acquire_started = Instant::now();
+        #[cfg(feature = "perf")]
+        let acquire_trace = PerfTraceSection::new(b"Ink acquire\0");
         let mut retried_outdated_surface = false;
         let frame = loop {
             match self.surface.get_current_texture() {
@@ -1065,10 +1143,13 @@ impl Renderer {
         };
         #[cfg(feature = "perf")]
         {
+            drop(acquire_trace);
             self.perf.acquire_ns += elapsed_ns(acquire_started);
         }
         #[cfg(feature = "perf")]
         let encode_started = Instant::now();
+        #[cfg(feature = "perf")]
+        let encode_trace = PerfTraceSection::new(b"Ink encode\0");
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -1209,22 +1290,62 @@ impl Renderer {
         let command_buffer = encoder.finish();
         #[cfg(feature = "perf")]
         {
+            drop(encode_trace);
             self.perf.encode_ns += elapsed_ns(encode_started);
+            let range_length = |range: &Range<u32>| u64::from(range.end - range.start);
+            let mut instances = range_length(&self.prepared.quad_fixed)
+                + range_length(&self.prepared.quad_scroll)
+                + range_length(&self.prepared.text_fixed)
+                + range_length(&self.prepared.text_scroll)
+                + u64::from(overlay_end);
+            instances += self
+                .prepared
+                .image_draws
+                .iter()
+                .map(|draw| range_length(&draw.instances))
+                .sum::<u64>();
+            instances += self
+                .prepared
+                .system_glyph_draws
+                .iter()
+                .map(|draw| range_length(&draw.instances))
+                .sum::<u64>();
+            let draw_calls = u64::from(!self.prepared.quad_fixed.is_empty())
+                + u64::from(!self.prepared.quad_scroll.is_empty())
+                + self.prepared.image_draws.len() as u64
+                + self.prepared.system_glyph_draws.len() as u64
+                + u64::from(!self.prepared.text_fixed.is_empty())
+                + u64::from(!self.prepared.text_scroll.is_empty())
+                + u64::from(cursor_end > 0)
+                + u64::from(cursor_end < overlay_end);
+            self.perf.instances += instances;
+            self.perf.draw_calls += draw_calls;
+            perf_trace_counter(b"Ink instances\0", instances);
+            perf_trace_counter(b"Ink uploaded bytes\0", self.perf.uploaded_bytes);
+            perf_trace_counter(b"Ink draw calls\0", draw_calls);
+            perf_trace_counter(b"Ink cache misses\0", self.perf.cache_misses);
         }
         #[cfg(feature = "perf")]
         let queue_submit_started = Instant::now();
+        #[cfg(feature = "perf")]
+        let queue_submit_trace = PerfTraceSection::new(b"Ink queue submit\0");
         self.queue.submit(Some(command_buffer));
         #[cfg(feature = "perf")]
         {
+            drop(queue_submit_trace);
             self.perf.queue_submit_cpu_ns += elapsed_ns(queue_submit_started);
         }
         #[cfg(feature = "perf")]
         let queue_present_started = Instant::now();
+        #[cfg(feature = "perf")]
+        let queue_present_trace = PerfTraceSection::new(b"Ink queue present\0");
         self.queue.present(frame);
         #[cfg(feature = "perf")]
         {
+            drop(queue_present_trace);
             self.perf.queue_present_cpu_ns += elapsed_ns(queue_present_started);
             self.perf.frame_ns += elapsed_ns(frame_started);
+            drop(frame_trace);
         }
         Ok(RenderOutcome::Presented)
     }
@@ -1249,7 +1370,11 @@ impl Renderer {
             let mut quads = quad_instances(scene, false);
             let fixed_end = quads.len() as u32;
             quads.extend(quad_instances(scene, true));
-            self.quad_buffer.write(&self.device, &self.queue, &quads);
+            let _uploaded_bytes = self.quad_buffer.write(&self.device, &self.queue, &quads);
+            #[cfg(feature = "perf")]
+            {
+                self.perf.uploaded_bytes += _uploaded_bytes as u64;
+            }
             self.prepared.quad_fixed = 0..fixed_end;
             self.prepared.quad_scroll = fixed_end..quads.len() as u32;
             self.prepared.quads.clone_from(&scene.quads);
@@ -1306,9 +1431,15 @@ impl Renderer {
                 });
             }
 
-            self.text_buffer.write(&self.device, &self.queue, &text);
-            self.system_glyph_buffer
-                .write(&self.device, &self.queue, &system_glyph_instances);
+            let _text_uploaded_bytes = self.text_buffer.write(&self.device, &self.queue, &text);
+            let _system_glyph_uploaded_bytes =
+                self.system_glyph_buffer
+                    .write(&self.device, &self.queue, &system_glyph_instances);
+            #[cfg(feature = "perf")]
+            {
+                self.perf.uploaded_bytes +=
+                    (_text_uploaded_bytes + _system_glyph_uploaded_bytes) as u64;
+            }
             self.prepared.text_fixed = 0..fixed_end;
             self.prepared.text_scroll = fixed_end..text.len() as u32;
             self.prepared.text_runs = text_runs;
@@ -1325,7 +1456,11 @@ impl Renderer {
             || !prepared_images_match(&self.prepared.images, &scene.images)
         {
             let (images, draws) = self.image_scene_instances(scene)?;
-            self.image_buffer.write(&self.device, &self.queue, &images);
+            let _uploaded_bytes = self.image_buffer.write(&self.device, &self.queue, &images);
+            #[cfg(feature = "perf")]
+            {
+                self.perf.uploaded_bytes += _uploaded_bytes as u64;
+            }
             self.prepared.image_draws = draws;
             self.prepared.images.clear();
             self.prepared
@@ -1343,7 +1478,11 @@ impl Renderer {
 
     fn refresh_images(&mut self, scene: &Scene) -> Result<()> {
         let (images, draws) = self.image_scene_instances(scene)?;
-        self.image_buffer.write(&self.device, &self.queue, &images);
+        let _uploaded_bytes = self.image_buffer.write(&self.device, &self.queue, &images);
+        #[cfg(feature = "perf")]
+        {
+            self.perf.uploaded_bytes += _uploaded_bytes as u64;
+        }
         self.prepared.image_draws = draws;
         self.prepared.images.clear();
         self.prepared

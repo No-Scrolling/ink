@@ -22,4 +22,4 @@ path = "src/lib.rs"
 
 [features]
 image = []
-perf = []
+perf = ["ink-core/perf"]
