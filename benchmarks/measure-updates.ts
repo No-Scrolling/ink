@@ -91,9 +91,19 @@ function thermalStatus(): number {
 }
 
 function processCpuNanoseconds(variant: Variant): number {
-  const pid = shell(`pidof -s ${variant.packageName}`).trim();
+  const deadline = performance.now() + 1_000;
+  let pid = "";
+  while (performance.now() < deadline) {
+    const result = Bun.spawnSync(
+      [...adbCommand, "shell", `pidof -s ${variant.packageName}`],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    pid = result.stdout.toString().trim();
+    if (/^\d+$/.test(pid)) break;
+    sleep(25);
+  }
   if (!/^\d+$/.test(pid)) {
-    throw new Error(`Could not find ${variant.packageName}`);
+    throw new Error(`Could not find a running ${variant.packageName} process`);
   }
   const value = shell(
     `awk '{ total += $1 } END { printf "%.0f", total }' /proc/${pid}/task/*/schedstat`,
