@@ -12,13 +12,16 @@ type Variant = {
   packageName: string;
   apk: string;
   revision: string;
+  instrumented: boolean;
   expectedSha256?: string;
   component: string;
   bytes: number;
   sha256: string;
 };
 
-type VariantInput = Omit<Variant, "component" | "bytes" | "sha256">;
+type VariantInput = Omit<Variant, "component" | "bytes" | "sha256" | "instrumented"> & {
+  instrumented?: boolean;
+};
 
 const defaultPackageName = "com.vandam.benchmark.ink.updates";
 const variantInputs: VariantInput[] = process.env.INK_UPDATE_VARIANTS
@@ -41,7 +44,7 @@ type Scenario = {
 type Sample = {
   cpuMs: number;
   startMs: number;
-  phases: Record<string, number>;
+  phases?: Record<string, number>;
 };
 
 const scenarios: Scenario[] = [
@@ -134,6 +137,21 @@ function waitForPerformancePhases() {
   throw new Error("The benchmark tap produced no instrumented update frame");
 }
 
+function screenshotHash(): string {
+  const path = "/data/local/tmp/ink-update-benchmark.png";
+  shell(`screencap -p ${path}`);
+  return shell(`sha256sum ${path}`).split(/\s+/)[0];
+}
+
+function waitForVisualChange(previous: string) {
+  const deadline = performance.now() + 2_000;
+  while (performance.now() < deadline) {
+    if (screenshotHash() !== previous) return;
+    sleep(25);
+  }
+  throw new Error("The benchmark tap did not produce a visible state change");
+}
+
 function start(variant: Variant, route: string): number {
   for (const candidate of variants) {
     shell(`am force-stop ${candidate.packageName}`);
@@ -164,6 +182,7 @@ const variants = variantInputs.map((variant): Variant => {
   }
   return {
     ...variant,
+    instrumented: variant.instrumented ?? true,
     component: `${variant.packageName}/com.vandam.ink.MainActivity`,
     bytes,
     sha256,
@@ -231,17 +250,19 @@ for (let round = 0; round < rounds; round += 1) {
     for (const variant of variantOrder) {
       const startMs = start(variant, scenario.route);
       sleep(500);
+      const screenshotBefore = variant.instrumented ? undefined : screenshotHash();
       shell("logcat -c");
       const cpuBefore = processCpuNanoseconds(variant);
       shell(`input tap 540 ${scenario.tapY}`);
-      const performance = waitForPerformancePhases();
+      const performance = variant.instrumented ? waitForPerformancePhases() : undefined;
+      if (screenshotBefore) waitForVisualChange(screenshotBefore);
       const cpuMs = (processCpuNanoseconds(variant) - cpuBefore) / 1_000_000;
-      if (performance.revision !== variant.revision) {
+      if (performance && performance.revision !== variant.revision) {
         throw new Error(
           `${variant.name} APK reports revision ${performance.revision}; expected ${variant.revision}`,
         );
       }
-      if (
+      if (performance &&
         (performance.phases.full_rebuilds ?? 0) +
           (performance.phases.incremental_rebuilds ?? 0) ===
         0
@@ -251,7 +272,7 @@ for (let round = 0; round < rounds; round += 1) {
       samplesByVariant.get(variant.name)?.get(scenario.name)?.push({
         cpuMs,
         startMs,
-        phases: performance.phases,
+        ...(performance ? { phases: performance.phases } : {}),
       });
     }
   }
@@ -261,6 +282,7 @@ for (let round = 0; round < rounds; round += 1) {
 const results = variants.map((variant) => ({
   name: variant.name,
   revision: variant.revision,
+  instrumented: variant.instrumented,
   apk: {
     path: variant.apk,
     bytes: variant.bytes,
@@ -270,7 +292,9 @@ const results = variants.map((variant) => ({
     const samples = samplesByVariant.get(variant.name)?.get(scenario.name) ?? [];
     const cpu = samples.map((sample) => sample.cpuMs);
     const starts = samples.map((sample) => sample.startMs);
-    const phaseNames = new Set(samples.flatMap((sample) => Object.keys(sample.phases)));
+    const phaseNames = new Set(
+      samples.flatMap((sample) => Object.keys(sample.phases ?? {})),
+    );
     const summary = {
       name: scenario.name,
       route: scenario.route,
@@ -282,7 +306,7 @@ const results = variants.map((variant) => ({
       phases: Object.fromEntries(
         [...phaseNames].map((name) => {
           const values = samples.flatMap((sample) =>
-            sample.phases[name] === undefined ? [] : [sample.phases[name]],
+            sample.phases?.[name] === undefined ? [] : [sample.phases[name]],
           );
           return [
             name,
