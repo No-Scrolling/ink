@@ -163,8 +163,8 @@ function waitForVisualChange(previous: string) {
 }
 
 function start(variant: Variant, route: string): number {
-  for (const candidate of variants) {
-    shell(`am force-stop ${candidate.packageName}`);
+  for (const packageName of packagesToStop) {
+    shell(`am force-stop ${packageName}`);
   }
   const result = shell(
     `am start -W -n ${variant.component} --es ${routeExtra} ${route}`,
@@ -198,6 +198,10 @@ const variants = variantInputs.map((variant): Variant => {
     sha256,
   };
 });
+const packagesToStop = new Set([
+  defaultPackageName,
+  ...variants.map((variant) => variant.packageName),
+]);
 if (new Set(variants.flatMap((variant) => [variant.name, variant.packageName])).size !== variants.length * 2) {
   throw new Error("Update benchmark variant names and package names must be unique");
 }
@@ -220,8 +224,8 @@ function restorePower() {
 }
 process.on("exit", restorePower);
 shell("settings put global stay_on_while_plugged_in 7");
-for (const variant of variants) {
-  shell(`am force-stop ${variant.packageName}`);
+for (const packageName of packagesToStop) {
+  shell(`am force-stop ${packageName}`);
 }
 shell("input keyevent 224");
 sleep(300);
