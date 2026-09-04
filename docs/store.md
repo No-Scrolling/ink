@@ -47,7 +47,7 @@ export function Units() {
 }
 ```
 
-Observation activates loading after commit. Snapshots are `loading`, `ready` with `data`, or `error`. `get()` can be used by a worker without React. Successful local writes and committed writes from another app runtime invalidate observations. UI commands should use [useAction](data.md) to display write failures.
+Observation activates loading after commit. Snapshots are `loading`, `ready` with `data`, or `error`. `get()` can be used by a worker without React. Successful local writes and committed writes from another app runtime invalidate observations. UI commands should use `useAction` to display write failures.
 
 ## Stored shape
 

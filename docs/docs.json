@@ -28,9 +28,7 @@
         "group": "Ink",
         "pages": [
           "ink",
-          "architecture",
-          "runtime",
-          "data"
+          "architecture"
         ]
       },
       {
@@ -60,14 +58,6 @@
           "sensors",
           "bluetooth",
           "reader"
-        ]
-      },
-      {
-        "group": "Extending Ink",
-        "pages": [
-          "modules",
-          "developing-modules",
-          "open-meteo-module"
         ]
       }
     ]

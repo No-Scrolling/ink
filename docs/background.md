@@ -37,7 +37,7 @@ await syncMessages.enqueue({ accountId }, {
 });
 ```
 
-The build bundles registered task code and its dependencies into a headless entry. Enqueueing persists the task ID and JSON input; it does not serialise a function or capture foreground state. Imports and normal TypeScript logic work inside workers.
+The build bundles registered task code and its dependencies into a headless entry. Enqueueing persists the task ID and JSON input; it does not serialise a function or capture foreground state.
 
 ## Execution contract
 
@@ -56,5 +56,3 @@ Commit an outbox row before requesting a wakeup. Recover unscheduled rows on app
 ## Choose native services for continuous work
 
 Audio playback and downloads have specialised native lifecycles. A permanent JavaScript loop or interval is not a background service. Push can request reconciliation through [LightOS](light-sdk.md) where supported, but handlers must validate the payload and tolerate duplicate delivery.
-
-No React tree is mounted in a worker. Ordinary domain functions and npm libraries matching the host profile can run there.

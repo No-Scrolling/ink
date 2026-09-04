@@ -4,9 +4,7 @@ description: "Small TypeScript apps with a native Light Phone interface."
 tag: "Design specification"
 ---
 
-Ink is for focused Light Phone III apps: a weather forecast, a conversation, a saved ticket, a music queue or a page of something worth reading. Write the behaviour in TypeScript, compose the interface with TSX, and install packages with your usual package manager.
-
-Ink supplies the native layout, text, scrolling, keyboard and renderer. Your app supplies the content and behaviour.
+Build Light Phone III apps with React and TypeScript. Ink provides native components, navigation, rendering and device APIs.
 
 > **Design specification.** These docs describe the intended Ink APIs and development experience. Some interfaces and commands are not yet implemented.
 
@@ -35,44 +33,6 @@ export default function App() {
   );
 }
 ```
-
-## Ordinary TypeScript
-
-Components accept props. Functions can use closures, loops, objects, arrays, classes, promises and installed JavaScript libraries. There is no special subset for a transformation or a network response.
-
-Ink uses React components, hooks and the standard React JSX runtime. Ink’s custom React renderer commits updates to its retained native UI. Renderer-independent React hooks and providers can be reused; components that require the DOM or React Native views need an Ink implementation.
-
-```tsx
-import { Button, Text, Stack } from "ink";
-
-type Place = { id: string; name: string; temperature: number };
-
-export function ForecastRow({ place, onOpen }: {
-  place: Place;
-  onOpen: (id: string) => void;
-}) {
-  return (
-    <Stack axis="horizontal" justify="space-between" align="center">
-      <Button onPress={() => onOpen(place.id)}>{place.name}</Button>
-      <Text>{Math.round(place.temperature)}°</Text>
-    </Stack>
-  );
-}
-```
-
-## The component model
-
-React manages component identity, state and reconciliation. Import standard hooks from `react` and Ink-specific hooks from `ink`. A component can run again when its parent renders or subscribed state changes. Hooks preserve values by component identity and call order: call them at the top level, before conditional returns. Rendering describes UI and must not start requests, timers, writes or native sessions directly.
-
-- `useState(initial)` stores component-local state; functional updates receive the latest value.
-- `useMemo(calculate, dependencies)` avoids repeating an expensive pure calculation.
-- `useRef(initial)` retains a non-rendering value, such as a request ID.
-- `useEffect(setup, dependencies)` runs after commit and cleans up before replacement or unmount.
-- `useVisibleEffect(setup, dependencies)` additionally cleans up when its screen is hidden or the app backgrounds.
-- `useResource` and `useAction` connect asynchronous functions to UI. See [Data and lifecycle](data.md).
-- `useSnapshot(source)` subscribes to an external store with `getSnapshot()` and `subscribe(listener)`.
-
-Dependency arrays compare entries with `Object.is`. State updates are batched; changing state does not synchronously draw a frame. Treat objects and arrays in state as immutable. `Date`, `Map`, `Set` and native controller objects can be held in memory, but persistence and routes have narrower data contracts.
 
 ## An Ink screen
 
@@ -138,7 +98,7 @@ Remote images use HTTPS. Images require dimensions or a bounded parent, can use 
   items={places}
   keyExtractor={place => place.id}
   estimatedItemHeight={64}
-  renderItem={place => <ForecastRow place={place} onOpen={openPlace} />}
+  renderItem={place => <Button onPress={() => openPlace(place.id)}>{place.name}</Button>}
   empty={<Text>No saved places</Text>}
 />
 ```
@@ -187,5 +147,3 @@ ink logs
 ```
 
 `ink check` checks TypeScript, route declarations, assets, host API compatibility and native package contracts. It does not prove every dynamic execution path. `ink info` explains the JavaScript bundle, linked native packages, permissions and size contributions. `ink build` produces a release APK using the signing configuration in `ink.toml`.
-
-Next: [Data and lifecycle](data.md), [npm packages](modules.md), [LightOS](light-sdk.md), or [a complete weather module](open-meteo-module.md).

@@ -38,7 +38,7 @@ modules = ["@ink/location"]
 enabled = true
 ```
 
-`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. Native packages are installed through npm and registered by `ink add`; see [Packages](modules.md).
+`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. Native packages are installed through npm and registered by `ink add`.
 
 ## Build responsibilities
 

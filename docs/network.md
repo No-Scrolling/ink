@@ -4,7 +4,7 @@ description: "Use fetch, streams and sockets with native transport."
 tag: "Design specification"
 ---
 
-Use standard `fetch` for HTTP. Enable the `network` capability in `ink.toml`; see the [JavaScript environment](runtime.md). Ink runs transport natively and delivers completions to JavaScript.
+Use standard `fetch` for HTTP. Enable the `network` capability in `ink.toml`. Ink runs transport natively and delivers completions to JavaScript.
 
 ```ts
 export async function getDepartureBoard(stopId: string, signal?: AbortSignal) {
