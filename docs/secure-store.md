@@ -1,58 +1,23 @@
 ---
 title: "Secure store"
-description: "Store small secrets behind opaque references."
-tag: "Planned"
+description: "Persist credentials using Android-backed protection."
+tag: "Design specification"
 ---
 
-`@ink/secure-store` saves credentials and small secret material without returning restored text to app state.
+`@ink/secure-store` persists small secret strings with native encryption and Android Keystore-backed key protection. Use it for refresh tokens, provider credentials and account secrets.
 
-## Store a secret
+```ts
+import { secureStore } from "@ink/secure-store";
 
-Create a slot with `secret()` and save from a user action:
-
-```tsx
-import { secret } from "@ink/secure-store";
-import { Button, Text, state } from "ink";
-
-const tokenInput = state("");
-const apiToken = secret("api.token");
-
-<Button onPress={() => apiToken.store(tokenInput.value)}>Save token</Button>
-
-{apiToken.phase === "ready" ? <Text>Token saved</Text> : null}
-{apiToken.phase === "empty" ? <Text>No token saved</Text> : null}
+await secureStore.set("account.work.refresh-token", refreshToken);
+const savedToken = await secureStore.get("account.work.refresh-token");
+await secureStore.remove("account.work.refresh-token");
 ```
 
-The slot phases are `loading`, `empty`, `ready`, and `error`. Its `action` reports `idle`, `running`, `success`, or `error` for `store()` and `remove()`.
+`get()` returns `string | null`. Operations reject on unavailable storage, invalidated keys or write failures. A failed read is different from a missing value; do not quietly sign a user out on every storage error.
 
-`store()` accepts 1 to 4,096 UTF-8 bytes and replaces the existing value atomically. `remove()` invalidates its current generation immediately, then deletes the saved record.
+Secrets can be read by JavaScript when a provider library needs them. Encryption protects persisted data; it does not isolate a secret from dependencies running in the same app. Avoid placing tokens in component state, routes, analytics or logs.
 
-Package-created keys are automatically namespaced. App keys must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`. An app can keep up to 64 secret slots.
+Namespace values by account and delete them on sign-out. Native key invalidation or device transfer can require reauthentication. Encrypted values are excluded from ordinary portable backups unless a supported recovery scheme is explicitly configured. Store public account metadata separately so an expired session can still show the account name.
 
-## Use a secret
-
-Every slot exposes a stable opaque reference, even while it is loading or empty. Pass the slot to an operation that understands its purpose:
-
-```tsx
-const apiToken = secret("api.token");
-
-const profile = json<Profile>("https://api.example/profile", {
-  authorization: bearer(apiToken),
-});
-```
-
-Network waits while the slot restores, reloads when its generation changes, and returns `authentication-required` while it is empty. This keeps resource declarations stable and hides restoration ordering from callers.
-
-The reference has no string conversion or serialised form. It cannot enter state, route data, Files, or Store. Access is granted only to the operation receiving it, and its readable value is omitted from diagnostics.
-
-Auth uses secure storage for provider credentials. Crypto signing identities use Android Keystore directly and do not store exportable private key bytes in this module.
-
-## Lifecycle and errors
-
-Secret slots are application-scoped and survive process death and upgrades, but not app-data clearing or uninstall. Android backup and device transfer exclude them.
-
-Existing references observe generation invalidation immediately. An operation that already acquired a short-lived lease can finish; later operations cannot use the removed generation.
-
-Errors distinguish a locked device, invalidated encryption keys, unavailable secure storage, quota limits, storage failures, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
-
-The package does not open a permission or biometric prompt. A `locked` error can be retried after the device is unlocked. A `key-invalidated` secret must be replaced or removed.
+Prefer [Auth](auth.md) for standard OAuth flows. It owns token refresh and secure persistence; apps should not implement competing refresh loops.

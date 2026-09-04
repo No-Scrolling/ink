@@ -1,77 +1,32 @@
 ---
 title: "Camera"
-description: "Capture photos or video through a native camera session."
-tag: "Partial"
+description: "Native preview and capture owned by the visible screen."
+tag: "Design specification"
 ---
 
-`@ink/camera` captures photos and video through one native camera session. `CameraView` owns the standard capture, review, retake, and acceptance interface; the session exposes commands for custom layouts.
-
-## Capture a photo
-
-Create a session and pass it to `CameraView`:
+`@ink/camera` provides a native preview and still capture. Use it for a chat photo, a document image or an app-specific capture flow.
 
 ```tsx
-import { CameraView, cameraCapture } from "@ink/camera";
-import { Screen } from "ink";
+import { Button, Screen, Text, useAction } from "ink";
+import { CameraPreview, useCamera } from "@ink/camera";
 
-export default function Photo() {
-  const camera = cameraCapture({
-    kind: "photo",
-    facing: "back",
-    permissionPrompt: "Allow camera to take a photo",
-  });
-
+export function Capture() {
+  const camera = useCamera({ facing: "back" });
+  const capture = useAction(() => camera.capture());
   return (
     <Screen title="Photo">
-      <CameraView session={camera} />
+      <CameraPreview controller={camera} />
+      <Button onPress={() => capture.run()} disabled={!camera.state.ready}>Take photo</Button>
+      {capture.status === "error" && <Text>{capture.error.message}</Text>}
     </Screen>
   );
 }
 ```
 
-The standard view shows an explicit permission action when needed. Creating the session never opens a prompt. On Light Phone III, Ink uses the LightOS permission screen; ordinary Android development devices use the Android prompt.
+The hook activates after commit when the screen is visible. Permission states are exposed separately from readiness; render a permission explanation and explicit `camera.requestPermission()` action when needed. Merely constructing the hook does not show a permission prompt.
 
-After capture, the view shows **Retake** and **Use photo**. Accepting produces:
+Preview, focus and image processing remain native. `capture()` returns a temporary managed file with dimensions and orientation metadata. Promote it with [Files](files.md) before saving a durable record or leaving it in an outbox.
 
-- `source`, an opaque image accepted by `Image.src`;
-- `file`, a temporary `FileHandle` accepted by Files and Media;
-- pixel `width` and `height`;
-- `mimeType` and `capturedAtMs`.
+The camera releases when its screen is covered or the app backgrounds, and reacquires on return. Interrupted capture rejects or completes with a result tied to the original request; it cannot update a replacement screen. Handle denial, camera-in-use and unavailable hardware distinctly.
 
-Call `file("photos/profile.jpg").replace(result.file)` when the capture must become durable.
-
-## Record video
-
-Use the same interface with `kind: "video"`:
-
-```tsx
-const camera = cameraCapture({
-  kind: "video",
-  facing: "back",
-  audio: true,
-  maximumDurationMs: 60_000,
-  permissionPrompt: "Allow camera and microphone to record video",
-});
-
-<CameraView session={camera} />
-```
-
-Camera owns the composed camera and microphone permission flow for video. Callers do not need to coordinate Audio permission separately.
-
-The accepted value adds `durationMs` and `sizeBytes`. `maximumDurationMs` accepts 1 second to 30 minutes and defaults to 5 minutes. Video quality is `"compact"`, `"balanced"`, or `"maximum"`.
-
-## Build a custom camera interface
-
-Use `camera.permission` and its `request()` command when the standard view is not appropriate. The session also provides `capture()`, `startRecording()`, `stopRecording()`, `retake()`, `accept()`, `focus()`, `setZoom()`, `setTorch()`, and `switchFacing()` where supported.
-
-The session publishes one complete snapshot with a domain `phase`: `idle`, `opening`, `active`, `capturing`, `recording`, `reviewing`, `ready`, or `error`. Commands are serialised. Unsupported commands return an action error without closing the session.
-
-## Lifecycle and errors
-
-Leaving the screen or moving the app to the background releases the camera and discards an unaccepted capture. An accepted temporary handle remains valid for the session lifetime. Consumers acquire a lease before the session releases it.
-
-Only one camera-backed session can be active, including Barcode scanners. A second session receives `busy`.
-
-Errors distinguish denied or blocked permission, unavailable or busy hardware, unsupported controls, capture and recording failures, storage and size limits, interruption, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
-
-Use [Barcode](barcode.md) to scan codes. Barcode generation does not link camera capability.
+Use [Barcode](barcode.md) for code scanning and [Media](media.md) for choosing an existing photo. Apps should not build a JavaScript frame-processing loop merely to decode a code.

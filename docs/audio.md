@@ -1,97 +1,48 @@
 ---
 title: "Audio"
-description: "Play and record audio, monitor levels, and detect monophonic pitch."
+description: "Native playback, queues and media controls."
+tag: "Design specification"
 ---
 
-`@ink/audio` provides playback, recording, level metering, and monophonic pitch detection. Each controller belongs to the screen where it is declared.
-
-## Playback
-
-Create a player with `audioPlayer()`:
+`@ink/audio` owns decoding, buffering, audio focus, routing and media controls. JavaScript sends commands and observes useful state changes; it does not pump audio samples or playback timers.
 
 ```tsx
-import { audioPlayer } from "@ink/audio";
-import { Button } from "ink";
+import { Button, Screen, Text, useAction } from "ink";
+import { usePlayer } from "@ink/audio";
 
-const player = audioPlayer({ usage: "music", playback: "detached" });
-
-<Button onPress={() => player.play({
-  src: "./assets/song.mp3",
-  title: "Song",
-  artist: "Artist",
-})}>
-  Play
-</Button>
+export function NowPlaying() {
+  const player = usePlayer({ session: "main", mode: "detached" });
+  const toggle = useAction(() => player.toggle());
+  return (
+    <Screen title="Now playing">
+      <Text>{player.state.current?.title ?? "Nothing playing"}</Text>
+      <Button onPress={() => toggle.run()} disabled={!player.state.ready}>
+        {player.state.playing ? "Pause" : "Play"}
+      </Button>
+      {toggle.status === "error" && <Text>{toggle.error.message}</Text>}
+    </Screen>
+  );
+}
 ```
 
-`usage` is `"music"` by default or `"speech"` for spoken audio. `playback` is `"attached"` by default. Attached playback stops when its screen leaves; detached playback continues through an Android media session while the app is in the background.
+`usePlayer` attaches after commit and releases its attachment when hidden. Wait for `state.ready` before issuing commands or inspecting a restored queue. Reconnecting observes the live session; mounting the screen does not replace its queue.
 
-Sources may be:
+## Two lifetimes
 
-- a bundled asset path;
-- an HTTPS URL;
-- the latest file saved by `audioRecorder()`.
+An **attached** player is useful for a short voice-note preview. Releasing its last owner stops it. A **detached** session supports music, podcasts and audiobooks: releasing a screen attachment leaves playback under a native media service. `stop()` explicitly stops playback; closing a screen does not.
 
-Use `setQueue(items, startIndex)` to replace the queue without starting playback. `play()` starts or resumes the current item. The player also provides pause, toggle, stop, seek, 15-second skip, previous, next, and playback-speed actions.
+Detached does not mean immortal. Android can terminate the app process and its service. Persist queue IDs and occasional progress checkpoints to recover, and distinguish restoration from a session that is still live. Headless workers and UI can reconnect by session ID, never by serialising a controller.
 
-The player status is `idle`, `loading`, `paused`, `playing`, `ended`, or `error`. It exposes the current item, queue index, position, duration, buffered position, and speed. Player errors distinguish source, unsupported-format, output, and unexpected failures.
+## Queue and state
 
-## Recording
+`setQueue(items, { startIndex })`, `play`, `pause`, `seek`, `next`, `previous` and `stop` return promises. Queue items have stable IDs, a supported URL or managed file reference, title and optional artist/artwork metadata. Queue replacement is an explicit user/domain action.
 
-`audioRecorder()` records mono AAC audio into an app-private M4A file.
+Snapshots include readiness, current item, position, duration, buffering, playing and error. Position is sampled at a useful display rate; smooth native progress and seeking do not need frame-rate JavaScript events. Errors distinguish source, unsupported media and output failures. Skipping a broken item is an app policy, not an automatic consequence of any error.
 
-```tsx
-import { audioRecorder } from "@ink/audio";
+Native media sessions coordinate hardware keys, lock-screen controls and focus interruptions. State reflects changes made outside the app. Commands issued before readiness reject rather than silently overwriting restored state.
 
-const recorder = audioRecorder();
-```
+## Providers and offline media
 
-- `start()` begins recording.
-- `stop()` saves the recording.
-- `cancel()` discards the active recording.
-- `delete()` removes the saved recording.
+A podcast enclosure or owned audio file can use this player directly. A music service may require a provider SDK, remote-control session, DRM or a dedicated native engine. Its package exposes domain commands and snapshots appropriate to that provider; generic audio does not grant catalogue or offline playback rights.
 
-A successful stop replaces the previous saved recording. Play it with `player.playRecording()`.
-
-The recorder status is `idle`, `recording`, `stopping`, `ready`, or `error`. `durationMs` tracks an active recording, and `recordingDurationMs` describes the saved file.
-
-## Microphone permission
-
-Playback does not need microphone permission. Recording, level metering and pitch detection do.
-
-```tsx
-import { microphonePermission } from "@ink/audio";
-import { Button, Text, match } from "ink";
-
-const microphone = microphonePermission();
-
-{match(microphone, {
-  loading: () => <Text>Checking microphone</Text>,
-  ready: (result) => <Text>{result.value}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-<Button onPress={() => microphone.request()}>Allow microphone</Button>
-```
-
-## Level and pitch
-
-Level and pitch controllers share one raw microphone capture:
-
-```tsx
-import { levelMeter, pitchDetector } from "@ink/audio";
-
-const level = levelMeter();
-const pitch = pitchDetector({ referenceHz: 440 });
-```
-
-`levelMeter()` reports normalised RMS and peak values. Its status is `idle`, `listening`, `active`, `clipping` or `error`.
-
-`pitchDetector()` reports frequency, note, octave, cents, and confidence for monophonic input. Its status is `idle`, `listening`, `active`, or `error`. Set `referenceHz` from 400 to 480 Hz to change concert pitch from the default 440 Hz.
-
-Start and stop either controller explicitly. Realtime analysis and recording cannot run together because both own the microphone.
-
-## Lifecycle and packaging
-
-Leaving a screen stops attached playback, recording, and microphone analysis. Late updates from released controllers are ignored. Detached playback may continue and reconnect when its player becomes active again.
-
-Ink includes only the audio capabilities declared by the app. Media-session support, recording and microphone analysis do not enter an APK that only uses attached playback.
+Use [Downloads](downloads.md) for supported offline files. Resolve a downloaded ID to current content before playback; storage eviction, deletion and expired provider access remain possible.

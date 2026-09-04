@@ -1,110 +1,100 @@
 ---
 title: "How Ink works"
-description: "Learn how Ink compiles TypeScript and TSX into a native Android app."
+description: "TypeScript app behaviour, QuickJS-ng execution and retained native rendering."
+tag: "Design specification"
 ---
 
-Ink turns a focused TypeScript and TSX app into a native Android package. App code is compiled before the APK is built; it is not evaluated on the phone.
+App logic executes as JavaScript on the phone. The compiler bundles code and connects JSX to Ink; it does not translate arbitrary application logic into Rust.
 
 ```text
-TypeScript and TSX
-        ↓
-Ink compiler
-        ↓
-app.ink + required Android capabilities
-        ↓
-Rust runtime + Vulkan renderer
-        ↓
-Android APK
+App.tsx + TypeScript + npm dependencies
+                    ↓
+       JavaScript bundle + assets
+                    ↓
+          QuickJS-ng + React
+                    ↕
+    batched UI changes and native calls
+                    ↕
+       Rust layout and retained UI
+                    ↓
+             Vulkan renderer
+
+Android / LightOS ↔ native packages ↔ JavaScript
 ```
 
-## Build input
-
-An app contains:
-
-- `ink.toml` for its name, Android package, version and optional signing settings.
-- `App.tsx` as the composition root.
-- Local screen modules, bundled assets, and installed Ink packages imported by the app.
-
-A minimal configuration is:
+## A small app project
 
 ```toml
+# ink.toml
 name = "Weather"
 package = "com.example.weather"
-version = "0.1.0"
+version = "1.0.0"
 version_code = 1
+
+[android]
+modules = ["@ink/location"]
+
+[lightos]
+enabled = true
 ```
 
-Ink supplies its runtime, Public Sans, Android project and generated resources. Apps do not need to configure source paths, generated Rust files, fonts or Android resource directories.
+`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. Native packages are installed through npm and registered by `ink add`; see [Packages](modules.md).
 
-## Compilation
+## Build responsibilities
 
-The compiler resolves the complete screen and package graph from `App.tsx`. It parses TypeScript and TSX, validates the supported language, specialises reachable source-module functions, checks routes and typed data, and writes a compact `app.ink` definition.
+The build resolves normal package exports, removes TypeScript types, compiles JSX, bundles reachable code and includes declared assets. Literal dynamic imports can become bundled chunks; they are not a way to download executable code after installation.
 
-The definition contains the app's:
+Native package manifests describe entry points, ABI compatibility, permissions, Android components and build dependencies. Native modules and required capability groups are linked together into the APK. Tree shaking can remove unused JavaScript; it cannot guarantee that one method can be extracted from an indivisible native SDK.
 
-- screens, layout, and navigation;
-- initial, shared, and persisted state declarations;
-- state-to-UI dependencies;
-- typed resources, actions, sessions, handles, and dependency declarations;
-- referenced text, icons, images and other assets;
-- required native capabilities.
+The runtime and bundle formats are internal. Release builds may use engine-version-matched bytecode where supported, but applications never store bytecode as user data or depend on an engine-specific interface.
 
-Changing ordinary app UI or data rewrites this definition. It does not generate app-specific Rust source or relink the shared native runtime.
+## Runtime responsibilities
 
-## Native packaging
+The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScript thread. Ink pumps promise jobs and native completions, hosts timers and networking, and schedules component updates. Native calls return promises instead of blocking that thread on I/O.
 
-The capability list produced by the compiler controls what enters the APK. For example:
+Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches changes across the native seam and applies consistent updates at frame boundaries. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
 
-- `TextInput` adds the Ink keyboard;
-- `@ink/audio` playback adds the audio player;
-- detached playback also adds the Android media session;
-- `@ink/barcode` scanning adds CameraX and code decoding;
-- modules add only the Android permissions and components they use.
+A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 
-An app that does not use a capability does not carry its native implementation. `ink info` shows the capability list and its estimated native cost before a release build.
+## Ownership
 
-## Third-party modules
+| Owner | Examples | End of lifetime |
+| --- | --- | --- |
+| Component | Form state, actions, memoised calculations | Unmount |
+| Visible screen | Resource observations, camera, foreground location | Hidden screen or backgrounded app |
+| App runtime | Account module, shared in-memory store | Process/runtime disposal |
+| Native service | Detached audio, managed downloads | Explicit stop or Android termination |
+| Durable storage | Preferences, records, files, queued jobs | Explicit deletion or app-data removal |
 
-A source module publishes TypeScript or TSX through the `ink` package export. `ink package build` compiles its named exports and pure transformations into a versioned source-module IR. The app compiler specialises the reachable call graph, so reusable screens, provider clients, and device protocols do not need a JavaScript runtime.
+JavaScript garbage collection is not a lifecycle mechanism for a camera, socket or player. UI hooks and explicit `close()`/unsubscribe operations release native work. Reactivation obtains fresh handles; stale results cannot update a replacement owner. Native handles may be held in memory but are not serialisable. Durable IDs reconnect to stored state instead of reviving an old pointer.
 
-A native module also publishes a versioned data-only manifest and Android adapter. The manifest declares typed resources, actions, sessions, native views, workers, opaque handles, ownership, delivery policy, and operation-level Android requirements. Ink validates those declarations, assigns compact operation IDs, and generates the adapter registry during the app build. App builds do not execute module build hooks.
+Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio and download services do not need a continuously running JavaScript loop. Android can stop work; storage and domain reconciliation provide recovery.
 
-Native modules cannot inject arbitrary Gradle scripts or manifest XML. They use the validated integration fields supported by Ink. Read [Third-party modules](modules.md) to install one or [Develop an Ink module](developing-modules.md) to create one.
+## Package execution and trust
 
-## Runtime
+JavaScript dependencies execute in the app's runtime and share its available host APIs. A package namespace is not a security sandbox. Native dependencies execute with the app's Android authority. A lockfile and build report make dependencies reproducible and inspectable; they do not make arbitrary third-party code safe.
 
-The Rust runtime reads `app.ink` and owns state, navigation, layout, scrolling, hit testing and async resource states. It retains the current UI tree and updates affected branches when state changes.
+## LightOS integration
 
-Fixed-height vertical lists are virtualised. Text and image geometry is reused while unchanged, and scrolling updates retained content rather than rebuilding the complete screen. Ink submits no frames while the app is visually idle.
+Ink adapts to available LightOS services, preferences and Android lifecycle. Host integration and distribution eligibility are separate contracts; see [LightOS](light-sdk.md).
 
-The renderer turns Ink's display list into Vulkan commands. Android supplies the window, lifecycle, pointer input and native device services through a small adapter.
+## Performance
 
-## Resources, actions, and sessions
+Keep gestures and bulk media processing native. Cache native resources, batch updates, page large collections and publish progress at useful rates. A faster JavaScript engine cannot compensate for decoding full-resolution images in JS, repeatedly copying message histories or running unnecessary polling loops.
 
-Resources use `loading`, `ready`, and `error`. Actions use `idle`, `running`, `success`, and `error`. Sessions publish one complete domain state snapshot plus ordered commands; a stream is a session without commands, and a native view attaches to a session.
+### LP3 runtime benchmark
 
-The runtime:
+Measured on a physical Light Phone III running Android 14 on 4 September 2026. All variants use Ink's native renderer; the JavaScript variants replace the counter's increment arithmetic with a synchronous engine call.
 
-- activates screen-scoped work only while its screen is visible;
-- cancels observation when the screen leaves or a request reloads;
-- ignores late results from cancelled or replaced requests;
-- applies timeouts and prevents duplicate in-flight reads;
-- owns opaque handle generations, leases, and disposal ordering;
-- schedules the resulting UI change on the next display frame.
+| Metric | Native Ink | QuickJS-ng | Hermes source | Hermes bytecode |
+| --- | ---: | ---: | ---: | ---: |
+| APK size | 3.01 MB | 3.70 MB | 7.19 MB | 7.19 MB |
+| Idle memory, median PSS | 23.88 MiB | 24.54 MiB | 27.12 MiB | 26.24 MiB |
+| Cold start, median | 316 ms | 313 ms | 323 ms | 327 ms |
+| State/UI update, median | 0.274 ms | 0.301 ms | 0.302 ms | 0.301 ms |
 
-Immediate termination of Android, codec, or network work is best effort unless an operation explicitly guarantees it. Explicit actions remain separate from resources, so an app controls when work that changes external state begins.
+QuickJS-ng added 0.69 MB to the native APK and 0.66 MiB of idle PSS in this run, with a similar state/UI update time to both Hermes variants. This supports its use for a small native app with lightweight JavaScript actions.
 
-## Platform conventions
+The harness interleaved variants across 15 cold starts, five idle-memory samples and five sets of 100 taps per variant. All 2,000 counter updates were validated. QuickJS-ng was version 0.15.1 through rquickjs 0.12.2; Hermes used the stock Android 250829098.0.17 release with its required support libraries. A different Hermes build could change its footprint.
 
-Ink targets portrait Android apps for the Light Phone III on API 34 or later.
-
-- Layout uses LP3 logical units rather than Android display-density units.
-- Public Sans Regular is the bundled text face.
-- Material Symbols are included by reference; unused symbols are omitted.
-- Text is fully opaque. Bold, italic and arbitrary fonts are not supported.
-- Bundled PNG and JPEG images and remote HTTPS images are supported.
-- The Android splash is blank and black.
-- Launcher artwork is generated from the app name.
-- Apps contain no JavaScript engine and cannot execute arbitrary JavaScript packages.
-
-Read [Core Ink](ink.md) for the authoring API.
+These measurements cover the synchronous counter embedding, which calls JavaScript on the UI thread. They do not measure the React authoring layer, the dedicated JavaScript thread described above, asynchronous host APIs or battery life. Startup distributions overlap; the small median differences do not establish a speed advantage. State/UI update time excludes display latency and is not an input-to-photon measurement.

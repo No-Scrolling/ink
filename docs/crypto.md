@@ -1,75 +1,22 @@
 ---
-title: "Crypto"
-description: "Hash, verify, generate secure tokens, and use non-exportable signing identities."
-tag: "Planned"
+title: "Cryptography"
+description: "Native cryptographic operations and secure randomness."
+tag: "Design specification"
 ---
 
-`@ink/crypto` provides a small set of fixed, portable cryptographic operations with stable encodings. Text input uses UTF-8.
+The host profile supplies `crypto.getRandomValues()` and `crypto.randomUUID()` for identifiers and nonces. `@ink/crypto` adds asynchronous native hashing and supported key operations for protocols that need them.
 
-## Hash a value
+```ts
+import { digest } from "@ink/crypto";
 
-`sha256()` is a pure computed operation. It does not start a screen resource:
-
-```tsx
-import { sha256 } from "@ink/crypto";
-import { Text, state } from "ink";
-
-const note = state("");
-const digest = sha256(note.value);
-
-{digest.ok ? <Text>{digest.value}</Text> : <Text>{digest.error.message}</Text>}
+const input = new TextEncoder().encode("content to verify");
+const hash = await digest("SHA-256", input);
 ```
 
-The value is 64 lower-case hexadecimal characters. Inputs are limited to 1 MiB. SHA-256 is suitable for content identity and checks against a trusted digest. Do not use it to store passwords.
+`digest` returns bytes. Encoding those bytes as hex or base64 belongs to the calling protocol. Hashes verify integrity only against a trusted expected value; hashing a downloaded file does not establish who published it.
 
-## Generate a token
+Large file digests accept a managed file reference and run natively with cancellation, avoiding a full JavaScript copy. The package reports its supported algorithms. Unsupported algorithms fail explicitly, and libraries must not silently substitute an incompatible or weaker implementation.
 
-Use `randomToken()` for explicit secure randomness:
+Native key handles keep private material out of ordinary snapshots and JSON. Persist a key ID, reopen it and handle invalidation. Exportability and hardware backing depend on the requested operation and device; a handle alone is not a hardware guarantee.
 
-```tsx
-const token = randomToken({ bytes: 32, encoding: "base64url" });
-
-<Button onPress={() => token.run()}>Generate token</Button>
-```
-
-The action uses `idle`, `running`, `success`, and `error`. Generated values belong to the declaring screen and are not persisted automatically.
-
-## Create a signing identity
-
-Use `signingIdentity()` to create or restore a purpose-bound, non-exportable Ed25519 identity in Android Keystore:
-
-```tsx
-const device = signingIdentity("device.identity", {
-  purpose: "api-request-signing",
-});
-
-<Button onPress={() => device.sign(payload.value)}>Sign payload</Button>
-```
-
-The ready identity exposes its public key and a signing action. Private key bytes never enter Secure store, app state, diagnostics, or `app.ink`.
-
-`rotate()` creates a new generation and invalidates future use of the old identity. `remove()` invalidates and deletes every retained generation. Pass an explicit retention policy when a protocol needs a previous public key during rotation.
-
-Package-created keys are namespaced to the package. Intentional sharing requires an exported typed identity key.
-
-## Verify a signature
-
-`verifyEd25519()` is a pure computed operation:
-
-```tsx
-const verified = verifyEd25519({
-  message: payload.value,
-  signature: receivedSignature.value,
-  publicKey: senderPublicKey.value,
-});
-
-{verified.ok ? <Text>{verified.value ? "Valid" : "Invalid"}</Text> : null}
-```
-
-A correctly encoded signature that does not match returns `false`. Malformed Base64url, wrong decoded lengths, and oversized messages return a typed result error.
-
-## Lifecycle and errors
-
-Pure operations recompute when their inputs change and have no cancellation or platform lifecycle. Signing identities are application-scoped and survive process death and upgrades, but not app-data clearing or uninstall. Calls for one identity are serialised.
-
-Errors distinguish invalid encodings, oversized inputs, unavailable or invalidated identities, Keystore failures, unavailable cryptography, and unexpected failures. Action and session errors provide `kind`, `message`, `retryable`, and `operation`.
+Use [Secure store](secure-store.md) for saved credentials and [Auth](auth.md) for PKCE. A JavaScript cryptography package can be bundled when it matches the host profile, but CPU-heavy operations may merit a native adapter.

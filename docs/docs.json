@@ -29,6 +29,7 @@
         "pages": [
           "ink",
           "architecture",
+          "runtime",
           "data"
         ]
       },

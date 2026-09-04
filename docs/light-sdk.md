@@ -1,174 +1,50 @@
 ---
 title: "LightOS"
-description: "Connect Ink apps to LightOS services and system integrations."
+description: "Tool entry, host preferences and available system services."
+tag: "Design specification"
 ---
 
-`@ink/light-sdk` connects an Ink app to LightOS. It provides service status, LightOS permissions, the dialler, ringtone installation, UnifiedPush, device-key forwarding, and host keyboard preferences.
+Enable host integration in the app configuration:
 
-Ink targets Light SDK `0.1.1`.
-
-## Enable host integration
-
-Add a side-effect import in `App.tsx` when the app needs automatic LightOS preferences or hardware-key forwarding:
-
-```tsx
-import "@ink/light-sdk";
+```toml
+[lightos]
+enabled = true
 ```
 
-On a Light Phone III, Ink connects to `com.lightos`. On an Android emulator, `ink dev` uses the official Light SDK emulator service.
+The build registers the app's entry points and required host capabilities. Ink coordinates tool launch, navigation, lifecycle and native services. Integration is versioned; the installed host determines which optional operations are available.
 
-## Check the connection
+## Preferences and system actions
 
-`lightSdkVersion()` reports the connected service version as an async resource.
+`@ink/lightos` exposes host version and capability information, account/server state where authorised, and supported system actions. Keyboard options and haptic preferences feed Ink's native interaction defaults.
 
-```tsx
-import { lightSdkVersion } from "@ink/light-sdk";
-import { Text, match } from "ink";
+```ts
+import { lightos } from "@ink/lightos";
 
-const version = lightSdkVersion();
-
-{match(version, {
-  loading: () => <Text>Connecting to LightOS</Text>,
-  ready: (result) => <Text>Light SDK {result.value}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-```
-
-Call `reload()` to reconnect after an error.
-
-## Request a LightOS permission
-
-`lightSdkPermission("camera")` reads and requests the LightOS camera permission. The ready value is `"granted"`, `"denied"`, `"blocked"`, or `"unknown"`.
-
-```tsx
-import { lightSdkPermission } from "@ink/light-sdk";
-import { Button } from "ink";
-
-const camera = lightSdkPermission("camera");
-
-<Button onPress={() => camera.request()}>Allow camera</Button>
-```
-
-Creating a permission resource does not open a prompt. Call `request()` from a user action. Higher-level modules such as `@ink/camera` and `@ink/location` use the relevant LightOS permission flow for you.
-
-## Open the dialler
-
-`openDialler(phoneNumber)` opens the LightOS dialler with a number filled in. It does not place the call.
-
-```tsx
-import { openDialler } from "@ink/light-sdk";
-import { Button } from "ink";
-
-<Button onPress={() => openDialler("+15551234567")}>
-  Open dialler
-</Button>
-```
-
-## Install a ringtone
-
-Use `ringtoneInstaller()` to give a bundled audio file to LightOS.
-
-```tsx
-import { ringtoneInstaller } from "@ink/light-sdk";
-import { Button, Text, match } from "ink";
-
-const ringtone = ringtoneInstaller();
-
-{match(ringtone, {
-  idle: () => <Text>Choose a ringtone</Text>,
-  installing: () => <Text>Installing ringtone</Text>,
-  installed: () => <Text>Ringtone installed</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-<Button onPress={() => ringtone.set("./assets/tone.mp3", "ringtone")}>
-  Install ringtone
-</Button>
-```
-
-The source must be a bundled string literal. The kind can be `"ringtone"`, `"notification"`, or `"alarm"`; the default is `"ringtone"`.
-
-## Register for UnifiedPush
-
-`lightPush()` owns one app-wide UnifiedPush registration and a durable generic message inbox. Declare it once in the app.
-
-```tsx
-import { lightPush } from "@ink/light-sdk";
-import { Button } from "ink";
-
-const push = lightPush();
-
-<Button onPress={() => push.register(
-  "https://example.com/push/subscriptions",
-)}>
-  Enable push
-</Button>
-```
-
-To register for push, Ink performs these actions:
-
-1. Creates a durable installation ID.
-2. Registers the `light-push` instance with the LightOS UnifiedPush distributor.
-3. Sends the endpoint to your subscription service.
-
-Ink sends this request:
-
-```http
-PUT /push/subscriptions/<installation-id>
-Content-Type: application/json
-Authorization: Bearer <optional-token>
-
-{"endpoint":"<unified-push-endpoint>"}
-```
-
-Your service must treat `PUT` and `DELETE` as idempotent. `unregister()` removes the connector and sends `DELETE` to the same installation URL. `retry()` repeats a failed registration or endpoint synchronisation.
-
-Production subscription URLs must use HTTPS. Emulator loopback URLs can use HTTP.
-
-Pass an optional bearer token as the second argument to `register()`. `push.status` is `idle`, `registering`, `synchronising`, `ready`, or `error`.
-
-## Send a push payload
-
-Send UTF-8 JSON with version `1` and up to 16 events:
-
-```json
-{
-  "version": 1,
-  "events": [
-    {
-      "operation": "show",
-      "id": "event-42",
-      "groupKey": "room-7",
-      "title": "Alex",
-      "body": "Are you free?",
-      "route": "/messages",
-      "sentAtMs": 1788133300000
-    }
-  ]
+if (lightos.capabilities.openDialler) {
+  await lightos.openDialler({ phoneNumber });
 }
 ```
 
-A `show` event requires `id`, `groupKey`, `title`, and `body`. `route` and `sentAtMs` are optional. A `clear` event requires a new event `id` and the `groupKey` to remove.
+The example assumes a user-selected phone number. Use host operations for the dialler and supported ringtone selection. Restricted services can return unavailable, denied or blocked-by-host outcomes. A local Android permission does not override host policy.
 
-Event IDs deduplicate retries. A newer `show` with the same group key replaces the existing inbox record and displayed notification. This model suits conversations, rooms, or any other keyed feed.
+Hardware keys flow through focus, navigation and active media ownership. Avoid separate app listeners competing with the keyboard or media session for the same key.
 
-Payloads are limited to 4,096 bytes. Ink retains up to 64 group records and 512 recent event IDs.
+## Entry and recovery
 
-## Read and clear push messages
+A tool can open from the launcher, a link or a notification with a validated route. Cold launch reconstructs its account and records from storage. External inputs are decoded before navigation, and invalid or obsolete destinations lead to a controlled fallback.
 
-`push.messages` contains the current inbox. Use:
+Host/server data can change during the app's lifetime. Observe it as a snapshot and release subscriptions with their owner. Do not bake a signed-in user or a host permission into a build-time constant.
 
-- `dismiss(groupKey)` to remove one group;
-- `clear()` to remove every local group without unregistering;
-- `push.openedKey` to identify the group opened from a notification tap.
+## Jobs, media and push
 
-When an event includes `route`, tapping its notification opens that validated Ink route. Notification display requires Android notification permission from `@ink/notifications`; payload storage does not.
+[Background jobs](background.md) register named handlers and durable inputs. [Audio](audio.md) keeps detached playback under a native media service and reconnects UI to existing state. Both must recover from Android termination.
 
-## Automatic host behaviour
+Where push delivery is available, a provider adapter registers its transport, decodes the delivered bytes and persists enough information to request domain reconciliation. The app chooses its payload schema; Ink does not impose a universal notification envelope or backend registration protocol.
 
-When host integration is enabled, Ink applies LightOS haptic, emoji, and keyboard-animation preferences to the Ink keyboard. It also forwards recognised LP3 device keys to LightOS. Android continues to own the Back and Home keys.
+Push may be duplicated, delayed or unavailable. Use stable event IDs/cursors, account scoping and a durable sync strategy. A handler gets bounded headless execution, not an indefinitely running foreground app. UI presentation follows host capabilities and user preferences.
 
-Voice input and swipe typing are not supported.
+## Development and distribution
 
-## Packaging
+`ink info` reports host integration requirements. A development APK can expose unavailable states on an emulator or device lacking the host service. Inspect actual capabilities on the LP3 rather than inferring them from an emulator.
 
-Ink packages LightOS capabilities independently. Ringtone hand-off and UnifiedPush add their Android components only when the app uses those APIs. The module does not add Compose or the full Light SDK client to the APK.
+Installing an APK and qualifying for Light-approved distribution are separate processes. Distribution requirements and restricted service access must be agreed with Light; enabling this configuration does not confer approval.

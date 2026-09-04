@@ -1,67 +1,33 @@
 ---
 title: "Reader"
-description: "Present long-form and paginated EPUB, text, and PDF documents."
-tag: "Planned"
+description: "Native document reading with saved positions."
+tag: "Design specification"
 ---
 
-`@ink/reader` opens EPUB, plain-text, and PDF files in one native reading session. Opening once produces document information, progress, navigation, appearance controls, and the view.
-
-## Open a document
-
-Create a reader from a temporary file handle or durable file reference:
+`@ink/reader` presents supported documents with native pagination, text layout, selection and zoom. Use it for saved articles, manuals, books and PDF tickets.
 
 ```tsx
-const book = reader(bookFile, {
-  flow: "paginated",
-  appearance: {
-    textScale: 1.1,
-    lineHeight: "relaxed",
-  },
-  progress: localReaderProgress("reader.book-42"),
-});
+import { Screen } from "ink";
+import { Reader, useReader } from "@ink/reader";
 
-{book.phase === "opening" ? <Text>Opening book</Text> : null}
-{book.phase === "ready" ? (
-  <ReaderView session={book} accessibilityLabel={book.info.title} />
-) : null}
+export function DocumentScreen({ fileId }: { fileId: string }) {
+  const reader = useReader({ fileId });
+  return <Screen title="Document"><Reader controller={reader} /></Screen>;
+}
 ```
 
-The ready snapshot contains `info`, `progress`, and appearance. `info` contains a content fingerprint, format, title, authors, language, and table-of-contents sections. Reader does not parse the same file through a separate metadata resource.
+The controller opens after commit while visible. Its state includes loading, ready or error, with current location and navigation availability. `goTo(location)` and search operations return promises. The native view owns reading gestures; it does not send the document text through JavaScript for each frame.
 
-EPUB and text reflow to the view and appearance. PDF keeps fixed page layout. EPUB scripts and remote resources do not run.
+## Positions
 
-## Navigate
+Persist a format-specific locator with the document ID and revision. A PDF page number, an EPUB locator and an article anchor are different shapes. If content changes, resolve the locator or fall back visibly; a character offset is not universally stable.
 
-The session provides ordered `next()`, `previous()`, and `goTo()` commands. `goTo()` accepts a section ID, approximate fraction, or opaque locator. A newer navigation replaces one that has not settled.
+Checkpoint after meaningful navigation and on leaving, rather than writing on every scroll update. Release the reader attachment when hidden. Reopening uses the durable file and saved locator, not an old native handle.
 
-Progress contains a versioned locator, approximate fraction, section, optional page information, and update time. Store or synchronise the locator as a complete string; do not parse or construct it.
+## Formats
 
-## Choose progress storage
+Register the format capabilities the app needs, such as PDF, EPUB or structured articles. Supported features are documented per decoder. Encrypted documents, DRM and embedded scripting are not implied by supporting the container format.
 
-Use `localReaderProgress(key)` for automatic app-local persistence. Pass `initial` when a remote value should seed a document with no local position.
+An RSS or extraction package can produce an article model in TypeScript. Remote HTML must be sanitised and converted into supported content; the reader does not execute web scripts. Links are explicit actions through [System](system.md).
 
-Provider modules can supply another typed progress adapter that owns reconciliation and synchronisation:
-
-```tsx
-const book = reader(bookFile, {
-  progress: ReadingAccount.progress(documentId),
-});
-```
-
-Reader reports position changes to the adapter after page turns, settled scrolling, and backgrounding. The adapter—not Reader—decides whether local or remote progress wins.
-
-Omit `progress` to retain position only for the session lifetime.
-
-## Change appearance
-
-Call `setAppearance()` with text scale, line height, margins, and theme. Changing appearance keeps the semantic locator while repaginating.
-
-`ReaderView` fills available width and height unless explicit dimensions are supplied. Page-turn and scroll gestures have equivalent commands.
-
-## Lifecycle, errors, and accessibility
-
-The session acquires a file lease while open. Leaving the screen closes the document; backgrounding saves progress. A durable reference can be reopened after process death.
-
-Errors distinguish missing or expired files, unsupported formats, invalid or unsafe documents, missing embedded resources, rendering, storage, invalid locators, progress adapter failures, and unexpected failures. Every error has `kind`, `message`, `retryable`, and `operation`.
-
-The native semantic tree exposes headings, paragraphs, lists, links, quotations, page boundaries, and reading order when the document provides them. PDFs without usable text are announced as image-only pages. Focus returns to the nearest text block after repagination.
+Use [Downloads](downloads.md) to save content and [Records](records.md) for the library, annotations and reading progress. Search large documents natively with cancellation and bounded result pages.

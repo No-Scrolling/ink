@@ -1,76 +1,32 @@
 ---
 title: "Notifications"
-description: "Request permission, schedule reminders, and handle notification taps."
+description: "Local reminders and routes back into the app."
+tag: "Design specification"
 ---
 
-`@ink/notifications` provides notification permission, durable local reminders and notification-tap events.
+`@ink/notifications` creates native notifications and schedules supported local reminders. Use them for an actionable event, such as a download finishing or a saved departure approaching.
 
-## Permission
+```ts
+import { notifications } from "@ink/notifications";
 
-`notificationPermission()` returns `"granted"`, `"denied"`, `"blocked"`, or `"unknown"` when ready. Call `request()` from a user action to open the Android permission prompt.
-
-```tsx
-import { notificationPermission } from "@ink/notifications";
-import { Button } from "ink";
-
-const permission = notificationPermission();
-
-<Button onPress={() => permission.request()}>Allow notifications</Button>
+await notifications.show({
+  id: `download:${downloadId}`,
+  title: "Download complete",
+  body: "Your episode is ready offline",
+  route: { path: "/downloads", params: { downloadId } },
+});
 ```
 
-Ink adds `POST_NOTIFICATIONS` when the app declares this resource or LightOS push.
+Request permission through an explicit foreground action where required. Stable IDs update or replace the same notification. A route contains small validated JSON values; opening it after process death must reconstruct the screen from durable data.
 
-## Schedule a reminder
+## Scheduling
 
-```tsx
-import { localNotifications } from "@ink/notifications";
-import { Button } from "ink";
+`schedule({ id, at, title, body, route })` stores a native schedule. `cancel(id)` removes it. Scheduling is inexact by default and must be presented accordingly. Exact alarms require a separately supported Android capability and permission; ordinary scheduling does not promise exact delivery.
 
-const notifications = localNotifications();
+Define whether a reminder follows an absolute instant or local wall time. Reconcile time-zone changes and edited events. Duplicate delivery and a deleted destination should lead to a useful screen rather than an exception.
 
-<Button onPress={() => notifications.schedule({
-  id: "daily-review",
-  title: "Daily review",
-  body: "Take a moment to review today.",
-  href: "/review",
-  data: "daily",
-  delayMs: 60_000,
-})}>
-  Schedule review
-</Button>
-```
+## Push and privacy
 
-A notification requires exactly one schedule field:
+Push transport is a provider/host integration, described under [LightOS](light-sdk.md). Receiving a payload, reconciling domain data and deciding to display a notification are separate operations. Validate account and record IDs; never execute commands just because a payload names them.
 
-- `delayMs` for a delay from now;
-- `triggerAtMs` for a Unix timestamp in milliseconds.
-
-Scheduling an existing ID replaces its pending or displayed notification. `cancel(id)` removes both. IDs must match `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`.
-
-Android may defer delivery around power and system policy. Reminders survive process death and device restarts, but they are not exact alarms. An app can retain up to 128 pending notifications, displayed notifications, and unconsumed taps in total.
-
-## Handle notification taps
-
-`notificationTap()` exposes the oldest unconsumed tap:
-
-```tsx
-import { notificationTap } from "@ink/notifications";
-import { Text, match } from "ink";
-
-const tap = notificationTap();
-
-{match(tap, {
-  empty: () => <Text>No notification tap</Text>,
-  ready: (result) => <Text>{result.value.data}</Text>,
-})}
-```
-
-Tap events are stored before the activity opens and survive process death. The event remains `ready` until `consume()` acknowledges it; the next queued event then becomes visible.
-
-If the notification includes `href`, Ink also opens that validated route. Route navigation does not depend on consuming the event.
-
-## Errors and packaging
-
-Scheduling and cancellation expose `idle` or `error`. An error includes the operation, notification ID, and a structured Ink error.
-
-The module adds its Android permission, alarm receiver, tap receiver, and durable storage only when notifications are used. LightOS UnifiedPush uses the same notification presentation and route handling. Read [LightOS](light-sdk.md) for push registration and payloads.
+Notification content may be visible outside the app. Messaging apps can offer sender-only or generic previews. Native host policy may restrict presentation or actions, so exposed capabilities determine what the app can request.

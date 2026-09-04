@@ -1,51 +1,23 @@
 ---
 title: "NFC"
-description: "Read NFC tags and NDEF records while a screen is active."
+description: "Read and write supported tags through native sessions."
+tag: "Design specification"
 ---
 
-`@ink/nfc` reads one NFC tag while its screen is active. NFC does not use an Android runtime permission prompt.
+`@ink/nfc` provides foreground tag sessions for shortcuts, identifiers and supported NDEF content.
 
-## Read a tag
+```ts
+import { nfc } from "@ink/nfc";
 
-```tsx
-import { nfcTag } from "@ink/nfc";
-import { Button, Text, match } from "ink";
-
-const tag = nfcTag({ timeoutMs: 30_000 });
-
-{match(tag, {
-  loading: () => <Text>Hold a tag near the phone</Text>,
-  ready: (result) => <Text>{result.value.serialNumber}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-<Button onPress={() => tag.reload()}>Read another tag</Button>
+const tag = await nfc.read({ signal, timeout: 30_000 });
+const shortcut = decodeShortcut(tag.records);
+await openShortcut(shortcut);
 ```
 
-Reading begins when the screen becomes active and stops after one tag. It also stops when the resource reloads, the screen leaves or the app enters the background.
+This fragment assumes a cancellation signal and app-specific validation/navigation functions. Reading waits for a tag while the app is foregrounded. Cancellation, timeout, disabled NFC and unsupported tags are distinct outcomes.
 
-An interrupted read starts again when the app resumes. A ready or error result remains settled until `reload()` is called. `timeoutMs` defaults to 30 seconds and accepts 1,000 to 120,000 milliseconds.
+Inspect record types and validate payloads before acting. A tag URL does not authorise opening an arbitrary destination automatically. Tag identifiers are useful lookup hints, not proof of identity.
 
-## Tag data
+Writing takes explicit NDEF records and returns a verified result where the tag supports verification. A tag may be read-only, too small or removed mid-write. Never report success before native completion.
 
-The ready value contains:
-
-- an uppercase hexadecimal `serialNumber`;
-- `hasText` and `text` for the first text record;
-- `hasUri` and `uri` for the first URI record;
-- every NDEF record in `records`.
-
-Each record has `{ kind, value, languageTag, mimeType, payloadBase64 }`.
-
-| Record kind | Populated fields |
-| --- | --- |
-| `text` | `value`, `languageTag` |
-| `uri` | `value` |
-| `binary` | `payloadBase64`, and `mimeType` for MIME records |
-
-Fields that do not apply are empty strings. Binary payloads use padded Base64 without line breaks. A tag without NDEF data still succeeds with an empty `records` list. NDEF messages are limited to 64 KiB.
-
-## Errors and packaging
-
-Errors distinguish unavailable hardware, disabled NFC, timeout, invalid native data, and unexpected failures.
-
-Importing `@ink/nfc` adds the NFC permission, an optional hardware declaration and the native reader. Apps without the module carry none of them.
+Sessions release on leaving the screen or backgrounding. Raw technology access belongs in a capability-specific package with documented hardware support. Reading NDEF does not imply payment access, secure-element access or card emulation.

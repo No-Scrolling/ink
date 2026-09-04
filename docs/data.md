@@ -1,183 +1,110 @@
 ---
-title: "Data and effects"
-description: "Model typed resources, actions, sessions, caching, and composition."
+title: "Data and lifecycle"
+description: "Async functions, resource hooks, actions and explicit cancellation."
+tag: "Design specification"
 ---
 
-Ink represents asynchronous reads as resources, explicit work as actions, and long-lived capabilities as sessions. Their tagged states can be narrowed with `match`.
+Start with ordinary functions. A weather module can return `Promise<Forecast>`; the same function can be called by a screen or a background worker. Ink's hooks add UI state and ownership with explicit lifecycle management.
 
-Resources use `loading`, `ready`, and `error`. A usable cached value remains `ready`; `freshness`, `activity`, and `warning` describe background refresh without forcing another rendering branch. Actions use `idle`, `running`, `success`, and `error`. Sessions expose one domain state snapshot plus ordered commands.
-
-## Supported data types
-
-Resource responses, route data, and persisted state can contain:
-
-- `number`, `boolean`, `string`, and `null` values;
-- literal unions;
-- lists;
-- nested objects with required or optional fields.
-
-```ts
-type Forecast = {
-  unit: "celsius" | "fahrenheit";
-  temperature: number;
-  description?: string;
-  warning: string | null;
-};
-```
-
-Ink generates a schema from the TypeScript type. Native and network data must match that schema before it reaches the UI.
-
-## Read JSON
-
-Use `json<T>()` for an HTTPS GET request. The resource begins loading when its screen becomes active.
+## Load a value
 
 ```tsx
-import { json } from "@ink/network";
-import { Screen, Text, match } from "ink";
+import { Button, Screen, Text, useResource } from "ink";
+import { getForecast } from "./weather";
 
-type Weather = { temperature: number };
-
-export default function Weather() {
-  const weather = json<Weather>("https://example.com/weather", {
-    query: { city: "London" },
-    timeoutMs: 15_000,
-  });
+export default function ForecastScreen({ placeId }: { placeId: string }) {
+  const forecast = useResource(
+    ["forecast", placeId],
+    ({ signal }) => getForecast(placeId, { signal }),
+    { staleTime: 300_000 },
+  );
 
   return (
-    <Screen title="Weather">
-      {match(weather, {
-        loading: () => <Text>Loading weather</Text>,
-        ready: (result) => <Text>{result.value.temperature}</Text>,
-        error: (result) => <Text>{result.error.message}</Text>,
-      })}
+    <Screen title="Forecast">
+      {forecast.status === "loading" && <Text>Loading forecast</Text>}
+      {forecast.status === "error" && <Text>{forecast.error.message}</Text>}
+      {forecast.status === "ready" && <Text>{forecast.data.temperature}°</Text>}
+      <Button onPress={forecast.reload} disabled={forecast.refreshing}>Refresh</Button>
     </Screen>
   );
 }
 ```
 
-Call `reload()` to replace the current request. Ink cancels the old request and ignores any late result.
+The key is a structurally compared array of JSON values. Include every input that identifies the result: account, location, units and filters. Changing the function's identity does not refetch; changing the key does. Returning to a visible screen refreshes stale data.
 
-URLs must use HTTPS. Query values can be `string`, `number`, or `boolean` literals, lists of those values, or compatible state values. Lists are encoded as comma-separated values. Header values can be string literals or string state values. `timeoutMs` accepts 1,000 to 120,000 milliseconds and defaults to 15 seconds.
+`useResource` starts after commit while the screen is visible. It aborts replaced work and ignores late completions. A shared read is cancelled only after its last active observer releases it. Functions sharing a key must implement the same operation and data contract.
 
-## Cache a read
+| State | Fields |
+| --- | --- |
+| `loading` | No usable value yet. |
+| `ready` | `data`, `updatedAt`, `refreshing`, optional `warning`. |
+| `error` | `error`; no usable value. |
 
-Pass `cache` to `json<T>()` when a response can be reused across app launches.
+`refreshing` and `reload` are available in every state; `refreshing` is false when no read is running. A failed refresh keeps a previous value in `ready` with a warning. `reload()` bypasses freshness and supersedes the previous read. An explicit `enabled: false` option suppresses work; without cached data the state is `idle`, so render that branch when using the option.
 
-```tsx
-const weather = json<Weather>("https://example.com/weather", {
-  cache: {
-    freshForMs: 300_000,
-    staleIfErrorForMs: 86_400_000,
-  },
-});
-```
+The shared cache is in memory and bounded. `staleTime` is a freshness policy, not durable storage. Use [Store](store.md) or [Records](records.md) when offline availability is part of the product. Do not persist personalised data under a cache key that omits the account.
 
-| Option | Meaning | Default |
-| --- | --- | --- |
-| `freshForMs` | Return the saved value without a request while it is this fresh. | 5 minutes |
-| `staleIfErrorForMs` | Keep an older value available when a refresh fails. | 1 day |
-
-A cached ready result adds metadata:
-
-- `freshness` is `"fresh"` or `"stale"`.
-- `activity` is `"idle"` or `"refreshing"`.
-- `updatedAtMs` records when the value was saved.
-- `warning` contains the latest refresh error while an older value remains usable.
-
-Changing the response schema invalidates an incompatible saved value.
-
-## Send a mutation
-
-Use `mutation<T>()` for a `POST`, `PUT`, `PATCH`, or `DELETE` request. A mutation remains `idle` until you call `run()`.
+## Run an action
 
 ```tsx
-import { mutation } from "@ink/network";
-import { Button, Screen, Text, match, state } from "ink";
+import { useState } from "react";
+import { Button, Text, useAction } from "ink";
+import { savePlace } from "./places";
 
-type Saved = { id: string };
-
-export default function Save() {
-  const name = state("London");
-  const save = mutation<Saved>("https://example.com/locations", {
-    method: "POST",
-    body: { name: name.value },
-  });
-
+export function AddPlace() {
+  const [name, setName] = useState("London");
+  const save = useAction((value: string, { signal }) => savePlace(value, { signal }));
   return (
-    <Screen title="Save">
-      {match(save, {
-        idle: () => <Button onPress={() => save.run()}>Save location</Button>,
-        running: () => <Text>Saving location</Text>,
-        success: (result) => <Text>Saved {result.value.id}</Text>,
-        error: (result) => <Text>{result.error.message}</Text>,
-      })}
-    </Screen>
+    <>
+      <Button disabled={save.status === "running"} onPress={() => save.run(name)}>Save {name}</Button>
+      {save.status === "success" && <Text>Place saved</Text>}
+      {save.status === "error" && <Text>{save.error.message}</Text>}
+    </>
   );
 }
 ```
 
-Mutation options accept:
+`useAction` has `idle`, `running`, `success` and `error` states, with `data` on success. `run(input)` uses the current input and returns a promise that resolves to `{ ok: true, value }` or `{ ok: false, error }`; event handlers may ignore that result because the hook retains it. Concurrent calls join the running attempt by default, even if a later call supplies different input. Disable the control while running; use a domain queue when every input must be retained. `reset()` clears a settled result; `cancel()` signals cancellation and returns the hook to idle. Ordinary actions are cancelled when the component unmounts; hiding a retained screen only stops its UI observation. External-activity operations retain their documented round-trip ownership.
 
-- `method` as `"POST"`, `"PUT"`, `"PATCH"`, or `"DELETE"`;
-- query values and headers from literals or compatible scalar state;
-- a JSON body containing literals and scalar state values;
-- `timeoutMs` from 1,000 to 120,000 milliseconds.
+Underlying package functions return ordinary rejecting promises. Ink normalises caught errors for UI, preserving the original cause for diagnostics. Actions do not retry mutations automatically. Aborting cannot undo a message already accepted by a server. A durable outbox belongs in a domain module, not a component hook.
 
-Ink materialises state values when `run()` starts. Mutations are not retried automatically because a repeated write might not be safe.
+## Validate external values
 
-## Combine resources
+TypeScript generics are erased. Neither `response.json()` nor `useResource<Forecast>()` validates a server response. Start with `unknown` and decode using a normal function or a schema library you choose. Ink does not include a schema framework by default.
 
-Use `all()` when a screen needs several resources before it can render.
+Native bindings validate their transport contract on both sides. JSON storage also needs explicit decoders and versioned migrations. Those checks establish structure, not the truth of provider data.
 
-```tsx
-const page = all({ weather, airQuality });
+## Cancel work
 
-{match(page, {
-  loading: () => <Text>Loading conditions</Text>,
-  ready: (result) => <Text>{result.value.weather.temperature}</Text>,
-  error: (result) => (
-    <Text>{result.error.resource}: {result.error.error.message}</Text>
-  ),
-})}
-```
-
-The combined resource is ready when every member has a usable ready value. It preserves freshness and warnings from each member. Its error identifies the failed member and preserves that member's structured error.
-
-## Compute a value
-
-Use `computed()` for a scalar value derived from state, route data, resources, or controllers.
+Async functions accept an optional `AbortSignal` when cancellation is meaningful. Pass the supplied signal through nested requests. An operation must release its native observation promptly after abort; native completion and remote side effects can still happen later.
 
 ```tsx
-const count = state(2);
-const doubled = computed(() => count.value * 2);
-
-<Text>{doubled.value}</Text>
+useVisibleEffect(() => {
+  const controller = new AbortController();
+  const unsubscribe = messages.subscribe(roomId, updateMessages, {
+    signal: controller.signal,
+  });
+  return () => {
+    controller.abort();
+    unsubscribe();
+  };
+}, [roomId]);
 ```
 
-Computed expressions support scalar values and `+`, `-`, `*`, and `/`. Ink compiles the expression into its native value graph.
+This fragment assumes a domain module and state setter supplied by the screen. A subscription must not silently drop message deltas: persist and reconcile them, or expose a gap requiring a fresh snapshot.
 
-## Pass route data
+A native picker or browser sign-in owns an external activity round trip. Its operation-specific lifecycle keeps it alive through that temporary pause. Ordinary backgrounding does not grant indefinite execution.
 
-Route data belongs to a navigation entry instead of global state. Pass scalar fields in an object `href`, and declare the destination contract with `routeParams<T>()`.
+## Observe ongoing state
 
-```tsx
-// Source screen
-<Button href={{ path: "/forecast", params: { city: "London" } }}>
-  London
-</Button>
+A store's `getSnapshot()` returns an immutable snapshot and `subscribe(listener)` returns an unsubscribe function. Snapshot identity changes only when its content changes. `useSnapshot(store)` adapts this contract through React’s external-store subscription semantics, subscribes while visible and reads the latest snapshot again on return. A shared source releases native observation only when its last active subscriber leaves.
 
-// Destination screen
-const params = routeParams<{ city: string }>();
+Native UI hooks such as `usePlayer()` or `useScanner()` manage activation, expose `state` plus promise-returning commands, and release their native attachment when hidden. Constructing a controller during render must be inert; acquisition happens after commit. The package owns this hook integration, so an app does not write a session manager for each screen.
 
-<Text>{params.city}</Text>
-```
+Continuous state, such as playback position, can coalesce. Ordered events, such as incoming messages or protocol packets, need bounded queues with an explicit overflow policy. A current snapshot and a delivery queue are different contracts.
 
-Ink reports unknown, missing, or incorrectly typed route fields at build time.
+## Errors and recovery
 
-## Lifecycle
+Native package errors extend `Error` and expose a stable `code`, operation and optional cause. Useful codes include `permission-denied`, `unavailable`, `cancelled`, `timeout`, `closed` and domain-specific failures. Use exported error guards to narrow a caught `unknown`.
 
-Resources declared in a screen are active only while that screen is visible. Leaving the screen cancels observation and ignores late results; termination of underlying work is best effort. Reloading uses single-flight ordering, so an older completion cannot replace a newer request.
-
-Opaque handles can connect modules without exposing their contents. They cannot enter state, route data, persisted values, or ordinary serialised results. Rust owns their generation and lifetime. An operation that needs to survive process death must use a durable reference rather than a screen-owned handle.
-
-Errors provide `kind`, `message`, and `retryable`. Use `ink logs --resources` to inspect request starts, cancellations, results, and elapsed time. Use `ink info` to list the app's resources and native capabilities.
+Do not infer a retry policy from every error having a boolean. Retry a read when useful; retry a write only when the domain has an idempotency or reconciliation strategy.

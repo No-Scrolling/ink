@@ -1,76 +1,33 @@
 ---
 title: "Maps"
-description: "Render an attributed native map with camera controls and typed annotations."
-tag: "Planned"
+description: "Native map views with explicit providers and offline regions."
+tag: "Design specification"
 ---
 
-`@ink/maps` renders an interactive native map. The module owns renderer lifecycle, map-data policy, attribution, and preview behaviour while callers work with a camera and annotations.
-
-## Show a map
-
-Create one session and pass it to `MapView`:
+`@ink/maps` provides the native map surface; a provider package supplies its map source, attribution and supported capabilities. Choose and configure that provider explicitly.
 
 ```tsx
-import { MapView, mapSession, standardMap } from "@ink/maps";
 import { Screen } from "ink";
+import { MapView } from "@ink/maps";
+import { mapSource } from "./map-provider";
 
-const map = mapSession({
-  content: standardMap({ style: "muted" }),
-  initialCamera: {
-    centre: { latitude: 51.5074, longitude: -0.1278 },
-    zoom: 13,
-  },
-});
-
-<Screen title="Places">
-  <MapView session={map} />
-</Screen>
+export function Nearby({ latitude, longitude }: {
+  latitude: number; longitude: number;
+}) {
+  return (
+    <Screen title="Nearby">
+      <MapView source={mapSource} centre={{ latitude, longitude }} zoom={14} />
+    </Screen>
+  );
+}
 ```
 
-`standardMap()` uses Ink's documented production map-data provider and deterministic preview adapter. `MapView` renders the required attribution and licence link; callers cannot hide it.
+`mapSource` is app configuration for an installed provider, not an implicit free tile service. Package size, rendering features, access tokens, attribution and offline rights depend on that provider.
 
-Third-party source modules can export another opaque `MapContent` with its own credentials, style rules, attribution, online policy, and preview adapter. Callers never receive tile URLs or provider credentials.
+The native view owns panning, zooming, tile decoding and labels. Initial centre/zoom seed the view; use an explicit camera command for subsequent movements. Observe settled camera changes when useful, rather than sending every gesture frame through JavaScript.
 
-## Move the camera
+Markers use stable IDs, coordinates and compact metadata. Use native clustering for dense collections. A selected marker can open an Ink detail screen by record ID; do not recreate the map whenever a label changes.
 
-Call `move()` for a known camera or `fit()` to show coordinates:
+Offline regions are explicit native download jobs with size estimates, progress and removal. A transient tile cache is not an offline guarantee. Register only supported provider capabilities, and retain attribution when displaying cached content.
 
-```tsx
-<Button onPress={() => map.move({ centre: london, zoom: 15 })}>
-  Show central London
-</Button>
-<Button onPress={() => map.fit([london, greenwich], { padding: 24 })}>
-  Show both places
-</Button>
-```
-
-The camera uses WGS84 decimal coordinates. `zoom` accepts 0 to 22, `bearing` 0 to 360 degrees, and `pitch` 0 to 60 degrees. Movement is animated unless disabled or the system requests reduced motion.
-
-The session publishes its latest camera, movement state, content availability, and errors. Gesture updates are coalesced, followed by one final snapshot when movement stops.
-
-## Add annotations
-
-Pass markers, circles, or polylines to the view:
-
-```tsx
-<MapView
-  session={map}
-  annotations={places}
-  selectedId={selected.value}
-  onAnnotationPress={(id) => selected.set(id)}
-/>
-```
-
-Annotation IDs must be unique. Updating an annotation with the same ID changes it in place. Map does not acquire location, geocode addresses, calculate routes, or persist favourites; compose those domain operations from their owning modules.
-
-## Use offline content
-
-A `MapContent` declares whether it is online-only or supports a durable offline region. Downloading a region uses Downloads and returns an opaque content reference. Provider limits, expiry, maximum area, and attribution remain part of that content module's interface.
-
-## Lifecycle, accessibility, and errors
-
-`MapView` fills its available content area unless given explicit width and height. It pauses rendering when hidden or backgrounded. One active view can attach to a session.
-
-Rendering requires no location permission. Map's native semantic tree exposes visible labelled markers and declared map actions. It honours reduced motion and text scaling.
-
-Errors distinguish unsupported rendering, invalid cameras or annotations, attachment conflicts, unavailable or offline map data, provider authentication, resource limits, and unexpected failures. Every error provides `kind`, `message`, and `retryable`.
+Use [Location](location.md) for the device position. Routing, geocoding and traffic are separate provider services. A simple departure board may be clearer and smaller without a map.

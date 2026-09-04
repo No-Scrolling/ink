@@ -1,85 +1,40 @@
 ---
-title: "Auth"
-description: "Sign in through a browser or device-code flow and use an opaque authorisation."
-tag: "Planned"
+title: "Accounts and sign-in"
+description: "Browser OAuth, device codes and reusable provider sessions."
+tag: "Design specification"
 ---
 
-`@ink/auth` runs OAuth and OpenID Connect flows for public native clients. It restores and refreshes sessions without exposing access or refresh tokens to app code.
+`@ink/auth` handles OAuth mechanics. A provider module supplies endpoints, scopes, response decoding and account identity. Keep provider details outside screens.
 
-## Create a browser session
+```ts
+import { createOAuthClient } from "@ink/auth";
 
-Declare one application-scoped session with the provider's HTTPS issuer, public client ID, and scopes:
-
-```tsx
-import { oauthSession } from "@ink/auth";
-import { Button, Text } from "ink";
-
-const account = oauthSession({
-  key: "primary",
-  issuer: "https://accounts.example.com",
-  clientId: "ink-mobile",
-  scopes: ["openid", "profile", "offline_access"],
-  flow: "browser",
-});
-
-{account.phase === "signed-out" ? (
-  <Button onPress={() => account.signIn()}>Sign in</Button>
-) : null}
-{account.phase === "signing-in" ? <Text>Complete sign-in</Text> : null}
-{account.phase === "signed-in" ? <Text>Signed in</Text> : null}
-```
-
-The public phases are `restoring`, `signed-out`, `signing-in`, `signed-in`, `signing-out`, and `error`. Browser opening, provider authorisation, code exchange, validation, storage, and refresh remain implementation details inside `signing-in`.
-
-The browser flow uses an Android Custom Tab or system browser and authorisation code with PKCE S256. Ink validates discovery metadata, redirects, state, nonce, code exchange, and token metadata.
-
-## Use device-code sign-in
-
-Use a device-code flow for providers designed around a code entered on another device:
-
-```tsx
-const account = oauthSession({
-  key: "television",
-  clientId: "ink-tv",
-  scopes: ["playback"],
-  flow: {
-    kind: "device-code",
-    deviceAuthorizationEndpoint: "https://accounts.example.com/device/code",
-    tokenEndpoint: "https://accounts.example.com/token",
-  },
+export const account = createOAuthClient({
+  id: "example-music",
+  clientId: "public-mobile-client-id",
+  authorizationEndpoint: "https://accounts.example.com/authorize",
+  tokenEndpoint: "https://accounts.example.com/token",
+  redirectUri: "com.example.music:/oauth",
+  scopes: ["library.read"],
 });
 ```
 
-While signing in, `account.prompt` contains the user code, verification URL, and expiry when the provider supplies them. Ink owns polling intervals, slow-down responses, expiry, cancellation, and token validation.
+Register the redirect with both the provider and the app manifest. `account.signIn({ signal })` launches the system browser with PKCE and validates the returned state and redirect. Browser login remains owned through its external activity round trip. A mobile bundle cannot keep a client secret private; providers requiring one need a backend.
 
-Provider packages should hide endpoint and scope configuration behind a domain interface when the same setup would otherwise be repeated by every app.
+## Use the session
 
-## Make an authenticated request
+`account.getAccessToken({ signal })` returns a current token, refreshing when needed. Simultaneous calls share one refresh attempt. The account module persists credentials in [Secure store](secure-store.md) and exposes a readable account snapshot for `useSnapshot`.
 
-Every session exposes a stable `authorization` reference:
+A provider's `getPlaylists()` function obtains a token and makes its own request. This works with ordinary npm clients that accept a token or transport. Do not put tokens in route parameters or UI snapshots. On an authentication failure, reconcile with the provider before retrying; repeated refresh loops waste power and hide revoked access.
 
-```tsx
-const profile = json<Profile>("https://api.example/profile", {
-  authorization: account.authorization,
-});
-```
+## Device codes
 
-The reference remains stable while the session restores or signs out. Network waits for restoration, refreshes expiring access, combines concurrent refreshes, and reloads consumers after the authorisation generation changes.
+`account.startDeviceSignIn({ signal })` returns the provider's verification URL, user code, expiry and a `complete({ signal })` operation. Show the code and URL on the phone. Completion respects the provider's polling interval, slowdown responses, cancellation and expiry.
 
-The signed-in state can expose validated `subject` and `expiresAtMs`. Fetch profile fields through a typed provider resource instead of reading token claims.
+A device-code flow is useful for a feed reader or media provider when browser redirects are unavailable. The provider must support it; Ink cannot add it to an arbitrary service.
 
-## Sign out and revoke
+## Account lifecycle
 
-`signOut()` invalidates the local authorisation immediately and removes its stored credentials. Pass `{ revoke: true }` when the provider declares a compatible revocation endpoint and the app should attempt remote revocation.
+`signOut()` cancels owned work, removes local credentials and clears the session. Remote revocation is provider-dependent and may fail offline. A domain module separately clears personalised caches, queued mutations and downloads according to its retention policy.
 
-Remote revocation is best effort and does not guarantee logout on another device. If secure deletion fails, `retry()` repeats it while the old authorisation remains invalid.
-
-## Lifecycle, permissions, and errors
-
-Sessions are application-scoped and survive navigation. Package-created keys are namespaced to the package. App keys with different provider options create independent accounts.
-
-Refresh happens only when a consumer needs a valid authorisation. Auth does not keep the app awake. Background work can use an authorisation only when the session and provider declare it background-safe.
-
-The package requests no Android runtime permission. Browser sign-in uses a package-scoped redirect activity and never accepts a client secret.
-
-Errors distinguish unavailable browsers, invalid provider metadata, invalid redirects or responses, failed exchanges or refreshes, expired device codes, required interaction, secure-store failures, network failures, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
+Multiple accounts have separate IDs, caches and refresh state. Background workers reopen an account by ID from secure storage; they cannot reuse a foreground JavaScript object. If reauthentication is needed, defer work and let the foreground explain it.

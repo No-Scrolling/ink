@@ -1,305 +1,191 @@
 ---
-title: "Core Ink"
-description: "Build interfaces with Ink's UI, navigation, state, and input APIs."
+title: "Build with Ink"
+description: "Small TypeScript apps with a native Light Phone interface."
+tag: "Design specification"
 ---
 
-The `ink` package provides UI, navigation, state, and the shared types used by every optional Ink module. It is a compile-time package: your APK contains the native Ink runtime, not a JavaScript engine or a copy of this TypeScript package.
+Ink is for focused Light Phone III apps: a weather forecast, a conversation, a saved ticket, a music queue or a page of something worth reading. Write the behaviour in TypeScript, compose the interface with TSX, and install packages with your usual package manager.
 
-## App structure
+Ink supplies the native layout, text, scrolling, keyboard and renderer. Your app supplies the content and behaviour.
 
-Every app starts in `App.tsx`. A small app can define its only screen there. Larger apps can import screens from separate files and compose them with `Navigator`, `Route`, `Tabs`, and `Tab`.
+> **Design specification.** These docs describe the intended Ink APIs and development experience. Some interfaces and commands are not yet implemented.
+
+## Start an app
+
+```sh
+bun create ink weather
+cd weather
+bun install
+bun run dev
+```
+
+The generated project contains `App.tsx`, `ink.toml`, a TypeScript configuration and scripts for the Ink CLI. `ink dev` builds and runs on a connected LP3 or Android emulator. Development changes to JavaScript reload the app; adding a native package requires rebuilding its development APK. A reload disposes the previous JavaScript runtime and its subscriptions.
 
 ```tsx
-// App.tsx
+import { useState } from "react";
+import { Button, Screen, Text } from "ink";
+
+export default function App() {
+  const [count, setCount] = useState(0);
+  return (
+    <Screen title="Counter" centered>
+      <Text size={48}>{count}</Text>
+      <Button onPress={() => setCount(value => value + 1)}>Increase</Button>
+    </Screen>
+  );
+}
+```
+
+## Ordinary TypeScript
+
+Components accept props. Functions can use closures, loops, objects, arrays, classes, promises and installed JavaScript libraries. There is no special subset for a transformation or a network response.
+
+Ink uses React components, hooks and the standard React JSX runtime. Ink’s custom React renderer commits updates to its retained native UI. Renderer-independent React hooks and providers can be reused; components that require the DOM or React Native views need an Ink implementation.
+
+```tsx
+import { Button, Text, Stack } from "ink";
+
+type Place = { id: string; name: string; temperature: number };
+
+export function ForecastRow({ place, onOpen }: {
+  place: Place;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <Stack axis="horizontal" justify="space-between" align="center">
+      <Button onPress={() => onOpen(place.id)}>{place.name}</Button>
+      <Text>{Math.round(place.temperature)}°</Text>
+    </Stack>
+  );
+}
+```
+
+## The component model
+
+React manages component identity, state and reconciliation. Import standard hooks from `react` and Ink-specific hooks from `ink`. A component can run again when its parent renders or subscribed state changes. Hooks preserve values by component identity and call order: call them at the top level, before conditional returns. Rendering describes UI and must not start requests, timers, writes or native sessions directly.
+
+- `useState(initial)` stores component-local state; functional updates receive the latest value.
+- `useMemo(calculate, dependencies)` avoids repeating an expensive pure calculation.
+- `useRef(initial)` retains a non-rendering value, such as a request ID.
+- `useEffect(setup, dependencies)` runs after commit and cleans up before replacement or unmount.
+- `useVisibleEffect(setup, dependencies)` additionally cleans up when its screen is hidden or the app backgrounds.
+- `useResource` and `useAction` connect asynchronous functions to UI. See [Data and lifecycle](data.md).
+- `useSnapshot(source)` subscribes to an external store with `getSnapshot()` and `subscribe(listener)`.
+
+Dependency arrays compare entries with `Object.is`. State updates are batched; changing state does not synchronously draw a frame. Treat objects and arrays in state as immutable. `Date`, `Map`, `Set` and native controller objects can be held in memory, but persistence and routes have narrower data contracts.
+
+## An Ink screen
+
+```tsx
+import { useState } from "react";
+import { Button, Field, Screen, Stack, Text, Toggle } from "ink";
+
+export default function Settings() {
+  const [offlineOnly, setOfflineOnly] = useState(false);
+  return (
+    <Screen title="Settings">
+      <Stack gap={24}>
+        <Field label="Download quality">Standard</Field>
+        <Toggle label="Show downloaded items" value={offlineOnly} onChange={setOfflineOnly} />
+        <Text>Downloaded items are available without a connection.</Text>
+        <Button href="/downloads">Manage downloads</Button>
+      </Stack>
+    </Screen>
+  );
+}
+```
+
+`Screen` owns the header, back affordance, content insets and safe space above tabs. It scrolls ordinary content when needed. `Stack` arranges children vertically; `axis="horizontal"` creates a row. Use `gap`, `align` and `justify` rather than repeated spacer elements.
+
+Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. General icons are Material Symbols; declare the icons your app can select dynamically so they can be bundled.
+
+| Component | Use |
+| --- | --- |
+| `Text` | Wrapping text; `size`, `align` and `maxLines` control presentation. |
+| `Button` | A text action, optional icon, disabled state or `href`. |
+| `Field` | A label and value, optionally actionable. |
+| `Toggle` | A labelled boolean input. |
+| `TextInput` | Controlled input with Ink's native keyboard. |
+| `Image` | Bundled, remote or managed-file imagery with native zooming. |
+| `List` | Keyed, virtualised rows for collections. |
+| `Screen`, `Stack` | Page structure and layout. |
+
+Keep button labels and important values readable without relying on truncation. Give icon-only controls an `accessibilityLabel`. Native controls expose roles, labels, values and actions to Android accessibility. Decorative images can be marked as such; meaningful images need descriptions.
+
+## Input and images
+
+```tsx
+import { useState } from "react";
+import { Image, Screen, TextInput } from "ink";
+
+export function Search() {
+  const [query, setQuery] = useState("");
+  return <Screen title="Search">
+    <TextInput value={query} onChange={setQuery} placeholder="Search places" action="search" />
+    <Image src="./assets/cover.jpg" width={280} height={280} fit="contain" zoomable />
+  </Screen>;
+}
+```
+
+Input actions are `search`, `return` and `done`; `autoFocus` focuses once per screen visit. The keyboard and cursor interaction stay native. LightOS preferences inform haptics and keyboard behaviour where the host exposes them.
+
+Remote images use HTTPS. Images require dimensions or a bounded parent, can use `fit="contain"` or `"cover"`, and can supply a bundled fallback. Decoding, downsampling, texture caching, pinch zoom and panning stay native. Large media bytes need not pass through JavaScript.
+
+## Collections
+
+```tsx
+<List
+  items={places}
+  keyExtractor={place => place.id}
+  estimatedItemHeight={64}
+  renderItem={place => <ForecastRow place={place} onOpen={openPlace} />}
+  empty={<Text>No saved places</Text>}
+/>
+```
+
+Use stable domain IDs, not array positions. `List` requests rows around the visible region and reuses retained native content while scrolling. Variable-height rows are supported; an accurate estimate helps preserve position as rows are measured. `.map()` is fine for a short group but does not automatically virtualise a large collection.
+
+Pagination belongs to the data module. Keep loaded data bounded; row virtualisation does not reduce an array already loaded into JavaScript.
+
+## Navigation
+
+```tsx
 import { Navigator, Route, Tab, Tabs } from "ink";
 import Home from "./screens/Home";
 import Settings from "./screens/Settings";
-import Temperature from "./screens/Temperature";
+import Forecast from "./screens/Forecast";
 
 export default function App() {
   return (
     <Navigator>
       <Route path="/">
         <Tabs>
-          <Tab icon="home"><Home /></Tab>
-          <Tab icon="settings"><Settings /></Tab>
+          <Tab id="home" icon="home"><Home /></Tab>
+          <Tab id="settings" icon="settings"><Settings /></Tab>
         </Tabs>
       </Route>
-      <Route path="/settings/temperature">
-        <Temperature />
-      </Route>
+      <Route path="/forecast"><Forecast /></Route>
     </Navigator>
   );
 }
 ```
 
-Screen components take no props. Use route data, shared state, or persisted state when separate screens need to exchange values.
+`navigate({ path: "/forecast", params: { placeId } })` and an equivalent `href` push a destination. `back()` returns; `replace()` replaces the current entry. Headers, edge-back gestures and hardware Back use the same navigation stack. Pass IDs and small JSON values, not an entire message history or a live player.
 
-## Organise screens and packages
+`useRouteParams<T>()` gives an internal route its declared TypeScript shape. A generic alone cannot validate a deep link: pass a `decode(unknown)` function when data can arrive externally. Invalid links open a controlled not-found/error screen. Route paths are statically registered so external entry points can be packaged; parameter values are dynamic.
 
-Put each tab or nested page in its own `.tsx` file, and keep `App.tsx` focused on navigation. A screen module exports one zero-argument component as its default export.
+A pushed screen retains its local state while covered. Tabs retain independent state and scroll positions. Visibility-scoped work pauses when a screen is covered or its tab is inactive. Popping a screen disposes it. None of that makes local state durable across process death.
 
-You can also publish screen modules as installed Ink packages. Add an `ink` export condition that points to the same TSX source as the type export:
+## Build and inspect
 
-```json
-{
-  "name": "@example/player-ui",
-  "version": "1.0.0",
-  "exports": {
-    "./now-playing": {
-      "types": "./NowPlaying.tsx",
-      "ink": "./NowPlaying.tsx"
-    }
-  },
-  "peerDependencies": {
-    "ink": "*"
-  }
-}
+```sh
+ink check
+ink info
+ink build
+ink install
+ink logs
 ```
 
-Import the screen through its package name:
+`ink check` checks TypeScript, route declarations, assets, host API compatibility and native package contracts. It does not prove every dynamic execution path. `ink info` explains the JavaScript bundle, linked native packages, permissions and size contributions. `ink build` produces a release APK using the signing configuration in `ink.toml`.
 
-```tsx
-import NowPlaying from "@example/player-ui/now-playing";
-```
-
-Ink resolves packages through `node_modules` and compiles their source with the same language checks as local screens. It does not execute package JavaScript.
-
-Read [Third-party modules](modules.md) to install packages that add data or native capabilities. Read [Develop an Ink module](developing-modules.md) to publish one.
-
-## Screens and layout
-
-`Screen` owns the standard Ink header, content insets, scrolling, and safe space above bottom navigation. Set `title` to show a header, or omit it for a headerless screen. `centered` centres the content in the available area.
-
-When the content is taller than the screen, Ink adds a scrollbar automatically. Drag its thumb to move through the page, or tap the track to centre the thumb at that position.
-
-`Stack` arranges children vertically by default. Set `axis="horizontal"` for a row.
-
-```tsx
-<Screen title="Now Playing">
-  <Stack gap={16}>
-    <Text>Song title</Text>
-    <Stack axis="horizontal" gap={12} align="center" justify="space-between">
-      <Button>Previous</Button>
-      <Button>Next</Button>
-    </Stack>
-  </Stack>
-</Screen>
-```
-
-| `Stack` prop | Values | Default |
-| --- | --- | --- |
-| `axis` | `"vertical"`, `"horizontal"` | `"vertical"` |
-| `gap` | A non-negative logical size | `0` |
-| `align` | `"start"`, `"center"`, `"end"`, `"stretch"` | `"stretch"` |
-| `justify` | `"start"`, `"center"`, `"end"`, `"space-between"` | `"start"` |
-
-`align` controls the cross axis. `justify` controls the direction in which the stack lays out its children.
-
-## Text and controls
-
-Ink uses Public Sans throughout the app. Emoji use the device's system emoji font, so apps can render the full emoji set supported by their Android version without bundling an emoji font or image set. Text is fully opaque and uses the framework's default size unless you pass `size`.
-
-```tsx
-<Text size={40} align="center">18°</Text>
-<Button icon="refresh" onPress={() => weather.reload()}>Refresh</Button>
-<Toggle
-  label="Invert colours"
-  value={inverted.value}
-  onChange={() => inverted.set(!inverted.value)}
-/>
-```
-
-`Text` wraps automatically at Unicode line-break opportunities. If one word is wider than the available space, Ink breaks it at a grapheme boundary rather than clipping it. Set `maxLines` to limit the result and truncate the final visible line with an ellipsis.
-
-```tsx
-<Text maxLines={2}>{description.value}</Text>
-```
-
-Set `align` to `"start"`, `"center"`, `"end"`, or `"justify"`. Justification expands only wrapped lines; the final line remains start-aligned.
-
-Buttons, field values, and headers stay on one line and use an ellipsis when their content is too wide.
-
-Core controls are:
-
-| Component | Purpose |
-| --- | --- |
-| `Text` | Renders text, numbers, and state values. |
-| `Button` | Runs an action or opens a route. It can show one Material Symbol and an underline. |
-| `Field` | Shows a label and its current value. Add `href` or `onPress` to make it actionable. |
-| `Toggle` | Changes a `boolean` value. |
-| `Icon` | Renders one referenced Material Symbol. |
-| `TextInput` | Edits a string with the Ink keyboard. |
-| `Image` | Renders a bundled image, an HTTPS image, or an opaque native image. |
-
-Material Symbols are referenced by name. Ink includes only the symbols used by the app. General icons use the outlined style; bottom navigation uses filled symbols.
-
-## Text input
-
-`TextInput` is a controlled input. Store its value in state and update that state from `onChange`.
-
-```tsx
-const query = state("");
-
-<TextInput
-  placeholder="Search"
-  value={query.value}
-  onChange={(value) => query.set(value)}
-  action="search"
-/>
-```
-
-`action` controls the bottom-right keyboard key and accepts `"search"`, `"return"`, or `"done"`. The emoji keyboard uses the same system emoji as app text and follows the configured LightOS emoji list when LightOS integration is enabled. Apps without `TextInput` do not include the keyboard.
-
-Add `autoFocus` to select an input and open the keyboard when its screen becomes active. It focuses once per screen visit, so dismissing the keyboard does not immediately reopen it.
-
-When the value is wider than the input, it scrolls horizontally to keep the cursor visible. Drag within the input to move through the value, or tap the text to reposition the cursor. A clear button appears at the end of non-empty inputs.
-
-## Images
-
-`Image` requires a width and height in Ink logical units. `fit="cover"` fills the bounds and may crop the source; `fit="contain"` keeps the complete source visible. Use `bleed` when an image should extend through the normal horizontal content inset.
-
-```tsx
-<Image
-  src="./assets/cover.png"
-  width={349}
-  height={349}
-  fit="cover"
-  bleed
-/>
-```
-
-An HTTPS URL loads a remote image. `fallback` may point to a bundled image shown when the remote request fails. Native modules such as the camera return an opaque `ImageSource` that can be passed directly to `src`.
-
-Bundled images may be PNG or JPEG files. Add `zoomable` to support pinch-to-zoom and one-finger panning while zoomed. Repeated double taps move through 2×, 3×, and 4×, then return to the original size. A full-bleed, zoomable image that is the only item on a screen fills the area below the header. Ink keeps these interactions native and updates only the image transform while it moves.
-
-```tsx
-<Image
-  src="./assets/photo.jpg"
-  width={349}
-  height={349}
-  fit="contain"
-  bleed
-  zoomable
-/>
-```
-
-## State
-
-Ink provides three kinds of writable state:
-
-| Function | Lifetime |
-| --- | --- |
-| `state(initial)` | Belongs to one screen instance. |
-| `sharedState(key, initial)` | Shared by declarations with the same key while the app is running. |
-| `persistedState(key, initial)` | Shared by key and restored after the app restarts. |
-
-```tsx
-const count = state(0);
-const selectedTab = sharedState("player.tab", "queue");
-const temperatureUnit = persistedState("settings.temperature", "Celsius");
-
-<Field label="Temperature" href="/settings/temperature">
-  {temperatureUnit.value}
-</Field>
-```
-
-Scalar state supports `boolean`, `number`, `string`, and `null`. List state also provides `append`, `remove`, `replace`, and `clear`.
-
-```tsx
-const places = persistedState("places", ["London"]);
-
-<Button onPress={() => places.append("Paris")}>Add Paris</Button>
-```
-
-`computed` derives a scalar value from state or resource values. The compiler turns the expression into Ink's native value graph.
-
-```tsx
-const count = state(2);
-const doubled = computed(() => count.value * 2);
-
-<Text>{doubled.value}</Text>
-```
-
-## Conditional and repeated UI
-
-Use normal JSX conditions and `.map()` over an Ink list value. Ink updates the affected native UI when the source value changes.
-
-```tsx
-{places.value.length === 0 ? (
-  <Text>No saved places</Text>
-) : (
-  <Stack gap={16}>
-    {places.value.map((place) => <Text>{place}</Text>)}
-  </Stack>
-)}
-```
-
-Long, fixed-height vertical lists are virtualised automatically. Ink lays out only the visible rows and a small overscan area.
-
-## Navigation
-
-Wrap multi-page apps in `Navigator` and give every destination a compile-time `Route` path. A `Button` can navigate instead of running an action.
-
-Nested routes include a back button automatically. You can also swipe right from the left edge to return. Vertical gestures that begin at the edge continue to scroll the page normally.
-
-```tsx
-<Button href="/settings/temperature">Temperature</Button>
-```
-
-Call `back()` to return after an action:
-
-```tsx
-<Button onPress={() => {
-  temperatureUnit.set("Celsius");
-  back();
-}}>
-  Celsius
-</Button>
-```
-
-### Route data
-
-Pass scalar route data with an object `href`. The destination declares its contract with `routeParams<T>()`. Ink checks the route and its data at build time.
-
-```tsx
-// Source screen
-<Button href={{ path: "/forecast", params: { city: "London" } }}>
-  London
-</Button>
-
-// Destination screen
-const params = routeParams<{ city: string }>();
-
-<Text>{params.city}</Text>
-```
-
-### Tabs
-
-Place `Tabs` inside a route and add one `Tab` for each root screen. The `icon` is a Material Symbol name. Ink owns tab selection and renders its standard bottom navigation.
-
-## Resources, actions, and sessions
-
-Native and network reads expose resources with `loading`, `ready`, and `error`. A ready value can include freshness, background activity, and a recoverable warning without adding another status. Use `match` to render every state. TypeScript narrows the value inside each branch and reports a missing branch.
-
-```tsx
-{match(location, {
-  loading: () => <Text>Finding location</Text>,
-  ready: (result) => <Text>{result.value.latitude}</Text>,
-  error: (result) => <Text>{result.error.message}</Text>,
-})}
-```
-
-Explicit work uses actions with `idle`, `running`, `success`, and `error`. Long-lived capabilities use sessions that publish one domain snapshot and ordered commands. A stream is a session without commands, and a native view attaches to a session.
-
-Use `all` when a screen needs several resources before it can render. Read [Data and effects](data.md) for resources, actions, caching, and composition.
-
-## Errors and permissions
-
-Ink module errors provide a stable `kind` and plain `message`. They include `retryable` only when the owning value provides a truthful retry operation. Permission sessions expose a `request()` action and report `"granted"`, `"denied"`, `"blocked"`, or `"unknown"`. Constructing a permission value never opens a prompt; call `request()` from a user action.
-
-## Supported TypeScript
-
-Ink accepts a focused TypeScript and TSX syntax that can be checked and compiled ahead of time. It does not execute arbitrary JavaScript or support general JavaScript packages. Local screens and installed Ink UI packages use the same supported syntax.
-
-Run `ink check` for source diagnostics, and run `ink info` to see which state, resources, permissions, and native modules the app includes. Read [How Ink works](architecture.md) for the build and runtime model.
+Next: [Data and lifecycle](data.md), [npm packages](modules.md), [LightOS](light-sdk.md), or [a complete weather module](open-meteo-module.md).

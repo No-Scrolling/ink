@@ -1,75 +1,35 @@
 ---
-title: "Barcode"
-description: "Scan supported barcodes and generate barcode images."
-tag: "Planned"
+title: "Barcodes and passes"
+description: "Display codes and scan them natively."
+tag: "Design specification"
 ---
 
-`@ink/barcode` presents a barcode-owned scanning interface and generates barcode images in process. Its scanner uses the Camera implementation internally, but callers do not coordinate the two modules.
-
-## Scan a barcode
-
-Create a scanner and pass it to `BarcodeScannerView`:
+`@ink/barcode` separates generation from scanning so a saved-pass viewer need not include camera code. Register the corresponding native entry points with `ink add`.
 
 ```tsx
-import { BarcodeScannerView, barcodeScanner } from "@ink/barcode";
 import { Screen, Text } from "ink";
+import { Barcode } from "@ink/barcode/generate";
 
-const scanner = barcodeScanner({
-  formats: ["qr", "ean-13", "code-128"],
-  permissionPrompt: "Allow camera to scan a barcode",
-  timeoutMs: 60_000,
-});
-
-<Screen title="Scan code">
-  <BarcodeScannerView session={scanner} />
-  {scanner.phase === "ready" ? <Text>{scanner.value.text}</Text> : null}
-</Screen>
+export function Pass({ title, value }: { title: string; value: string }) {
+  return (
+    <Screen title={title}>
+      <Barcode format="qr" value={value} size={280} />
+      <Text>{value}</Text>
+    </Screen>
+  );
+}
 ```
 
-The standard view presents an explicit permission action, viewfinder, torch control, and timeout state. Creating a scanner never opens a permission prompt. For a custom layout, use `scanner.permission.request()` from a user action.
+Generation happens natively with sharp modules, appropriate contrast and quiet zones. Preserve the source payload exactly; trimming, normalising case or converting a numeric-looking string can invalidate it. The package exposes supported formats and rejects invalid payloads rather than rendering a misleading code.
 
-The first stable result stops analysis and returns `text`, optional raw `bytes`, `format`, `cornerPoints`, and `scannedAtMs`. Call `scanAgain()` to resume.
+## Scan a pass
 
-Supported scan formats are QR, Aztec, Data Matrix, PDF417, Codabar, Code 39, Code 93, Code 128, EAN-8, EAN-13, ITF, UPC-A, and UPC-E.
+`useScanner({ formats })` manages a visible scanner attachment. `ScannerPreview` displays it. The controller exposes permission/readiness state and decoded results containing format and payload. A single-shot scan pauses after a result; `resume()` explicitly starts the next scan. Continuous mode deduplicates repeated frames but is not a durable event log.
 
-## Scan continuously
+Scanning stays native. Release the camera on leaving the screen. A scan result is untrusted input: show a link before opening it and validate app-specific formats before storing records.
 
-Pass `mode: "continuous"` for inventory or event workflows. Results are delivered through a bounded event queue:
+## A pass library
 
-```tsx
-const scanner = barcodeScanner({
-  formats: ["qr"],
-  mode: "continuous",
-  delivery: { capacity: 16, overflow: "error" },
-});
-```
+Store ID, title, format, payload, sort order and optional expiry in [Records](records.md). Keep originals in [Files](files.md) if a document contains information beyond the code. Editing a display name must not change the encoded value.
 
-Ink deduplicates the same stable value while it remains in view. The session reports dropped events only when `overflow: "drop-oldest"` is selected explicitly.
-
-## Generate a barcode
-
-`barcodeImage()` is a pure computed operation and does not create a loading resource:
-
-```tsx
-const ticket = barcodeImage({
-  format: "qr",
-  value: "https://example.com/ticket/42",
-  width: 280,
-  height: 280,
-  correction: "medium",
-});
-
-{ticket.ok ? (
-  <Image src={ticket.value.source} width={280} height={280} fit="contain" />
-) : (
-  <Text>{ticket.error.message}</Text>
-)}
-```
-
-Generation supports QR, Aztec, Data Matrix, Code 128, and EAN-13. It links only the in-process generator artefact, not Camera.
-
-## Lifecycle and errors
-
-The scanner is a screen-owned session. Leaving the screen or backgrounding the app releases Camera. Only one Camera or Barcode session can be open.
-
-Scanning errors distinguish permission, unavailable or busy Camera, unsupported formats, timeout, decoding, queue overflow, and unexpected failures. Generation errors distinguish invalid values, options, and unsupported formats. Every error provides `kind`, `message`, and `retryable`.
+Tickets with rotating codes or provider authentication need a provider integration. A screenshot or copied payload does not guarantee that the resulting pass remains valid. Keep a fallback human-readable reference where the issuer provides one.

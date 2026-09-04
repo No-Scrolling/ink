@@ -1,112 +1,60 @@
 ---
 title: "Background work"
-description: "Run constrained deferred and periodic work with Android JobScheduler."
-tag: "Partial"
+description: "Durable jobs with fresh JavaScript runtimes and recoverable inputs."
+tag: "Design specification"
 ---
 
-`@ink/background` runs declarative work plans after the app leaves the foreground. A task owns its schedule, retry policy, and latest durable result without running app JavaScript.
+`@ink/background` runs deferrable work such as refreshing saved forecasts, synchronising a feed or draining a message outbox. Register worker code separately from the UI.
 
-## Create a periodic task
+```ts
+// workers.ts
+import { defineTask } from "@ink/background";
+import { drainOutbox } from "./messages";
 
-Give a static work plan a stable key:
-
-```tsx
-import { backgroundTask } from "@ink/background";
-import { getJson } from "@ink/network";
-
-type Forecast = { temperature: number; summary: string };
-
-const refresh = backgroundTask({
-  key: "forecast.refresh",
-  schedule: { kind: "periodic", everyMinutes: 30 },
-  constraints: { network: "connected" },
-  work: getJson<Forecast>("https://example.com/forecast.json"),
-});
-```
-
-`refresh` is a `Resource<Forecast, BackgroundError>`. Its latest successful value survives process death. A ready value includes `completedAtMs`, `freshness`, and an optional `warning` when a later run failed.
-
-Declarations that reuse a key reconnect to the same task and must use the same work and result type. Package-created keys are automatically namespaced to the package.
-
-`everyMinutes` accepts 15 to 10,080 minutes. Android chooses the exact run time based on network availability, power, and system scheduling. Periodic work is not an exact alarm.
-
-## Run deferred work
-
-Use a deferred schedule for work enqueued by a user action:
-
-```tsx
-const upload = backgroundTask({
-  key: "logs.upload",
-  schedule: { kind: "deferred" },
-  constraints: {
-    network: "unmetered",
-    charging: true,
+export const syncMessages = defineTask({
+  id: "messages.sync",
+  decode: decodeAccountInput,
+  async run({ input, signal }) {
+    await drainOutbox(input.accountId, { signal });
+    return { status: "success" };
   },
-  work: uploadManagedFile(logs.reference, "https://example.com/logs", {
-    idempotencyKey: "logs.current.v1",
-  }),
 });
-
-<Button onPress={() => upload.enqueue()}>Upload later</Button>
 ```
 
-Calling `enqueue()` replaces pending work with the same key. Call `cancel()` to remove pending work. Cancellation cannot undo a request that the server already accepted.
+`decodeAccountInput` is the app's decoder for `{ accountId: string }`. It receives unknown persisted input, including input queued by an older app version.
 
-A deferred task exposes its result resource plus `enqueue()` and `cancel()`. It does not add separate `enqueued` or `running` rendering branches. Use `activity` when the foreground process is observing an active run.
+```toml
+[background]
+entry = "./workers.ts"
+```
 
-## Choose constraints
+From an action or domain module:
 
-| Option | Values | Default |
-| --- | --- | --- |
-| `network` | `"none"`, `"connected"`, `"unmetered"` | `"none"` |
-| `charging` | `boolean` | `false` |
-| `batteryNotLow` | `boolean` | `true` |
-| `storageNotLow` | `boolean` | `true` |
+```ts
+await syncMessages.enqueue({ accountId }, {
+  key: `messages.sync:${accountId}`,
+  constraints: { network: "connected" },
+});
+```
 
-Android can delay work after every constraint becomes true. The task keeps no wake lock while it waits.
+The build bundles registered task code and its dependencies into a headless entry. Enqueueing persists the task ID and JSON input; it does not serialise a function or capture foreground state. Imports and normal TypeScript logic work inside workers.
 
-## Build a work plan
+## Execution contract
 
-Background tasks accept serialisable plans exported by approved Ink modules. A plan is not a callback. It can:
+Each invocation gets a fresh runtime, cancellation signal and decoded input. Open storage and account services there. Return `success`, `retry` with an optional requested delay, or `failed` with a stable reason. An uncaught exception is recorded as a failure; the app must deliberately classify retryable failures.
 
-- call approved source operations;
-- invoke a declared native worker;
-- sequence bounded steps;
-- transform a serialisable result with Ink's pure-expression subset;
-- use durable file, credential, and record references granted to the task.
+Android chooses when eligible jobs run. Periodic work has a minimum interval of 15 minutes and is inexact. Network and charging constraints narrow eligibility; they do not guarantee an execution time. A process may stop before recording completion, so delivery is at least once.
 
-A plan cannot read screen state, navigate, render UI, access a screen-owned session, or execute arbitrary TypeScript. Materialise permitted inputs when you enqueue deferred work.
+A key identifies unique scheduled work: enqueueing the same key coalesces a pending request. If it is already running, a follow-up run is retained so newly queued data is not lost. Keys are not substitutes for idempotency at the remote service.
 
-Extension modules can expose domain plans such as `OrdersSync.plan(...)`. Ink still owns scheduling, retries, durable result state, and lifecycle.
+## Persist before scheduling
 
-## Use durable inputs
+Commit an outbox row before requesting a wakeup. Recover unscheduled rows on app launch and later scheduled runs; a database commit and Android scheduling are not one transaction. Send with stable operation IDs, reconcile uncertain acknowledgements and delete or mark an entry only after acceptance.
 
-Temporary `FileHandle` values cannot enter background work. Pass a durable `FileReference` from Files or Downloads. Ink validates that the reference remains owned by the app before each attempt.
+`cancel(key)` removes pending work and signals running work. Cancellation cannot reverse a completed remote write. Observing job state is useful for a sync screen but must not be required for the job to finish.
 
-Credentials use opaque background-safe references. Their readable values are resolved only inside the operation that has been granted access. Expired or removed credentials settle as `authentication-required` without exposing the value.
+## Choose native services for continuous work
 
-Every repeatable mutation or upload must declare an idempotency key or use an operation whose interface guarantees safe repetition.
+Audio playback and downloads have specialised native lifecycles. A permanent JavaScript loop or interval is not a background service. Push can request reconciliation through [LightOS](light-sdk.md) where supported, but handlers must validate the payload and tolerate duplicate delivery.
 
-## Retry failed work
-
-Ink retries retryable connection and server failures with bounded exponential backoff. One run makes at most three attempts within its Android execution window.
-
-Validation, permission, authentication, quota, integrity, and non-idempotent operation errors are not retried automatically. Call `enqueue()` after the app resolves the cause.
-
-Periodic tasks keep their next scheduled run after one run fails. A previous successful value remains ready with the failure in `warning`.
-
-## Lifecycle and limits
-
-Tasks are application-scoped. An app can declare up to 16 keys. One serialised result is limited to 1 MiB, and one run can execute for up to 10 minutes. Android can impose stricter limits.
-
-Changing a task's work or result type invalidates its previous success. Changing only scheduling or constraints preserves it. Removed declarations are reconciled the next time the updated app starts; uninstalling removes all tasks and results.
-
-Rust owns state, ordering, cancellation, and durable results. Android owns JobScheduler execution. Cancellation stops observation immediately; stopping already-running native or network work is best effort.
-
-## Errors and permissions
-
-Errors distinguish unavailable scheduling, authentication, network and timeout failures, invalid results, expired inputs, storage failures, quota limits, and unexpected failures. Every error provides `kind`, `message`, `retryable`, `operation`, and `attemptedAtMs`.
-
-The module requests no runtime permission. A work plan contributes only the network, file, credential, worker, or other operations it reaches. `ink info` explains each linked requirement.
-
-Background work does not post a notification implicitly. A domain plan can explicitly include a declared notification operation when notifying the user is part of its interface.
+No React tree is mounted in a worker. Ordinary domain functions and npm libraries matching the host profile can run there.

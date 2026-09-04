@@ -1,103 +1,38 @@
 ---
 title: "Files"
-description: "Own, import, export, and share app files through safe references."
-tag: "Planned"
+description: "Managed files, imports and large content without JavaScript copies."
+tag: "Design specification"
 ---
 
-`@ink/files` owns app-private files and exchanges files with other apps through opaque handles. Callers never receive filesystem paths, Android URIs, or descriptors.
+`@ink/files` manages app documents, cache files and user-selected imports. A `FileRef` refers to native content; its `id` can be persisted. Opening that ID later can fail if the file was deleted or its external permission expired.
 
-## Manage an app file
+```ts
+import { files } from "@ink/files";
 
-Use `file()` for a durable file that should survive app restarts:
-
-```tsx
-import { file } from "@ink/files";
-import { Button, Text, state } from "ink";
-
-const noteText = state("");
-const note = file("notes/current.txt");
-
-<Button onPress={() => note.writeText(noteText.value, {
-  mimeType: "text/plain",
-})}>
-  Save note
-</Button>
-
-{note.status === "ready" ? <Text>{note.info.sizeBytes} bytes</Text> : null}
+const selected = await files.pick({ types: ["application/pdf"] });
+if (selected) {
+  const saved = await files.import(selected, { name: "Ticket.pdf" });
+  await saveTicket({ fileId: saved.id, name: "Ticket" });
+}
 ```
 
-The managed file owns `writeText()`, `replace()`, `export()`, `share()`, and `remove()`. Each operation is an action with `idle`, `running`, `success`, and `error` states. Replacing or writing a file is atomic.
+Here `saveTicket` is the app's record operation. Picking grants access to a selection; importing copies it into managed documents for offline use. The picker survives its external activity round trip. User cancellation returns `null`.
 
-Names are app-relative. They can use `/` for grouping but cannot be absolute, empty, or contain `.` or `..` segments. Declarations with the same name reconnect to the same application-scoped file.
+## Ownership
 
-## Manage a text file
+| Storage | Use | Lifetime |
+| --- | --- | --- |
+| Documents | Tickets, attachments, offline books | Explicit deletion or app-data removal. |
+| Cache | Re-creatable artwork and responses | May be evicted. |
+| Temporary | Captures and intermediate exports | Short-lived; promote before persisting a reference. |
+| External selection | A document owned elsewhere | Provider access may be revoked. |
 
-Use `textFile()` when reading and writing UTF-8 text is the complete domain operation:
+`files.open(id)` resolves a reference. `stat`, `remove`, `copy` and `export` are asynchronous native operations. Names are display names, not arbitrary absolute filesystem paths. Native boundaries validate IDs and access rights; serialising a reference does not extend its lifetime.
 
-```tsx
-import { textFile } from "@ink/files";
-import { Text, match } from "ink";
+## Read and write
 
-const notes = textFile("notes/current.txt", {
-  initial: "",
-  maximumBytes: 1_048_576,
-});
+`readText` is useful for a small configuration file; `readBytes` materialises the full content. Use streams for larger content and native file references for images, playback, document reading and uploads. Streams support cancellation and backpressure; callers release them on completion or abort.
 
-{match(notes, {
-  loading: () => <Text>Loading notes</Text>,
-  ready: ({ value }) => <Text>{value}</Text>,
-  error: ({ error }) => <Text>{error.message}</Text>,
-})}
-```
+Writes use temporary content followed by atomic replacement where supported by the destination. A failed export to an external provider may need user intervention; it is not a database transaction. Check available space before large imports, and handle out-of-space failures during the operation too.
 
-`textFile()` owns opening, UTF-8 validation, atomic writes, and reloads. Use the general `file()` interface for binary content or when another module consumes the file.
-
-## Import a file
-
-Use `filePicker()` to copy a selected file into temporary app storage:
-
-```tsx
-const picker = filePicker({
-  mimeTypes: ["text/plain", "text/markdown"],
-  maximumBytes: 1_048_576,
-});
-
-<Button onPress={() => picker.open()}>Import notes</Button>
-
-{picker.status === "success" ? (
-  <Button onPress={() => note.replace(picker.value.file)}>
-    Keep imported file
-  </Button>
-) : null}
-```
-
-The result contains a temporary `FileHandle` and information including `name`, `mimeType`, `sizeBytes`, and `modifiedAtMs`. Closing the system picker returns the action to `idle`.
-
-Temporary handles belong to their owning action or session. They cannot enter state, route data, Store, or Background work. An operation that accepts a handle acquires a lease before returning. Call `replace()` to copy it into a managed file when it must become durable.
-
-## Use a durable reference
-
-A ready managed file exposes `reference`, an opaque `FileReference` that remains valid across navigation and process death. Downloads also return durable references. Reader, Media, and Background accept these references without gaining path access.
-
-Removing the managed file invalidates its reference. Active consumers finish through their existing lease; later operations receive a `missing` error.
-
-## Export or share a file
-
-Call methods on the managed file:
-
-```tsx
-<Button onPress={() => note.export({ suggestedName: "notes.txt" })}>
-  Export notes
-</Button>
-<Button onPress={() => note.share()}>Share notes</Button>
-```
-
-Export asks the user where to create a copy. Share opens the Android share sheet and grants the selected receiving app temporary read access. Neither operation guarantees that another app keeps or processes the file.
-
-## Lifecycle, permissions, and errors
-
-Managed files are application-scoped and survive process death and upgrades. Temporary imports are released when their owner is cleared or disposed and can be removed earlier under storage pressure.
-
-System file surfaces continue through a temporary app pause and settle when the app resumes. Only one file surface can be open at a time.
-
-The module requests no broad storage permission. Errors distinguish missing files, denied access, interrupted transfers, size limits, invalid text, unavailable handlers, storage failures, expired handles, and unexpected failures. Every error provides `kind`, `message`, `retryable`, and `operation`.
+[Downloads](downloads.md) writes into managed storage. Removing a download or record must follow the app's retention policy; merely closing its screen does not delete its content.

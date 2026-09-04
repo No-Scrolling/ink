@@ -1,91 +1,35 @@
 ---
 title: "Media"
-description: "Pick, inspect, transform, and present photos and video."
-tag: "Planned"
+description: "Pick, inspect and prepare photos, audio and video."
+tag: "Design specification"
 ---
 
-`@ink/media` owns a media file's validated metadata, transformation actions, and native presentation. It accepts temporary Files or Camera handles and durable Files or Downloads references.
+`@ink/media` provides native media selection and preparation. Use it for a chat attachment, avatar, saved cover or imported audio file.
 
-## Pick media
+```ts
+import { media } from "@ink/media";
 
-Use `mediaPicker()` from a user action:
-
-```tsx
-const picker = mediaPicker({
-  kinds: ["image", "video"],
-  maximumItems: 4,
-  maximumItemBytes: 20_000_000,
-  maximumTotalBytes: 50_000_000,
-});
-
-<Button onPress={() => picker.run()}>Choose media</Button>
+const picked = await media.pick({ kind: "image" });
+if (picked) {
+  const attachment = await media.prepareImage(picked, {
+    maxWidth: 1600,
+    maxHeight: 1600,
+    stripLocation: true,
+  });
+  await queueAttachment(attachment.file.id);
+}
 ```
 
-The action uses `idle`, `running`, `success`, and `error`. A successful value contains validated media items with a temporary `FileHandle`, kind, MIME type, normalised name, dimensions, size, optional duration, orientation, and capture time.
+`queueAttachment` is an app operation that promotes temporary content into durable storage before returning. Selection cancellation returns `null`. The picker owns its external activity round trip rather than being cancelled when its UI covers the app.
 
-Closing the system picker returns to `idle`. `clear()` releases every temporary item after active consumers finish their leases. Use `file(...).replace(item.file)` when an item must become durable.
+Preparation applies orientation and bounded resizing natively. Results include a managed file reference, dimensions, MIME type and size. JPEG quality and format conversion are explicit options; do not repeatedly re-encode already suitable content.
 
-## Open media
+## Ownership and rendering
 
-Create one media session from a handle or durable reference:
+Selections may refer to externally owned content. Import or prepare a managed copy before adding it to a durable outbox. Temporary results require promotion with [Files](files.md) if they must survive cleanup.
 
-```tsx
-const clip = media(videoFile, {
-  autoplay: false,
-  loop: false,
-  muted: false,
-});
+Render images with Ink's `Image`. Use `Video` with a supported file or URL for inline video; the native surface owns decoding, seeking and gestures, and pauses when hidden. Full playback controls use the same explicit command/error pattern as [Audio](audio.md).
 
-{clip.phase === "ready" ? (
-  <Text>{clip.info.width} × {clip.info.height}</Text>
-) : null}
-```
+Metadata reads and thumbnails are native asynchronous operations. Keep large image and video buffers out of React state. An app can display cached thumbnails while the full asset downloads.
 
-Opening validates the source and publishes complete metadata once. The session acquires a lease for its lifetime, so a temporary owner can be disposed without interrupting an active consumer.
-
-## Transform media
-
-Run a transformation through the media session:
-
-```tsx
-<Button onPress={() => clip.transform({
-  kind: "image",
-  maximumWidth: 1200,
-  maximumHeight: 1200,
-  fit: "contain",
-  format: "jpeg",
-  quality: 85,
-})}>
-  Prepare image
-</Button>
-```
-
-The transformation action reports progress when the codec provides it. Its success contains a temporary media handle. Pass `destination: managed.reference` to commit output atomically to an existing managed file.
-
-Image transformations support JPEG, PNG, and WebP. Video thumbnail transformations accept a position and image output options. Ink stops observing immediately after `cancel()`; terminating codec work is best effort and late output is discarded.
-
-## Present media
-
-Attach the same session to `MediaView`:
-
-```tsx
-<MediaView
-  session={clip}
-  height={240}
-  fit="contain"
-  controls="video"
-  accessibilityLabel="Interview with Sam"
-/>
-```
-
-The view fills available width and uses explicit height. Video controls provide play, pause, seek, elapsed time, and mute. The session also exposes ordered `play()`, `pause()`, `seekTo()`, and `setMuted()` commands for custom controls.
-
-Video pauses when hidden or backgrounded. Autoplay never begins with sound.
-
-## Permissions, accessibility, and errors
-
-Picking uses a system-owned surface and requests no broad photo or storage permission. Media does not request Camera or microphone permission.
-
-Errors distinguish denied access, missing or expired files, unsupported or invalid media, per-item and aggregate size limits, storage, decoding, transformation, playback, and unexpected failures. Every error has `kind`, `message`, `retryable`, and `operation`.
-
-Give every `MediaView` an accessibility label that describes its content. Video controls expose their role, duration, current time, and seek progress. Provide adjacent text for meaning conveyed only by visual media.
+For direct capture, use [Camera](camera.md). Provider libraries may impose additional restrictions on formats, upload sizes and media access; validate those before enqueueing an upload.
