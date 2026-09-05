@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [features]
-audio = ["dep:ink-audio", "dep:serde_json"]
+audio = ["dep:ink-audio"]
 background = []
 benchmark = ["ink-core/perf", "ink-renderer-wgpu/perf"]
 image = ["ink-renderer-wgpu/image"]
@@ -20,8 +20,10 @@ camera-photo = ["image"]
 
 [dependencies]
 ink-core = { path = "../../../crates/ink-core" }
+ink-runtime = { path = "../../../crates/ink-runtime" }
+anyhow.workspace = true
 ink-audio = { path = "../../../crates/ink-audio", optional = true }
-serde_json = { workspace = true, optional = true }
+serde_json.workspace = true
 ink-renderer-wgpu = { path = "../../../crates/ink-renderer-wgpu" }
 pollster.workspace = true
 wgpu.workspace = true

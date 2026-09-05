@@ -1,8 +1,10 @@
 ---
 title: "Accounts and sign-in"
 description: "Browser OAuth, device codes and reusable provider sessions."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/auth` handles OAuth mechanics. A provider module supplies endpoints, scopes, response decoding and account identity. Keep provider details outside screens.
 

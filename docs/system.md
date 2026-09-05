@@ -1,8 +1,10 @@
 ---
 title: "System"
 description: "Native links, sharing, appearance and application lifecycle."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/system` exposes a small set of app-level interactions with Android and the host.
 
@@ -19,7 +21,7 @@ Use managed file references for file sharing. Native code grants temporary acces
 
 ## Preferences and lifecycle
 
-`system.appearance` and `system.lifecycle` are readable snapshots. Ink components follow the app appearance automatically. Observe lifecycle through the framework's visibility hooks for screen work; use the app snapshot only when a domain service needs it.
+`system.lifecycle` is a planned readable snapshot. App appearance is already provided by `setColourScheme` and `useColourScheme` from `ink`; see [App appearance](ink.md#app-appearance). Observe lifecycle through the framework's visibility hooks for screen work; use the app snapshot only when a domain service needs it.
 
 `system.haptic(kind)` respects availability and host preferences. Avoid haptics from repeated render or progress callbacks. Keyboard and Back behaviour are integrated into Ink's focus and navigation model.
 

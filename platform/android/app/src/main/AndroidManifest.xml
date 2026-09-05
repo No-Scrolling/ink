@@ -46,6 +46,7 @@
         </service>
     </application>
     <queries>
+        <package android:name="${inkLightServerPackage}" />
         <intent>
             <action android:name="${inkLightSdkMarkerAction}" />
         </intent>

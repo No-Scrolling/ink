@@ -1,67 +1,59 @@
-import {
-  localNotifications,
-  notificationPermission,
-  notificationTap,
-} from "@ink/notifications";
-import { Button, Field, Screen, Stack, match } from "ink";
+import { useEffect } from "react";
+import { notifications, useNotificationTap } from "@ink/notifications";
+import { Button, Field, Screen, Stack, useAction, useRouteParams } from "ink";
 
 export default function Notifications() {
-  const permission = notificationPermission();
-  const notifications = localNotifications();
-  const tap = notificationTap();
+  const params = useRouteParams<{ source?: string }>();
+  const permission = useAction(notifications.getPermission);
+  const request = useAction(async () => {
+    await notifications.requestPermission();
+    permission.run();
+  });
+  const command = useAction((run: () => Promise<void>) => run());
+  const tap = useNotificationTap();
+  const busy = command.status === "pending";
+  useEffect(() => permission.run(), [permission.run]);
 
   return (
     <Screen title="Notifications">
-      {match(permission, {
-        loading: () => <Field label="Permission">Checking...</Field>,
-        ready: (result) => <Field label="Permission">{result.value}</Field>,
-        error: (result) => <Field label="Permission">{result.error.message}</Field>,
-      })}
-      <Button onPress={() => permission.request()}>Request Permission</Button>
-      <Button
-        onPress={() =>
-          notifications.schedule({
-            id: "example-reminder",
-            title: "Ink reminder",
-            body: "This notification was presented by Ink.",
-            href: "/modules/notifications",
-            data: "immediate",
-            delayMs: 0,
-          })
-        }
-      >
-        Show Now
-      </Button>
-      <Button
-        onPress={() =>
-          notifications.schedule({
-            id: "example-reminder",
-            title: "Updated reminder",
-            body: "The same ID atomically replaces the earlier reminder.",
-            href: "/modules/notifications",
-            data: "future",
-            delayMs: 15000,
-          })
-        }
-      >
-        Replace in 15 Seconds
-      </Button>
-      <Button onPress={() => notifications.cancel("example-reminder")}>
-        Cancel Reminder
-      </Button>
-      {notifications.status === "error" ? (
-        <Field label="Error">{notifications.error.message}</Field>
-      ) : null}
-      {match(tap, {
-        empty: () => <Field label="Last tap">None</Field>,
-        ready: (result) => (
-          <Stack gap={16}>
-            <Field label="Notification">{result.value.id}</Field>
-            <Field label="Data">{result.value.data}</Field>
-            <Button onPress={() => result.consume()}>Consume Tap</Button>
-          </Stack>
-        ),
-      })}
+      <Field label="Permission">
+        {permission.status === "success" ? permission.data
+          : permission.status === "error" ? permission.error.message : "Checking..."}
+      </Field>
+      <Button disabled={request.status === "pending"} onPress={() => request.run()}>Request Permission</Button>
+      {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
+      <Button disabled={busy} onPress={() => command.run(() => notifications.show({
+        id: "example-reminder",
+        title: "Ink reminder",
+        body: "This notification was presented by Ink.",
+        href: "/modules/notifications",
+        data: "immediate",
+      }))}>Show Now</Button>
+      <Button disabled={busy} onPress={() => command.run(() => notifications.schedule({
+        id: "example-reminder",
+        title: "Updated reminder",
+        body: "The same ID atomically replaces the earlier reminder.",
+        href: "/modules/notifications",
+        data: "future",
+        at: Date.now() + 15_000,
+      }))}>Replace in 15 Seconds</Button>
+      <Button disabled={busy} onPress={() => command.run(() => notifications.cancel("example-reminder"))}>Cancel Reminder</Button>
+      <Button disabled={busy} onPress={() => command.run(notifications.requestExactPermission)}>Allow Exact Reminders</Button>
+      <Button disabled={busy} onPress={() => command.run(() => notifications.schedule({
+        id: "example-reminder", title: "Exact reminder", body: "Open the reminder details.",
+        at: Date.now() + 15_000, exact: true,
+        href: { path: "/modules/notifications", params: { source: "exact-reminder" } },
+        data: "exact",
+      }))}>Exact in 15 Seconds</Button>
+      {typeof params.source === "string" && <Field label="Route source">{params.source}</Field>}
+      {command.status === "error" && <Field label="Error">{command.error.message}</Field>}
+      {tap.state.status === "ready" ? (
+        <Stack gap={16}>
+          <Field label="Notification">{tap.state.value.id}</Field>
+          <Field label="Data">{tap.state.value.data}</Field>
+          <Button disabled={busy} onPress={() => command.run(tap.consume)}>Consume Tap</Button>
+        </Stack>
+      ) : <Field label="Last tap">{tap.state.status === "error" ? tap.state.error.message : tap.state.status === "loading" ? "Loading..." : "None"}</Field>}
     </Screen>
   );
 }

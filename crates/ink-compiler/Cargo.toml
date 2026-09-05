@@ -9,10 +9,8 @@ rust-version.workspace = true
 ab_glyph = "0.2.32"
 anyhow.workspace = true
 image.workspace = true
-ink-app-format = { path = "../ink-app-format" }
+ink-core = { path = "../ink-core" }
 miniz_oxide.workspace = true
-oxc.workspace = true
-oxc_resolver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true

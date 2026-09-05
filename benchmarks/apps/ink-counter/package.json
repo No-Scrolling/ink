@@ -2,6 +2,10 @@
   "name": "ink-counter-benchmark",
   "private": true,
   "dependencies": {
-    "ink": "file:../../../packages/ink"
+    "ink": "workspace:*",
+    "react": "19.2.8"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
   }
 }

@@ -1,18 +1,19 @@
 use std::collections::BTreeSet;
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const MANIFEST_NAME: &str = "ink-capabilities-v1.json";
 const MANIFEST_VERSION: u32 = 1;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Capability {
     Audio,
     AudioDetached,
     AudioPlayback,
     Background,
+    BarcodeGenerate,
     CameraPermission,
     CodeScanner,
     Image,
@@ -36,6 +37,7 @@ impl Capability {
             Self::AudioDetached => "audio-detached",
             Self::AudioPlayback => "audio-playback",
             Self::Background => "background",
+            Self::BarcodeGenerate => "barcode-generate",
             Self::CameraPermission => "camera-permission",
             Self::CodeScanner => "code-scanner",
             Self::Image => "image",
@@ -59,6 +61,7 @@ impl Capability {
             Self::AudioDetached => "foreground playback service",
             Self::AudioPlayback => "Media3 playback",
             Self::Background => "background job service and network access",
+            Self::BarcodeGenerate => "native barcode encoder",
             Self::CameraPermission => "camera permission adapter",
             Self::CodeScanner => "camera session and barcode scanner",
             Self::Image => "image decoder",

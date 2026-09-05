@@ -1,7 +1,0 @@
-{
-  "name": "ink-updates-benchmark",
-  "private": true,
-  "dependencies": {
-    "ink": "file:../../../packages/ink"
-  }
-}

@@ -1,51 +1,20 @@
-# Domain Context
+# Ink
 
-## Purpose
+Ink is a framework for creating Light Phone III apps using ordinary TypeScript and React. It supplies an opinionated phone interface and device capabilities so app authors can concentrate on their content and behaviour.
 
-Ink compiles a restricted TypeScript/TSX application into a small native Android application without shipping a JavaScript runtime.
+## Language
 
-## Core concepts
+**Ink app**:
+A Light Phone III application built with Ink. Familiar React semantics are part of its promise; compatibility with React Native native modules is not.
 
-### State
+**Ink screen**:
+A page of app content presented within Ink's shared phone interface. The shared interface includes typography, spacing, scrolling, navigation affordances and keyboard accommodation.
 
-A typed value declared by an Ink app and held in a native engine slot. Supported top-level values are booleans, integers, strings and homogeneous lists.
+**Native capability**:
+A device or platform facility available to an Ink app, such as camera capture or audio playback. Its availability is separate from whether the user has granted permission to use it.
 
-### Local state
+**LightOS integration**:
+An app's interaction with the LightOS host, including the preferences, permissions and services the host exposes. Integration does not imply official distribution approval.
 
-State created with `state(initial)`. It belongs to one compile-time-expanded screen instance and returns to its initial value when the process restarts.
-
-### Shared state
-
-State created with `sharedState(key, initial)`. A stable key identifies one app-wide value for the life of the process. Declarations with the same key, lifetime, shape and initial value refer to the same native state slot.
-
-### Persisted state
-
-State created with `persistedState(key, initial)`. It has shared-state identity and is also saved in the Android application's private storage so it can survive process death and application upgrades.
-
-### Hydration
-
-Restoring compatible persisted values into their native state slots before Ink presents the first application frame. Missing, corrupt or incompatible values fall back to their compiled initial values.
-
-### State key
-
-An author-supplied, stable string literal used as the identity of shared or persisted state. Source order and generated numeric state IDs are not durable identities.
-
-### State shape
-
-The recursive compile-time type of a state value. Ink fingerprints the shape and validates restored values against it. Changing the shape resets that persisted key rather than attempting an implicit migration.
-
-## Invariants
-
-- Local state is never linked between screen instances or written to storage.
-- One state key cannot mix shared and persisted lifetimes.
-- Repeated declarations of one key have identical shapes and initial values.
-- Hydration completes before surface attachment and the first visible frame.
-- Storage failures never prevent the in-memory application from running.
-- Navigation, focus and scroll position are engine mechanics, not application state, and are not persisted implicitly.
-- Persisted state is for small settings and metadata, not resources, caches, media or secrets.
-
-## Avoided terms
-
-- Avoid **global state**; use **shared state** because its application scope and process lifetime are explicit.
-- Avoid **storage state**; use **persisted state** for the application value and **persisted snapshot** for its encoded representation.
-- Avoid **load state**; use **hydration** for the pre-frame restore operation.
+**App appearance**:
+An Ink app's choice of light or dark interface colours. It is distinct from the user's LightOS invert-colours preference, which the inspected SDK does not expose.

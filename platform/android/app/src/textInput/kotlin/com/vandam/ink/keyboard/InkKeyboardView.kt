@@ -33,6 +33,18 @@ internal class InkKeyboardView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : View(context, attrs) {
+    var lightAppearance: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            val foreground = if (value) Color.BLACK else Color.WHITE
+            setBackgroundColor(if (value) Color.WHITE else Color.BLACK)
+            paint.color = foreground
+            linePaint.color = foreground
+            emojiPaint.color = foreground
+            icons.values.forEach { it.setTint(foreground) }
+            invalidate()
+        }
     var listener: KeyboardListener? = null
     var action: KeyboardAction = KeyboardAction.Return
         set(value) {

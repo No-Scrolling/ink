@@ -1,8 +1,10 @@
 ---
 title: "Maps"
 description: "Native map views with explicit providers and offline regions."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/maps` provides the native map surface; a provider package supplies its map source, attribution and supported capabilities. Choose and configure that provider explicitly.
 

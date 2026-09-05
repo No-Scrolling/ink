@@ -1,23 +1,22 @@
 ---
 title: "Camera"
 description: "Native preview and capture owned by the visible screen."
-tag: "Design specification"
+tag: "In development"
 ---
+
+> **In development.** Front/rear preview, capture, review and durable photo files are implemented. Camera availability and quality depend on the device.
 
 `@ink/camera` provides a native preview and still capture. Use it for a chat photo, a document image or an app-specific capture flow.
 
 ```tsx
-import { Button, Screen, Text, useAction } from "ink";
+import { Screen } from "ink";
 import { CameraPreview, useCamera } from "@ink/camera";
 
 export function Capture() {
   const camera = useCamera({ facing: "back" });
-  const capture = useAction(() => camera.capture());
   return (
     <Screen title="Photo">
       <CameraPreview controller={camera} />
-      <Button onPress={() => capture.run()} disabled={!camera.state.ready}>Take photo</Button>
-      {capture.status === "error" && <Text>{capture.error.message}</Text>}
     </Screen>
   );
 }
@@ -25,7 +24,11 @@ export function Capture() {
 
 The hook activates after commit when the screen is visible. Permission states are exposed separately from readiness; render a permission explanation and explicit `camera.requestPermission()` action when needed. Merely constructing the hook does not show a permission prompt.
 
-Preview, focus and image processing remain native. `capture()` returns a temporary managed file with dimensions and orientation metadata. Promote it with [Files](files.md) before saving a durable record or leaving it in an outbox.
+Tap the preview to capture a photo; the review offers Retake and Use photo actions. On acceptance, `camera.state.value` contains `source`, `width`, `height`, `mimeType` and `capturedAt`. The result also contains `file` with `uri`, `source`, `name`, `size` and `mimeType`. Accepted files live in private app storage and survive screen disposal and app restarts. Store this metadata alongside your record; remove a file explicitly with `await camera.removePhoto(photo.file)` from the exported `camera` object. Unaccepted review files are temporary and are removed when the session closes.
+
+Call `await controller.capture()` to trigger the same capture-and-review flow as tapping the preview. This promise acknowledges the command; it does not imply that the user accepted a photo. Read `controller.state.reviewSource` for review readiness and `controller.state.value` after acceptance. `controller.accept()` and `controller.retake()` also control that flow. A preview must be mounted and the controller ready before capture.
+
+Use `useCamera({ facing: "front" })` to request the front camera. Missing hardware reports an unavailable error rather than silently choosing a different camera.
 
 The camera releases when its screen is covered or the app backgrounds, and reacquires on return. Interrupted capture rejects or completes with a result tied to the original request; it cannot update a replacement screen. Handle denial, camera-in-use and unavailable hardware distinctly.
 

@@ -13,7 +13,10 @@ struct AppConfig {
     #[serde(default = "default_version_code")]
     version_code: u32,
     signing: Option<SigningConfig>,
-    light: Option<LightConfig>,
+    lightos: Option<LightOsConfig>,
+    background: Option<BackgroundConfig>,
+    #[serde(default)]
+    capabilities: Vec<crate::Capability>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,9 +28,16 @@ struct SigningConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct LightConfig {
+struct LightOsConfig {
+    enabled: bool,
     #[serde(default = "default_light_server")]
     server: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BackgroundConfig {
+    entry: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +56,8 @@ pub(crate) struct ResolvedConfig {
     pub(crate) android_resources: PathBuf,
     pub(crate) signing: Option<ReleaseSigning>,
     pub(crate) light_server: String,
+    pub(crate) capabilities: Vec<crate::Capability>,
+    pub(crate) worker_entry: Option<PathBuf>,
 }
 
 impl ResolvedConfig {
@@ -56,12 +68,24 @@ impl ResolvedConfig {
             toml::from_str(&text).with_context(|| format!("could not parse {}", path.display()))?;
         let directory = path.parent().expect("a canonical config path has a parent");
         validate(&config)?;
+        let mut capabilities = config.capabilities;
+        if config
+            .lightos
+            .as_ref()
+            .is_some_and(|lightos| lightos.enabled)
+        {
+            capabilities.push(crate::Capability::LightSdk);
+        }
 
         Ok(Self {
             name: config.name,
             package: config.package,
             version: config.version,
             version_code: config.version_code,
+            capabilities,
+            worker_entry: config
+                .background
+                .map(|background| directory.join(background.entry)),
             source: directory.join("App.tsx"),
             android_resources: directory.join(".ink/android/res"),
             signing: config.signing.map(|signing| ReleaseSigning {
@@ -69,13 +93,19 @@ impl ResolvedConfig {
                 key_alias: signing.key_alias,
             }),
             light_server: config
-                .light
-                .map_or_else(default_light_server, |light| light.server),
+                .lightos
+                .map(|lightos| lightos.server)
+                .unwrap_or_else(default_light_server),
         })
     }
 }
 
 fn validate(config: &AppConfig) -> Result<()> {
+    if let Some(lightos) = &config.lightos
+        && (!lightos.server.split('.').all(valid_package_segment) || !lightos.server.contains('.'))
+    {
+        anyhow::bail!("lightos.server must be a dotted Android application ID");
+    }
     if config.name.trim().is_empty() {
         anyhow::bail!("name must not be empty");
     }
@@ -95,14 +125,6 @@ fn validate(config: &AppConfig) -> Result<()> {
         && signing.key_alias.trim().is_empty()
     {
         anyhow::bail!("signing.key_alias must not be empty");
-    }
-    if let Some(light) = &config.light
-        && (!light.server.split('.').all(valid_package_segment) || !light.server.contains('.'))
-    {
-        anyhow::bail!(
-            "light.server {:?} is invalid; use a dotted Android application ID such as com.lightos",
-            light.server
-        );
     }
     Ok(())
 }

@@ -55,8 +55,11 @@ class InkLightFileProvider : ContentProvider() {
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
 
     private fun checkCaller() {
-        if (Binder.getCallingUid() != android.os.Process.SYSTEM_UID) {
-            throw SecurityException("Shared Light files are available only to the system")
+        val uid = Binder.getCallingUid()
+        if (uid == android.os.Process.SYSTEM_UID || uid == android.os.Process.myUid()) return
+        val packages = requireNotNull(context).packageManager.getPackagesForUid(uid)
+        if (packages?.contains(BuildConfig.INK_LIGHT_SERVER_PACKAGE) != true) {
+            throw SecurityException("Shared Light files are available only to the configured LightOS host")
         }
     }
 

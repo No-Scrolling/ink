@@ -1,8 +1,10 @@
 ---
 title: "Connectivity"
 description: "Observe network availability without treating it as request success."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/connectivity` exposes an immutable snapshot of the current network state.
 

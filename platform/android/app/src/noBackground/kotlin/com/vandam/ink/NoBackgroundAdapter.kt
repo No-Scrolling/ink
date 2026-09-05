@@ -1,6 +1,6 @@
 package com.vandam.ink
 
-internal fun createBackgroundAdapter(_activity: MainActivity): BackgroundAdapter =
+internal fun createBackgroundAdapter(_context: android.content.Context): BackgroundAdapter =
     object : BackgroundAdapter {
         override fun execute(
             requestId: Long,
@@ -16,6 +16,5 @@ internal fun createBackgroundAdapter(_activity: MainActivity): BackgroundAdapter
         )
 
         override fun cancel(requestId: Long) = Unit
-        override fun reconcile() = Unit
         override fun stop() = Unit
     }

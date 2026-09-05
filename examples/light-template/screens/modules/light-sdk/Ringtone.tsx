@@ -1,24 +1,18 @@
-import { ringtoneInstaller } from "@ink/light-sdk";
-import { Button, Field, Screen, match } from "ink";
+import { installRingtone } from "@ink/lightos/ringtone";
+import { Button, Field, Screen, useAction } from "ink";
+import audio from "../audio/assets/cant_help.mp3";
 
 export default function Ringtone() {
-  const ringtone = ringtoneInstaller();
+  const ringtone = useAction(() => installRingtone(audio));
 
   return (
     <Screen title="Ringtone">
-      {match(ringtone, {
-        idle: () => <Field label="Status">Ready to install</Field>,
-        installing: () => <Field label="Status">Installing...</Field>,
-        installed: () => <Field label="Status">Installed</Field>,
-        error: (result) => <Field label="Status">{result.error.message}</Field>,
-      })}
-      <Button
-        onPress={() =>
-          ringtone.set("./../audio/assets/cant_help.mp3", "ringtone")
-        }
-      >
-        Install Ringtone
-      </Button>
+      <Field label="Status">
+        {ringtone.status === "idle" ? "Ready to install"
+          : ringtone.status === "pending" ? "Installing..."
+          : ringtone.status === "success" ? "Installed" : ringtone.error.message}
+      </Field>
+      <Button disabled={ringtone.status === "pending"} onPress={() => ringtone.run()}>Install Ringtone</Button>
     </Screen>
   );
 }

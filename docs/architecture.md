@@ -1,10 +1,12 @@
 ---
 title: "How Ink works"
 description: "TypeScript app behaviour, QuickJS-ng execution and retained native rendering."
-tag: "Design specification"
+tag: "In development"
 ---
 
-App logic executes as JavaScript on the phone. The compiler bundles code and connects JSX to Ink; it does not translate arbitrary application logic into Rust.
+> **In development.** React, QuickJS-ng, retained rendering, background runtimes, fixed-height list virtualisation and native subtree updates are implemented.
+
+Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler type-checks and bundles the app, prepares its assets and selects native integrations.
 
 ```text
 App.tsx + TypeScript + npm dependencies
@@ -31,28 +33,27 @@ package = "com.example.weather"
 version = "1.0.0"
 version_code = 1
 
-[android]
-modules = ["@ink/location"]
-
 [lightos]
 enabled = true
 ```
 
-`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. Native packages are installed through npm and registered by `ink add`.
+`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The current build discovers supported native integrations from the app and package imports. General native-package manifests and `ink add` are planned.
 
 ## Build responsibilities
 
-The build resolves normal package exports, removes TypeScript types, compiles JSX, bundles reachable code and includes declared assets. Literal dynamic imports can become bundled chunks; they are not a way to download executable code after installation.
+The build resolves normal package exports, removes TypeScript types, compiles JSX, bundles reachable code and includes declared assets. The current build emits a single UI bundle and, when configured, a worker bundle. Separate dynamic chunks are not implemented; they are not a way to download executable code after installation.
 
-Native package manifests describe entry points, ABI compatibility, permissions, Android components and build dependencies. Native modules and required capability groups are linked together into the APK. Tree shaking can remove unused JavaScript; it cannot guarantee that one method can be extracted from an indivisible native SDK.
+A general native package-manifest contract for entry points, ABI compatibility and build dependencies is planned. The current compiler and Android build contain the supported capability mappings. Native modules and required capability groups are linked together into the APK. Tree shaking can remove unused JavaScript; it cannot guarantee that one method can be extracted from an indivisible native SDK.
 
-The runtime and bundle formats are internal. Release builds may use engine-version-matched bytecode where supported, but applications never store bytecode as user data or depend on an engine-specific interface.
+Apps ship bundled JavaScript, prepared icons, assets and native capability metadata. The build currently bundles JavaScript source for both development and release.
 
 ## Runtime responsibilities
 
 The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScript thread. Ink pumps promise jobs and native completions, hosts timers and networking, and schedules component updates. Native calls return promises instead of blocking that thread on I/O.
 
 Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches changes across the native seam and applies consistent updates at frame boundaries. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
+
+Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Fixed-height lists mount a window of rows based on the native viewport.
 
 A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 
@@ -68,11 +69,13 @@ A visually idle app requests no rendering frames. This is not a promise of zero 
 
 JavaScript garbage collection is not a lifecycle mechanism for a camera, socket or player. UI hooks and explicit `close()`/unsubscribe operations release native work. Reactivation obtains fresh handles; stale results cannot update a replacement owner. Native handles may be held in memory but are not serialisable. Durable IDs reconnect to stored state instead of reviving an old pointer.
 
-Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio and download services do not need a continuously running JavaScript loop. Android can stop work; storage and domain reconciliation provide recovery.
+Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio does not need a continuously running JavaScript loop. A Downloads package is planned. Android can stop work; storage and domain reconciliation provide recovery.
 
 ## Package execution and trust
 
 JavaScript dependencies execute in the app's runtime and share its available host APIs. A package namespace is not a security sandbox. Native dependencies execute with the app's Android authority. A lockfile and build report make dependencies reproducible and inspectable; they do not make arbitrary third-party code safe.
+
+For hashing, use [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) instead of an Ink crypto package. Secure credentials belong in [Secure store](secure-store.md). JavaScript hashing does not provide Android Keystore-backed keys.
 
 ## LightOS integration
 

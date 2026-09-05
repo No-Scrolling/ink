@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
-    "jsx": "preserve",
-    "jsxImportSource": "ink",
-    "module": "Preserve",
+    "jsx": "react-jsx",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true,
-    "preserveSymlinks": true,
+    "skipLibCheck": true,
     "strict": true,
-    "target": "ESNext"
+    "target": "ES2022"
   },
-  "include": ["App.tsx"]
+  "include": [
+    "App.tsx"
+  ]
 }

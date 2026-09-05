@@ -1,48 +1,41 @@
-import { audioPlayer } from "@ink/audio";
-import { Button, Field, Screen } from "ink";
+import { usePlayer } from "@ink/audio";
+import { Button, Field, Screen, useAction, useRouteParams } from "ink";
+import track from "./assets/cant_help.mp3";
 
 export default function LocalPlayback() {
-  const player = audioPlayer({ usage: "music", playback: "detached" });
+  const params = useRouteParams<{ session?: string }>();
+  const session = params.session === "secondary" ? "secondary" : "main";
+  const player = usePlayer({ session, usage: "music", mode: "detached" });
+  const command = useAction((run: () => Promise<void>) => run());
+  const disabled = !player.state.ready || command.status === "pending";
 
   return (
-    <Screen title="Local Playback">
-      <Field label="Status">{player.status}</Field>
-      {player.status === "error" ? (
-        <Field label="Error">{player.error.message}</Field>
-      ) : player.status === "idle" ? (
-        <Field label="Track">None</Field>
+    <Screen title={session === "secondary" ? "Second Player" : "Local Playback"}>
+      <Field label="Session">{session}</Field>
+      <Field label="Status">
+        {!player.state.ready ? "Connecting" : player.state.buffering ? "Buffering" : player.state.playing ? "Playing" : player.state.current ? "Paused" : "Idle"}
+      </Field>
+      {player.state.error ? (
+        <Field label="Error">{player.state.error.message}</Field>
       ) : (
-        <Field label="Track">{player.index}: {player.title}</Field>
+        <Field label="Track">{player.state.current ? `${player.state.index}: ${player.state.current.title}` : "None"}</Field>
       )}
-      <Field label="Position">{player.positionMs} / {player.durationMs} ms</Field>
-      <Button
-        onPress={() => {
-          player.setQueue([
-            {
-              id: "first",
-              src: "./assets/cant_help.mp3",
-              title: "First Play",
-              artist: "EDEN",
-            },
-            {
-              id: "second",
-              src: "./assets/cant_help.mp3",
-              title: "Second Play",
-              artist: "EDEN",
-            },
-          ]);
-          player.play();
-        }}
-      >
-        Play Local Queue
-      </Button>
-      <Button onPress={() => player.playRecording()}>Play Last Recording</Button>
-      <Button onPress={() => player.toggle()}>Play / Pause</Button>
-      <Button onPress={() => player.previous()}>Previous Track</Button>
-      <Button onPress={() => player.next()}>Next Track</Button>
-      <Button onPress={() => player.skipBack()}>Back 15 Seconds</Button>
-      <Button onPress={() => player.skipForward()}>Forward 15 Seconds</Button>
-      <Button onPress={() => player.stop()}>Stop Playback</Button>
+      <Field label="Position">{player.state.position} / {player.state.duration} ms</Field>
+      <Button disabled={disabled} onPress={() => command.run(async () => {
+        await player.setQueue([
+          { id: "first", src: track, title: "First Play", artist: "EDEN" },
+          { id: "second", src: track, title: "Second Play", artist: "EDEN" },
+        ]);
+        await player.play();
+      })}>Play Local Queue</Button>
+      <Button disabled={disabled} onPress={() => command.run(player.playRecording)}>Play Last Recording</Button>
+      <Button disabled={disabled} onPress={() => command.run(player.toggle)}>Play / Pause</Button>
+      <Button disabled={disabled} onPress={() => command.run(player.previous)}>Previous Track</Button>
+      <Button disabled={disabled} onPress={() => command.run(player.next)}>Next Track</Button>
+      <Button disabled={disabled} onPress={() => command.run(() => player.seek(Math.max(0, player.state.position - 15_000)))}>Back 15 Seconds</Button>
+      <Button disabled={disabled} onPress={() => command.run(() => player.seek(Math.min(player.state.duration, player.state.position + 15_000)))}>Forward 15 Seconds</Button>
+      <Button disabled={disabled} onPress={() => command.run(player.stop)}>Stop Playback</Button>
+      {command.status === "error" && <Field label="Command error">{command.error.message}</Field>}
     </Screen>
   );
 }

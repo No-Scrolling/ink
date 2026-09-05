@@ -11,7 +11,7 @@ private class InkRingtoneFiles(private val context: Context) : RingtoneFiles {
     private val preferences = context.getSharedPreferences("ink-ringtones", Context.MODE_PRIVATE)
 
     override fun stage(source: String): StagedRingtone {
-        require(source.startsWith(ASSET_PREFIX)) { "Ringtone source is not a bundled asset" }
+        require(source.startsWith(ASSET_PREFIX) || source.startsWith("asset:///ink-assets/")) { "Ringtone source is not a bundled asset" }
         val assetPath = source.removePrefix("asset:///")
         require(!assetPath.contains("..")) {
             "Ringtone asset path is invalid"

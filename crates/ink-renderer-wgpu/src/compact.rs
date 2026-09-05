@@ -1166,7 +1166,11 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(if scene.light {
+                            wgpu::Color::WHITE
+                        } else {
+                            wgpu::Color::BLACK
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -1789,13 +1793,13 @@ fn push_scrollbar_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {
         ink_core::Quad {
             rect: scrollbar.track,
             clip,
-            colour: Colour::WHITE,
+            colour: scene.colour(Colour::WHITE),
             scrolling: false,
         },
         ink_core::Quad {
             rect: thumb,
             clip,
-            colour: Colour::WHITE,
+            colour: scene.colour(Colour::WHITE),
             scrolling: false,
         },
     ] {

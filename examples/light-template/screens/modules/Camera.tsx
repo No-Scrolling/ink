@@ -1,19 +1,26 @@
-import { cameraPermission } from "@ink/camera";
-import { Button, Field, Screen, match } from "ink";
+import { useEffect } from "react";
+import { camera } from "@ink/camera";
+import { Button, Field, Screen, useAction } from "ink";
 
 export default function Camera() {
-  const permission = cameraPermission();
+  const permission = useAction(camera.getPermission);
+  const request = useAction(async () => {
+    await camera.requestPermission();
+    permission.run();
+  });
+  useEffect(() => permission.run(), [permission.run]);
 
   return (
     <Screen title="Camera">
-      {match(permission, {
-        loading: () => <Field label="Permission">Checking...</Field>,
-        ready: (result) => <Field label="Permission">{result.value}</Field>,
-        error: (result) => <Field label="Permission">{result.error.message}</Field>,
-      })}
-      <Button onPress={() => permission.request()}>Request Camera</Button>
+      <Field label="Permission">
+        {permission.status === "success" ? permission.data : permission.status === "error" ? permission.error.message : "Checking..."}
+      </Field>
+      <Button disabled={request.status === "pending"} onPress={() => request.run()}>Request Camera</Button>
+      {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
       <Button href="/modules/camera/photo">Photo</Button>
       <Button href="/modules/camera/scan">Scan Code</Button>
+      <Button href={{ path: "/modules/camera/photo", params: { facing: "front" } }}>Front Camera</Button>
+      <Button href={{ path: "/modules/camera/scan", params: { continuous: "true" } }}>Continuous Scan</Button>
     </Screen>
   );
 }

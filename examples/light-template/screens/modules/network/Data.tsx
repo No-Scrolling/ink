@@ -1,58 +1,43 @@
-import { cachedJson, json, mutation } from "@ink/network";
-import { Button, Field, Screen, all, computed, match, routeParams, state } from "ink";
-
-type Todo = {
-  userId: number;
-  id: number;
-  title: string;
-  completed: boolean;
-  note?: string | null;
-};
+import { useEffect, useRef, useState } from "react";
+import { Button, Field, Screen, useAction, useRouteParams, useSnapshot } from "ink";
+import { cachedTodo, loadPage, refreshCache, saveTodo } from "../../../data/todos";
 
 export default function Data() {
-  const params = routeParams<{ label: string }>();
-  const count = state(2);
-  const doubled = computed(() => count.value * 2);
-  const first = json<Todo>("https://jsonplaceholder.typicode.com/todos/1");
-  const second = json<Todo>("https://jsonplaceholder.typicode.com/todos/2");
-  const page = all({ first, second });
-  const cached = cachedJson<Todo>("https://jsonplaceholder.typicode.com/todos/3");
-  const save = mutation<Todo>("https://jsonplaceholder.typicode.com/todos", {
-    method: "POST",
-    body: { userId: count.value, title: "Ink", completed: false },
-  });
+  const params = useRouteParams<{ label: string }>();
+  const [count] = useState(2);
+  const page = useAction(loadPage);
+  const refresh = useAction(refreshCache);
+  const cached = useSnapshot(cachedTodo);
+  const save = useAction(saveTodo);
+  const session = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    session.current = controller;
+    page.run(controller.signal);
+    refresh.run(controller.signal);
+    return () => {
+      controller.abort();
+      session.current = null;
+    };
+  }, [page.run, refresh.run]);
 
   return (
     <Screen title="Data">
       <Field label="Route">{params.label}</Field>
-      <Field label="Computed value">{doubled.value}</Field>
-      {match(page, {
-        loading: () => <Field label="Resources">Loading...</Field>,
-        ready: (result) => (
-          <Field label="First resource">{result.value.first.title}</Field>
-        ),
-        error: (result) => (
-          <Field label="Resource error">
-            {result.error.resource}: {result.error.error.message}
-          </Field>
-        ),
-      })}
-      {match(cached, {
-        loading: () => <Field label="Cache">Loading...</Field>,
-        ready: (result) => (
-          <Field label="Cached resource">{result.value.title}</Field>
-        ),
-        stale: (result) => <Field label="Stale cache">{result.value.title}</Field>,
-        error: (result) => <Field label="Cache error">{result.error.message}</Field>,
-      })}
-      {match(save, {
-        idle: () => <Button onPress={() => save.run()}>Run Mutation</Button>,
-        running: () => <Field label="Mutation">Saving...</Field>,
-        ready: (result) => <Field label="Saved item">{result.value.id}</Field>,
-        error: (result) => (
-          <Field label="Mutation error">{result.error.message}</Field>
-        ),
-      })}
+      <Field label="Computed value">{count * 2}</Field>
+      {page.status === "success" ? (
+        <Field label="First resource">{page.data.first.title}</Field>
+      ) : <Field label="Resources">{page.status === "error" ? page.error.message : "Loading..."}</Field>}
+      {cached.status === "ready" && cached.data !== null ? (
+        <Field label={refresh.status === "error" ? "Stale cache" : "Cached resource"}>{cached.data.title}</Field>
+      ) : <Field label="Cache">{cached.status === "error" ? cached.error.message : refresh.status === "error" ? refresh.error.message : "Loading..."}</Field>}
+      {save.status === "idle" ? (
+        <Button onPress={() => save.run(count, session.current?.signal)}>Run Mutation</Button>
+      ) : save.status === "pending" ? (
+        <Field label="Mutation">Saving...</Field>
+      ) : save.status === "success" ? (
+        <Field label="Saved item">{save.data.id}</Field>
+      ) : <Field label="Mutation error">{save.error.message}</Field>}
     </Screen>
   );
 }

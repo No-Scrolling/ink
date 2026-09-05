@@ -1,8 +1,10 @@
 ---
 title: "Records"
 description: "SQLite for offline collections, search and durable outboxes."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/records` gives domain modules a native SQLite database. Use it for chat history, passes, downloaded libraries, feed entries or transit stops. Screens call domain functions and observe results; SQL stays close to the data it describes.
 

@@ -1,8 +1,10 @@
 ---
 title: "Sensors"
 description: "Bounded native sensor observations."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/sensors` exposes available motion and environmental sensors. Check availability before presenting a feature; the API does not imply that every device contains every sensor.
 

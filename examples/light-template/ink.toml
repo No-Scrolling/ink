@@ -2,3 +2,10 @@ name = "Ink Template"
 package = "com.vandam.ink.template"
 version = "0.1.0"
 version_code = 1
+capabilities = ["network"]
+
+[lightos]
+enabled = true
+
+[background]
+entry = "./workers.ts"

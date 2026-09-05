@@ -1,8 +1,10 @@
 ---
 title: "Bluetooth"
 description: "Native BLE transport with TypeScript device protocols."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/bluetooth` provides BLE discovery and GATT connections. A device package turns services and characteristics into useful operations such as `readWeight()` or `setDisplayText()`.
 

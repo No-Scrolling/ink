@@ -201,6 +201,11 @@ fn show_info(project: &Project) -> Result<()> {
     output::field("Light server", project.light_server());
     output::field("Target", "Android arm64");
     output::field("Ink", env!("CARGO_PKG_VERSION"));
+    output::field("Runtime", "React / QuickJS-ng");
+    output::field(
+        "JavaScript",
+        format!("{} bytes (minified)", app.javascript_bytes),
+    );
     output::field(
         "Capabilities",
         if app.capabilities.is_empty() {
@@ -212,70 +217,6 @@ fn show_info(project: &Project) -> Result<()> {
     for detail in &app.capability_details {
         output::field("", detail);
     }
-    output::field(
-        "Modules",
-        if app.modules.is_empty() {
-            "None".to_owned()
-        } else {
-            app.modules.join(", ")
-        },
-    );
-    output::field(
-        "Permissions",
-        if app.permissions.is_empty() {
-            "None".to_owned()
-        } else {
-            app.permissions.join(", ")
-        },
-    );
-    output::field(
-        "Resources",
-        if app.resources.is_empty() {
-            "None".to_owned()
-        } else {
-            app.resources.join(", ")
-        },
-    );
-    output::field(
-        "Controllers",
-        if app.controllers.is_empty() {
-            "None".to_owned()
-        } else {
-            app.controllers.join(", ")
-        },
-    );
-    output::field(
-        "State",
-        format!(
-            "{} local, {} shared, {} persisted",
-            app.local_states, app.shared_states, app.persisted_states,
-        ),
-    );
-    output::field(
-        "Rendering",
-        format!(
-            "{} nodes, {} virtual lists (fixed geometry), {} general lists (variable geometry)",
-            app.nodes, app.virtual_lists, app.general_lists,
-        ),
-    );
-    output::field(
-        "Invalidation",
-        format!(
-            "{} state→node bindings: {} layout, {} structural",
-            app.state_dependencies, app.layout_dependencies, app.structural_dependencies,
-        ),
-    );
-    output::field(
-        "Fallback",
-        "small trees, structural branches and native events use conservative rebuilds",
-    );
-    output::field(
-        "App data",
-        format!(
-            "{} (versioned app.ink)",
-            file_size(app.definition_bytes as u64)
-        ),
-    );
     output::field(
         "Signing",
         project

@@ -4,6 +4,26 @@ import org.json.JSONObject
 
 internal typealias NativeResultHandler = (NativeResult) -> Unit
 
+internal fun javascriptResult(id: Long, result: NativeResult): String {
+    val response = JSONObject().put("type", "result").put("id", id)
+    when (result) {
+        is NativeResult.Success -> response.put("value", result.value)
+        is NativeResult.Bytes -> response.put("value", result.value.toString(Charsets.UTF_8))
+        is NativeResult.Failure -> response
+            .put("kind", result.kind.name.lowercase())
+            .put("message", result.message)
+            .put("retryable", result.retryable)
+        is NativeResult.File -> {
+            if (result.deleteAfterRead) java.io.File(result.path).delete()
+            response.put("kind", "protocol").put("message", "File results require a managed-file operation")
+        }
+    }
+    val message = response.toString()
+    return if (message.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) message else
+        JSONObject().put("type", "result").put("id", id)
+            .put("kind", "protocol").put("message", "Native result exceeds the message limit").toString()
+}
+
 internal interface NativeAdapter {
     fun execute(
         requestId: Long,
@@ -65,3 +85,4 @@ internal interface NotificationsAdapter : NativeAdapter {
 }
 
 internal const val EXTRA_NOTIFICATION_HREF = "com.vandam.ink.notification.HREF"
+internal const val EXTRA_NOTIFICATION_PARAMS = "com.vandam.ink.notification.PARAMS"

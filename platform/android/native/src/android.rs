@@ -1,10 +1,8 @@
 #[cfg(feature = "image")]
 use std::ffi::c_void;
 use std::ffi::{CString, c_char, c_int};
-use std::io::Write;
 #[cfg(feature = "image")]
 use std::os::fd::AsRawFd;
-use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex, Once};
 #[cfg(feature = "benchmark")]
@@ -15,9 +13,8 @@ use ink_core::ImageFit;
 #[cfg(feature = "benchmark")]
 use ink_core::PerfTraceSection;
 use ink_core::{
-    AppDefinition, CameraPreviewKind, ControllerId, Engine, Hydration, NativeRequestKind,
-    PUBLIC_SANS, PointerOutcome, ResourceError, ResourceErrorKind, StateValue, TextEdit,
-    TextInputAction,
+    CameraPreviewKind, ControllerId, Engine, NativeRequestKind, PUBLIC_SANS, PointerOutcome,
+    ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
 };
 use ink_renderer_wgpu::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
@@ -27,6 +24,13 @@ use jni::objects::JShortArray;
 use jni::objects::{JByteBuffer, JClass, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use ndk::native_window::NativeWindow;
+
+#[path = "javascript.rs"]
+mod javascript;
+
+#[cfg(feature = "background")]
+#[path = "worker.rs"]
+mod worker;
 
 const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_WARN: c_int = 5;
@@ -88,8 +92,7 @@ unsafe extern "C" {
 
 struct AndroidEngine {
     engine: Engine,
-    uses_persistence: bool,
-    state_path: PathBuf,
+    script: Option<javascript::ScriptRuntime>,
     surface: Option<AttachedSurface>,
     #[cfg(feature = "audio")]
     audio: crate::audio::AudioRuntime,
@@ -117,35 +120,10 @@ impl wgpu::rwh::HasDisplayHandle for AndroidWindow {
 }
 
 impl AndroidEngine {
-    fn new(definition: AppDefinition, state_path: PathBuf) -> Self {
-        let uses_persistence = definition.uses_persistence();
-        let (engine, hydration) = if !uses_persistence {
-            (Engine::new(definition), Hydration::Empty)
-        } else {
-            match std::fs::read(&state_path) {
-                Ok(bytes) => Engine::hydrate(definition, &bytes),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    (Engine::new(definition), Hydration::Empty)
-                }
-                Err(error) => {
-                    android_log(
-                        ANDROID_LOG_WARN,
-                        &format!("could not read persisted state: {error}"),
-                    );
-                    (Engine::new(definition), Hydration::Empty)
-                }
-            }
-        };
-        if hydration == Hydration::Invalid {
-            android_log(
-                ANDROID_LOG_WARN,
-                "persisted state was invalid; using application defaults",
-            );
-        }
+    fn new() -> Self {
         Self {
-            engine,
-            uses_persistence,
-            state_path,
+            engine: Engine::new(),
+            script: None,
             surface: None,
             #[cfg(feature = "audio")]
             audio: crate::audio::AudioRuntime::default(),
@@ -225,6 +203,16 @@ impl AndroidEngine {
             }
             _ => PointerOutcome::default(),
         };
+        if outcome.changed
+            && let Some(script) = &mut self.script
+            && let Err(error) = script.notify_inputs(&self.engine)
+        {
+            android_log(
+                ANDROID_LOG_ERROR,
+                &format!("JavaScript input failed: {error:#}"),
+            );
+            self.script = None;
+        }
         #[cfg(feature = "benchmark")]
         if action == 1 && outcome.changed {
             self.update_ns = elapsed_ns(started);
@@ -260,40 +248,56 @@ impl AndroidEngine {
     }
 
     fn scroll_by(&mut self, delta: f32) -> bool {
-        self.engine.scroll_by(delta)
+        let changed = self.engine.scroll_by(delta);
+        if changed
+            && let Some(script) = &mut self.script
+            && let Err(error) = script.notify_inputs(&self.engine)
+        {
+            android_log(
+                ANDROID_LOG_ERROR,
+                &format!("JavaScript scroll failed: {error:#}"),
+            );
+            self.script = None;
+        }
+        changed
     }
 
     fn back(&mut self) -> bool {
         self.engine.back()
     }
 
-    fn navigate(&mut self, path: &str) -> bool {
-        self.engine.navigate(path)
-    }
-
-    fn resume(&mut self) -> bool {
-        self.engine.resume()
-    }
-
     fn edit_text(&mut self, edit: TextEdit) -> bool {
-        self.engine.edit_text(edit)
-    }
-
-    fn complete_native(
-        &mut self,
-        request_id: u64,
-        result: Result<StateValue, ResourceError>,
-    ) -> bool {
-        self.engine.complete_native(request_id, result)
+        if let Some(script) = &mut self.script {
+            return match script.edit_text(&mut self.engine, edit) {
+                Ok(changed) => changed,
+                Err(error) => {
+                    android_log(
+                        ANDROID_LOG_ERROR,
+                        &format!("JavaScript input failed: {error:#}"),
+                    );
+                    self.script = None;
+                    true
+                }
+            };
+        }
+        false
     }
 
     #[cfg(feature = "audio")]
     fn process_audio(&mut self, samples: &[i16], sample_rate: u32) -> bool {
-        self.audio.process(&mut self.engine, samples, sample_rate)
-    }
-
-    fn complete_native_json(&mut self, request_id: u64, bytes: &[u8]) -> bool {
-        self.engine.complete_native_json(request_id, bytes)
+        self.audio
+            .process(samples, sample_rate, |controller, value| {
+                if let Some(script) = &self.script
+                    && let Err(error) =
+                        script.notify_controller((controller.index() as i64).unsigned_abs(), value)
+                {
+                    android_log(
+                        ANDROID_LOG_ERROR,
+                        &format!("Audio state delivery failed: {error:#}"),
+                    );
+                }
+                false
+            })
     }
 
     #[cfg(feature = "image")]
@@ -347,10 +351,9 @@ impl AndroidEngine {
             android_log(
                 ANDROID_LOG_INFO,
                 &format!(
-                    "Perf revision={} update_ns={} materialise_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} queue_submit_cpu_ns={} queue_present_cpu_ns={} frame_ns={} instances={} uploaded_bytes={} draw_calls={} cache_misses={}",
+                    "Perf revision={} update_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} queue_submit_cpu_ns={} queue_present_cpu_ns={} frame_ns={} instances={} uploaded_bytes={} draw_calls={} cache_misses={}",
                     option_env!("INK_BENCHMARK_REVISION").unwrap_or("unknown"),
                     self.update_ns,
-                    core.materialise_ns,
                     core.measure_ns,
                     core.relayout_ns,
                     core.nodes_measured,
@@ -395,60 +398,16 @@ impl AndroidEngine {
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
-    mut env: EnvUnowned<'_>,
+    _env: EnvUnowned<'_>,
     _class: JClass<'_>,
-    state_path: JString<'_>,
-    app: JByteArray<'_>,
 ) -> jlong {
     PANIC_HOOK.call_once(|| {
         std::panic::set_hook(Box::new(|panic| {
             android_log(ANDROID_LOG_ERROR, &format!("native panic: {panic}"));
         }));
     });
-    let state_path = env
-        .with_env(|env| state_path.try_to_string(env))
-        .resolve::<jni::errors::LogErrorAndDefault>();
-    let bytes = env
-        .with_env(|env| env.convert_byte_array(&app))
-        .resolve::<jni::errors::LogErrorAndDefault>();
-    let definition = match AppDefinition::decode(&bytes) {
-        Ok(definition) => definition,
-        Err(error) => {
-            android_log(
-                ANDROID_LOG_ERROR,
-                &format!("could not load app.ink: {error}"),
-            );
-            return 0;
-        }
-    };
     android_log(ANDROID_LOG_INFO, "created Ink engine");
-    Box::into_raw(Box::new(Mutex::new(AndroidEngine::new(
-        definition,
-        PathBuf::from(state_path),
-    )))) as jlong
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeUsesPersistence(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-) -> jboolean {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|engine| engine.uses_persistence) as jboolean
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePersist(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-) {
-    let Some(engine) = engine(handle) else {
-        return;
-    };
-    persist(engine);
+    Box::into_raw(Box::new(Mutex::new(AndroidEngine::new()))) as jlong
 }
 
 #[unsafe(no_mangle)]
@@ -482,7 +441,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'loca
             let bottom = (portal.rect.y + portal.rect.height).round() as i32;
             format!(
                 "{{\"controller\":{},\"kind\":\"{}\",\"x\":{},\"y\":{},\"width\":{},\"height\":{}}}",
-                portal.controller.index(),
+                portal.controller.index() as i64,
                 kind,
                 left,
                 top,
@@ -492,27 +451,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'loca
         });
     env.with_env(|env| env.new_string(value))
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetCameraReview(
-    mut env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    controller: jlong,
-    source: JString<'_>,
-) -> jboolean {
-    let source = env
-        .with_env(|env| source.try_to_string(env))
-        .resolve::<jni::errors::LogErrorAndDefault>();
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| {
-            engine.engine.set_camera_review(
-                ControllerId::new(controller as usize),
-                (!source.is_empty()).then_some(source),
-            )
-        }) as jboolean
 }
 
 #[unsafe(no_mangle)]
@@ -531,6 +469,22 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAttachSurface(
         return;
     };
     engine.attach(&env, &surface, dimension(width), dimension(height));
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetKeyboardInset(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    height: jint,
+) -> jboolean {
+    let Some(engine) = engine(handle) else {
+        return false;
+    };
+    let Ok(mut engine) = engine.lock() else {
+        return false;
+    };
+    engine.engine.set_keyboard_inset(height.max(0) as u32)
 }
 
 #[unsafe(no_mangle)]
@@ -719,33 +673,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNavigate(
-    mut env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    path: JString<'_>,
-) -> jboolean {
-    let Some(engine) = engine(handle) else {
-        return false as jboolean;
-    };
-    let path = env
-        .with_env(|env| path.try_to_string(env))
-        .resolve::<jni::errors::LogErrorAndDefault>();
-    engine.lock().expect("engine lock poisoned").navigate(&path) as jboolean
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResume(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-) -> jboolean {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| engine.resume()) as jboolean
-}
-
-#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputActive(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -806,7 +733,21 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest(
 ) -> jlong {
     engine(handle)
         .and_then(|engine| engine.lock().ok())
-        .and_then(|mut engine| engine.engine.take_native_request())
+        .and_then(|mut engine| {
+            loop {
+                let request = engine.engine.take_native_request()?;
+                if request.module() == "ink" && request.operation() == "event" {
+                    if let Some(script) = &engine.script
+                        && let Err(error) = script.send(request.payload().to_owned())
+                    {
+                        android_log(ANDROID_LOG_ERROR, &error.to_string());
+                    }
+                    engine.engine.complete_native_action(request.id());
+                    continue;
+                }
+                return Some(request);
+            }
+        })
         .map_or(0, |request| request.id() as jlong)
 }
 
@@ -834,7 +775,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestKind(
                 .engine
                 .native_request(request_id as u64)
                 .map(|request| match request.kind() {
-                    NativeRequestKind::ResourceRead => 0,
                     NativeRequestKind::Action => 1,
                     NativeRequestKind::Cancel => 2,
                     NativeRequestKind::Image => 3,
@@ -897,41 +837,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestPayload<'lo
     request_id: jlong,
 ) -> JString<'local> {
     native_request_string(&mut env, handle, request_id, |request| request.payload())
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteString(
-    mut env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    request_id: jlong,
-    value: JString<'_>,
-) -> jboolean {
-    let value = env
-        .with_env(|env| value.try_to_string(env))
-        .resolve::<jni::errors::LogErrorAndDefault>();
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| {
-            engine.complete_native(request_id as u64, Ok(StateValue::String(value)))
-        }) as jboolean
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteBytes(
-    mut env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    request_id: jlong,
-    value: JByteArray<'_>,
-) -> jboolean {
-    let bytes = env
-        .with_env(|env| env.convert_byte_array(&value))
-        .resolve::<jni::errors::LogErrorAndDefault>();
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| engine.complete_native_json(request_id as u64, &bytes))
-        as jboolean
 }
 
 #[cfg(feature = "image")]
@@ -1012,26 +917,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAction(
         .and_then(|engine| engine.lock().ok())
         .is_some_and(|mut engine| engine.engine.complete_native_action(request_id as u64))
         as jboolean
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeUpdateController(
-    mut env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    controller: jlong,
-    value: JString<'_>,
-) -> jboolean {
-    let value = env
-        .with_env(|env| value.try_to_string(env))
-        .resolve::<jni::errors::LogErrorAndDefault>();
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| {
-            engine
-                .engine
-                .update_controller_json(ControllerId::new(controller as usize), value.as_bytes())
-        }) as jboolean
 }
 
 #[cfg(feature = "audio")]
@@ -1140,46 +1025,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDestroy(
     };
     unsafe {
         let engine = Box::from_raw(pointer.as_ptr());
-        persist(&engine);
         drop(engine);
-    }
-}
-
-fn persist(engine: &Mutex<AndroidEngine>) {
-    let (path, revision, bytes) = {
-        let Ok(engine) = engine.lock() else {
-            return;
-        };
-        if !engine.uses_persistence {
-            return;
-        }
-        let snapshot = match engine.engine.persisted_snapshot() {
-            Ok(Some(snapshot)) => snapshot,
-            Ok(None) => return,
-            Err(error) => {
-                android_log(ANDROID_LOG_WARN, &error.to_string());
-                return;
-            }
-        };
-        (engine.state_path.clone(), snapshot.0, snapshot.1)
-    };
-    let temporary = path.with_extension("tmp");
-    let result = (|| -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&temporary)?;
-        file.write_all(&bytes)?;
-        file.sync_all()?;
-        std::fs::rename(&temporary, &path)
-    })();
-    match result {
-        Ok(()) => {
-            if let Ok(mut engine) = engine.lock() {
-                engine.engine.persistence_saved(revision);
-            }
-        }
-        Err(error) => android_log(
-            ANDROID_LOG_WARN,
-            &format!("could not save persisted state: {error}"),
-        ),
     }
 }
 

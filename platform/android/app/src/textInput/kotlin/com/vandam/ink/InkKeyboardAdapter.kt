@@ -15,7 +15,7 @@ internal fun createTextInputAdapter(
 ): TextInputAdapter = InkKeyboardAdapter(activity, container, onEdit)
 
 private class InkKeyboardAdapter(
-    activity: MainActivity,
+    private val activity: MainActivity,
     container: ViewGroup,
     private val onEdit: TextEditHandler,
 ) : TextInputAdapter, KeyboardListener {
@@ -35,6 +35,14 @@ private class InkKeyboardAdapter(
                 Gravity.BOTTOM,
             ),
         )
+        keyboard.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            resizeContent()
+        }
+    }
+
+    private fun resizeContent() {
+        val inset = if (keyboard.visibility == View.VISIBLE) keyboard.height else 0
+        activity.setKeyboardInset(inset)
     }
 
     override fun sync(active: Boolean, action: Int) {
@@ -47,9 +55,14 @@ private class InkKeyboardAdapter(
             keyboard.reset()
         }
         keyboard.visibility = if (active) View.VISIBLE else View.GONE
+        resizeContent()
         if (active) {
             keyboard.requestFocus()
         }
+    }
+
+    override fun setLightAppearance(light: Boolean) {
+        keyboard.lightAppearance = light
     }
 
     override fun dismiss(): Boolean {

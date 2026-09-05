@@ -43,7 +43,6 @@
           "files",
           "clipboard",
           "auth",
-          "crypto",
           "system",
           "light-sdk",
           "audio",

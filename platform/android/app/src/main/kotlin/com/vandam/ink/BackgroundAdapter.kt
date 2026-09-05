@@ -1,6 +1,6 @@
 package com.vandam.ink
 
 internal interface BackgroundAdapter : NativeAdapter {
-    fun reconcile()
+    fun enqueuePush(input: org.json.JSONObject): Boolean = false
     fun stop()
 }

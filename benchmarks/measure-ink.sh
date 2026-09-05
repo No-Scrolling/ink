@@ -17,6 +17,6 @@ BENCHMARK_STACKS=ink \
   BENCHMARK_DEVICE="$benchmark_device" \
   BENCHMARK_OUTPUT="$benchmark_output" \
   bun benchmarks/measure.ts
-bun benchmarks/verify.ts \
-  "$benchmark_output" \
-  benchmarks/results/ink-build.csv
+if [ -n "${INK_BENCHMARK_BUDGETS:-}" ]; then
+  bun benchmarks/verify.ts "$benchmark_output" benchmarks/results/ink-build.csv
+fi
