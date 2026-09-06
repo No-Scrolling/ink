@@ -1,0 +1,11 @@
+diff --git a/crates/ink-renderer-wgpu/src/compact.rs b/crates/ink-renderer-wgpu/src/compact.rs
+--- a/crates/ink-renderer-wgpu/src/compact.rs
++++ b/crates/ink-renderer-wgpu/src/compact.rs
+@@ -720,6 +720,7 @@ impl Renderer {
+         let (device, queue) = adapter
+             .request_device(&wgpu::DeviceDescriptor {
+                 required_features: wgpu::Features::PASSTHROUGH_SHADERS,
++                memory_hints: wgpu::MemoryHints::MemoryUsage,
+                 ..Default::default()
+             })
+             .await

@@ -13,6 +13,7 @@ android {
     defaultConfig {
         minSdk = rootProject.ext["minSdk"] as Int
         targetSdk = rootProject.ext["targetSdk"] as Int
+        ndk { abiFilters += "arm64-v8a" }
         manifestPlaceholders["sdkVersion"] = property("sdkVersion") as String
     }
 

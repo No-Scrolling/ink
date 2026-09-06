@@ -13,8 +13,9 @@ perf = []
 
 [dependencies]
 ab_glyph.workspace = true
-ink-app-format = { path = "../ink-app-format" }
 serde_json.workspace = true
+serde.workspace = true
+anyhow.workspace = true
 unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
 unicode-properties.workspace = true

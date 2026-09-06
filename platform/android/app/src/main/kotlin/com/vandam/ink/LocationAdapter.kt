@@ -2,5 +2,7 @@ package com.vandam.ink
 
 internal interface LocationAdapter : NativeAdapter {
     fun requiredPermission(payload: String): String?
+    fun pause() {}
+    fun resume() {}
     fun stop()
 }

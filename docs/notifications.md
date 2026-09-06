@@ -1,8 +1,10 @@
 ---
 title: "Notifications"
 description: "Local reminders and routes back into the app."
-tag: "Design specification"
+tag: "In development"
 ---
+
+> **In development.** Local notifications, exact/inexact scheduling, cancellation and structured routes are implemented. Blocked-channel behaviour remains unverified.
 
 `@ink/notifications` creates native notifications and schedules supported local reminders. Use them for an actionable event, such as a download finishing or a saved departure approaching.
 
@@ -10,18 +12,21 @@ tag: "Design specification"
 import { notifications } from "@ink/notifications";
 
 await notifications.show({
-  id: `download:${downloadId}`,
+  id: `download-${downloadId}`,
   title: "Download complete",
   body: "Your episode is ready offline",
-  route: { path: "/downloads", params: { downloadId } },
+  href: "/downloads",
+  data: JSON.stringify({ downloadId }),
 });
 ```
 
-Request permission through an explicit foreground action where required. Stable IDs update or replace the same notification. A route contains small validated JSON values; opening it after process death must reconstruct the screen from durable data.
+Request permission through an explicit foreground action where required. Stable IDs update or replace the same notification. `href` names a registered screen; `data` is a string. `useNotificationTap()` exposes the tapped ID and data through its state, and `consume()` clears the tap. Decode data before using it; opening after process death must reconstruct the screen from durable data.
 
 ## Scheduling
 
-`schedule({ id, at, title, body, route })` stores a native schedule. `cancel(id)` removes it. Scheduling is inexact by default and must be presented accordingly. Exact alarms require a separately supported Android capability and permission; ordinary scheduling does not promise exact delivery.
+`schedule({ id, at, title, body, href, data, exact })` stores a native schedule. `cancel(id)` removes it. Scheduling is inexact by default. For an exact reminder, first check `await notifications.canScheduleExact()`. `requestExactPermission()` opens Android's special-access settings; check again after returning before scheduling with `exact: true`. A denied request fails rather than silently becoming inexact. This follows [Android's exact-alarm access model](https://developer.android.com/develop/background-work/services/alarms).
+
+`href` also accepts `{ path: "/departures", params: { stopId: "station-7" } }`. Parameters are JSON values, limited to 8 KiB, and are restored through `useRouteParams()` after a notification tap, including a cold launch. The complete notification request is limited to 12 KiB. `data` remains an independent string payload.
 
 Define whether a reminder follows an absolute instant or local wall time. Reconcile time-zone changes and edited events. Duplicate delivery and a deleted destination should lead to a useful screen rather than an exception.
 

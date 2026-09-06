@@ -44,7 +44,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
     private lateinit var inkView: InkSurfaceView
     private lateinit var root: FrameLayout
+    private val permissionsAdapter by lazy { PermissionsAdapter(this, lightSdkAdapter) }
+    private var usesPermissions = false
     private lateinit var lightSdkAdapter: LightSdkAdapter
+    private val assetsAdapter by lazy { AssetsAdapter(this) }
+    private var usesAssets = false
+    private val barcodeAdapter by lazy { createBarcodeAdapter(this) }
+    private var usesBarcode = false
     private lateinit var networkAdapter: NetworkAdapter
     private lateinit var audioAdapter: AudioAdapter
     private lateinit var locationAdapter: LocationAdapter
@@ -53,21 +59,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var cameraAdapter: CameraAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private lateinit var notificationsAdapter: NotificationsAdapter
-    private val systemGlyphRasterizer = SystemGlyphRasterizer()
+    private val systemGlyphRasterizer by lazy { SystemGlyphRasterizer() }
     private var engineHandle = 0L
     private var surfaceAttached = false
-    private var resumedOnce = false
-    private var usesPersistence = false
-    private val persistenceHandler = Handler(Looper.getMainLooper())
     private val nativeRequestHandler = Handler(Looper.getMainLooper())
     private val nativeTimeouts = mutableMapOf<Long, Runnable>()
     private val nativeRequestStartedAt = mutableMapOf<Long, Long>()
     private val nativeRequestLabels = mutableMapOf<Long, String>()
-    private val persistenceExecutor by lazy(LazyThreadSafetyMode.NONE) {
-        Executors.newSingleThreadExecutor()
-    }
     private val imageExecutor = Executors.newSingleThreadExecutor()
-    private val persistState = Runnable(::persistAsync)
     private val backCallback = OnBackInvokedCallback {
         handleBack()
     }
@@ -109,13 +108,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 
-        val appDefinition = assets.open("app.ink").use { it.readBytes() }
-        engineHandle = nativeCreate(
-            File(noBackupFilesDir, "ink-state-v1").absolutePath,
-            appDefinition,
-        )
-        check(engineHandle != 0L) { "Ink could not load the application definition" }
-        usesPersistence = nativeUsesPersistence(engineHandle)
+        engineHandle = nativeCreate()
+        check(engineHandle != 0L) { "Ink could not create the runtime" }
         inkView = InkSurfaceView().apply {
             holder.setFormat(PixelFormat.OPAQUE)
             holder.addCallback(this@MainActivity)
@@ -134,12 +128,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             this,
             textInputAdapter::applyPreferences,
         ) { controller, value ->
-            if (
-                engineHandle != 0L &&
-                nativeUpdateController(engineHandle, controller, value)
-            ) {
-                inkView.requestFrame()
-            }
+            updateController(controller, value)
         }
         networkAdapter = createNetworkAdapter(this)
         locationAdapter = createLocationAdapter(this)
@@ -149,24 +138,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             this,
             root,
             { controller, value ->
-                if (
-                    engineHandle != 0L &&
-                    nativeUpdateController(engineHandle, controller, value)
-                ) {
-                    inkView.requestFrame()
-                    syncCameraPortal()
-                    drainNativeRequests()
-                }
+                updateController(controller, value)
             },
             { controller, source ->
-                if (
-                    engineHandle != 0L &&
-                    nativeSetCameraReview(engineHandle, controller, source.orEmpty())
-                ) {
-                    inkView.requestFrame()
-                    syncCameraPortal()
-                    drainNativeRequests()
-                }
+                updateController(controller, JSONObject()
+                    .put("status", if (source == null) "active" else "review")
+                    .put("reviewSource", source.orEmpty()).toString())
             },
             { controller ->
                 openCameraController(
@@ -189,12 +166,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             },
             { controller, value ->
-                if (
-                    engineHandle != 0L &&
-                    nativeUpdateController(engineHandle, controller, value)
-                ) {
-                    inkView.requestFrame()
-                }
+                updateController(controller, value)
             },
             { controller, kind, config ->
                 engineHandle != 0L &&
@@ -213,15 +185,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             },
         )
         notificationsAdapter = createNotificationsAdapter(this) { controller, value ->
-            if (
-                engineHandle != 0L &&
-                nativeUpdateController(engineHandle, controller, value)
-            ) {
-                inkView.requestFrame()
-            }
+            updateController(controller, value)
         }
         lightSdkAdapter.start()
-        backgroundAdapter.reconcile()
         notificationsAdapter.start()
         drainNativeRequests()
         setContentView(
@@ -236,12 +202,254 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             backCallback,
         )
         enterFullscreen()
+        startDevelopmentBundle(null)
+        if (BuildConfig.DEBUG) intent.getStringExtra("ink.dev.generation")?.let(::activateDevelopmentBundle)
         handleNotificationIntent(intent)
     }
+
+    private var developmentBundle: java.io.File? = null
+    private var developmentIcons: ByteArray? = null
+    private var refreshCompatibility: String? = null
+    private var developmentError: android.app.AlertDialog? = null
+
+    internal fun openBundleAsset(path: String): java.io.InputStream =
+        developmentBundle?.let { java.io.File(it, path).inputStream() } ?: assets.open(path)
+
+    private fun activateDevelopmentBundle(generation: String) {
+        if (!BuildConfig.DEBUG || !generation.matches(Regex("[0-9]+"))) return
+        developmentError?.dismiss()
+        val directory = java.io.File(filesDir, "ink-dev/$generation")
+        try {
+            check(java.io.File(directory, "complete").isFile) { "Bundle transfer is incomplete: ${directory.absolutePath}/complete" }
+            val source = java.io.File(directory, "app.js").readText()
+            val icons = java.io.File(directory, "ink-icons-v1.json").readBytes()
+            val compatibility = JSONObject(java.io.File(directory, "ink-bundle-v1.json").readText())
+                .optString("refreshCompatibilityHash")
+            if (compatibility.isNotEmpty() && compatibility == refreshCompatibility &&
+                developmentIcons?.contentEquals(icons) == true && nativeRefreshJavaScript(engineHandle, source)) {
+                developmentBundle = directory
+            } else startDevelopmentBundle(directory)
+            if (developmentBundle == directory) {
+                java.io.File(filesDir, "ink-dev/active-worker").writeText(generation)
+                java.io.File(filesDir, "ink-dev").listFiles().orEmpty()
+                    .filter { it.isDirectory && it.name.matches(Regex("[0-9]+")) }
+                    .sortedByDescending { it.name }.drop(3).filter { it != developmentBundle }
+                    .forEach { it.deleteRecursively() }
+            }
+        } catch (error: Exception) {
+            android.util.Log.e("Ink", "Bundle activation failed", error)
+            developmentError = android.app.AlertDialog.Builder(this).setTitle("Ink development error")
+                .setMessage(error.message).setPositiveButton("Reload") { _, _ -> activateDevelopmentBundle(generation) }
+                .setNegativeButton("Close", null).show()
+        }
+    }
+
+    internal fun bundledAudioUri(source: String): android.net.Uri {
+        if (!BuildConfig.DEBUG || developmentBundle == null) return android.net.Uri.parse(source)
+        val path = source.removePrefix("asset:///")
+        require(path.matches(Regex("ink-assets/[a-f0-9]{64}\\.mp3"))) { "Invalid bundled audio source" }
+        val pinned = java.io.File(filesDir, "ink-media/${path.substringAfterLast('/')}")
+        pinned.parentFile!!.mkdirs()
+        if (!pinned.isFile) {
+            val atomic = android.util.AtomicFile(pinned)
+            val stream = atomic.startWrite()
+            try {
+                openBundleAsset(path).use { it.copyTo(stream) }
+                atomic.finishWrite(stream)
+            } catch (error: Exception) {
+                atomic.failWrite(stream)
+                throw error
+            }
+        }
+
+        return android.net.Uri.fromFile(pinned)
+    }
+
+    private fun startDevelopmentBundle(directory: java.io.File?) {
+        try {
+            developmentError?.dismiss()
+            if (BuildConfig.DEBUG && directory == null) java.io.File(filesDir, "ink-dev/active-worker").delete()
+            val source = if (directory == null) assets.open("app.js").bufferedReader().use { it.readText() }
+                else java.io.File(directory, "app.js").readText()
+            val icons = if (directory == null) assets.open("ink-icons-v1.json").use { it.readBytes() }
+                else java.io.File(directory, "ink-icons-v1.json").readBytes()
+            if (BuildConfig.DEBUG) {
+                val manifest = if (directory == null) assets.open("ink-bundle-v1.json").bufferedReader().use { it.readText() }
+                    else java.io.File(directory, "ink-bundle-v1.json").readText()
+                refreshCompatibility = JSONObject(manifest).optString("refreshCompatibilityHash")
+                developmentIcons = icons
+            }
+            stopJavaScriptSession()
+            nativeRequestHandler.removeCallbacks(drainJavaScript)
+            javascriptPending.set(false)
+            check(nativeStartJavaScript(engineHandle, source, icons, this)) { "Ink could not start JavaScript; see ink logs" }
+            developmentBundle = directory
+            inkView.requestFrame()
+        } catch (error: Exception) {
+            if (!BuildConfig.DEBUG) throw error
+            android.util.Log.e("Ink", "Bundle activation failed", error)
+            developmentError = android.app.AlertDialog.Builder(this)
+                .setTitle("Ink development error")
+                .setMessage("${error.message}\nFix the source and save, or reload this generation.")
+                .setPositiveButton("Reload") { _, _ -> startDevelopmentBundle(directory) }
+                .setNegativeButton("Close", null).show()
+        }
+    }
+
+    private val javascriptPending = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val storeAdapter by lazy {
+        StoreAdapter(this) { key ->
+            runOnUiThread {
+                if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle,
+                    JSONObject().put("type", "store-changed").put("key", key).toString())
+            }
+        }
+    }
+    private val clipboardAdapter by lazy { ClipboardAdapter(this) }
+    private var usesStore = false
+    private val drainJavaScript = Runnable {
+        javascriptPending.set(false)
+        if (engineHandle != 0L) {
+if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
+            if (BuildConfig.DEBUG) {
+                val error = nativeTakeJavaScriptError(engineHandle)
+                if (error.isNotEmpty()) {
+                    stopJavaScriptSession()
+                    val mapped = DevelopmentErrors.map(error) { openBundleAsset("app.js.map").bufferedReader().use { it.readText() } }
+                    android.util.Log.e("Ink", mapped)
+                    developmentError = android.app.AlertDialog.Builder(this).setTitle("Ink development error")
+                        .setMessage(mapped).setPositiveButton("Reload") { _, _ -> startDevelopmentBundle(developmentBundle) }
+                        .setNegativeButton("Close", null).show()
+                }
+            }
+            val light = nativeIsLightAppearance(engineHandle)
+            textInputAdapter.setLightAppearance(light)
+            window.statusBarColor = if (light) Color.WHITE else Color.BLACK
+            window.navigationBarColor = if (light) Color.WHITE else Color.BLACK
+            syncTextInput()
+            syncCameraPortal()
+            drainNativeRequests()
+            val calls = org.json.JSONArray(nativeTakeJavaScriptCalls(engineHandle))
+            for (index in 0 until calls.length()) executeJavaScriptCall(calls.getJSONObject(index))
+        }
+    }
+
+    private var javascriptSession: Any? = null
+    private var javascriptRequests = newJavaScriptRequests()
+    private val javascriptControllers = mutableMapOf<Long, String>()
+    private fun newJavaScriptRequests(): NativeRequests {
+        val session = Any()
+        javascriptSession = session
+        return NativeRequests(nativeRequestHandler) { id, result ->
+            runOnUiThread {
+                if (javascriptSession === session) sendJavaScriptResult(id, result)
+                else disposeNativeResult(result)
+            }
+        }
+    }
+
+
+    private fun stopJavaScriptSession() {
+        javascriptSession = null
+        javascriptRequests.close()
+        javascriptControllers.toMap().forEach { (controller, module) ->
+            val complete: NativeResultHandler = { disposeNativeResult(it) }
+            when (module) {
+                AUDIO_MODULE -> audioAdapter.executeController(-controller, "deactivate", "{}", complete)
+                NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, "deactivate", "{}", complete)
+                CAMERA_MODULE -> cameraAdapter.executeController(0, -controller, "deactivate", "{}", complete)
+            }
+        }
+        javascriptControllers.clear()
+        javascriptRequests = newJavaScriptRequests()
+    }
+
+    private fun executeJavaScriptCall(call: JSONObject) {
+        val id = call.getLong("id")
+        if (call.getString("type") == "cancel") {
+            javascriptRequests.cancel(id)
+            return
+        }
+        val module = call.getString("module")
+        val adapter = when (module) {
+            "permissions" -> { usesPermissions = true; permissionsAdapter }
+            "store" -> { usesStore = true; storeAdapter }
+            "clipboard" -> clipboardAdapter
+            NETWORK_MODULE -> networkAdapter
+            LIGHT_SDK_MODULE -> lightSdkAdapter
+            AUDIO_MODULE -> audioAdapter
+            LOCATION_MODULE -> locationAdapter
+            NFC_MODULE -> nfcAdapter
+            CAMERA_MODULE -> cameraAdapter
+            NOTIFICATIONS_MODULE -> notificationsAdapter
+            BACKGROUND_MODULE -> backgroundAdapter
+            else -> null
+        }
+        if (adapter == null) {
+            sendJavaScriptResult(id, NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Unknown native module: $module", false))
+            return
+        }
+        javascriptRequests.execute(id, call.optLong("timeoutMs", 30_000), { adapter.cancel(-id) }) { complete ->
+            val operation = call.getString("operation")
+            val payload = (call.opt("payload") ?: JSONObject.NULL).toString()
+            if (call.has("controller")) {
+                val controller = call.getLong("controller")
+                require(controller in 1..9_007_199_254_740_991L) { "Invalid JavaScript controller ID" }
+                if (operation == "activate") javascriptControllers[controller] = module
+                if (operation == "deactivate") javascriptControllers.remove(controller)
+                val finish: NativeResultHandler = { result ->
+                    if (operation == "activate" && result is NativeResult.Failure) {
+                        runOnUiThread { javascriptControllers.remove(controller) }
+                    }
+                    complete(result)
+                }
+                when (module) {
+                    AUDIO_MODULE -> audioAdapter.executeController(-controller, operation, payload, finish)
+                    NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, operation, payload, finish)
+                    CAMERA_MODULE -> {
+                        if (operation == OPEN_OPERATION) openCameraController(-id, -controller, payload, finish)
+                        else cameraAdapter.executeController(-id, -controller, operation, payload, finish)
+                    }
+                    else -> finish(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Unsupported controller module: $module", false))
+                }
+            } else {
+                adapter.execute(-id, operation, payload, complete)
+            }
+        }
+    }
+
+    private fun updateController(controller: Long, value: String) {
+        runOnUiThread {
+            if (engineHandle != 0L && javascriptControllers.containsKey(-controller)) {
+                val event = JSONObject().put("type", "controller").put("id", -controller)
+                    .put("value", JSONObject(value))
+                var message = event.toString()
+                if (message.toByteArray(Charsets.UTF_8).size > 1024 * 1024) {
+                    message = event.put("value", JSONObject().put("status", "error")
+                        .put("error", inkError("protocol", "Native controller state exceeds the message limit"))).toString()
+                }
+                nativeJavaScriptReceive(engineHandle, message)
+            }
+        }
+    }
+
+    private fun sendJavaScriptResult(id: Long, result: NativeResult) {
+        if (engineHandle == 0L) return
+        nativeJavaScriptReceive(engineHandle, javascriptResult(id, result))
+    }
+
+    fun onJavaScriptReady() {
+        if (javascriptPending.compareAndSet(false, true)) {
+            nativeRequestHandler.post(drainJavaScript)
+        }
+    }
+
+    fun loadWebRuntime(): String = assets.open("ink-assets/ink-web.js").bufferedReader().use { it.readText() }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (BuildConfig.DEBUG) intent.getStringExtra("ink.dev.generation")?.let(::activateDevelopmentBundle)
         handleNotificationIntent(intent)
     }
 
@@ -254,19 +462,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onResume() {
         super.onResume()
+        locationAdapter.resume()
         lightSdkAdapter.refresh()
-        backgroundAdapter.reconcile()
-        if (resumedOnce && engineHandle != 0L && nativeResume(engineHandle)) {
-            inkView.requestFrame()
-            syncCameraPortal()
-            drainNativeRequests()
-        }
+
         cameraAdapter.resume()
         syncCameraPortal()
-        resumedOnce = true
         nfcAdapter.resume()
         notificationsAdapter.refreshEvents()
         syncTextInput()
+    }
+
+    @Deprecated("Android activity result callback")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (usesPermissions) permissionsAdapter.result(requestCode)
     }
 
     override fun onRequestPermissionsResult(
@@ -275,11 +484,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (engineHandle != 0L && nativeResume(engineHandle)) {
-            inkView.requestFrame()
-            syncCameraPortal()
-            drainNativeRequests()
-        }
+        if (usesPermissions) permissionsAdapter.result(requestCode)
+
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -304,6 +510,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             return
         }
 
+        logResource("Surface resized to ${width}x${height}")
         nativeResize(engineHandle, width, height)
         inkView.requestFrame()
         syncCameraPortal()
@@ -314,19 +521,21 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
-        if (usesPersistence) {
-            persistNow()
-            persistenceExecutor.shutdown()
-        }
+
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
+        if (usesPermissions) permissionsAdapter.stop()
         lightSdkAdapter.stop()
         notificationsAdapter.stop()
+        stopJavaScriptSession()
+        if (usesAssets) assetsAdapter.stop()
+        if (usesBarcode) barcodeAdapter.stop()
         networkAdapter.stop()
         audioAdapter.stop()
         locationAdapter.stop()
         nfcAdapter.stop()
         backgroundAdapter.stop()
         cameraAdapter.stop()
+        if (usesStore) storeAdapter.stop()
         imageExecutor.shutdown()
         imageExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
@@ -338,42 +547,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             nativeDestroy(engineHandle)
             engineHandle = 0L
         }
+        nativeRequestHandler.removeCallbacks(drainJavaScript)
         super.onDestroy()
     }
 
     override fun onPause() {
         inkView.setTextCursorActive(false)
-        persistNow()
         audioAdapter.pause()
         nfcAdapter.pause()
         cameraAdapter.pause()
+        locationAdapter.pause()
         super.onPause()
-    }
-
-    private fun schedulePersistence() {
-        if (!usesPersistence) {
-            return
-        }
-        persistenceHandler.removeCallbacks(persistState)
-        persistenceHandler.postDelayed(persistState, PERSISTENCE_DELAY_MS)
-    }
-
-    private fun persistNow() {
-        if (!usesPersistence) {
-            return
-        }
-        persistenceHandler.removeCallbacks(persistState)
-        if (engineHandle != 0L) {
-            val handle = engineHandle
-            persistenceExecutor.submit { nativePersist(handle) }.get()
-        }
-    }
-
-    private fun persistAsync() {
-        if (usesPersistence && engineHandle != 0L) {
-            val handle = engineHandle
-            persistenceExecutor.execute { nativePersist(handle) }
-        }
     }
 
     private fun detachSurface() {
@@ -404,9 +588,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         if (nativeTextInput(engineHandle, action, value)) {
             inkView.requestFrame()
-            schedulePersistence()
         }
         syncTextInput()
+    }
+
+    internal fun setKeyboardInset(height: Int) {
+        if (engineHandle == 0L) return
+        if (nativeSetKeyboardInset(engineHandle, height)) {
+            logResource("Keyboard inset=$height surface=${inkView.width}x${inkView.height}")
+            inkView.requestFrame()
+        }
     }
 
     private fun syncTextInput() {
@@ -480,7 +671,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    private fun automaticCameraRequestId(controller: Long): Long = -(controller + 1L)
+    private fun automaticCameraRequestId(controller: Long): Long =
+        if (controller < 0) Long.MIN_VALUE - controller else -(controller + 1L)
 
     private fun drainNativeRequests() {
         while (engineHandle != 0L) {
@@ -497,6 +689,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 logResource("cancel $requestId $label ${elapsed ?: 0}ms")
                 nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
                 lightSdkAdapter.cancel(requestId)
+                if (usesAssets) assetsAdapter.cancel(requestId)
+                if (usesBarcode) barcodeAdapter.cancel(requestId)
                 networkAdapter.cancel(requestId)
                 audioAdapter.cancel(requestId)
                 locationAdapter.cancel(requestId)
@@ -524,6 +718,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     operation == REQUEST_PERMISSION_OPERATION)
             val adapter = when (module) {
                 LIGHT_SDK_MODULE -> lightSdkAdapter
+                "assets" -> { usesAssets = true; assetsAdapter }
+                "barcode" -> { usesBarcode = true; barcodeAdapter }
                 NETWORK_MODULE -> networkAdapter
                 AUDIO_MODULE -> if (lightAudioPermission) lightSdkAdapter else audioAdapter
                 LOCATION_MODULE -> locationAdapter
@@ -667,12 +863,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         notificationsAdapter.refreshEvents()
         val href = intent?.getStringExtra(EXTRA_NOTIFICATION_HREF).orEmpty()
         if (href.isNotEmpty() && engineHandle != 0L) {
-            if (nativeNavigate(engineHandle, href)) {
-                inkView.stopScrolling()
-                inkView.requestFrame()
+            val message = JSONObject().put("type", "navigate").put("path", href)
+            intent?.getStringExtra(EXTRA_NOTIFICATION_PARAMS)?.let { params ->
+                if (params.toByteArray().size <= 8192) {
+                    runCatching { JSONObject(params) }.getOrNull()?.let { message.put("params", it) }
+                }
             }
+            nativeJavaScriptReceive(engineHandle, message.toString())
         }
         intent?.removeExtra(EXTRA_NOTIFICATION_HREF)
+        intent?.removeExtra(EXTRA_NOTIFICATION_PARAMS)
     }
 
     private fun completeNativeRequest(requestId: Long, kind: Int, result: NativeResult) {
@@ -685,24 +885,19 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             SystemClock.elapsedRealtime() - it
         } ?: 0L
         val outcome = if (result is NativeResult.Failure) {
-            "error:${result.kind.name.lowercase()}"
+            "error:${result.kind.wireName}"
         } else {
             "ready"
         }
         logResource("$outcome $requestId $label ${elapsed}ms")
         val changed = when (result) {
-            is NativeResult.Success -> if (kind == NATIVE_REQUEST_RESOURCE) {
-                nativeCompleteString(engineHandle, requestId, result.value)
-            } else {
-                nativeCompleteAction(engineHandle, requestId)
-            }
-            is NativeResult.Bytes -> nativeCompleteBytes(engineHandle, requestId, result.value)
+            is NativeResult.Success, is NativeResult.Bytes -> nativeCompleteAction(engineHandle, requestId)
             is NativeResult.File -> {
                 completeImage(requestId, result)
                 return
             }
             is NativeResult.Failure -> if (
-                kind == NATIVE_REQUEST_RESOURCE || kind == NATIVE_REQUEST_IMAGE
+                kind == NATIVE_REQUEST_IMAGE
             ) {
                 nativeFailRequest(
                     engineHandle,
@@ -768,6 +963,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
+        private val longPress = Runnable {
+            if (engineHandle != 0L && surfaceAttached) {
+                if (processPointerResult(nativePointer(engineHandle, POINTER_LONG_PRESS, imageTapDownX, imageTapDownY))) requestFrame()
+                postFrame()
+            }
+        }
+
+        override fun onDetachedFromWindow() {
+            removeCallbacks(longPress)
+            super.onDetachedFromWindow()
+        }
+
         private val choreographer = Choreographer.getInstance()
         private val viewConfiguration = ViewConfiguration.get(this@MainActivity)
         private val minimumFlingVelocity = viewConfiguration.scaledMinimumFlingVelocity
@@ -850,7 +1057,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 return@FrameCallback
             }
 
-            var changed = renderPending
+            // Present a completed React window before the next thumb movement
+            // can move the viewport beyond it again.
+            val presentBeforeMove = renderPending && hasPendingMove
+            if (presentBeforeMove) renderFrame()
+            var changed = renderPending && !presentBeforeMove
             renderPending = false
             if (hasPendingMove) {
                 hasPendingMove = false
@@ -875,13 +1086,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     }
                 }
             }
-            if (changed) renderFrame()
+            if (changed) {
+                if (presentBeforeMove) renderPending = true else renderFrame()
+            }
             postFrame()
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             scaleGestureDetector.onTouchEvent(event)
             if (pinchActive || event.pointerCount > 1) {
+                removeCallbacks(longPress)
                 resetImageTap()
                 velocityTracker?.recycle()
                 velocityTracker = null
@@ -892,6 +1106,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             var imageDoubleTap = 0
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    removeCallbacks(longPress)
+                    postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
                     stopFling()
                     downY = event.y
                     imageTapDownX = event.x
@@ -908,10 +1124,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 MotionEvent.ACTION_MOVE -> {
                     velocityTracker?.addMovement(event)
                     if (movedBeyond(event.x, event.y, imageTapDownX, imageTapDownY, touchSlop)) {
+                        removeCallbacks(longPress)
                         resetImageTap()
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    removeCallbacks(longPress)
                     if (imageTapTarget != 0L) {
                         val isSecondTap = previousImageTapTime != 0L &&
                             previousImageTapTarget == imageTapTarget &&
@@ -950,6 +1168,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     velocityTracker = null
                 }
                 MotionEvent.ACTION_CANCEL -> {
+                    removeCallbacks(longPress)
                     resetImageTap()
                     velocityTracker?.recycle()
                     velocityTracker = null
@@ -988,7 +1207,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
                 if (changed) {
                     requestFrame()
-                    schedulePersistence()
                 }
                 postFrame()
             }
@@ -1107,11 +1325,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_BACKSPACE = 1
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
+        private const val POINTER_LONG_PRESS = 4
         private const val POINTER_CHANGED = 1
         private const val POINTER_ACTIVATED = 1 shl 1
         private const val POINTER_CAPTURED = 1 shl 2
         private const val TEXT_CURSOR_BLINK_MS = 500L
-        private const val PERSISTENCE_DELAY_MS = 250L
         private const val RESOURCE_LOG_TAG = "InkResource"
         private const val LIGHT_SDK_MODULE = "light-sdk"
         private const val NETWORK_MODULE = "network"
@@ -1128,7 +1346,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val GRANTED_PERMISSION = "granted"
         private const val BLOCKED_PERMISSION = "blocked"
         private const val OPEN_OPERATION = "open"
-        private const val NATIVE_REQUEST_RESOURCE = 0
         private const val NATIVE_REQUEST_CANCEL = 2
         private const val NATIVE_REQUEST_IMAGE = 3
 
@@ -1137,13 +1354,28 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         @JvmStatic
-        private external fun nativeCreate(statePath: String, app: ByteArray): Long
+        private external fun nativeCreate(): Long
 
         @JvmStatic
-        private external fun nativeUsesPersistence(handle: Long): Boolean
+        private external fun nativeTakeJavaScriptError(handle: Long): String
 
         @JvmStatic
-        private external fun nativePersist(handle: Long)
+        private external fun nativeRefreshJavaScript(handle: Long, source: String): Boolean
+
+        @JvmStatic
+        private external fun nativeStartJavaScript(handle: Long, source: String, icons: ByteArray, activity: MainActivity): Boolean
+
+        @JvmStatic
+        private external fun nativeDrainJavaScript(handle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeIsLightAppearance(handle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeTakeJavaScriptCalls(handle: Long): String
+
+        @JvmStatic
+        private external fun nativeJavaScriptReceive(handle: Long, message: String)
 
         @JvmStatic
         private external fun nativePublicSans(): ByteBuffer
@@ -1155,6 +1387,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             width: Int,
             height: Int,
         )
+
+        @JvmStatic
+        private external fun nativeSetKeyboardInset(handle: Long, height: Int): Boolean
 
         @JvmStatic
         private external fun nativeResize(handle: Long, width: Int, height: Int)
@@ -1214,20 +1449,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeBack(handle: Long): Boolean
 
         @JvmStatic
-        private external fun nativeNavigate(handle: Long, path: String): Boolean
-
-        @JvmStatic
         private external fun nativeCameraPortal(handle: Long): String
-
-        @JvmStatic
-        private external fun nativeSetCameraReview(
-            handle: Long,
-            controller: Long,
-            source: String,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeResume(handle: Long): Boolean
 
         @JvmStatic
         private external fun nativeTextInputActive(handle: Long): Boolean
@@ -1260,20 +1482,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeRequestPayload(handle: Long, requestId: Long): String
 
         @JvmStatic
-        private external fun nativeCompleteString(
-            handle: Long,
-            requestId: Long,
-            value: String,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeCompleteBytes(
-            handle: Long,
-            requestId: Long,
-            value: ByteArray,
-        ): Boolean
-
-        @JvmStatic
         private external fun nativeCompleteFile(
             handle: Long,
             requestId: Long,
@@ -1291,13 +1499,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeCompleteAction(handle: Long, requestId: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeUpdateController(
-            handle: Long,
-            controller: Long,
-            value: String,
-        ): Boolean
 
         @JvmStatic
         private external fun nativeAudioActivate(

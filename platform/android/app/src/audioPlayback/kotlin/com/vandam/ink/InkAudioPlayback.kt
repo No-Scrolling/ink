@@ -31,6 +31,63 @@ internal fun createAudioPlayback(
 private class InkAudioPlayback(
     private val activity: MainActivity,
     private val updateController: (Long, String) -> Unit,
+) : AudioPlayback {
+    private data class Entry(val mode: String, val usage: String, val playback: AudioSessionPlayback)
+    private val sessions = mutableMapOf<String, Entry>()
+    private val controllers = mutableMapOf<Long, String>()
+
+    override fun activate(controller: Long, config: String): NativeResult {
+        val options = runCatching { JSONObject(config) }.getOrNull()
+            ?: return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio configuration", false)
+        val name = options.optString("session", "main")
+        val mode = options.optString("playback", "attached")
+        val usage = options.optString("usage", "music")
+        if (!Regex("[A-Za-z0-9._-]{1,64}").matches(name)) {
+            return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio session name", false)
+        }
+        val existing = sessions[name]
+        if (existing != null && (existing.mode != mode || existing.usage != usage)) {
+            return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio session options must agree", false)
+        }
+        if (existing == null && sessions.size >= 8) {
+            return NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Too many audio sessions", false)
+        }
+        val entry = existing ?: Entry(mode, usage, AudioSessionPlayback(activity, updateController, name) {
+            sessions.filterKeys { it != name }.values.forEach { it.playback.pauseForFocus() }
+        }).also { sessions[name] = it }
+        controllers[controller] = name
+        return entry.playback.activate(controller, config)
+    }
+
+    override fun execute(controller: Long, operation: String, payload: String): NativeResult =
+        sessions[controllers[controller]]?.playback?.execute(controller, operation, payload)
+            ?: NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio player is not active", false)
+
+    override fun reportFailure(controller: Long, kind: String, message: String, retryable: Boolean) {
+        sessions[controllers[controller]]?.playback?.reportFailure(controller, kind, message, retryable)
+    }
+
+    override fun deactivate(controller: Long) {
+        val name = controllers.remove(controller) ?: return
+        sessions[name]?.playback?.deactivate(controller)
+        if (name !in controllers.values) sessions.remove(name)
+    }
+
+    override fun pause() = sessions.values.forEach { it.playback.pause() }
+
+    override fun stop() {
+        sessions.values.forEach { it.playback.stop() }
+        sessions.clear()
+        controllers.clear()
+    }
+}
+
+@UnstableApi
+private class AudioSessionPlayback(
+    private val activity: MainActivity,
+    private val updateController: (Long, String) -> Unit,
+    private val name: String,
+    private val takeFocus: () -> Unit,
 ) : AudioPlayback, Player.Listener {
     private val handler = Handler(Looper.getMainLooper())
     private val progress = object : Runnable {
@@ -41,7 +98,8 @@ private class InkAudioPlayback(
             }
         }
     }
-    private var controller: Long? = null
+    private val controllers = mutableSetOf<Long>()
+    private var persistence: AudioQueuePersistence? = null
     private var contentType = C.AUDIO_CONTENT_TYPE_MUSIC
     private var detached = false
     private var player: Player? = null
@@ -50,8 +108,10 @@ private class InkAudioPlayback(
     private var failure: Failure? = null
 
     override fun activate(controller: Long, config: String): NativeResult {
-        if (this.controller != null && this.controller != controller) {
-            return failure("Only one audio player can be active")
+        if (!controllers.add(controller)) return NativeResult.Success("")
+        if (controllers.size > 1) {
+            publish()
+            return NativeResult.Success("")
         }
         val configuredUsage = runCatching { JSONObject(config).optString("usage", "music") }
             .getOrDefault("music")
@@ -63,16 +123,17 @@ private class InkAudioPlayback(
         detached = runCatching {
             JSONObject(config).optString("playback", "attached") == "detached"
         }.getOrDefault(false)
-        this.controller = controller
         if (detached) {
             connectDetached()
+        } else {
+            attachedPlayer()
         }
         publish()
         return NativeResult.Success("")
     }
 
     override fun execute(controller: Long, operation: String, payload: String): NativeResult {
-        if (this.controller != controller) {
+        if (controller !in controllers) {
             return failure("Audio player is not active")
         }
         return runCatching {
@@ -80,14 +141,14 @@ private class InkAudioPlayback(
             when (operation) {
                 "play" -> {
                     body.optJSONObject("item")?.let { setQueue(listOf(Item.from(it)), 0) }
-                    dispatch { if (it.mediaItemCount > 0) it.play() }
+                    dispatch { if (it.mediaItemCount > 0) { takeFocus(); it.play() } }
                 }
                 "setQueue" -> setQueue(
                     Item.list(body.getJSONArray("items")),
                     body.optInt("startIndex"),
                 )
                 "pause" -> dispatch(Player::pause)
-                "toggle" -> dispatch { if (it.isPlaying) it.pause() else it.play() }
+                "toggle" -> dispatch { if (it.isPlaying) it.pause() else { takeFocus(); it.play() } }
                 "stop" -> clear()
                 "seekTo" -> dispatch {
                     it.seekTo(body.getDouble("value").toLong().coerceAtLeast(0))
@@ -121,7 +182,7 @@ private class InkAudioPlayback(
         message: String,
         retryable: Boolean,
     ) {
-        if (this.controller != controller) {
+        if (controller !in controllers) {
             return
         }
         failure = Failure(kind, message, retryable)
@@ -129,12 +190,14 @@ private class InkAudioPlayback(
     }
 
     override fun deactivate(controller: Long) {
-        if (this.controller != controller) {
+        if (controller !in controllers) {
             return
         }
-        release()
-        this.controller = null
+        controllers.remove(controller)
+        if (controllers.isEmpty()) release()
     }
+
+    fun pauseForFocus() { player?.pause() }
 
     override fun pause() {
         if (!detached) {
@@ -145,7 +208,7 @@ private class InkAudioPlayback(
 
     override fun stop() {
         release()
-        controller = null
+        controllers.clear()
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) = publish()
@@ -187,6 +250,7 @@ private class InkAudioPlayback(
                     true,
                 )
             }
+        persistence = AudioQueuePersistence(activity, name, created).apply { restore() }
         connect(created)
         return created
     }
@@ -214,6 +278,7 @@ private class InkAudioPlayback(
         )
             .setConnectionHints(Bundle().apply {
                 putBoolean(CONTROLLER_HINT, true)
+                putString("ink.session", name)
                 putInt(CONTENT_TYPE_HINT, contentType)
             })
             .buildAsync()
@@ -242,7 +307,7 @@ private class InkAudioPlayback(
     }
 
     private fun connect(connected: Player) {
-        if (controller == null) {
+        if (controllers.isEmpty()) {
             connected.release()
             return
         }
@@ -283,7 +348,7 @@ private class InkAudioPlayback(
     }
 
     private fun publish() {
-        val controller = controller ?: return
+        if (controllers.isEmpty()) return
         val player = player
         val mediaItem = player?.currentMediaItem
         val metadata = mediaItem?.mediaMetadata
@@ -293,6 +358,7 @@ private class InkAudioPlayback(
             ?.takeIf { it >= 0 }
             ?: -1
         val state = JSONObject()
+            .put("ready", !detached || player != null)
             .put("status", status(player))
             .put("id", mediaItem?.mediaId.orEmpty())
             .put("src", metadata?.extras?.getString(SOURCE_METADATA_KEY).orEmpty())
@@ -313,7 +379,8 @@ private class InkAudioPlayback(
                     failure?.retryable ?: false,
                 ),
             )
-        updateController(controller, state.toString())
+        val encoded = state.toString()
+        controllers.forEach { updateController(it, encoded) }
     }
 
     private fun status(player: Player?): String = when {
@@ -331,6 +398,8 @@ private class InkAudioPlayback(
         pending.clear()
         connection?.let(MediaController::releaseFuture)
         connection = null
+        persistence?.close()
+        persistence = null
         player?.removeListener(this)
         player?.release()
         player = null
@@ -356,7 +425,7 @@ private class InkAudioPlayback(
         fun mediaItem(activity: MainActivity): MediaItem {
             val uri = when {
                 src.startsWith("https://") -> Uri.parse(src)
-                src.startsWith("asset:///") -> Uri.parse(src)
+                src.startsWith("asset:///") -> activity.bundledAudioUri(src)
                 src.startsWith(RECORDING_PREFIX) -> {
                     val recordingId = src.removePrefix(RECORDING_PREFIX)
                     require(RECORDING_ID.matches(recordingId)) { "Invalid Ink recording source" }

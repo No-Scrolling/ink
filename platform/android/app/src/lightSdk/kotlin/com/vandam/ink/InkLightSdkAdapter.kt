@@ -124,53 +124,59 @@ private class InkLightSdkAdapter(
             complete(NativeResult.Success(""))
             return
         }
+        installRingtone(requestId, controller, payload, complete)
+    }
+
+    private fun installRingtone(
+        requestId: Long,
+        controller: Long?,
+        payload: String,
+        complete: NativeResultHandler,
+    ) {
         val request = runCatching { JSONObject(payload) }.getOrNull()
         val source = request?.optString("source").orEmpty()
         val kind = request?.optString("kind", "ringtone").orEmpty()
         if (source.isEmpty() || kind !in RINGTONE_TYPES) {
-            updateRingtone(controller, "error", "protocol", "Invalid ringtone request")
-            complete(NativeResult.Success(""))
+            complete(NativeResult.Success(updateRingtone(controller, "error", "protocol", "Invalid ringtone request")))
             return
         }
         updateRingtone(controller, "installing")
         val task = FutureTask<Unit> {
-            val staged = runCatching { ringtoneFiles.stage(source) }.getOrElse { error ->
-                runningRequests.remove(requestId)
-                updateRingtone(
-                    controller,
-                    "error",
-                    "source",
-                    error.message ?: "Could not stage ringtone",
-                )
-                complete(NativeResult.Success(""))
-                return@FutureTask
-            }
-            val requestPayload = JSONObject()
-                .put("type", RINGTONE_TYPES.getValue(kind))
-                .put("uri", staged.uri.toString())
-                .toString()
-            when (val response = authenticatedRequest(SET_RINGTONE, requestPayload)) {
-                is Response.Success -> {
-                    ringtoneFiles.commit(kind, staged)
-                    if (!Thread.currentThread().isInterrupted) {
+            var staged: StagedRingtone? = null
+            var phase = "source"
+            try {
+                val file = ringtoneFiles.stage(source)
+                staged = file
+                val requestPayload = JSONObject()
+                    .put("type", RINGTONE_TYPES.getValue(kind))
+                    .put("uri", file.uri.toString())
+                    .toString()
+                phase = "unavailable"
+                val result = when (val response = authenticatedRequest(SET_RINGTONE, requestPayload)) {
+                    is Response.Success -> {
+                        phase = "storage"
+                        staged = null
+                        ringtoneFiles.commit(kind, file)
                         updateRingtone(controller, "installed")
                     }
+                    is Response.Error -> updateRingtone(
+                        controller,
+                        "error",
+                        if (response.code == INVALID_PARAMETERS) "protocol" else "unavailable",
+                        response.message ?: "Could not install ringtone",
+                        response.code != INVALID_PARAMETERS,
+                    )
                 }
-                is Response.Error -> {
-                    ringtoneFiles.discard(staged)
-                    if (!Thread.currentThread().isInterrupted) {
-                        updateRingtone(
-                            controller,
-                            "error",
-                            if (response.code == INVALID_PARAMETERS) "protocol" else "unavailable",
-                            response.message ?: "Could not install ringtone",
-                            response.code != INVALID_PARAMETERS,
-                        )
-                    }
+                complete(NativeResult.Success(result))
+            } catch (error: Exception) {
+                complete(NativeResult.Success(updateRingtone(controller, "error", phase, error.message ?: "Could not install ringtone", true)))
+            } finally {
+                staged?.let { file ->
+                    runCatching { ringtoneFiles.discard(file) }
+                        .onFailure { Log.w(TAG, "Could not discard staged ringtone", it) }
                 }
+                runningRequests.remove(requestId)
             }
-            runningRequests.remove(requestId)
-            complete(NativeResult.Success(""))
         }
         runningRequests[requestId] = task
         executor.execute(task)
@@ -182,8 +188,12 @@ private class InkLightSdkAdapter(
         payload: String,
         complete: NativeResultHandler,
     ) {
+        if (operation == "install-ringtone") {
+            installRingtone(requestId, null, payload, complete)
+            return
+        }
         val valid = when (operation) {
-            VERSION_OPERATION -> payload.isEmpty()
+            VERSION_OPERATION, "preferences", "keyboard-options" -> payload.isEmpty()
             PERMISSION_STATUS_OPERATION, REQUEST_PERMISSION_OPERATION ->
                 payload == CAMERA ||
                     payload == MICROPHONE ||
@@ -287,6 +297,13 @@ private class InkLightSdkAdapter(
             is Response.Success -> NativeResult.Success(
                 JSONObject(response.data).getString("version"),
             )
+            is Response.Error -> response.failure()
+        }
+        "preferences", "keyboard-options" -> when (val response = authenticatedRequest(
+            if (request.operation == "preferences") GET_USER_PREFERENCES else GET_KEYBOARD_OPTIONS,
+            UNIT_JSON,
+        )) {
+            is Response.Success -> NativeResult.Success(response.data)
             is Response.Error -> response.failure()
         }
         PERMISSION_STATUS_OPERATION -> permissionStatus(request.payload)
@@ -495,17 +512,18 @@ private class InkLightSdkAdapter(
     }
 
     private fun updateRingtone(
-        controller: Long,
+        controller: Long?,
         status: String,
         errorKind: String = "",
         errorMessage: String = "",
         retryable: Boolean = false,
-    ) {
+    ): String {
         val value = JSONObject()
             .put("status", status)
             .put("error", inkError(errorKind.ifEmpty { "unexpected" }, errorMessage, retryable))
             .toString()
-        activity.runOnUiThread { updateController(controller, value) }
+        if (controller != null) activity.runOnUiThread { updateController(controller, value) }
+        return value
     }
 
     private sealed interface Response {

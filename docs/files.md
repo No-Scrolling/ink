@@ -1,8 +1,10 @@
 ---
 title: "Files"
 description: "Managed files, imports and large content without JavaScript copies."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/files` manages app documents, cache files and user-selected imports. A `FileRef` refers to native content; its `id` can be persisted. Opening that ID later can fail if the file was deleted or its external permission expired.
 

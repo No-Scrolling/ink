@@ -1,0 +1,19 @@
+{
+  "name": "ink-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "examples/light-template",
+    "examples/counter",
+    "benchmarks/apps/ink-counter",
+    "benchmarks/apps/ink-scroll"
+  ],
+  "scripts": {
+    "check": "tsc -p packages/ink/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-reconciler": "0.33.0",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,6 +1,8 @@
 package com.vandam.ink
 
-internal fun createLocationAdapter(_activity: MainActivity): LocationAdapter =
+internal fun createLocationAdapter(activity: MainActivity): LocationAdapter = createWorkerLocationAdapter(activity)
+
+internal fun createWorkerLocationAdapter(_context: android.content.Context): LocationAdapter =
     object : LocationAdapter {
         override fun execute(
             requestId: Long,

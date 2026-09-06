@@ -9,7 +9,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use ink_compiler::Project;
 
-use crate::{output, process, watch};
+use crate::{output, process};
 
 const ACTIVITY_CLASS: &str = "com.vandam.ink.MainActivity";
 
@@ -47,11 +47,6 @@ impl Profile {
             Self::Release => "release",
         }
     }
-}
-
-pub enum BuildOutcome {
-    Complete(BuildArtifact),
-    Changed,
 }
 
 pub struct BuildArtifact {
@@ -133,39 +128,16 @@ fn build_with_light_server(
     verbose: bool,
     light_server: &str,
 ) -> Result<BuildArtifact> {
-    compile(project)?;
+    compile(project, profile)?;
+    let sdk = framework_root()?;
+    fs::create_dir_all(sdk.join("target"))?;
+    let build_lock = fs::OpenOptions::new().create(true).truncate(false).read(true).write(true)
+        .open(sdk.join("target/ink-android.lock"))?;
+    build_lock.lock().context("could not lock the shared native build cache")?;
     let mut gradle = gradle_command(project, profile, light_server)?;
     let message = format!("Building {} APK", profile.label());
     let duration = process::run(&mut gradle, &message, verbose)?;
-    build_artifact(profile, duration, verbose)
-}
-
-pub fn build_watched(
-    project: &Project,
-    profile: Profile,
-    verbose: bool,
-    baseline: &watch::Snapshot,
-    device: &Device,
-) -> Result<BuildOutcome> {
-    compile(project)?;
-    let mut gradle = gradle_command(
-        project,
-        profile,
-        device.light_server(project.light_server()),
-    )?;
-    if watch::changed(project.root(), baseline)? {
-        return Ok(BuildOutcome::Changed);
-    }
-
-    let message = format!("Building {} APK", profile.label());
-    let duration =
-        match process::run_cancellable(&mut gradle, &message, verbose, project.root(), baseline)? {
-            process::PhaseOutcome::Complete(duration) => duration,
-            process::PhaseOutcome::Changed => return Ok(BuildOutcome::Changed),
-        };
-    Ok(BuildOutcome::Complete(build_artifact(
-        profile, duration, verbose,
-    )?))
+    build_artifact(project, profile, duration, verbose)
 }
 
 fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Result<Command> {
@@ -197,6 +169,9 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
         .current_dir(&framework)
         .arg("-p")
         .arg(&android)
+        .arg("--project-cache-dir")
+        .arg(project.root().join(".ink/build/gradle-cache"))
+        .arg(format!("-PinkBuildRoot={}", project.root().join(".ink/build/android").display()))
         .arg(format!("-PinkAppName={}", project.name()))
         .arg(format!("-PinkApplicationId={}", project.package()))
         .arg(format!("-PinkVersionName={}", project.version()))
@@ -225,17 +200,15 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
     Ok(gradle)
 }
 
-fn compile(project: &Project) -> Result<()> {
-    ink_compiler::compile(project)?;
+fn compile(project: &Project, profile: Profile) -> Result<()> {
+    if profile == Profile::Debug { ink_compiler::compile_development(project)?; }
+    else { ink_compiler::compile(project)?; }
     output::success(format!("Compiled {}", project.source_path().display()));
     Ok(())
 }
 
-fn build_artifact(profile: Profile, duration: Duration, verbose: bool) -> Result<BuildArtifact> {
-    let framework = framework_root()?;
-    let android = framework.join("platform/android");
-    let apk = android
-        .join("app/build/outputs/apk")
+fn build_artifact(project: &Project, profile: Profile, duration: Duration, verbose: bool) -> Result<BuildArtifact> {
+    let apk = project.root().join(".ink/build/android/outputs/apk")
         .join(profile.directory())
         .join(profile.apk_name());
     if !apk.is_file() {
@@ -441,11 +414,42 @@ impl Drop for LogStream {
 pub fn doctor() -> Result<()> {
     output::info("Checking the Ink toolchain");
     let mut healthy = true;
+    healthy &= check_tool("Bun", "bun", &["--version"]);
     healthy &= check_tool("Rust", "cargo", &["--version"]);
     healthy &= check_tool("Clippy", "cargo", &["clippy", "--version"]);
     healthy &= check_tool("Cargo NDK", "cargo", &["ndk", "--version"]);
     healthy &= check_tool("Java", "java", &["-version"]);
     healthy &= check_tool("ADB", "adb", &["version"]);
+
+    let framework = match framework_root() {
+        Ok(path) => {
+            output::success(format!("Ink SDK: {}", path.display()));
+            Some(path)
+        }
+        Err(error) => {
+            output::error(error.to_string());
+            healthy = false;
+            None
+        }
+    };
+    match android_sdk() {
+        Ok(sdk) => {
+            output::success(format!("Android SDK: {}", sdk.display()));
+            if let Some(framework) = &framework {
+                match android_ndk(framework, &sdk) {
+                    Ok(path) => output::success(format!("Android NDK: {}", path.display())),
+                    Err(error) => {
+                        output::error(error.to_string());
+                        healthy = false;
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            output::error(error.to_string());
+            healthy = false;
+        }
+    }
 
     match Command::new("rustup")
         .args(["target", "list", "--installed"])
@@ -545,6 +549,26 @@ fn android_sdk() -> Result<PathBuf> {
     bail!("Android SDK not found; set ANDROID_HOME")
 }
 
+fn android_ndk(framework: &Path, sdk: &Path) -> Result<PathBuf> {
+    let gradle = fs::read_to_string(framework.join("platform/android/app/build.gradle.kts"))
+        .context("could not read the SDK's required Android NDK version")?;
+    let version = gradle.lines().find_map(|line| {
+        line.trim().strip_prefix("ndkVersion = \"")?.split('"').next()
+    }).context("the Ink SDK does not declare an Android NDK version")?;
+    let ndk = sdk.join("ndk").join(version);
+    let properties = fs::read_to_string(ndk.join("source.properties")).unwrap_or_default();
+    let revision = properties.lines().find_map(|line| {
+        let (name, value) = line.split_once('=')?;
+        (name.trim() == "Pkg.Revision").then_some(value.trim())
+    });
+    let has_compiler = fs::read_dir(ndk.join("toolchains/llvm/prebuilt"))
+        .is_ok_and(|entries| entries.flatten().any(|entry| entry.path().join("bin/clang").is_file()));
+    if revision != Some(version) || !has_compiler {
+        bail!("Android NDK {version} is missing or incomplete; install it with sdkmanager \"ndk;{version}\"");
+    }
+    Ok(ndk)
+}
+
 fn check_tool(label: &str, program: &str, arguments: &[&str]) -> bool {
     match Command::new(program).args(arguments).output() {
         Ok(result) if result.status.success() => {
@@ -611,11 +635,26 @@ fn adb(device: &Device) -> Command {
     command
 }
 
-fn framework_root() -> Result<PathBuf> {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .context("could not locate the Ink framework checkout")
+pub(crate) fn framework_root() -> Result<PathBuf> {
+    let candidate = if let Some(root) = env::var_os("INK_SDK_ROOT") {
+        PathBuf::from(root)
+    } else {
+        let config = env::var_os("XDG_CONFIG_HOME").map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+            .context("set INK_SDK_ROOT to an Ink SDK checkout")?;
+        config.join("ink/sdk/current")
+    };
+    let root = candidate.canonicalize().with_context(|| format!(
+        "Ink SDK not found at {}; set INK_SDK_ROOT to the SDK checkout", candidate.display()))?;
+    if !root.join("platform/android/gradlew").is_file() || !root.join("packages/ink/package.json").is_file() {
+        bail!("{} is not an Ink SDK", root.display());
+    }
+let metadata: serde_json::Value = serde_json::from_slice(&fs::read(root.join("sdk.json"))
+        .context("SDK metadata missing; update the SDK checkout")?)?;
+    if metadata["protocolVersion"].as_u64() != Some(1) {
+        bail!("unsupported SDK protocol; use a compatible Ink CLI and SDK");
+    }
+    Ok(root)
 }
 
 fn device_state_path() -> Option<PathBuf> {

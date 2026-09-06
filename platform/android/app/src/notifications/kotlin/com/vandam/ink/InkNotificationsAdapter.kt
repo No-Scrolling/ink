@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,18 +20,22 @@ import java.io.File
 internal fun createNotificationsAdapter(
     activity: MainActivity,
     update: (Long, String) -> Unit,
-): NotificationsAdapter = InkNotificationsAdapter(activity, update)
+): NotificationsAdapter = InkNotificationsAdapter(activity, update, activity)
+
+internal fun createWorkerNotificationsAdapter(context: Context): NativeAdapter =
+    InkNotificationsAdapter(context, { _, _ -> })
 
 private class InkNotificationsAdapter(
-    private val activity: MainActivity,
+    private val context: Context,
     private val update: (Long, String) -> Unit,
+    private val activity: MainActivity? = null,
 ) : NotificationsAdapter {
     private var tapController: Long? = null
-    private val lightPush = createLightPushAdapter(activity, update)
+    private val lightPush = activity?.let { createLightPushAdapter(it, update) }
 
-    override fun start() = lightPush.start()
+    override fun start() { lightPush?.start() }
 
-    override fun stop() = lightPush.stop()
+    override fun stop() { lightPush?.stop() }
 
     override fun execute(
         requestId: Long,
@@ -38,9 +43,25 @@ private class InkNotificationsAdapter(
         payload: String,
         complete: NativeResultHandler,
     ) {
+        if (activity == null && operation !in setOf("exact-status", "schedule", "cancel", "permission-status")) {
+            complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "This notification operation requires an active app", false))
+            return
+        }
         when (operation) {
+            "exact-status" -> complete(NativeResult.Success(
+                if (context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) "granted" else "denied",
+            ))
+            "request-exact-permission" -> {
+                val activity = requireNotNull(activity)
+                activity.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                    Uri.parse("package:${activity.packageName}")))
+                complete(NativeResult.Success(""))
+            }
+            "schedule" -> complete(NativeResult.Success(schedule(null, payload).toString()))
+            "cancel" -> complete(NativeResult.Success(cancel(null, payload).toString()))
             "permission-status" -> complete(NativeResult.Success(permissionStatus()))
             "request-permission" -> {
+                val activity = requireNotNull(activity)
                 activity
                     .getSharedPreferences(PERMISSION_PREFS, Context.MODE_PRIVATE)
                     .edit()
@@ -61,7 +82,7 @@ private class InkNotificationsAdapter(
         payload: String,
         complete: NativeResultHandler,
     ) {
-        if (lightPush.executeController(controller, operation, payload)) {
+        if (lightPush?.executeController(controller, operation, payload) == true) {
             complete(NativeResult.Success(""))
             return
         }
@@ -71,8 +92,16 @@ private class InkNotificationsAdapter(
                     updateOperation(controller, "", "", null)
                 }
                 "notification-tap" -> {
+                    if (tapController != null && tapController != controller) {
+                        complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Notification taps already have an owner", true))
+                        return
+                    }
                     tapController = controller
                     updateTap()
+                }
+                else -> {
+                    complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Unsupported notification controller", false))
+                    return
                 }
             }
             complete(NativeResult.Success(""))
@@ -87,7 +116,11 @@ private class InkNotificationsAdapter(
             "schedule" -> schedule(controller, payload)
             "cancel" -> cancel(controller, payload)
             "consume" -> {
-                runCatching { InkNotificationStore(activity).consumeEvent() }
+                val error = runCatching { InkNotificationStore(context).consumeEvent() }.exceptionOrNull()
+                if (error != null) {
+                    complete(NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Could not consume notification tap", true))
+                    return
+                }
                 updateTap()
             }
             else -> updateOperation(
@@ -104,43 +137,45 @@ private class InkNotificationsAdapter(
 
     override fun refreshEvents() {
         updateTap()
-        lightPush.refresh()
+        lightPush?.refresh()
     }
 
     override fun handleIntent(intent: Intent) {
         intent.getStringExtra(EXTRA_NOTIFICATION_ID)?.let { id ->
-            runCatching { InkNotificationStore(activity).recordTap(id) }
-            InkNotificationPresenter.cancel(activity, id)
+            runCatching { InkNotificationStore(context).recordTap(id) }
+            InkNotificationPresenter.cancel(context, id)
             intent.removeExtra(EXTRA_NOTIFICATION_ID)
         }
-        lightPush.handleIntent(intent)
+        lightPush?.handleIntent(intent)
     }
 
-    private fun schedule(controller: Long, payload: String) {
+    private fun schedule(controller: Long?, payload: String): JSONObject {
         val request = runCatching { LocalNotification.parse(JSONObject(payload)) }.getOrElse {
-            updateOperation(
+            return updateOperation(
                 controller,
                 "schedule",
                 runCatching { JSONObject(payload).optString("id") }.getOrDefault(""),
                 OperationError("invalid-request", it.message ?: "Invalid notification", false),
             )
-            return
         }
         val permission = permissionStatus()
         if (permission != "granted") {
-            updateOperation(
+            return updateOperation(
                 controller,
                 "schedule",
                 request.id,
                 OperationError("permission-$permission", "Notification permission is $permission", false),
             )
-            return
+        }
+        if (request.exact && !context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) {
+            return updateOperation(controller, "schedule", request.id,
+                OperationError("permission-exact", "Exact alarm access has not been granted", false))
         }
         val error = runCatching {
-            InkNotificationStore(activity).upsert(request)
-            InkNotificationScheduler.schedule(activity, request)
+            InkNotificationStore(context).upsert(request)
+            InkNotificationScheduler.schedule(context, request)
         }.exceptionOrNull()
-        updateOperation(
+        return updateOperation(
             controller,
             "schedule",
             request.id,
@@ -151,24 +186,23 @@ private class InkNotificationsAdapter(
         )
     }
 
-    private fun cancel(controller: Long, payload: String) {
+    private fun cancel(controller: Long?, payload: String): JSONObject {
         val id = runCatching { JSONObject(payload).getString("id") }.getOrDefault("")
         val validation = runCatching { LocalNotification.validateId(id) }.exceptionOrNull()
         if (validation != null) {
-            updateOperation(
+            return updateOperation(
                 controller,
                 "cancel",
                 id,
                 OperationError("invalid-request", validation.message ?: "Invalid notification ID", false),
             )
-            return
         }
         val error = runCatching {
-            InkNotificationStore(activity).remove(id)
-            InkNotificationScheduler.cancel(activity, id)
-            InkNotificationPresenter.cancel(activity, id)
+            InkNotificationStore(context).remove(id)
+            InkNotificationScheduler.cancel(context, id)
+            InkNotificationPresenter.cancel(context, id)
         }.exceptionOrNull()
-        updateOperation(
+        return updateOperation(
             controller,
             "cancel",
             id,
@@ -176,28 +210,30 @@ private class InkNotificationsAdapter(
         )
     }
 
-    private fun updateOperation(controller: Long, operation: String, id: String, error: OperationError?) {
-        update(
-            controller,
-            JSONObject()
-                .put("status", if (error == null) "idle" else "error")
-                .put("operation", operation)
-                .put("id", id)
-                .put(
-                    "error",
-                    inkError(
-                        error?.kind ?: "unexpected",
-                        error?.message.orEmpty(),
-                        error?.retryable ?: false,
-                    ),
-                )
-                .toString(),
-        )
+    private fun updateOperation(controller: Long?, operation: String, id: String, error: OperationError?): JSONObject {
+        val state = JSONObject()
+            .put("status", if (error == null) "idle" else "error")
+            .put("operation", operation)
+            .put("id", id)
+            .put(
+                "error",
+                inkError(
+                    error?.kind ?: "unexpected",
+                    error?.message.orEmpty(),
+                    error?.retryable ?: false,
+                ),
+            )
+        if (controller != null) update(controller, state.toString())
+        return state
     }
 
     private fun updateTap() {
         val controller = tapController ?: return
-        val event = runCatching { InkNotificationStore(activity).firstEvent() }.getOrNull()
+        val event = runCatching { InkNotificationStore(context).firstEvent() }.getOrElse {
+            update(controller, JSONObject().put("status", "error")
+                .put("error", inkError("storage", it.message ?: "Could not read notification taps", true)).toString())
+            return
+        }
         val value = JSONObject()
             .put("id", event?.id.orEmpty())
             .put("data", event?.data.orEmpty())
@@ -211,13 +247,13 @@ private class InkNotificationsAdapter(
     }
 
     private fun permissionStatus(): String {
-        if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             return "granted"
         }
-        val requested = activity
+        val requested = context
             .getSharedPreferences(PERMISSION_PREFS, Context.MODE_PRIVATE)
             .getBoolean(PERMISSION_REQUESTED, false)
-        return if (requested && !activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+        return if (requested && activity != null && !activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
             "blocked"
         } else {
             "denied"
@@ -241,6 +277,8 @@ internal data class LocalNotification(
     val data: String,
     val triggerAtMs: Long,
     val displayed: Boolean = false,
+    val exact: Boolean = false,
+    val params: JSONObject? = null,
 ) {
     fun json(): JSONObject = JSONObject()
         .put("id", id)
@@ -250,6 +288,8 @@ internal data class LocalNotification(
         .put("data", data)
         .put("triggerAtMs", triggerAtMs)
         .put("displayed", displayed)
+        .put("exact", exact)
+        .put("params", params)
 
     companion object {
         private val idPattern = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
@@ -259,7 +299,11 @@ internal data class LocalNotification(
             validateId(id)
             val title = json.getString("title")
             val body = json.getString("body")
-            val href = json.optString("href")
+            val destination = json.optJSONObject("href")
+            val href = if (destination == null) json.optString("href") else destination.getString("path")
+            val params = destination?.optJSONObject("params")
+            require(params == null || params.toString().toByteArray().size <= 8192) { "Route parameters exceed 8 KiB" }
+            require(destination == null || !destination.has("params") || params != null) { "Route parameters must be an object" }
             val data = json.optString("data")
             require(title.isNotBlank() && title.toByteArray().size <= 120) { "title must be 1–120 bytes" }
             require(body.isNotBlank() && body.toByteArray().size <= 512) { "body must be 1–512 bytes" }
@@ -267,7 +311,7 @@ internal data class LocalNotification(
                 "href must be an Ink route of at most 256 bytes"
             }
             require(data.toByteArray().size <= 1_800) { "data must be at most 1800 bytes" }
-            require(json.toString().toByteArray().size <= 2_800) { "notification payload must be at most 2800 bytes" }
+            require(json.toString().toByteArray().size <= 12_288) { "Notification payload must be at most 12 KiB" }
             val hasDelay = json.has("delayMs")
             val hasTrigger = json.has("triggerAtMs")
             require(hasDelay.xor(hasTrigger)) { "exactly one of delayMs or triggerAtMs is required" }
@@ -280,7 +324,8 @@ internal data class LocalNotification(
                 numberAsLong(json, "triggerAtMs")
             }
             require(trigger in 0..(now + MAX_FUTURE_MS)) { "triggerAtMs is outside the supported range" }
-            return LocalNotification(id, title, body, href, data, trigger)
+            return LocalNotification(id, title, body, href, data, trigger,
+                exact = json.optBoolean("exact"), params = params)
         }
 
         fun fromJson(json: JSONObject): LocalNotification = LocalNotification(
@@ -291,6 +336,8 @@ internal data class LocalNotification(
             json.optString("data"),
             json.getLong("triggerAtMs"),
             json.optBoolean("displayed"),
+            json.optBoolean("exact"),
+            json.optJSONObject("params"),
         )
 
         fun validateId(id: String) {
@@ -421,11 +468,14 @@ private object InkNotificationScheduler {
             InkNotificationPresenter.present(context, InkNotificationStore(context).markDisplayed(notification.id) ?: return)
             return
         }
-        context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            notification.triggerAtMs,
-            alarmIntent(context, notification.id),
-        )
+        val alarms = context.getSystemService(AlarmManager::class.java)
+        if (notification.exact) {
+            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, notification.triggerAtMs,
+                alarmIntent(context, notification.id))
+        } else {
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, notification.triggerAtMs,
+                alarmIntent(context, notification.id))
+        }
     }
 
     fun cancel(context: Context, id: String) {
@@ -455,7 +505,8 @@ internal object InkNotificationPresenter {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .setData(Uri.parse("ink-notification://tap/${Uri.encode(notification.id)}"))
                 .putExtra(EXTRA_NOTIFICATION_ID, notification.id)
-                .putExtra(EXTRA_NOTIFICATION_HREF, notification.href),
+                .putExtra(EXTRA_NOTIFICATION_HREF, notification.href)
+                .putExtra(EXTRA_NOTIFICATION_PARAMS, notification.params?.toString()),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val value = Notification.Builder(context, CHANNEL_ID)
@@ -540,10 +591,16 @@ class InkNotificationDismissReceiver : BroadcastReceiver() {
 
 class InkNotificationBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+            intent.action != AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED) return
         runCatching { InkNotificationStore(context).scheduled() }
             .getOrDefault(emptyList())
-            .forEach { InkNotificationScheduler.schedule(context, it) }
+            .forEach { notification ->
+                if (!notification.exact || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) {
+                    runCatching { InkNotificationScheduler.schedule(context, notification) }
+                        .onFailure { android.util.Log.w("InkNotifications", "Could not restore scheduled notification", it) }
+                }
+            }
     }
 }
 

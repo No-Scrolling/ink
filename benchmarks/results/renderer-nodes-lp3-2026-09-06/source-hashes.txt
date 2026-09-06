@@ -1,0 +1,2 @@
+e33e843a531c4d4058dac5e0296eef930b01acbcc9c368d9c00d5f8311dbc0b2  crates/ink-core/src/react.rs
+566c7e8262107b1e2605733e039db1bd838ed446f4386d56a1adcc3135d91462  crates/ink-renderer-wgpu/src/compact.rs

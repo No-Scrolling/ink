@@ -1,31 +1,33 @@
-import { audioPlayer } from "@ink/audio";
-import { Button, Field, Screen } from "ink";
+import { usePlayer } from "@ink/audio";
+import { Button, Field, Screen, useAction } from "ink";
 
 export default function RemotePlayback() {
-  const player = audioPlayer({ usage: "speech", playback: "detached" });
+  const player = usePlayer({ session: "speech", usage: "speech", mode: "detached" });
+  const command = useAction((run: () => Promise<void>) => run());
+  const disabled = !player.state.ready || command.status === "pending";
 
   return (
     <Screen title="Remote Playback">
-      <Field label="Status">{player.status}</Field>
-      {player.status === "error" ? (
-        <Field label="Error">{player.error.message}</Field>
-      ) : (
-        <Field label="Track">{player.title}</Field>
-      )}
-      <Field label="Position">{player.positionMs} / {player.durationMs} ms</Field>
-      <Button
-        onPress={() => player.play({
+      <Field label="Status">
+        {!player.state.ready ? "Connecting" : player.state.buffering ? "Buffering" : player.state.playing ? "Playing" : player.state.current ? "Paused" : "Idle"}
+      </Field>
+      {player.state.error ? <Field label="Error">{player.state.error.message}</Field>
+        : <Field label="Track">{player.state.current?.title ?? "None"}</Field>}
+      <Field label="Position">{player.state.position} / {player.state.duration} ms</Field>
+      <Button disabled={disabled} onPress={() => command.run(async () => {
+        await player.setQueue([{
+          id: "dawn-of-everything",
           src: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Wikipedia_-_The_Dawn_of_Everything.mp3",
           title: "The Dawn of Everything",
           artist: "Wikipedia",
-        })}
-      >
-        Play Remote Audio
-      </Button>
-      <Button onPress={() => player.toggle()}>Play / Pause</Button>
-      <Button onPress={() => player.skipBack()}>Back 15 Seconds</Button>
-      <Button onPress={() => player.skipForward()}>Forward 15 Seconds</Button>
-      <Button onPress={() => player.stop()}>Stop Playback</Button>
+        }]);
+        await player.play();
+      })}>Play Remote Audio</Button>
+      <Button disabled={disabled} onPress={() => command.run(player.toggle)}>Play / Pause</Button>
+      <Button disabled={disabled} onPress={() => command.run(() => player.seek(Math.max(0, player.state.position - 15_000)))}>Back 15 Seconds</Button>
+      <Button disabled={disabled} onPress={() => command.run(() => player.seek(Math.min(player.state.duration, player.state.position + 15_000)))}>Forward 15 Seconds</Button>
+      <Button disabled={disabled} onPress={() => command.run(player.stop)}>Stop Playback</Button>
+      {command.status === "error" && <Field label="Command error">{command.error.message}</Field>}
     </Screen>
   );
 }

@@ -1,14 +1,11 @@
 {
   "name": "ink-counter-example",
   "private": true,
-  "packageManager": "bun@1.4.0",
   "scripts": {
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "ink": "file:../../packages/ink"
-  },
-  "devDependencies": {
-    "typescript": "7.0.2"
+    "ink": "workspace:*",
+    "react": "19.2.8"
   }
 }

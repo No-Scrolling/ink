@@ -1,41 +1,46 @@
-import {
-  levelMeter,
-  microphonePermission,
-  pitchDetector,
-} from "@ink/audio";
-import { Button, Field, Screen, match } from "ink";
+import { useEffect } from "react";
+import { microphone, useLevelMeter, usePitchDetector } from "@ink/audio";
+import { Button, Field, Screen, useAction } from "ink";
 
 export default function Microphone() {
-  const microphone = microphonePermission();
-  const level = levelMeter();
-  const pitch = pitchDetector();
+  const permission = useAction(microphone.getPermission);
+  const request = useAction(async () => {
+    await microphone.requestPermission();
+    permission.run();
+  });
+  const level = useLevelMeter();
+  const pitch = usePitchDetector();
+  const command = useAction((run: () => Promise<void>) => run());
+  const busy = command.status === "pending";
+  useEffect(() => permission.run(), [permission.run]);
 
   return (
     <Screen title="Microphone">
-      {match(microphone, {
-        loading: () => <Field label="Permission">Checking...</Field>,
-        ready: (result) => <Field label="Permission">{result.value}</Field>,
-        error: (result) => <Field label="Permission">{result.error.message}</Field>,
-      })}
-      <Button onPress={() => microphone.request()}>Request Microphone</Button>
-      <Field label="Level status">{level.status}</Field>
-      {level.status === "error" ? (
-        <Field label="Level error">{level.error.message}</Field>
+      <Field label="Permission">
+        {permission.status === "success" ? permission.data
+          : permission.status === "error" ? permission.error.message : "Checking..."}
+      </Field>
+      <Button disabled={request.status === "pending"} onPress={() => request.run()}>Request Microphone</Button>
+      {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
+      <Field label="Level status">{level.ready ? level.state.status : "Connecting"}</Field>
+      {level.state.error ? (
+        <Field label="Level error">{level.state.error.message}</Field>
       ) : (
-        <Field label="Level">RMS {level.rms}, peak {level.peak}</Field>
+        <Field label="Level">RMS {level.state.rms}, peak {level.state.peak}</Field>
       )}
-      <Button onPress={() => level.start()}>Start Meter</Button>
-      <Button onPress={() => level.stop()}>Stop Meter</Button>
-      <Field label="Pitch status">{pitch.status}</Field>
-      {pitch.status === "error" ? (
-        <Field label="Pitch error">{pitch.error.message}</Field>
+      <Button disabled={!level.ready || busy} onPress={() => command.run(level.start)}>Start Meter</Button>
+      <Button disabled={!level.ready || busy} onPress={() => command.run(level.stop)}>Stop Meter</Button>
+      <Field label="Pitch status">{pitch.ready ? pitch.state.status : "Connecting"}</Field>
+      {pitch.state.error ? (
+        <Field label="Pitch error">{pitch.state.error.message}</Field>
       ) : (
         <Field label="Pitch">
-          {pitch.note}{pitch.octave}, {pitch.frequencyHz} Hz, {pitch.cents} cents
+          {pitch.state.note}{pitch.state.octave}, {pitch.state.frequency} Hz, {pitch.state.cents} cents
         </Field>
       )}
-      <Button onPress={() => pitch.start()}>Start Tuner</Button>
-      <Button onPress={() => pitch.stop()}>Stop Tuner</Button>
+      <Button disabled={!pitch.ready || busy} onPress={() => command.run(pitch.start)}>Start Tuner</Button>
+      <Button disabled={!pitch.ready || busy} onPress={() => command.run(pitch.stop)}>Stop Tuner</Button>
+      {command.status === "error" && <Field label="Command error">{command.error.message}</Field>}
     </Screen>
   );
 }

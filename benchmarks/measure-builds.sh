@@ -33,14 +33,17 @@ measure() {
 }
 
 clean_ink() {
+  app="$(cd "$1" && pwd)"
   capabilities="$(pwd)/benchmarks/empty-capabilities.json"
   ./platform/android/gradlew -p platform/android :app:clean --quiet \
+    --project-cache-dir "$app/.ink/build/gradle-cache" \
+    -PinkBuildRoot="$app/.ink/build/android" \
     -PinkCapabilitiesManifest="$capabilities" >/dev/null
 }
 
 build_ink() {
   app="$1"
-  INK_KEYSTORE_PASSWORD=android INK_KEY_PASSWORD=android ink -C "$app" build
+  INK_KEYSTORE_PASSWORD=android INK_KEY_PASSWORD=android ./scripts/ink -C "$app" build
 }
 
 clean_expo() {
@@ -82,9 +85,9 @@ while [ "$round" -le "$rounds" ]; do
     esac
     case "$stack" in
       ink)
-        clean_ink
+        clean_ink benchmarks/apps/ink-counter
         measure "$round" Ink Counter clean build_ink benchmarks/apps/ink-counter
-        clean_ink
+        clean_ink benchmarks/apps/ink-scroll
         measure "$round" Ink Scroll clean build_ink benchmarks/apps/ink-scroll
         measure "$round" Ink Scroll noop build_ink benchmarks/apps/ink-scroll
         ;;

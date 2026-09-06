@@ -13,11 +13,12 @@ import java.nio.charset.Charset
 internal fun createNfcAdapter(activity: MainActivity): NfcAdapter = InkNfcAdapter(activity)
 
 private class InkNfcAdapter(private val activity: MainActivity) : NfcAdapter {
+    private val connection = InkNfcConnection(activity)
     private val platformAdapter = android.nfc.NfcAdapter.getDefaultAdapter(activity)
     private val requests = mutableMapOf<Long, NativeResultHandler>()
     private var resumed = false
     private var readerEnabled = false
-    private val callback = ReaderCallback(::tagDiscovered)
+    private var generation = 0L
 
     override fun execute(
         requestId: Long,
@@ -25,6 +26,22 @@ private class InkNfcAdapter(private val activity: MainActivity) : NfcAdapter {
         payload: String,
         complete: NativeResultHandler,
     ) {
+        if (operation in setOf("emulate", "stop-emulation", "apdu-next", "apdu-response", "apdu-stop")) {
+            if (operation == "apdu-next" && !resumed) {
+                complete(unavailable("APDU handlers require a foreground screen"))
+            } else InkApduBridge.execute(activity, requestId, operation, payload, complete)
+            return
+        }
+        if (operation in setOf("connect", "transceive", "close")) {
+            if ((!resumed || requests.isNotEmpty()) && operation != "close") {
+                complete(unavailable("NFC requires an available foreground reader"))
+            } else connection.execute(requestId, operation, payload, complete)
+            return
+        }
+        if (connection.active) {
+            complete(unavailable("A raw NFC connection is already active"))
+            return
+        }
         if (operation != READ_OPERATION || payload.isNotEmpty()) {
             complete(protocol("Unknown NFC operation: $operation"))
             return
@@ -38,11 +55,17 @@ private class InkNfcAdapter(private val activity: MainActivity) : NfcAdapter {
             complete(nfcDisabled())
             return
         }
+        if (!resumed) {
+            complete(unavailable("NFC requires a foreground screen"))
+            return
+        }
         requests[requestId] = complete
         enableReader()
     }
 
     override fun cancel(requestId: Long) {
+        connection.cancel(requestId)
+        InkApduBridge.cancel(requestId)
         requests.remove(requestId)
         if (requests.isEmpty()) {
             disableReader()
@@ -60,11 +83,15 @@ private class InkNfcAdapter(private val activity: MainActivity) : NfcAdapter {
 
     override fun pause() {
         resumed = false
+        connection.close()
+        InkApduBridge.stopHandler()
+        finishAll(unavailable("NFC session ended because the app left the foreground"))
         disableReader()
     }
 
     override fun stop() {
         pause()
+        connection.stop()
         requests.clear()
     }
 
@@ -78,9 +105,10 @@ private class InkNfcAdapter(private val activity: MainActivity) : NfcAdapter {
             return
         }
         runCatching {
+            val session = ++generation
             adapter.enableReaderMode(
                 activity,
-                callback,
+                ReaderCallback { tag -> tagDiscovered(tag, session) },
                 READER_FLAGS,
                 Bundle().apply {
                     putInt(android.nfc.NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250)
@@ -99,14 +127,17 @@ private class InkNfcAdapter(private val activity: MainActivity) : NfcAdapter {
             return
         }
         readerEnabled = false
+        generation++
         runCatching { adapter.disableReaderMode(activity) }
     }
 
-    private fun tagDiscovered(tag: Tag) {
+    private fun tagDiscovered(tag: Tag, session: Long) {
         val result = runCatching { tagResult(tag) }.getOrElse {
             protocol("Could not read the NFC tag")
         }
-        activity.runOnUiThread { finishAll(result) }
+        activity.runOnUiThread {
+            if (session == generation) finishAll(result)
+        }
     }
 
     private fun finishAll(result: NativeResult) {

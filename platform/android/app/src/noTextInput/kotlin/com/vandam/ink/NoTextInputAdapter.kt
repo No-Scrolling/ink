@@ -9,6 +9,8 @@ internal fun createTextInputAdapter(
 ): TextInputAdapter = object : TextInputAdapter {
     override fun sync(active: Boolean, action: Int) = Unit
 
+    override fun setLightAppearance(light: Boolean) = Unit
+
     override fun dismiss() = false
 
     override fun applyPreferences(preferences: KeyboardPreferences) = Unit

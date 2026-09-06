@@ -81,6 +81,7 @@ private class InkLightPushAdapter(
     override fun executeController(controller: Long, operation: String, payload: String): Boolean {
         if (operation == "activate") {
             if (JSONObject(payload).optString("kind") != "light-push") return false
+            check(this.controller == null || this.controller == controller) { "Push inbox already has an owner" }
             this.controller = controller
             refresh()
             return true
@@ -125,6 +126,10 @@ private class InkLightPushAdapter(
     }
 
     private fun retry() {
+        if (store.pendingUnregister() != null) {
+            unregister()
+            return
+        }
         val state = store.retry() ?: return
         if (state.endpoint.isEmpty()) registerConnector() else synchronise(state)
     }
@@ -275,6 +280,17 @@ class InkLightPushReceiver : MessagingReceiver() {
                 }
                 effects.cancelled.forEach { InkNotificationPresenter.cancelPush(context, it) }
                 effects.shown.forEach { presentPush(context, it) }
+                if (effects.shown.isNotEmpty() || effects.cleared.isNotEmpty()) {
+                    val background = createBackgroundAdapter(context)
+                    try {
+                        val delivery = JSONObject().put("messages", JSONArray().apply { effects.shown.forEach { put(it.json()) } })
+                            .put("cancelled", JSONArray(effects.cleared.toList()))
+                        background.enqueuePush(delivery)
+                    } catch (error: Exception) {
+                        Log.e(TAG, "Could not enqueue push handler", error)
+                    } finally { background.stop() }
+                }
+
                 notifyLightPushStateChanged(context)
             } finally {
                 pending.finish()
@@ -403,6 +419,7 @@ private data class LightPushEvent(
 private data class PushEffects(
     val shown: List<LightPushRecord>,
     val cancelled: Set<String>,
+    val cleared: Set<String>,
 )
 
 private class InkLightPushStore(context: Context) {
@@ -507,10 +524,12 @@ private class InkLightPushStore(context: Context) {
     fun apply(events: List<LightPushEvent>): PushEffects = mutateReturning { state ->
         val shown = mutableListOf<LightPushRecord>()
         val cancelled = mutableSetOf<String>()
+        val cleared = mutableSetOf<String>()
         events.forEach { event ->
             if (event.id in state.recentIds) return@forEach
             state.recentIds += event.id
             if (event.operation == "clear") {
+                cleared += event.groupKey
                 if (state.messages.removeAll { it.groupKey == event.groupKey }) {
                     cancelled += event.groupKey
                 }
@@ -532,7 +551,9 @@ private class InkLightPushStore(context: Context) {
             }
         }
         while (state.recentIds.size > MAX_RECENT_IDS) state.recentIds.removeAt(0)
-        PushEffects(shown, cancelled)
+        val retainedIds = state.messages.mapTo(mutableSetOf()) { it.id }
+        val finalShown = shown.filter { it.id in retainedIds }
+        PushEffects(finalShown, cancelled, cleared - finalShown.map { it.groupKey }.toSet())
     }
 
     private fun read(): PushState {

@@ -35,6 +35,12 @@ private class InkPhotoCaptureFeature(
     }
 
     override fun execute(operation: String): Boolean = when (operation) {
+        "capture" -> {
+            if (capturing || staged != null || stopped) false else {
+                capture()
+                true
+            }
+        }
         RETAKE -> {
             retake()
             true
@@ -132,7 +138,13 @@ private class InkPhotoCaptureFeature(
                 .put("width", captured.width)
                 .put("height", captured.height)
                 .put("mimeType", "image/jpeg")
-                .put("capturedAtMs", captured.capturedAtMs),
+                .put("capturedAtMs", captured.capturedAtMs)
+                .put("file", JSONObject()
+                    .put("uri", android.net.Uri.fromFile(accepted).toString())
+                    .put("source", "$PHOTO_PREFIX${captured.id}")
+                    .put("name", accepted.name)
+                    .put("size", accepted.length())
+                    .put("mimeType", "image/jpeg")),
         )
     }
 

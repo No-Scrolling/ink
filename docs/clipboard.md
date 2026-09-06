@@ -1,8 +1,10 @@
 ---
 title: "Clipboard"
 description: "Copy and paste from explicit user actions."
-tag: "Design specification"
+tag: "In development"
 ---
+
+> **In development.** Plain-text reading and writing are implemented. Physical LP3 verification remains.
 
 `@ink/clipboard` reads and writes plain text through Android's clipboard.
 

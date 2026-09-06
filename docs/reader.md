@@ -1,8 +1,10 @@
 ---
 title: "Reader"
 description: "Native document reading with saved positions."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/reader` presents supported documents with native pagination, text layout, selection and zoom. Use it for saved articles, manuals, books and PDF tickets.
 

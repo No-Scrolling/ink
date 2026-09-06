@@ -15,12 +15,11 @@ use unicode_properties::emoji::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-mod definition;
-mod persistence;
+mod list;
+mod masks;
+mod react;
 
-pub use definition::AppDefinitionError;
-pub use persistence::PersistenceTooLarge;
-use persistence::{decode_persisted_state, encode_persisted_state};
+pub use react::{ReactIcon, ReactTree};
 
 #[cfg(all(feature = "perf", target_os = "android"))]
 #[link(name = "android")]
@@ -72,6 +71,7 @@ const DEFAULT_TEXT_SIZE: f32 = 30.0;
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
 const TEXT_INPUT_HEIGHT: f32 = 38.0;
 const TEXT_INPUT_BOTTOM_PADDING: f32 = 6.0;
+const TEXT_INPUT_MAX_LINES: usize = 3;
 const TEXT_INPUT_CLEAR_ICON_SIZE: f32 = 24.0;
 const TEXT_INPUT_CLEAR_GAP: f32 = 20.0;
 const TEXT_INPUT_CLEAR_PADDING: f32 = 5.0;
@@ -82,7 +82,6 @@ const BUTTON_ICON_SIZE: f32 = 30.0;
 const BUTTON_ICON_GAP: f32 = 12.0;
 const FIELD_LABEL_SIZE: f32 = 20.0;
 const FIELD_LABEL_HEIGHT: f32 = 25.0;
-const FIELD_HEIGHT: f32 = FIELD_LABEL_HEIGHT + BUTTON_HEIGHT;
 const CONTENT_INSET_START: f32 = 37.0;
 const CONTENT_INSET_END: f32 = CONTENT_INSET_START;
 const CONTENT_TOP: f32 = 14.0;
@@ -96,7 +95,6 @@ const HEADER_BACK_ICON_SIZE: f32 = 28.0;
 const HEADER_BACK_OFFSET_X: f32 = -7.0;
 const HEADER_BACK_OFFSET_Y: f32 = 11.0;
 const HEADER_CONTENT_TOP: f32 = 6.0;
-const CAMERA_REVIEW_ACTION_HEIGHT: f32 = 64.0;
 const NAV_HEIGHT: f32 = 70.0;
 const NAV_ICON_SIZE: f32 = 52.0;
 const NAV_VERTICAL_INSET: f32 = 10.0;
@@ -107,9 +105,9 @@ const TOGGLE_LINE_WIDTH: f32 = 14.5;
 const TOGGLE_LINE_HEIGHT: f32 = 2.22;
 const TOGGLE_START: f32 = 8.5;
 const TOGGLE_LABEL_GAP: f32 = 20.0;
-const SCROLL_CONTENT_INSET_END: f32 = 52.0;
 const SCROLL_TRACK_END: f32 = 34.0;
 const SCROLL_TRACK_WIDTH: f32 = 1.0;
+const SCROLL_CONTENT_INSET_END: f32 = SCROLL_TRACK_END * 2.0 - SCROLL_TRACK_WIDTH;
 const SCROLL_THUMB_WIDTH: f32 = 5.0;
 const SCROLL_THUMB_TOUCH_MULTIPLIER: f32 = 6.0;
 const MIN_SCROLL_THUMB_FRACTION: f32 = 0.1;
@@ -123,21 +121,11 @@ const IMAGE_MAX_SCALE: f32 = 4.0;
 const LP3_REFERENCE_WIDTH: f32 = 1080.0;
 const LP3_REFERENCE_SCALE: f32 = 2.55;
 const PUBLIC_SANS_RASTER_SCALE: f32 = 7.0 / 6.0;
-const INCREMENTAL_TREE_THRESHOLD: usize = 32;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct StateId(usize);
 
 impl StateId {
-    pub const fn new(index: usize) -> Self {
-        Self(index)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ResourceId(usize);
-
-impl ResourceId {
     pub const fn new(index: usize) -> Self {
         Self(index)
     }
@@ -166,68 +154,6 @@ pub enum StateValue {
     Object(Vec<(String, StateValue)>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum StateShape {
-    Null,
-    Number,
-    Bool,
-    String,
-    Literal(StateLiteral),
-    Optional(Box<StateShape>),
-    Union(Vec<StateShape>),
-    List(Box<StateShape>),
-    Object(Vec<(String, StateShape)>),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum StateLiteral {
-    Number(f64),
-    Bool(bool),
-    String(String),
-}
-
-impl StateShape {
-    fn accepts(&self, value: &StateValue) -> bool {
-        match (self, value) {
-            (Self::Null, StateValue::Null) => true,
-            (Self::Number, StateValue::Number(value)) if value.is_finite() => true,
-            (Self::Bool, StateValue::Bool(_)) | (Self::String, StateValue::String(_)) => true,
-            (Self::Literal(expected), value) => expected.accepts(value),
-            (Self::Optional(_), StateValue::Null) => true,
-            (Self::Optional(shape), value) => shape.accepts(value),
-            (Self::Union(shapes), value) => shapes.iter().any(|shape| shape.accepts(value)),
-            (Self::List(item), StateValue::List(values)) => {
-                values.iter().all(|value| item.accepts(value))
-            }
-            (Self::Object(fields), StateValue::Object(values)) => {
-                values
-                    .iter()
-                    .all(|(name, _)| fields.iter().any(|(field_name, _)| field_name == name))
-                    && fields.iter().all(|(name, shape)| {
-                        values
-                            .iter()
-                            .find(|(value_name, _)| value_name == name)
-                            .map_or(matches!(shape, StateShape::Optional(_)), |(_, value)| {
-                                shape.accepts(value)
-                            })
-                    })
-            }
-            _ => false,
-        }
-    }
-}
-
-impl StateLiteral {
-    fn accepts(&self, value: &StateValue) -> bool {
-        match (self, value) {
-            (Self::Number(expected), StateValue::Number(value)) => expected == value,
-            (Self::Bool(expected), StateValue::Bool(value)) => expected == value,
-            (Self::String(expected), StateValue::String(value)) => expected == value,
-            _ => false,
-        }
-    }
-}
-
 impl fmt::Display for StateValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -243,25 +169,11 @@ impl fmt::Display for StateValue {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StateDefinition {
-    initial: StateValue,
-    shape: StateShape,
-    persisted: Option<PersistedState>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct NativeOperation {
     module: String,
     operation: String,
-    payload: Vec<PayloadPart>,
+    payload: String,
     timeout_ms: u64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum PayloadPart {
-    Literal(String),
-    State(StateId),
-    Item(Vec<String>),
 }
 
 impl NativeOperation {
@@ -274,114 +186,15 @@ impl NativeOperation {
         Self {
             module: module.into(),
             operation: operation.into(),
-            payload: vec![PayloadPart::Literal(payload.into())],
+            payload: payload.into(),
             timeout_ms,
-        }
-    }
-
-    pub fn templated(
-        module: impl Into<String>,
-        operation: impl Into<String>,
-        payload: Vec<PayloadPart>,
-        timeout_ms: u64,
-    ) -> Self {
-        Self {
-            module: module.into(),
-            operation: operation.into(),
-            payload,
-            timeout_ms,
-        }
-    }
-
-    fn dependencies(&self) -> impl Iterator<Item = StateId> + '_ {
-        self.payload.iter().filter_map(|part| match part {
-            PayloadPart::State(state) => Some(*state),
-            PayloadPart::Literal(_) | PayloadPart::Item(_) => None,
-        })
-    }
-
-    fn materialise(&self, state: &[StateValue]) -> Option<String> {
-        let mut output = String::new();
-        for part in &self.payload {
-            match part {
-                PayloadPart::Literal(value) => output.push_str(value),
-                PayloadPart::State(id) => {
-                    output.push_str(&json_value(state.get(id.0)?)?);
-                }
-                PayloadPart::Item(_) => return None,
-            }
-        }
-        Some(output)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ResourceDefinition {
-    shape: StateShape,
-    read: NativeOperation,
-    reload_on_resume: bool,
-    protocol: ResourceProtocol,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResourceProtocol {
-    Async,
-    Cached,
-    Mutation,
-    Background,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ControllerDefinition {
-    state: StateId,
-    module: String,
-    kind: String,
-    config: String,
-}
-
-impl ControllerDefinition {
-    pub fn new(
-        state: StateId,
-        module: impl Into<String>,
-        kind: impl Into<String>,
-        config: impl Into<String>,
-    ) -> Self {
-        Self {
-            state,
-            module: module.into(),
-            kind: kind.into(),
-            config: config.into(),
-        }
-    }
-}
-
-impl ResourceDefinition {
-    pub const fn new(shape: StateShape, read: NativeOperation, reload_on_resume: bool) -> Self {
-        Self {
-            shape,
-            read,
-            reload_on_resume,
-            protocol: ResourceProtocol::Async,
-        }
-    }
-
-    pub const fn with_protocol(
-        shape: StateShape,
-        read: NativeOperation,
-        reload_on_resume: bool,
-        protocol: ResourceProtocol,
-    ) -> Self {
-        Self {
-            shape,
-            read,
-            reload_on_resume,
-            protocol,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResourceErrorKind {
+    Busy,
     Unavailable,
     PermissionDenied,
     PermissionBlocked,
@@ -395,6 +208,7 @@ pub enum ResourceErrorKind {
 impl ResourceErrorKind {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Busy => "busy",
             Self::Unavailable => "unavailable",
             Self::PermissionDenied => "permission-denied",
             Self::PermissionBlocked => "permission-blocked",
@@ -424,54 +238,8 @@ impl ResourceError {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum ResourceState {
-    Inactive,
-    Loading {
-        previous: Option<StateValue>,
-    },
-    Ready(StateValue),
-    Failed {
-        error: ResourceError,
-        previous: Option<StateValue>,
-    },
-    BackgroundWaiting,
-    BackgroundReady {
-        value: StateValue,
-        updated_at_ms: f64,
-        error: Option<BackgroundError>,
-    },
-    BackgroundFailed(BackgroundError),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct BackgroundError {
-    kind: String,
-    message: String,
-    retryable: bool,
-    attempted_at_ms: f64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct NavigationEntry {
-    route: usize,
-    params: Vec<(String, StateValue)>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ResourceField {
-    Status,
-    Value(Vec<String>),
-    ErrorKind,
-    ErrorMessage,
-    ErrorRetryable,
-    UpdatedAtMs,
-    ErrorAttemptedAtMs,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NativeRequestKind {
-    ResourceRead,
     Action,
     Cancel,
     Image,
@@ -522,52 +290,6 @@ impl NativeRequest {
     }
 }
 
-impl StateDefinition {
-    pub fn local(initial: StateValue, shape: StateShape) -> Self {
-        Self {
-            initial,
-            shape,
-            persisted: None,
-        }
-    }
-
-    pub fn shared(initial: StateValue, shape: StateShape) -> Self {
-        Self::local(initial, shape)
-    }
-
-    pub fn persisted(
-        initial: StateValue,
-        key: impl Into<String>,
-        schema: u64,
-        shape: StateShape,
-    ) -> Self {
-        Self {
-            initial,
-            shape: shape.clone(),
-            persisted: Some(PersistedState {
-                key: key.into(),
-                schema,
-                shape,
-            }),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct PersistedState {
-    key: String,
-    schema: u64,
-    shape: StateShape,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Hydration {
-    #[default]
-    Empty,
-    Restored,
-    Invalid,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextEdit {
     Insert(String),
@@ -586,51 +308,9 @@ pub enum TextInputAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
-    Increment {
+    Seek { id: usize, left: f32, width: f32, duration: f32 },
+    ClearInput {
         state: StateId,
-        by: f64,
-    },
-    SetValue {
-        state: StateId,
-        value: Value,
-    },
-    Toggle {
-        state: StateId,
-    },
-    SetList {
-        state: StateId,
-        value: Value,
-    },
-    AppendList {
-        state: StateId,
-        value: Value,
-    },
-    RemoveCurrentListItem {
-        state: StateId,
-    },
-    RemoveListItem {
-        state: StateId,
-        index: usize,
-    },
-    ReplaceCurrentListItem {
-        state: StateId,
-        value: Value,
-    },
-    ReplaceListItem {
-        state: StateId,
-        index: usize,
-        value: Value,
-    },
-    ClearList {
-        state: StateId,
-    },
-    ReloadResource {
-        resource: ResourceId,
-    },
-    Controller {
-        controller: ControllerId,
-        operation: String,
-        payload: Vec<PayloadPart>,
     },
     Native {
         operation: NativeOperation,
@@ -639,133 +319,7 @@ pub enum Action {
         state: StateId,
         action: TextInputAction,
     },
-    Navigate {
-        path: String,
-        params: Vec<(String, Value)>,
-    },
     Back,
-    Sequence(Vec<Action>),
-}
-
-fn action_state(action: &Action) -> Option<StateId> {
-    match action {
-        Action::Increment { state, .. }
-        | Action::SetValue { state, .. }
-        | Action::Toggle { state }
-        | Action::SetList { state, .. }
-        | Action::AppendList { state, .. }
-        | Action::RemoveCurrentListItem { state }
-        | Action::RemoveListItem { state, .. }
-        | Action::ReplaceCurrentListItem { state, .. }
-        | Action::ReplaceListItem { state, .. }
-        | Action::ClearList { state } => Some(*state),
-        Action::FocusTextInput { .. }
-        | Action::Navigate { .. }
-        | Action::Back
-        | Action::ReloadResource { .. }
-        | Action::Controller { .. }
-        | Action::Native { .. }
-        | Action::Sequence(_) => None,
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum TextPart {
-    Literal(String),
-    State(StateId),
-    Resource(ResourceId, ResourceField),
-    Controller(ControllerId, Vec<String>),
-    ListLength(StateId),
-    Item(Vec<String>),
-    Value(Value),
-}
-
-impl TextPart {
-    pub fn literal(value: impl Into<String>) -> Self {
-        Self::Literal(value.into())
-    }
-
-    pub const fn state(state: StateId) -> Self {
-        Self::State(state)
-    }
-
-    pub fn resource(resource: ResourceId, field: ResourceField) -> Self {
-        Self::Resource(resource, field)
-    }
-
-    pub fn controller(controller: ControllerId, path: Vec<String>) -> Self {
-        Self::Controller(controller, path)
-    }
-
-    pub const fn list_length(state: StateId) -> Self {
-        Self::ListLength(state)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Condition {
-    ValueEquals {
-        value: Value,
-        expected: StateValue,
-        equals: bool,
-    },
-    Bool {
-        state: StateId,
-        expected: bool,
-    },
-    ListEmpty {
-        state: StateId,
-        expected: bool,
-    },
-    Equals {
-        state: StateId,
-        value: StateValue,
-        expected: bool,
-    },
-    ResourceEquals {
-        resource: ResourceId,
-        field: ResourceField,
-        value: StateValue,
-        expected: bool,
-    },
-    ControllerEquals {
-        controller: ControllerId,
-        path: Vec<String>,
-        value: StateValue,
-        expected: bool,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Value {
-    Null,
-    Number(f64),
-    Bool(bool),
-    String(String),
-    State(StateId),
-    Item(Vec<String>),
-    Resource(ResourceId, ResourceField),
-    Controller(ControllerId, Vec<String>),
-    CombinedStatus(Vec<ResourceId>),
-    CombinedErrorResource(Vec<(String, ResourceId)>),
-    CombinedErrorField(Vec<ResourceId>, ResourceField),
-    ListLength(StateId),
-    Binary {
-        left: Box<Value>,
-        operator: ValueOperator,
-        right: Box<Value>,
-    },
-    RouteParam(String),
-    List(Vec<Value>),
-    Object(Vec<(String, Value)>),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ValueOperator {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -938,8 +492,7 @@ fn image_content_rect(image: &ImageData, mut rect: Rect, fit: ImageFit) -> Rect 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ImageSource {
     Asset(ImageAsset),
-    Remote(Vec<TextPart>),
-    Native(String, Vec<TextPart>),
+    Native(String, String),
 }
 
 impl ImageAsset {
@@ -950,22 +503,6 @@ impl ImageAsset {
             height,
             encoding: ImageAssetEncoding::RgbaZlib,
             bytes: AssetBytes::Static(compressed_pixels),
-        }
-    }
-
-    fn owned(
-        id: u64,
-        width: u32,
-        height: u32,
-        encoding: ImageAssetEncoding,
-        bytes: Vec<u8>,
-    ) -> Self {
-        Self {
-            id,
-            width,
-            height,
-            encoding,
-            bytes: AssetBytes::Owned(bytes.into()),
         }
     }
 }
@@ -994,12 +531,35 @@ struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
+    Message { children: Vec<Node>, outgoing: bool },
+    MessageQuote { children: Vec<Node> },
+    ConversationComposer { children: Vec<Node> },
+    PlayingLayout { children: Vec<Node>, centred: bool },
+    PlayingPressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool },
+    PlayingTransport { children: Vec<Node> },
+    PlayingProgress { position: f32, duration: f32, seek: bool },
+    Row {
+        children: Vec<Node>,
+        has_image: bool,
+        action: Option<Action>,
+    },
+    ReactList {
+        children: Vec<Node>,
+        start: usize,
+        keys: Arc<[String]>,
+        content_versions: Arc<[u64]>,
+        revision: u64,
+        gap: f32,
+        follow_end: bool,
+    },
     Screen {
         children: Vec<Node>,
         title: Option<String>,
         centred: bool,
-        resources: Vec<ResourceId>,
-        controllers: Vec<ControllerId>,
+        footer: Option<(String, Option<Action>)>,
+        pinned_header: bool,
+        pinned_footer: bool,
+        right_action: Option<(Mask, Action)>,
     },
     Stack {
         children: Vec<Node>,
@@ -1009,7 +569,7 @@ enum NodeKind {
         justify: Justification,
     },
     Text {
-        parts: Vec<TextPart>,
+        text: String,
         font_size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
@@ -1022,20 +582,21 @@ enum NodeKind {
         clear: Mask,
     },
     Button {
-        label: Vec<TextPart>,
+        label: String,
         icon: Option<Mask>,
         underline: bool,
         action: Option<Action>,
     },
     Field {
         label: String,
-        value: Vec<TextPart>,
+        value: String,
         action: Option<Action>,
     },
     Icon {
         mask: Mask,
         size: f32,
         tone: Tone,
+        bounds: Option<Rect>,
     },
     Image {
         source: ImageSource,
@@ -1052,53 +613,29 @@ enum NodeKind {
     },
     Toggle {
         label: String,
-        state: StateId,
-        action: Action,
+        value: bool,
+        action: Option<Action>,
         off: Mask,
         on: Mask,
     },
     Tabs {
-        state: StateId,
+        value: usize,
         tabs: Vec<Tab>,
     },
-    Navigator {
-        routes: Vec<Route>,
-        back: Mask,
-    },
-    Conditional {
-        condition: Condition,
-        consequent: Box<Node>,
-        alternate: Option<Box<Node>>,
-    },
-    ForEach {
-        collection: Collection,
-        template: Box<Node>,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Collection {
-    State(StateId),
-    Resource(ResourceId, Vec<String>),
-    Controller(ControllerId, Vec<String>),
 }
 
 impl Node {
-    pub fn screen(
-        children: Vec<Self>,
-        title: Option<String>,
-        centred: bool,
-        resources: Vec<ResourceId>,
-        controllers: Vec<ControllerId>,
-    ) -> Self {
+    pub fn screen(children: Vec<Self>, title: Option<String>, centred: bool) -> Self {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Screen {
                 children,
                 title,
                 centred,
-                resources,
-                controllers,
+                footer: None,
+                pinned_header: false,
+                pinned_footer: false,
+                right_action: None,
             },
         }
     }
@@ -1123,7 +660,7 @@ impl Node {
     }
 
     pub fn text(
-        parts: Vec<TextPart>,
+        text: String,
         font_size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
@@ -1131,7 +668,7 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Text {
-                parts,
+                text,
                 font_size,
                 align,
                 max_lines,
@@ -1159,7 +696,7 @@ impl Node {
     }
 
     pub fn button(
-        label: Vec<TextPart>,
+        label: String,
         icon: Option<Mask>,
         underline: bool,
         action: Option<Action>,
@@ -1175,7 +712,7 @@ impl Node {
         }
     }
 
-    pub fn field(label: impl Into<String>, value: Vec<TextPart>, action: Option<Action>) -> Self {
+    pub fn field(label: impl Into<String>, value: String, action: Option<Action>) -> Self {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Field {
@@ -1189,7 +726,7 @@ impl Node {
     pub const fn icon(mask: Mask, size: f32, tone: Tone) -> Self {
         Self {
             identity: NodeIdentity(0),
-            kind: NodeKind::Icon { mask, size, tone },
+            kind: NodeKind::Icon { mask, size, tone, bounds: None },
         }
     }
 
@@ -1223,57 +760,10 @@ impl Node {
         }
     }
 
-    pub fn toggle(
-        label: impl Into<String>,
-        state: StateId,
-        action: Action,
-        off: Mask,
-        on: Mask,
-    ) -> Self {
+    pub fn tabs_with_value(value: usize, tabs: Vec<Tab>) -> Self {
         Self {
             identity: NodeIdentity(0),
-            kind: NodeKind::Toggle {
-                label: label.into(),
-                state,
-                action,
-                off,
-                on,
-            },
-        }
-    }
-
-    pub fn tabs(state: StateId, tabs: Vec<Tab>) -> Self {
-        Self {
-            identity: NodeIdentity(0),
-            kind: NodeKind::Tabs { state, tabs },
-        }
-    }
-
-    pub fn navigator(routes: Vec<Route>, back: Mask) -> Self {
-        Self {
-            identity: NodeIdentity(0),
-            kind: NodeKind::Navigator { routes, back },
-        }
-    }
-
-    pub fn conditional(condition: Condition, consequent: Self, alternate: Option<Self>) -> Self {
-        Self {
-            identity: NodeIdentity(0),
-            kind: NodeKind::Conditional {
-                condition,
-                consequent: Box::new(consequent),
-                alternate: alternate.map(Box::new),
-            },
-        }
-    }
-
-    pub fn for_each(collection: Collection, template: Self) -> Self {
-        Self {
-            identity: NodeIdentity(0),
-            kind: NodeKind::ForEach {
-                collection,
-                template: Box::new(template),
-            },
+            kind: NodeKind::Tabs { value, tabs },
         }
     }
 }
@@ -1292,65 +782,6 @@ impl Tab {
             action,
             screen,
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Route {
-    path: String,
-    screen: Node,
-}
-
-impl Route {
-    pub fn new(path: impl Into<String>, screen: Node) -> Self {
-        Self {
-            path: path.into(),
-            screen,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct AppDefinition {
-    states: Vec<StateDefinition>,
-    state_dependencies: Vec<Vec<NodeIdentity>>,
-    node_count: usize,
-    resources: Vec<ResourceDefinition>,
-    application_resources: Vec<ResourceId>,
-    controllers: Vec<ControllerDefinition>,
-    application_controllers: Vec<ControllerId>,
-    root: Node,
-}
-
-impl AppDefinition {
-    pub(crate) fn new(
-        states: Vec<StateDefinition>,
-        state_dependencies: Vec<Vec<NodeIdentity>>,
-        resources: Vec<ResourceDefinition>,
-        application_resources: Vec<ResourceId>,
-        controllers: Vec<ControllerDefinition>,
-        application_controllers: Vec<ControllerId>,
-        root: Node,
-    ) -> Self {
-        let node_count = subtree_node_count(&root);
-        Self {
-            states,
-            state_dependencies,
-            node_count,
-            resources,
-            application_resources,
-            controllers,
-            application_controllers,
-            root,
-        }
-    }
-
-    pub fn decode(bytes: &[u8]) -> Result<Self, AppDefinitionError> {
-        definition::decode(bytes)
-    }
-
-    pub fn uses_persistence(&self) -> bool {
-        self.states.iter().any(|state| state.persisted.is_some())
     }
 }
 
@@ -1392,7 +823,7 @@ pub struct Colour {
 impl Colour {
     pub const BLACK: Self = Self::rgb(0.0, 0.0, 0.0);
     pub const WHITE: Self = Self::rgb(1.0, 1.0, 1.0);
-    pub const MUTED: Self = Self::rgb(110.0 / 255.0, 110.0 / 255.0, 110.0 / 255.0);
+    pub const MUTED: Self = Self::rgb(64.0 / 255.0, 64.0 / 255.0, 64.0 / 255.0);
 
     pub const fn rgb(red: f32, green: f32, blue: f32) -> Self {
         Self {
@@ -1514,6 +945,7 @@ pub struct CameraPortal {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
+    pub light: bool,
     pub revision: u64,
     pub image_revision: u64,
     pub width: u32,
@@ -1531,11 +963,23 @@ pub struct Scene {
     pub text_cursor: Option<Quad>,
 }
 
+impl Scene {
+    pub fn colour(&self, colour: Colour) -> Colour {
+        if self.light {
+            invert_colour(colour)
+        } else {
+            colour
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct HitRegion {
     rect: Rect,
     action: Action,
+    long_action: Option<Action>,
     scrolling: bool,
+    preserve_input: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1544,6 +988,7 @@ struct TextInputLayout {
     action: TextInputAction,
     text_run: usize,
     hit_rect: Rect,
+    rect: Rect,
     text_rect: Rect,
     scroll_offset: f32,
     scroll_max: f32,
@@ -1652,26 +1097,6 @@ struct ImagePinch {
     focus_y: f32,
 }
 
-#[derive(Clone, Copy)]
-struct MaterialisedItem<'a> {
-    value: &'a StateValue,
-    index: usize,
-}
-
-#[derive(Clone, Copy)]
-struct VerticalMeasure {
-    size: MeasuredSize,
-    entries: usize,
-}
-
-#[derive(Clone, Copy)]
-struct VirtualListLayout {
-    item_count: usize,
-    available_width: u32,
-    row_width: f32,
-    row_height: f32,
-}
-
 #[derive(Clone)]
 struct PendingRequest {
     request: NativeRequest,
@@ -1680,7 +1105,6 @@ struct PendingRequest {
 
 #[derive(Clone)]
 enum RequestOwner {
-    Resource(ResourceId),
     Action,
     Image(RemoteImageKey),
 }
@@ -1709,7 +1133,6 @@ enum QueuedRequest {
 #[cfg(feature = "perf")]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CorePerfMetrics {
-    pub materialise_ns: u64,
     pub measure_ns: u64,
     pub relayout_ns: u64,
     pub nodes_measured: u32,
@@ -1718,17 +1141,13 @@ pub struct CorePerfMetrics {
 }
 
 pub struct Engine {
-    definition: AppDefinition,
+    root: Node,
     state: Vec<StateValue>,
-    resources: Vec<ResourceState>,
-    active_resources: BTreeSet<ResourceId>,
-    active_controllers: BTreeSet<ControllerId>,
-    persistence_revision: u64,
-    persistence_dirty: bool,
     viewport: Viewport,
+    keyboard_inset: u32,
     scene: Scene,
-    materialised_root: Option<Node>,
-    virtual_lists: HashMap<NodeIdentity, VirtualListLayout>,
+    react_list_positions: HashMap<usize, f32>,
+    list_metrics: HashMap<usize, list::ListMetrics>,
     hit_regions: Vec<HitRegion>,
     text_inputs: Vec<TextInputLayout>,
     text_input_scroll_offsets: HashMap<StateId, f32>,
@@ -1742,12 +1161,9 @@ pub struct Engine {
     focused_input_action: TextInputAction,
     focused_input_cursor: usize,
     auto_focus_node: Option<NodeIdentity>,
-    navigation: Vec<NavigationEntry>,
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
-    resource_requests: HashMap<ResourceId, u64>,
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
-    camera_reviews: HashMap<ControllerId, String>,
     visible_images: BTreeSet<RemoteImageKey>,
     image_zooms: HashMap<NodeIdentity, ImageZoomState>,
     visible_zoom_images: BTreeSet<NodeIdentity>,
@@ -1756,6 +1172,7 @@ pub struct Engine {
     next_request_id: u64,
     next_image_generation: u64,
     back_icon: Option<Mask>,
+    navigation_handler: Option<(Mask, NativeOperation)>,
     font: FontRef<'static>,
     #[cfg(feature = "perf")]
     perf: CorePerfMetrics,
@@ -1771,68 +1188,15 @@ struct Viewport {
 }
 
 impl Engine {
-    pub fn new(definition: AppDefinition) -> Self {
-        Self::from_state(definition, None).0
-    }
-
-    pub fn hydrate(definition: AppDefinition, bytes: &[u8]) -> (Self, Hydration) {
-        Self::from_state(definition, Some(bytes))
-    }
-
-    fn from_state(mut definition: AppDefinition, bytes: Option<&[u8]>) -> (Self, Hydration) {
-        let mut next_node_identity = 1;
-        assign_node_identities(&mut definition.root, &mut next_node_identity);
-        let mut state = definition
-            .states
-            .iter()
-            .map(|state| state.initial.clone())
-            .collect::<Vec<_>>();
-        let hydration = match bytes {
-            Some(bytes) if !bytes.is_empty() => match decode_persisted_state(bytes) {
-                Some(values) => {
-                    for (index, definition) in definition.states.iter().enumerate() {
-                        let Some(persisted) = &definition.persisted else {
-                            continue;
-                        };
-                        if let Some((schema, value)) = values.get(&persisted.key)
-                            && *schema == persisted.schema
-                            && persisted.shape.accepts(value)
-                        {
-                            state[index] = value.clone();
-                        }
-                    }
-                    Hydration::Restored
-                }
-                None => Hydration::Invalid,
-            },
-            _ => Hydration::Empty,
-        };
-        let navigation = match &definition.root.kind {
-            NodeKind::Navigator { routes, .. } => {
-                let root = routes
-                    .iter()
-                    .position(|route| route.path == "/")
-                    .expect("navigator has a root route");
-                vec![NavigationEntry {
-                    route: root,
-                    params: Vec::new(),
-                }]
-            }
-            _ => Vec::new(),
-        };
-        let resources = vec![ResourceState::Inactive; definition.resources.len()];
-        let mut engine = Self {
-            definition,
-            state,
-            resources,
-            active_resources: BTreeSet::new(),
-            active_controllers: BTreeSet::new(),
-            persistence_revision: 0,
-            persistence_dirty: false,
+    pub fn new() -> Self {
+        Self {
+            root: Node::screen(vec![], None, false),
+            state: Vec::new(),
             viewport: Viewport::default(),
+            keyboard_inset: 0,
             scene: Scene::default(),
-            materialised_root: None,
-            virtual_lists: HashMap::new(),
+            react_list_positions: HashMap::new(),
+            list_metrics: HashMap::new(),
             hit_regions: Vec::new(),
             text_inputs: Vec::new(),
             text_input_scroll_offsets: HashMap::new(),
@@ -1846,12 +1210,9 @@ impl Engine {
             focused_input_action: TextInputAction::default(),
             focused_input_cursor: 0,
             auto_focus_node: None,
-            navigation,
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
-            resource_requests: HashMap::new(),
             remote_images: HashMap::new(),
-            camera_reviews: HashMap::new(),
             visible_images: BTreeSet::new(),
             image_zooms: HashMap::new(),
             visible_zoom_images: BTreeSet::new(),
@@ -1860,14 +1221,13 @@ impl Engine {
             next_request_id: 1,
             next_image_generation: 1,
             back_icon: None,
+            navigation_handler: None,
             font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
             #[cfg(feature = "perf")]
             perf: CorePerfMetrics::default(),
             #[cfg(feature = "perf")]
             measure_depth: 0,
-        };
-        engine.sync_active_resources();
-        (engine, hydration)
+        }
     }
 
     pub fn take_native_request(&mut self) -> Option<NativeRequest> {
@@ -1892,158 +1252,6 @@ impl Engine {
         self.last_native_request
             .as_ref()
             .filter(|request| request.id == id)
-    }
-
-    pub fn complete_native(
-        &mut self,
-        request_id: u64,
-        result: Result<StateValue, ResourceError>,
-    ) -> bool {
-        let Some(pending) = self.in_flight_requests.remove(&request_id) else {
-            return false;
-        };
-        let RequestOwner::Resource(resource) = pending.owner else {
-            return false;
-        };
-        if self.resource_requests.remove(&resource) != Some(request_id) {
-            return false;
-        }
-        let definition = &self.definition.resources[resource.0];
-        let previous = match &self.resources[resource.0] {
-            ResourceState::Loading { previous } => previous.clone(),
-            _ => None,
-        };
-        self.resources[resource.0] = match result {
-            Err(error) if definition.protocol == ResourceProtocol::Background => {
-                ResourceState::BackgroundFailed(BackgroundError {
-                    kind: "unexpected".to_owned(),
-                    message: error.message,
-                    retryable: error.retryable,
-                    attempted_at_ms: now_ms_fallback(),
-                })
-            }
-            Ok(_) if definition.protocol == ResourceProtocol::Background => {
-                ResourceState::BackgroundFailed(BackgroundError {
-                    kind: "unexpected".to_owned(),
-                    message: "native background state used the wrong protocol".to_owned(),
-                    retryable: false,
-                    attempted_at_ms: now_ms_fallback(),
-                })
-            }
-            Ok(value) if definition.shape.accepts(&value) => ResourceState::Ready(value),
-            Ok(_) => ResourceState::Failed {
-                error: ResourceError::new(
-                    ResourceErrorKind::Protocol,
-                    "native resource returned the wrong value type",
-                    false,
-                ),
-                previous,
-            },
-            Err(error) => ResourceState::Failed { error, previous },
-        };
-        self.rebuild_scene();
-        true
-    }
-
-    pub fn complete_native_json(&mut self, request_id: u64, bytes: &[u8]) -> bool {
-        let Some(PendingRequest {
-            owner: RequestOwner::Resource(resource),
-            ..
-        }) = self.in_flight_requests.get(&request_id)
-        else {
-            return false;
-        };
-        let shape = self.definition.resources[resource.0].shape.clone();
-        if matches!(
-            self.definition.resources[resource.0].protocol,
-            ResourceProtocol::Background | ResourceProtocol::Cached
-        ) {
-            let result = parse_background_state(&shape, bytes);
-            let Some(pending) = self.in_flight_requests.remove(&request_id) else {
-                return false;
-            };
-            let RequestOwner::Resource(resource) = pending.owner else {
-                return false;
-            };
-            if self.resource_requests.remove(&resource) != Some(request_id) {
-                return false;
-            }
-            self.resources[resource.0] = result;
-            self.rebuild_scene();
-            return true;
-        }
-        let result = serde_json::from_slice(bytes)
-            .map_err(|error| {
-                ResourceError::new(
-                    ResourceErrorKind::Protocol,
-                    format!("response was not valid JSON: {error}"),
-                    false,
-                )
-            })
-            .and_then(|value| state_from_json(&shape, &value, "$"));
-        self.complete_native(request_id, result)
-    }
-
-    pub fn update_controller_json(&mut self, controller: ControllerId, bytes: &[u8]) -> bool {
-        if !self.active_controllers.contains(&controller) {
-            return false;
-        }
-        let Some(definition) = self.definition.controllers.get(controller.0) else {
-            return false;
-        };
-        let Some(state) = self.definition.states.get(definition.state.0) else {
-            return false;
-        };
-        let shape = &state.shape;
-        let Ok(json) = serde_json::from_slice(bytes) else {
-            return false;
-        };
-        let Ok(value) = state_from_json(shape, &json, "$controller") else {
-            return false;
-        };
-        self.update_controller(controller, value)
-    }
-
-    pub fn update_controller(&mut self, controller: ControllerId, value: StateValue) -> bool {
-        if !self.active_controllers.contains(&controller) {
-            return false;
-        }
-        let Some(definition) = self.definition.controllers.get(controller.0) else {
-            return false;
-        };
-        let Some(state) = self.definition.states.get(definition.state.0) else {
-            return false;
-        };
-        if !state.shape.accepts(&value) {
-            return false;
-        }
-        if self.state[definition.state.0] == value {
-            return false;
-        }
-        self.state[definition.state.0] = value;
-        self.rebuild_scene();
-        true
-    }
-
-    pub fn set_camera_review(&mut self, controller: ControllerId, source: Option<String>) -> bool {
-        if !self.active_controllers.contains(&controller) {
-            return false;
-        }
-        let changed = match source {
-            Some(source) => {
-                if self.camera_reviews.get(&controller) == Some(&source) {
-                    false
-                } else {
-                    self.camera_reviews.insert(controller, source);
-                    true
-                }
-            }
-            None => self.camera_reviews.remove(&controller).is_some(),
-        };
-        if changed {
-            self.rebuild_scene();
-        }
-        changed
     }
 
     pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit)> {
@@ -2093,7 +1301,7 @@ impl Engine {
         true
     }
 
-    pub fn fail_native(&mut self, request_id: u64, error: ResourceError) -> bool {
+    pub fn fail_native(&mut self, request_id: u64, _error: ResourceError) -> bool {
         let Some(owner) = self
             .in_flight_requests
             .get(&request_id)
@@ -2102,7 +1310,6 @@ impl Engine {
             return false;
         };
         match owner {
-            RequestOwner::Resource(_) => self.complete_native(request_id, Err(error)),
             RequestOwner::Image(key) => {
                 self.in_flight_requests.remove(&request_id);
                 self.remote_images.insert(key, RemoteImageState::Failed);
@@ -2121,44 +1328,13 @@ impl Engine {
     }
 
     fn queue_native_action(&mut self, operation: NativeOperation) -> bool {
-        let Some(payload) = operation.materialise(&self.state) else {
-            return false;
-        };
+        let payload = operation.payload.clone();
         let request = NativeRequest {
             id: self.next_request_id(),
             kind: NativeRequestKind::Action,
             operation: Some(operation),
             payload,
             controller: None,
-        };
-        self.queued_requests
-            .push_back(QueuedRequest::Start(PendingRequest {
-                request,
-                owner: RequestOwner::Action,
-            }));
-        true
-    }
-
-    fn queue_controller(
-        &mut self,
-        controller: ControllerId,
-        operation: impl Into<String>,
-        payload: Vec<PayloadPart>,
-    ) -> bool {
-        let Some(definition) = self.definition.controllers.get(controller.0) else {
-            return false;
-        };
-        let operation =
-            NativeOperation::templated(definition.module.clone(), operation, payload, 10_000);
-        let Some(payload) = operation.materialise(&self.state) else {
-            return false;
-        };
-        let request = NativeRequest {
-            id: self.next_request_id(),
-            kind: NativeRequestKind::Action,
-            operation: Some(operation),
-            payload,
-            controller: Some(controller),
         };
         self.queued_requests
             .push_back(QueuedRequest::Start(PendingRequest {
@@ -2194,63 +1370,6 @@ impl Engine {
         }
     }
 
-    fn cancel_resource(&mut self, resource: ResourceId) {
-        if let Some(request) = self.resource_requests.remove(&resource) {
-            self.cancel_request(request);
-        }
-        if let ResourceState::Loading { previous } = &self.resources[resource.0] {
-            self.resources[resource.0] = previous
-                .clone()
-                .map_or(ResourceState::Inactive, ResourceState::Ready);
-        }
-    }
-
-    fn queue_resource(&mut self, resource: ResourceId) -> bool {
-        let Some(definition) = self.definition.resources.get(resource.0).cloned() else {
-            return false;
-        };
-        if let Some(request) = self.resource_requests.remove(&resource) {
-            self.cancel_request(request);
-        }
-        let previous = match &self.resources[resource.0] {
-            ResourceState::Ready(value) => Some(value.clone()),
-            ResourceState::Loading { previous } | ResourceState::Failed { previous, .. } => {
-                previous.clone()
-            }
-            ResourceState::Inactive => None,
-            ResourceState::BackgroundWaiting
-            | ResourceState::BackgroundReady { .. }
-            | ResourceState::BackgroundFailed(_) => None,
-        };
-        if matches!(
-            definition.protocol,
-            ResourceProtocol::Background | ResourceProtocol::Cached
-        ) {
-            if matches!(self.resources[resource.0], ResourceState::Inactive) {
-                self.resources[resource.0] = ResourceState::BackgroundWaiting;
-            }
-        } else {
-            self.resources[resource.0] = ResourceState::Loading { previous };
-        }
-        let request_id = self.next_request_id();
-        let Some(payload) = definition.read.materialise(&self.state) else {
-            return false;
-        };
-        self.resource_requests.insert(resource, request_id);
-        self.queued_requests
-            .push_back(QueuedRequest::Start(PendingRequest {
-                request: NativeRequest {
-                    id: request_id,
-                    kind: NativeRequestKind::ResourceRead,
-                    operation: Some(definition.read),
-                    payload,
-                    controller: None,
-                },
-                owner: RequestOwner::Resource(resource),
-            }));
-        true
-    }
-
     fn queue_remote_image(&mut self, key: RemoteImageKey) {
         if self.remote_images.contains_key(&key) {
             return;
@@ -2261,6 +1380,14 @@ impl Engine {
                 "{{\"url\":{},\"headers\":{{}}}}",
                 serde_json::to_string(&key.url).expect("a Rust string is valid JSON"),
             )
+        } else if key.module == "barcode" {
+            let source: serde_json::Value = serde_json::from_str(&key.url).unwrap_or_default();
+            let size = source["size"].as_f64().unwrap_or_default();
+            serde_json::json!({
+                "source": key.url,
+                "pixelSize": (size * f64::from(self.viewport.scale)).round() as u32,
+            })
+            .to_string()
         } else {
             format!(
                 "{{\"source\":{}}}",
@@ -2307,31 +1434,6 @@ impl Engine {
         }
     }
 
-    pub fn persisted_snapshot(&self) -> Result<Option<(u64, Vec<u8>)>, PersistenceTooLarge> {
-        if !self.persistence_dirty {
-            return Ok(None);
-        }
-        let revision = self.persistence_revision;
-        let values =
-            self.definition
-                .states
-                .iter()
-                .zip(&self.state)
-                .filter_map(|(definition, value)| {
-                    definition
-                        .persisted
-                        .as_ref()
-                        .map(|persisted| (persisted, value))
-                });
-        Ok(Some((revision, encode_persisted_state(values)?)))
-    }
-
-    pub fn persistence_saved(&mut self, revision: u64) {
-        if self.persistence_revision == revision {
-            self.persistence_dirty = false;
-        }
-    }
-
     pub fn set_viewport(&mut self, width: u32, height: u32) -> bool {
         let viewport = Viewport {
             width,
@@ -2347,8 +1449,47 @@ impl Engine {
         }
 
         self.viewport = viewport;
-        self.rebuild_scene();
+        self.rebuild_viewport();
         true
+    }
+
+    pub fn set_keyboard_inset(&mut self, inset: u32) -> bool {
+        if self.keyboard_inset == inset {
+            return false;
+        }
+        self.keyboard_inset = inset;
+        self.rebuild_viewport();
+        true
+    }
+
+    fn rebuild_viewport(&mut self) {
+        let focused_rect = self
+            .text_inputs
+            .iter()
+            .find(|input| input.scrolling && Some(input.state) == self.focused_input)
+            .map(|input| Rect {
+                y: input.rect.y + self.scroll_origin,
+                ..input.rect
+            });
+        self.rebuild_scene();
+        let focused_rect = self.text_inputs.iter().find(|input| {
+            input.scrolling && Some(input.state) == self.focused_input
+        }).map(|input| Rect {
+            y: input.rect.y + self.scroll_origin,
+            ..input.rect
+        }).or(focused_rect);
+        if let (Some(input), Some(clip)) = (focused_rect, self.scene.scroll_clip) {
+            let bottom = input.y + input.height - self.scroll_offset;
+            let top = input.y - self.scroll_offset;
+            let offset = if bottom > clip.y + clip.height {
+                self.scroll_offset + bottom - clip.y - clip.height
+            } else if top < clip.y {
+                self.scroll_offset + top - clip.y
+            } else {
+                self.scroll_offset
+            };
+            self.set_scroll_offset(offset.clamp(0.0, self.scroll_max));
+        }
     }
 
     pub fn tap(&mut self, x: f32, y: f32) -> bool {
@@ -2372,24 +1513,28 @@ impl Engine {
                 };
                 region.rect.contains(x, y)
             })
-            .map(|region| region.action.clone());
+            .map(|region| (match region.action.clone() {
+                Action::Seek { id, left, width, duration } => react::event(id, "onSeek", vec![serde_json::json!(((x - left) / width).clamp(0.0, 1.0) * duration)]),
+                action => action,
+            }, region.preserve_input));
+        let preserve_input = action.as_ref().is_some_and(|(_, preserve)| *preserve);
+        let action = action.map(|(action, _)| action);
         let blurred = self.focused_input.is_some()
-            && !matches!(action.as_ref(), Some(Action::FocusTextInput { .. }));
+            && !preserve_input
+            && !matches!(
+                action.as_ref(),
+                Some(Action::FocusTextInput { .. } | Action::ClearInput { .. } | Action::Back)
+            );
         if blurred {
             self.focused_input = None;
         }
 
-        let (changed, states) =
-            action.map_or_else(|| (false, Vec::new()), |action| self.apply(action));
+        let changed = action.is_some_and(|action| self.apply(action));
         if !changed && !blurred {
             return false;
         }
 
-        if blurred || states.is_empty() {
-            self.rebuild_scene();
-        } else {
-            self.rebuild_scene_for_states(states);
-        }
+        self.relayout_scene();
         true
     }
 
@@ -2414,7 +1559,7 @@ impl Engine {
             return PointerOutcome::default().captured();
         }
 
-        if self.navigation.len() > 1 && x <= self.scaled(BACK_SWIPE_EDGE_WIDTH) {
+        if self.navigation_handler.is_some() && x <= self.scaled(BACK_SWIPE_EDGE_WIDTH) {
             self.pointer = Some(Pointer::EdgeBack(EdgeBackPointer {
                 start_x: x,
                 start_y: y,
@@ -2532,7 +1677,7 @@ impl Engine {
                 ..
             }) => PointerOutcome::activated(self.tap(x, y)),
             Pointer::TextInput(pointer) if !pointer.dragging => {
-                PointerOutcome::activated(self.focus_text_input(pointer.input, x))
+                PointerOutcome::activated(self.focus_text_input(pointer.input, x, y))
             }
             Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
@@ -2544,6 +1689,21 @@ impl Engine {
             }) => PointerOutcome::default().captured(),
             Pointer::Content(_) => PointerOutcome::default(),
         }
+    }
+
+    pub fn pointer_long_press(&mut self, x: f32, y: f32) -> PointerOutcome {
+        if !matches!(self.pointer, Some(Pointer::Content(ContentPointer { dragging: false, cancelled: false, .. }))) {
+            return PointerOutcome::default();
+        }
+        let action = self.hit_regions.iter().rev().find(|region| {
+            let local_y = if region.scrolling { y + self.scroll_offset - self.scroll_origin } else { y };
+            region.rect.contains(x, local_y)
+        }).and_then(|region| region.long_action.clone());
+        let Some(action) = action else { return PointerOutcome::default(); };
+        self.pointer_cancel();
+        let changed = self.apply(action);
+        self.relayout_scene();
+        PointerOutcome::activated(changed).captured()
     }
 
     pub fn pointer_cancel(&mut self) {
@@ -2708,14 +1868,22 @@ impl Engine {
         })
     }
 
-    fn focus_text_input(&mut self, input: TextInputLayout, x: f32) -> bool {
+    fn focus_text_input(&mut self, input: TextInputLayout, x: f32, y: f32) -> bool {
         let Some(StateValue::String(value)) = self.state.get(input.state.0) else {
             return false;
         };
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let target = (x - input.text_rect.x + input.scroll_offset)
-            .clamp(0.0, self.text_width(value, font_size));
-        let cursor = self.text_cursor_for_offset(value, font_size, target);
+        let cursor = if input.action == TextInputAction::Return {
+            let lines = self.input_lines(value, input.text_rect.width);
+            let y = if input.scrolling { y + self.scroll_offset - self.scroll_origin } else { y };
+            let line = ((y - input.text_rect.y + input.scroll_offset) / self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING)).max(0.0) as usize;
+            let (start, end) = lines[line.min(lines.len() - 1)];
+            start + self.text_cursor_for_offset(&value[start..end], font_size, (x - input.text_rect.x).max(0.0))
+        } else {
+            let target = (x - input.text_rect.x + input.scroll_offset)
+                .clamp(0.0, self.text_width(value, font_size));
+            self.text_cursor_for_offset(value, font_size, target)
+        };
         let changed = self.focused_input != Some(input.state)
             || self.focused_input_action != input.action
             || self.focused_input_cursor != cursor;
@@ -2750,6 +1918,18 @@ impl Engine {
     ) -> PointerOutcome {
         let horizontal = pointer.start_x - x;
         let vertical = pointer.start_y - y;
+        if pointer.input.action == TextInputAction::Return {
+            if pointer.input.scroll_max == 0.0 { return PointerOutcome::default(); }
+            if !pointer.dragging {
+                if vertical.abs() <= tap_slop { return PointerOutcome::default(); }
+                pointer.start_y -= vertical.signum() * tap_slop;
+                pointer.dragging = true;
+            }
+            self.pointer = Some(Pointer::TextInput(pointer));
+            let next = (pointer.input.scroll_offset + pointer.start_y - y)
+                .clamp(0.0, pointer.input.scroll_max);
+            return PointerOutcome::changed(self.set_text_input_scroll(pointer.input.state, next)).captured();
+        }
         if !pointer.dragging {
             if horizontal.abs() <= tap_slop && vertical.abs() <= tap_slop {
                 self.pointer = Some(Pointer::TextInput(pointer));
@@ -2794,6 +1974,10 @@ impl Engine {
             return false;
         }
         self.text_input_scroll_offsets.insert(state, offset);
+        if self.text_inputs.iter().any(|input| input.state == state && input.action == TextInputAction::Return) {
+            self.relayout_scene();
+            return true;
+        }
         let delta = offset - current;
         for input in self
             .text_inputs
@@ -2826,6 +2010,19 @@ impl Engine {
             return;
         };
         let cursor = self.focused_input_cursor;
+        if input.action == TextInputAction::Return {
+            let lines = self.input_lines(value, input.text_rect.width);
+            let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
+            let line = lines.iter().rposition(|(start, _)| *start <= cursor).unwrap_or(0);
+            let height = lines.len().min(TEXT_INPUT_MAX_LINES) as f32 * line_height;
+            let current = self.text_input_scroll_offsets.get(&state).copied().unwrap_or(input.scroll_offset);
+            let top = line as f32 * line_height;
+            let next = if top < current { top }
+                else if top + line_height > current + height { top + line_height - height }
+                else { current };
+            self.text_input_scroll_offsets.insert(state, next.max(0.0));
+            return;
+        }
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
         let cursor_offset = self.text_width(&value[..cursor], font_size);
         let scroll_max = (self.text_width(value, font_size) - input.text_rect.width).max(0.0);
@@ -2904,6 +2101,7 @@ impl Engine {
         if horizontal > self.scaled(BACK_SWIPE_TRIGGER_DISTANCE)
             && vertical_distance <= horizontal * BACK_SWIPE_VERTICAL_RATIO
         {
+            self.pointer = None;
             return PointerOutcome::activated(self.back()).captured();
         }
 
@@ -2921,42 +2119,11 @@ impl Engine {
     }
 
     pub fn back(&mut self) -> bool {
+        if self.focused_input.is_some() {
+            return self.edit_text(TextEdit::Dismiss);
+        }
         if !self.pop_route() {
             return false;
-        }
-        self.rebuild_scene();
-        true
-    }
-
-    pub fn navigate(&mut self, path: &str) -> bool {
-        if !self
-            .apply(Action::Navigate {
-                path: path.to_owned(),
-                params: Vec::new(),
-            })
-            .0
-        {
-            return false;
-        }
-        self.rebuild_scene();
-        true
-    }
-
-    pub fn resume(&mut self) -> bool {
-        let resources = self
-            .active_resources
-            .iter()
-            .copied()
-            .filter(|resource| {
-                self.definition.resources[resource.0].reload_on_resume
-                    || matches!(self.resources[resource.0], ResourceState::Loading { .. })
-            })
-            .collect::<Vec<_>>();
-        if resources.is_empty() {
-            return false;
-        }
-        for resource in resources {
-            self.queue_resource(resource);
         }
         self.rebuild_scene();
         true
@@ -2976,7 +2143,7 @@ impl Engine {
         };
         let mut mutated = false;
         let changed = match edit {
-            TextEdit::Insert(text) if !text.chars().any(char::is_control) => {
+            TextEdit::Insert(text) if !text.chars().any(|c| c.is_control() && !(c == '\n' && self.focused_input_action == TextInputAction::Return)) => {
                 let cursor = self.focused_input_cursor;
                 let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
                     return false;
@@ -3014,20 +2181,34 @@ impl Engine {
         if changed {
             if mutated {
                 self.reveal_text_cursor(state);
-                self.mark_persisted(state);
-                self.refresh_dependent_resources(state);
             }
-            if mutated {
-                self.rebuild_scene_for_states([state]);
-            } else {
-                self.rebuild_scene();
-            }
+            self.relayout_scene();
         }
         changed
     }
 
+    pub fn set_colour_scheme(&mut self, light: bool) -> bool {
+        if self.scene.light == light {
+            return false;
+        }
+        self.scene.light = light;
+        self.relayout_scene();
+        true
+    }
+
     pub fn scene(&self) -> &Scene {
         &self.scene
+    }
+
+    pub fn list_viewports_ready(&self) -> bool {
+        let Some(clip) = self.scene.scroll_clip else { return true; };
+        self.react_list_positions.iter().all(|(id, top)| {
+            let Some(metrics) = self.list_metrics.get(id) else { return true; };
+            let start = (self.scroll_offset + clip.y - top).max(0.0);
+            let end = (self.scroll_offset + clip.y + clip.height - top).min(metrics.total());
+            end <= start || (metrics.mounted.contains(&metrics.index_at(start))
+                && metrics.mounted.contains(&metrics.index_at((end - 0.5).max(start))))
+        })
     }
 
     pub const fn scroll_offset(&self) -> f32 {
@@ -3038,301 +2219,31 @@ impl Engine {
         self.scroll_max
     }
 
-    fn apply(&mut self, action: Action) -> (bool, Vec<StateId>) {
-        let mut states = Vec::new();
-        let changed = self.apply_inner(action, &mut states);
-        if let Some(state) = self.focused_input
-            && states.contains(&state)
-            && let Some(StateValue::String(value)) = self.state.get(state.0)
-        {
-            self.focused_input_cursor = text_cursor_boundary(value, self.focused_input_cursor);
-            self.reveal_text_cursor(state);
-        }
-        (changed, states)
-    }
-
-    fn apply_inner(&mut self, action: Action, states: &mut Vec<StateId>) -> bool {
-        let mutated_state = action_state(&action);
+    fn apply(&mut self, action: Action) -> bool {
         match action {
-            Action::Increment { state, by } => {
-                let Some(StateValue::Number(value)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                let next = *value + by;
-                if !next.is_finite() {
-                    return false;
+            Action::Seek { .. } => false,
+            Action::ClearInput { state } => {
+                self.state[state.0] = StateValue::String(String::new());
+                if self.focused_input == Some(state) {
+                    self.focused_input_cursor = 0;
                 }
-                *value = next;
-            }
-            Action::SetValue { state, value } => {
-                let Some(value) = self.evaluate_value(&value) else {
-                    return false;
-                };
-                if !self
-                    .definition
-                    .states
-                    .get(state.0)
-                    .is_some_and(|definition| definition.shape.accepts(&value))
-                {
-                    return false;
-                }
-                let resets_scroll = matches!(value, StateValue::Number(_));
-                let Some(current) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                if *current == value {
-                    return false;
-                }
-                *current = value;
-                if resets_scroll {
-                    self.scroll_offset = 0.0;
-                }
-            }
-            Action::Toggle { state } => {
-                let Some(StateValue::Bool(value)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                *value = !*value;
-            }
-            Action::SetList { state, value } => {
-                let Some(StateValue::List(value)) = self.evaluate_value(&value) else {
-                    return false;
-                };
-                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                if *current == value {
-                    return false;
-                }
-                *current = value;
-                self.scroll_offset = 0.0;
-            }
-            Action::AppendList { state, value } => {
-                let Some(value) = self.evaluate_value(&value) else {
-                    return false;
-                };
-                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                current.push(value);
-            }
-            Action::RemoveListItem { state, index } => {
-                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                if index >= current.len() {
-                    return false;
-                }
-                current.remove(index);
-            }
-            Action::ReplaceListItem {
-                state,
-                index,
-                value,
-            } => {
-                let Some(value) = self.evaluate_value(&value) else {
-                    return false;
-                };
-                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                let Some(item) = current.get_mut(index) else {
-                    return false;
-                };
-                if *item == value {
-                    return false;
-                }
-                *item = value;
-            }
-            Action::ClearList { state } => {
-                let Some(StateValue::List(current)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                if current.is_empty() {
-                    return false;
-                }
-                current.clear();
-                self.scroll_offset = 0.0;
-            }
-            Action::RemoveCurrentListItem { .. } | Action::ReplaceCurrentListItem { .. } => {
-                unreachable!("current-list actions are materialised before interaction")
+                self.text_input_scroll_offsets.remove(&state);
+                true
             }
             Action::FocusTextInput { state, action } => {
-                if self.focused_input == Some(state) && self.focused_input_action == action {
-                    return false;
-                }
                 self.focus_text_input_at_end(state, action);
+                true
             }
-            Action::ReloadResource { resource } => {
-                return self.queue_resource(resource);
-            }
-            Action::Controller {
-                controller,
-                operation,
-                payload,
-            } => {
-                return self.queue_controller(controller, operation, payload);
-            }
-            Action::Native { operation } => {
-                return self.queue_native_action(operation);
-            }
-            Action::Navigate { path, params } => {
-                let NodeKind::Navigator { routes, .. } = &self.definition.root.kind else {
-                    return false;
-                };
-                let Some(route) = routes.iter().position(|route| route.path == path) else {
-                    return false;
-                };
-                let Some(params) = params
-                    .iter()
-                    .map(|(name, value)| Some((name.clone(), self.evaluate_value(value)?)))
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    return false;
-                };
-                if self
-                    .navigation
-                    .last()
-                    .is_some_and(|entry| entry.route == route && entry.params == params)
-                {
-                    return false;
-                }
-                self.navigation.push(NavigationEntry { route, params });
-                self.scroll_offset = 0.0;
-                self.pointer = None;
-                self.focused_input = None;
-            }
-            Action::Back => return self.pop_route(),
-            Action::Sequence(actions) => {
-                let mut changed = false;
-                for action in actions {
-                    changed |= self.apply_inner(action, states);
-                }
-                return changed;
-            }
-        }
-        if let Some(state) = mutated_state {
-            if !states.contains(&state) {
-                states.push(state);
-            }
-            self.mark_persisted(state);
-            self.refresh_dependent_resources(state);
-        }
-        true
-    }
-
-    fn mark_persisted(&mut self, state: StateId) {
-        if self
-            .definition
-            .states
-            .get(state.0)
-            .is_some_and(|state| state.persisted.is_some())
-        {
-            self.persistence_revision = self.persistence_revision.wrapping_add(1);
-            self.persistence_dirty = true;
-        }
-    }
-
-    fn refresh_dependent_resources(&mut self, state: StateId) {
-        let resources = self
-            .definition
-            .resources
-            .iter()
-            .enumerate()
-            .filter_map(|(index, resource)| {
-                (self.active_resources.contains(&ResourceId(index))
-                    && resource
-                        .read
-                        .dependencies()
-                        .any(|dependency| dependency == state))
-                .then_some(ResourceId(index))
-            })
-            .collect::<Vec<_>>();
-        for resource in resources {
-            self.queue_resource(resource);
-        }
-    }
-
-    fn evaluate_value(&self, value: &Value) -> Option<StateValue> {
-        match value {
-            Value::Null => Some(StateValue::Null),
-            Value::Number(value) => Some(StateValue::Number(*value)),
-            Value::Bool(value) => Some(StateValue::Bool(*value)),
-            Value::String(value) => Some(StateValue::String(value.clone())),
-            Value::State(state) => self.state.get(state.0).cloned(),
-            Value::Item(_) => None,
-            Value::Resource(resource, field) => self.resource_field_value(*resource, field),
-            Value::Controller(controller, path) => self.controller_field_value(*controller, path),
-            Value::CombinedStatus(resources) => {
-                let statuses = resources
-                    .iter()
-                    .map(|resource| self.resource_field_value(*resource, &ResourceField::Status))
-                    .collect::<Option<Vec<_>>>()?;
-                let status =
-                    if statuses.iter().any(
-                        |status| matches!(status, StateValue::String(value) if value == "error"),
-                    ) {
-                        "error"
-                    } else if statuses.iter().all(
-                        |status| matches!(status, StateValue::String(value) if value == "ready"),
-                    ) {
-                        "ready"
-                    } else {
-                        "loading"
-                    };
-                Some(StateValue::String(status.to_owned()))
-            }
-            Value::CombinedErrorResource(resources) => resources
-                .iter()
-                .find(|(_, resource)| self.resource_has_failed(*resource))
-                .map(|(name, _)| StateValue::String(name.clone())),
-            Value::CombinedErrorField(resources, field) => resources
-                .iter()
-                .copied()
-                .find(|resource| self.resource_has_failed(*resource))
-                .and_then(|resource| self.resource_field_value(resource, field)),
-            Value::ListLength(state) => match self.state.get(state.0)? {
-                StateValue::List(values) => Some(StateValue::Number(values.len() as f64)),
-                _ => None,
-            },
-            Value::Binary {
-                left,
-                operator,
-                right,
-            } => evaluate_binary(
-                self.evaluate_value(left)?,
-                *operator,
-                self.evaluate_value(right)?,
-            ),
-            Value::RouteParam(name) => self
-                .navigation
-                .last()?
-                .params
-                .iter()
-                .find(|(param, _)| param == name)
-                .map(|(_, value)| value.clone()),
-            Value::List(values) => values
-                .iter()
-                .map(|value| self.evaluate_value(value))
-                .collect::<Option<_>>()
-                .map(StateValue::List),
-            Value::Object(fields) => fields
-                .iter()
-                .map(|(name, value)| Some((name.clone(), self.evaluate_value(value)?)))
-                .collect::<Option<_>>()
-                .map(StateValue::Object),
+            Action::Native { operation } => self.queue_native_action(operation),
+            Action::Back => self.back(),
         }
     }
 
     fn pop_route(&mut self) -> bool {
-        if self.navigation.len() <= 1 {
-            return false;
+        if let Some((_, operation)) = &self.navigation_handler {
+            return self.queue_native_action(operation.clone());
         }
-        self.navigation.pop();
-        self.scroll_offset = 0.0;
-        self.pointer = None;
-        self.focused_input = None;
-        true
+        false
     }
 
     fn set_scroll_offset(&mut self, offset: f32) -> bool {
@@ -3351,594 +2262,62 @@ impl Engine {
         true
     }
 
-    fn sync_active_resources(&mut self) {
-        let mut active = self
-            .definition
-            .application_resources
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>();
-        let root = match &self.definition.root.kind {
-            NodeKind::Navigator { routes, .. } => {
-                let route = self
-                    .navigation
-                    .last()
-                    .expect("navigator history is never empty")
-                    .route;
-                routes[route].screen.clone()
-            }
-            _ => self.definition.root.clone(),
-        };
-        self.collect_active_resources(&root, &mut active);
-
-        let inactive = self
-            .active_resources
-            .difference(&active)
-            .copied()
-            .collect::<Vec<_>>();
-        for resource in inactive {
-            self.cancel_resource(resource);
-        }
-        let newly_active = active
-            .difference(&self.active_resources)
-            .copied()
-            .collect::<Vec<_>>();
-        self.active_resources = active;
-        for resource in newly_active {
-            if self.definition.resources[resource.0].protocol != ResourceProtocol::Mutation
-                && matches!(self.resources[resource.0], ResourceState::Inactive)
-            {
-                self.queue_resource(resource);
-            }
-        }
-        self.sync_active_controllers(&root);
-    }
-
-    fn sync_active_controllers(&mut self, root: &Node) {
-        let mut active = self
-            .definition
-            .application_controllers
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>();
-        self.collect_active_controllers(root, &mut active);
-
-        let inactive = self
-            .active_controllers
-            .difference(&active)
-            .copied()
-            .collect::<Vec<_>>();
-        for controller in inactive {
-            self.camera_reviews.remove(&controller);
-            self.queue_controller(
-                controller,
-                "deactivate",
-                vec![PayloadPart::Literal(String::new())],
-            );
-        }
-        let newly_active = active
-            .difference(&self.active_controllers)
-            .copied()
-            .collect::<Vec<_>>();
-        self.active_controllers = active;
-        for controller in newly_active {
-            let Some(definition) = self.definition.controllers.get(controller.0) else {
-                continue;
-            };
-            let payload = format!(
-                "{{\"kind\":{},\"config\":{}}}",
-                serde_json::to_string(&definition.kind).expect("a Rust string is valid JSON"),
-                definition.config,
-            );
-            self.queue_controller(controller, "activate", vec![PayloadPart::Literal(payload)]);
-        }
-    }
-
-    fn collect_active_resources(&self, node: &Node, active: &mut BTreeSet<ResourceId>) {
-        match &node.kind {
-            NodeKind::Screen {
-                children,
-                resources,
-                ..
-            } => {
-                active.extend(resources.iter().copied());
-                for child in children {
-                    self.collect_active_resources(child, active);
-                }
-            }
-            NodeKind::Stack { children, .. } => {
-                for child in children {
-                    self.collect_active_resources(child, active);
-                }
-            }
-            NodeKind::Tabs { state, tabs } => {
-                let active_tab = match self.state.get(state.0) {
-                    Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
-                        *value as usize
-                    }
-                    _ => 0,
-                };
-                if let Some(tab) = tabs.get(active_tab) {
-                    self.collect_active_resources(&tab.screen, active);
-                }
-            }
-            NodeKind::Navigator { routes, .. } => {
-                let route = self.navigation.last().map_or(0, |entry| entry.route);
-                if let Some(route) = routes.get(route) {
-                    self.collect_active_resources(&route.screen, active);
-                }
-            }
-            NodeKind::Conditional {
-                condition,
-                consequent,
-                alternate,
-            } => {
-                let branch = if self.condition_enabled(condition) {
-                    Some(consequent.as_ref())
-                } else {
-                    alternate.as_deref()
-                };
-                if let Some(branch) = branch {
-                    self.collect_active_resources(branch, active);
-                }
-            }
-            NodeKind::ForEach { template, .. } => {
-                self.collect_active_resources(template, active);
-            }
-            NodeKind::Text { .. }
-            | NodeKind::TextInput { .. }
-            | NodeKind::Button { .. }
-            | NodeKind::Field { .. }
-            | NodeKind::Icon { .. }
-            | NodeKind::Image { .. }
-            | NodeKind::CameraPreview { .. }
-            | NodeKind::Toggle { .. } => {}
-        }
-    }
-
-    fn collect_active_controllers(&self, node: &Node, active: &mut BTreeSet<ControllerId>) {
-        match &node.kind {
-            NodeKind::Screen {
-                children,
-                controllers,
-                ..
-            } => {
-                active.extend(controllers.iter().copied());
-                for child in children {
-                    self.collect_active_controllers(child, active);
-                }
-            }
-            NodeKind::Stack { children, .. } => {
-                for child in children {
-                    self.collect_active_controllers(child, active);
-                }
-            }
-            NodeKind::Tabs { state, tabs } => {
-                let active_tab = match self.state.get(state.0) {
-                    Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
-                        *value as usize
-                    }
-                    _ => 0,
-                };
-                if let Some(tab) = tabs.get(active_tab) {
-                    self.collect_active_controllers(&tab.screen, active);
-                }
-            }
-            NodeKind::Navigator { routes, .. } => {
-                let route = self.navigation.last().map_or(0, |entry| entry.route);
-                if let Some(route) = routes.get(route) {
-                    self.collect_active_controllers(&route.screen, active);
-                }
-            }
-            NodeKind::Conditional {
-                condition,
-                consequent,
-                alternate,
-            } => {
-                let branch = if self.condition_enabled(condition) {
-                    Some(consequent.as_ref())
-                } else {
-                    alternate.as_deref()
-                };
-                if let Some(branch) = branch {
-                    self.collect_active_controllers(branch, active);
-                }
-            }
-            NodeKind::ForEach { template, .. } => {
-                self.collect_active_controllers(template, active);
-            }
-            NodeKind::Text { .. }
-            | NodeKind::TextInput { .. }
-            | NodeKind::Button { .. }
-            | NodeKind::Field { .. }
-            | NodeKind::Icon { .. }
-            | NodeKind::Image { .. }
-            | NodeKind::CameraPreview { .. }
-            | NodeKind::Toggle { .. } => {}
-        }
-    }
-
-    fn condition_enabled(&self, condition: &Condition) -> bool {
-        match condition {
-            Condition::ValueEquals {
-                value,
-                expected,
-                equals,
-            } => (self.evaluate_value(value).as_ref() == Some(expected)) == *equals,
-            Condition::Bool { state, expected } => {
-                matches!(self.state.get(state.0), Some(StateValue::Bool(value)) if value == expected)
-            }
-            Condition::ListEmpty { state, expected } => {
-                matches!(self.state.get(state.0), Some(StateValue::List(value)) if value.is_empty() == *expected)
-            }
-            Condition::Equals {
-                state,
-                value,
-                expected,
-            } => {
-                self.state
-                    .get(state.0)
-                    .is_some_and(|current| current == value)
-                    == *expected
-            }
-            Condition::ResourceEquals {
-                resource,
-                field,
-                value,
-                expected,
-            } => (self.resource_field_value(*resource, field).as_ref() == Some(value)) == *expected,
-            Condition::ControllerEquals {
-                controller,
-                path,
-                value,
-                expected,
-            } => {
-                (self.controller_field_value(*controller, path).as_ref() == Some(value))
-                    == *expected
-            }
-        }
-    }
-
-    fn controller_field_value(
-        &self,
-        controller: ControllerId,
-        path: &[String],
-    ) -> Option<StateValue> {
-        let definition = self.definition.controllers.get(controller.0)?;
-        let value = self.state.get(definition.state.0)?;
-        item_at_path(value, path).cloned()
-    }
-
-    fn resource_field_value(
-        &self,
-        resource: ResourceId,
-        field: &ResourceField,
-    ) -> Option<StateValue> {
-        let state = self.resources.get(resource.0)?;
-        match field {
-            ResourceField::Status => Some(StateValue::String(
-                match state {
-                    ResourceState::Inactive
-                        if self.definition.resources[resource.0].protocol
-                            == ResourceProtocol::Mutation =>
-                    {
-                        "idle"
-                    }
-                    ResourceState::Loading { .. }
-                        if self.definition.resources[resource.0].protocol
-                            == ResourceProtocol::Mutation =>
-                    {
-                        "running"
-                    }
-                    ResourceState::Inactive | ResourceState::Loading { .. } => "loading",
-                    ResourceState::Ready(_) => "ready",
-                    ResourceState::Failed { .. } => "error",
-                    ResourceState::BackgroundWaiting
-                        if self.definition.resources[resource.0].protocol
-                            == ResourceProtocol::Cached =>
-                    {
-                        "loading"
-                    }
-                    ResourceState::BackgroundWaiting => "waiting",
-                    ResourceState::BackgroundReady { error: None, .. } => "ready",
-                    ResourceState::BackgroundReady { error: Some(_), .. } => "stale",
-                    ResourceState::BackgroundFailed(_) => "error",
-                }
-                .to_owned(),
-            )),
-            ResourceField::Value(path) => {
-                let value = match state {
-                    ResourceState::Ready(value) | ResourceState::BackgroundReady { value, .. } => {
-                        value
-                    }
-                    _ => return None,
-                };
-                item_at_path(value, path).cloned()
-            }
-            ResourceField::ErrorKind => {
-                let value = match state {
-                    ResourceState::Failed { error, .. } => error.kind.as_str(),
-                    ResourceState::BackgroundReady {
-                        error: Some(error), ..
-                    }
-                    | ResourceState::BackgroundFailed(error) => &error.kind,
-                    _ => return None,
-                };
-                Some(StateValue::String(value.to_owned()))
-            }
-            ResourceField::ErrorMessage => {
-                let value = match state {
-                    ResourceState::Failed { error, .. } => &error.message,
-                    ResourceState::BackgroundReady {
-                        error: Some(error), ..
-                    }
-                    | ResourceState::BackgroundFailed(error) => &error.message,
-                    _ => return None,
-                };
-                Some(StateValue::String(value.clone()))
-            }
-            ResourceField::ErrorRetryable => {
-                let value = match state {
-                    ResourceState::Failed { error, .. } => error.retryable,
-                    ResourceState::BackgroundReady {
-                        error: Some(error), ..
-                    }
-                    | ResourceState::BackgroundFailed(error) => error.retryable,
-                    _ => return None,
-                };
-                Some(StateValue::Bool(value))
-            }
-            ResourceField::UpdatedAtMs => match state {
-                ResourceState::BackgroundReady { updated_at_ms, .. } => {
-                    Some(StateValue::Number(*updated_at_ms))
-                }
-                _ => None,
-            },
-            ResourceField::ErrorAttemptedAtMs => match state {
-                ResourceState::BackgroundReady {
-                    error: Some(error), ..
-                }
-                | ResourceState::BackgroundFailed(error) => {
-                    Some(StateValue::Number(error.attempted_at_ms))
-                }
-                _ => None,
-            },
-        }
-    }
-
-    fn resource_has_failed(&self, resource: ResourceId) -> bool {
-        matches!(
-            self.resources.get(resource.0),
-            Some(ResourceState::Failed { .. } | ResourceState::BackgroundFailed(_))
-        )
-    }
-
     fn rebuild_scene(&mut self) {
         #[cfg(feature = "perf")]
         {
             self.perf.full_rebuilds += 1;
         }
-        self.sync_active_resources();
-        self.virtual_lists.clear();
-        if self.viewport.width == 0 || self.viewport.height == 0 {
-            self.materialised_root = None;
-            self.relayout_scene();
-            return;
-        }
-
-        let (root, back_icon) = match &self.definition.root.kind {
-            NodeKind::Navigator { routes, back } => {
-                let route = self
-                    .navigation
-                    .last()
-                    .expect("navigator history is never empty")
-                    .route;
-                (&routes[route].screen, Some(back.clone()))
-            }
-            _ => (&self.definition.root, None),
-        };
-        #[cfg(feature = "perf")]
-        let (materialise_started, materialise_trace) =
-            (Instant::now(), PerfTraceSection::new(b"Ink materialise\0"));
-        let mut roots = self.materialise(root, None);
-        #[cfg(feature = "perf")]
-        {
-            drop(materialise_trace);
-            self.perf.materialise_ns += elapsed_ns(materialise_started);
-        }
-        assert_eq!(roots.len(), 1, "an app route has exactly one root");
-        self.materialised_root = Some(roots.remove(0));
-        self.back_icon = if self.navigation.len() > 1 {
-            back_icon
-        } else {
-            None
-        };
+        self.back_icon = self
+            .navigation_handler
+            .as_ref()
+            .map(|(icon, _)| icon.clone());
         self.relayout_scene();
-    }
-
-    fn rebuild_scene_for_states(&mut self, states: impl IntoIterator<Item = StateId>) {
-        if self.definition.node_count < INCREMENTAL_TREE_THRESHOLD {
-            self.rebuild_scene();
-            return;
-        }
-        self.sync_active_resources();
-        let states = states.into_iter().collect::<Vec<_>>();
-        if self
-            .definition
-            .resources
-            .iter()
-            .enumerate()
-            .any(|(index, resource)| {
-                self.active_resources.contains(&ResourceId(index))
-                    && resource
-                        .read
-                        .dependencies()
-                        .any(|state| states.contains(&state))
-            })
-        {
-            self.rebuild_scene();
-            return;
-        }
-        let targets = states
-            .iter()
-            .filter_map(|state| self.definition.state_dependencies.get(state.0))
-            .flatten()
-            .copied()
-            .collect::<Vec<_>>();
-        if targets.is_empty() {
-            return;
-        }
-        if self.viewport.width == 0 || self.viewport.height == 0 {
-            self.virtual_lists.clear();
-            self.materialised_root = None;
-            self.relayout_scene();
-            return;
-        }
-
-        let root = match &self.definition.root.kind {
-            NodeKind::Navigator { routes, .. } => {
-                let route = self
-                    .navigation
-                    .last()
-                    .expect("navigator history is never empty")
-                    .route;
-                &routes[route].screen
-            }
-            _ => &self.definition.root,
-        };
-        if !subtree_contains_target(root, &targets) {
-            return;
-        }
-        #[cfg(feature = "perf")]
-        {
-            self.perf.incremental_rebuilds += 1;
-        }
-        self.virtual_lists.clear();
-        let previous = self.materialised_root.take();
-        #[cfg(feature = "perf")]
-        let (materialise_started, materialise_trace) =
-            (Instant::now(), PerfTraceSection::new(b"Ink materialise\0"));
-        let mut roots = previous.as_ref().map_or_else(
-            || self.materialise(root, None),
-            |previous| self.materialise_incremental(root, previous, &targets),
-        );
-        #[cfg(feature = "perf")]
-        {
-            drop(materialise_trace);
-            self.perf.materialise_ns += elapsed_ns(materialise_started);
-        }
-        assert_eq!(roots.len(), 1, "an app route has exactly one root");
-        self.materialised_root = Some(roots.remove(0));
-        self.relayout_scene();
-    }
-
-    fn materialise_incremental(
-        &self,
-        source: &Node,
-        previous: &Node,
-        targets: &[NodeIdentity],
-    ) -> Vec<Node> {
-        if !subtree_contains_target(source, targets) {
-            return vec![previous.clone()];
-        }
-        if source.identity != previous.identity || targets.contains(&source.identity) {
-            return self.materialise(source, None);
-        }
-
-        match (&source.kind, &previous.kind) {
-            (
-                NodeKind::Screen {
-                    children,
-                    title,
-                    centred,
-                    resources,
-                    controllers,
-                },
-                NodeKind::Screen {
-                    children: previous_children,
-                    ..
-                },
-            ) => vec![Node {
-                identity: source.identity,
-                kind: NodeKind::Screen {
-                    children: self.materialise_incremental_children(
-                        children,
-                        previous_children,
-                        targets,
-                        true,
-                    ),
-                    title: title.clone(),
-                    centred: *centred,
-                    resources: resources.clone(),
-                    controllers: controllers.clone(),
-                },
-            }],
-            (
-                NodeKind::Stack {
-                    children,
-                    axis,
-                    gap,
-                    align,
-                    justify,
-                },
-                NodeKind::Stack {
-                    children: previous_children,
-                    ..
-                },
-            ) => vec![Node {
-                identity: source.identity,
-                kind: NodeKind::Stack {
-                    children: self.materialise_incremental_children(
-                        children,
-                        previous_children,
-                        targets,
-                        *axis == Axis::Vertical,
-                    ),
-                    axis: *axis,
-                    gap: *gap,
-                    align: *align,
-                    justify: *justify,
-                },
-            }],
-            _ => self.materialise(source, None),
-        }
-    }
-
-    fn materialise_incremental_children(
-        &self,
-        source: &[Node],
-        previous: &[Node],
-        targets: &[NodeIdentity],
-        preserve_virtual_lists: bool,
-    ) -> Vec<Node> {
-        let mut output = Vec::new();
-        for child in source {
-            if preserve_virtual_lists
-                && matches!(&child.kind, NodeKind::ForEach { template, .. } if virtualisable_template(template))
-            {
-                output.push(child.clone());
-            } else if !subtree_contains_target(child, targets) {
-                output.extend(
-                    previous
-                        .iter()
-                        .filter(|node| subtree_contains_identity(child, node.identity))
-                        .cloned(),
-                );
-            } else if let Some(previous) =
-                previous.iter().find(|node| node.identity == child.identity)
-            {
-                output.extend(self.materialise_incremental(child, previous, targets));
-            } else {
-                output.extend(self.materialise(child, None));
-            }
-        }
-        output
     }
 
     fn relayout_scene(&mut self) {
         #[cfg(feature = "perf")]
         let (started, trace) = (Instant::now(), PerfTraceSection::new(b"Ink relayout\0"));
+        let previous_offset = self.scroll_offset;
+        let mut anchors: Vec<_> = self.react_list_positions.iter().filter_map(|(id, top)| {
+            let metrics = self.list_metrics.get(id)?;
+            let clip = self.scene.scroll_clip?;
+            if *top + metrics.total() < self.scroll_offset + clip.y || *top > self.scroll_offset + clip.y + clip.height {
+                return None;
+            }
+            let index = metrics.index_at(self.scroll_offset + clip.y - top);
+            Some((*id, metrics.keys.get(index)?.clone(), index,
+                top + metrics.offset(index) - self.scroll_offset,
+                metrics.follow_end && self.pointer.is_none()
+                    && self.scroll_max - self.scroll_offset <= self.scaled(64.0)))
+        }).collect();
+        let clip_top = self.scene.scroll_clip.map_or(0.0, |clip| clip.y);
+        anchors.sort_by(|left, right| (left.3 - clip_top).abs().total_cmp(&(right.3 - clip_top).abs()).then_with(|| left.0.cmp(&right.0)));
         self.relayout_scene_inner();
+        for (id, key, old_index, position, follow) in anchors {
+            let Some(top) = self.react_list_positions.get(&id) else { continue; };
+            let Some(metrics) = self.list_metrics.get(&id) else { continue; };
+            if metrics.keys.is_empty() { continue; }
+            let index = if metrics.keys.get(old_index) == Some(&key) { old_index } else {
+                metrics.keys.iter().position(|candidate| candidate == &key)
+                    .unwrap_or(old_index.min(metrics.keys.len() - 1))
+            };
+            let next = if follow { self.scroll_max } else { top + metrics.offset(index) - position }
+                .clamp(0.0, self.scroll_max);
+            if (next - self.scroll_offset).abs() > 0.5 {
+                self.scroll_offset = next;
+                self.relayout_scene_inner();
+            }
+            break;
+        }
+        // Layout corrections must move the drag origin too, or the next motion undoes them.
+        let adjustment = self.scroll_offset - previous_offset;
+        match &mut self.pointer {
+            Some(Pointer::Content(pointer)) => pointer.start_offset += adjustment,
+            Some(Pointer::EdgeBack(pointer)) => pointer.start_offset += adjustment,
+            Some(Pointer::TextInput(pointer)) => pointer.content_offset += adjustment,
+            _ => {}
+        }
+
         #[cfg(feature = "perf")]
         {
             drop(trace);
@@ -3950,6 +2329,7 @@ impl Engine {
         self.scene.revision = self.scene.revision.wrapping_add(1);
         self.scene.width = self.viewport.width;
         self.scene.height = self.viewport.height;
+        self.react_list_positions.clear();
         self.scene.quads.clear();
         self.scene.text.clear();
         self.scene.masks.clear();
@@ -3973,9 +2353,7 @@ impl Engine {
             return;
         }
 
-        let Some(root) = self.materialised_root.take() else {
-            return;
-        };
+        let root = std::mem::replace(&mut self.root, Node::screen(vec![], None, false));
         let auto_focus = self.auto_focus(&root);
         let auto_focus_node = auto_focus.map(|(node, _, _)| node);
         if auto_focus_node != self.auto_focus_node {
@@ -3997,10 +2375,10 @@ impl Engine {
                 x: 0.0,
                 y: 0.0,
                 width: self.viewport.width as f32,
-                height: self.viewport.height as f32,
+                height: self.viewport.height.saturating_sub(self.keyboard_inset) as f32,
             },
         );
-        self.materialised_root = Some(root);
+        self.root = root;
         self.sync_visible_images();
         self.image_zooms
             .retain(|identity, _| self.visible_zoom_images.contains(identity));
@@ -4020,22 +2398,29 @@ impl Engine {
                 auto_focus: true,
                 ..
             } => Some((node.identity, *state, *action)),
-            NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => {
+            NodeKind::ConversationComposer { children, .. }
+            | NodeKind::Message { children, .. }
+            | NodeKind::MessageQuote { children, .. }
+            | NodeKind::PlayingTransport { children, .. }
+            | NodeKind::PlayingLayout { children, .. }
+            | NodeKind::PlayingPressable { children, .. }
+            | NodeKind::Screen { children, .. }
+            | NodeKind::Row { children, .. }
+            | NodeKind::Stack { children, .. }
+            | NodeKind::ReactList { children, .. } => {
                 children.iter().find_map(|child| self.auto_focus(child))
             }
-            NodeKind::Tabs { state, tabs } => self
-                .active_tab_index(*state, tabs.len())
+            NodeKind::Tabs { value, tabs } => self
+                .active_tab_index(value, tabs.len())
                 .and_then(|active| self.auto_focus(&tabs[active].screen)),
-            NodeKind::Navigator { .. }
-            | NodeKind::Conditional { .. }
-            | NodeKind::ForEach { .. }
-            | NodeKind::Text { .. }
+            NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
             | NodeKind::Field { .. }
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
             | NodeKind::CameraPreview { .. }
+            | NodeKind::PlayingProgress { .. }
             | NodeKind::Toggle { .. } => None,
         }
     }
@@ -4064,12 +2449,51 @@ impl Engine {
 
     fn measure_inner(&mut self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
-            NodeKind::Screen { .. } | NodeKind::Tabs { .. } | NodeKind::Navigator { .. } => {
-                MeasuredSize {
-                    width: available.width,
-                    height: available.height,
+            NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end } => {
+                let mut metrics = self.list_metrics.remove(&node.identity.0).unwrap_or_default();
+                metrics.prepare(keys, content_versions, *revision, available.width, self.scaled(*gap), self.scaled(40.0));
+                metrics.mounted = *start..*start + children.len();
+                metrics.follow_end = *follow_end;
+                for (index, child) in children.iter().enumerate() {
+                    if start + index < keys.len() {
+                        let size = self.measure(child, Rect { height: f32::INFINITY, ..available });
+                        metrics.measure(start + index, size.height.max(1.0));
+                    }
                 }
+                let height = metrics.total();
+                self.list_metrics.insert(node.identity.0, metrics);
+                MeasuredSize { width: available.width, height }
             }
+            NodeKind::Message { children, .. } => {
+                let width = available.width * 0.85;
+                let size = children.first().map(|child| self.measure(child, Rect { width, ..available })).unwrap_or_default();
+                MeasuredSize { width: available.width, height: size.height }
+            }
+            NodeKind::MessageQuote { children } => {
+                let inset = self.scaled(10.0);
+                let size = children.first().map(|child| self.measure(child, Rect { width: (available.width - inset).max(0.0), ..available })).unwrap_or_default();
+                MeasuredSize { width: (size.width + inset).min(available.width), height: size.height }
+            }
+            NodeKind::ConversationComposer { children } => {
+                let width = (available.width - self.scaled(40.0 * (children.len() - 1) as f32)).max(0.0);
+                let height = children.iter().map(|child| self.measure(child, Rect { width, ..available }).height).fold(0.0, f32::max);
+                MeasuredSize { width: available.width, height }
+            }
+            NodeKind::PlayingPressable { children, .. } => children.first().map(|child| self.measure(child, available)).unwrap_or_default(),
+            NodeKind::PlayingTransport { children } => MeasuredSize {
+                width: available.width,
+                height: children.iter().map(|child| self.measure(child, available).height).fold(0.0, f32::max),
+            },
+            NodeKind::PlayingProgress { .. } => MeasuredSize { width: available.width, height: self.scaled(6.0) },
+            NodeKind::Row { children, has_image, .. } => {
+                let image_width = if *has_image { self.scaled(65.0).min(available.width) } else { 0.0 };
+                let text = children.last().map(|child| self.measure(child, Rect { width: (available.width - image_width).max(0.0), ..available })).unwrap_or_default();
+                MeasuredSize { width: available.width, height: text.height.max(self.scaled(50.0)).min(available.height) }
+            }
+            NodeKind::PlayingLayout { .. } | NodeKind::Screen { .. } | NodeKind::Tabs { .. } => MeasuredSize {
+                width: available.width,
+                height: available.height,
+            },
             NodeKind::Stack {
                 children,
                 axis,
@@ -4080,20 +2504,14 @@ impl Engine {
                 match axis {
                     Axis::Vertical => {
                         let measured = self.measure_vertical_children(children, available);
-                        let entries = measured
-                            .iter()
-                            .map(|measure| measure.entries)
-                            .sum::<usize>();
+                        let entries = measured.len();
                         MeasuredSize {
                             width: measured
                                 .iter()
-                                .map(|measure| measure.size.width)
+                                .map(|measure| measure.width)
                                 .fold(0.0, f32::max)
                                 .min(available.width),
-                            height: (measured
-                                .iter()
-                                .map(|measure| measure.size.height)
-                                .sum::<f32>()
+                            height: (measured.iter().map(|measure| measure.height).sum::<f32>()
                                 + gap * entries.saturating_sub(1) as f32)
                                 .min(available.height),
                         }
@@ -4117,19 +2535,14 @@ impl Engine {
                 }
             }
             NodeKind::Text {
-                parts,
+                text,
                 font_size,
                 align,
                 max_lines,
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font_size = self.scaled_font(size);
-                let lines = self.wrap_text(
-                    &self.resolve_text(parts),
-                    font_size,
-                    available.width,
-                    *max_lines,
-                );
+                let lines = self.wrap_text(text, font_size, available.width, *max_lines);
                 let line_height = self.text_line_height(size, lines.len());
                 MeasuredSize {
                     width: if *align == TextAlign::Justify && lines.iter().any(|line| line.wrapped)
@@ -4142,49 +2555,53 @@ impl Engine {
                     height: (line_height * lines.len() as f32).min(available.height),
                 }
             }
-            NodeKind::TextInput { .. } => MeasuredSize {
+            NodeKind::TextInput { state, action, .. } => MeasuredSize {
                 width: available.width,
-                height: self.scaled(TEXT_INPUT_HEIGHT).min(available.height),
+                height: if *action == TextInputAction::Return {
+                    let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.as_str(), _ => "" };
+                    let lines = self.input_lines(value, (available.width - self.scaled(1.0)).max(0.0)).len().min(TEXT_INPUT_MAX_LINES);
+                    self.scaled((TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING) * lines as f32 + TEXT_INPUT_BOTTOM_PADDING).min(available.height)
+                } else { self.scaled(TEXT_INPUT_HEIGHT).min(available.height) },
             },
             NodeKind::Button { label, icon, .. } => {
                 let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
-                let label = self.resolve_text(label);
                 let icon_width = icon
                     .as_ref()
-                    .map(|_| self.scaled(BUTTON_ICON_SIZE + BUTTON_ICON_GAP))
+                    .map(|_| self.scaled(if label.is_empty() { BUTTON_HEIGHT } else { BUTTON_ICON_SIZE + BUTTON_ICON_GAP }))
                     .unwrap_or_default();
                 MeasuredSize {
-                    width: (self.text_width(&label, font_size).ceil() + 1.0 + icon_width)
+                    width: (self.text_width(label, font_size).ceil() + 1.0 + icon_width)
                         .min(available.width),
                     height: self.scaled(BUTTON_HEIGHT).min(available.height),
                 }
             }
             NodeKind::Field { label, value, .. } => {
                 let label_width = self.text_width(label, self.scaled_font(FIELD_LABEL_SIZE));
-                let value_width = self.text_width(
-                    &self.resolve_text(value),
-                    self.scaled_font(DEFAULT_TEXT_SIZE),
-                );
+                let lines = self.wrap_text(value, self.scaled_font(DEFAULT_TEXT_SIZE), available.width, None);
+                let value_width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
+                let value_height = self.text_line_height(DEFAULT_TEXT_SIZE, lines.len()) * lines.len() as f32;
                 MeasuredSize {
                     width: label_width.max(value_width).ceil().min(available.width),
-                    height: self.scaled(FIELD_HEIGHT).min(available.height),
+                    height: (self.scaled(FIELD_LABEL_HEIGHT) + value_height).min(available.height),
                 }
             }
-            NodeKind::Icon { size, .. } => {
+            NodeKind::Icon { size, bounds, .. } => {
                 let size = self.scaled(if *size > 0.0 {
                     *size
                 } else {
                     DEFAULT_ICON_SIZE
                 });
                 MeasuredSize {
-                    width: size.min(available.width),
-                    height: size.min(available.height),
+                    width: (size * bounds.map_or(1.0, |bounds| bounds.width)).min(available.width),
+                    height: (size * bounds.map_or(1.0, |bounds| bounds.height)).min(available.height),
                 }
             }
             NodeKind::Image {
+                source,
                 bleed,
                 width,
                 height,
+                fit,
                 ..
             } => {
                 let measured_width = if *bleed {
@@ -4192,9 +2609,22 @@ impl Engine {
                 } else {
                     self.scaled(*width).min(available.width)
                 };
+                let code_height = match source {
+                    ImageSource::Native(module, url) if module == "barcode" => {
+                        let pixels = measured_width.ceil().max(1.0) as u32;
+                        let key = RemoteImageKey { module: module.clone(), url: url.clone(), width: pixels, height: pixels, fit: *fit };
+                        match self.remote_images.get(&key) {
+                            Some(RemoteImageState::Ready(image)) => Some(measured_width * image.height as f32 / image.width as f32),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
                 MeasuredSize {
                     width: measured_width,
-                    height: if *bleed {
+                    height: if let Some(height) = code_height {
+                        height.min(available.height)
+                    } else if *bleed {
                         (measured_width * height / width).min(available.height)
                     } else {
                         self.scaled(*height).min(available.height)
@@ -4206,17 +2636,13 @@ impl Engine {
                 height: if available.height.is_finite() {
                     available.height
                 } else {
-                    0.0
+                    (self.viewport.height as f32 - available.y).max(0.0)
                 },
             },
             NodeKind::Toggle { .. } => MeasuredSize {
                 width: available.width,
                 height: self.scaled(TOGGLE_HEIGHT).min(available.height),
             },
-            NodeKind::ForEach { .. } => self.measure_virtual_list(node, available).size,
-            NodeKind::Conditional { .. } => {
-                unreachable!("dynamic nodes are materialised before layout")
-            }
         }
     }
 
@@ -4224,103 +2650,11 @@ impl Engine {
         &mut self,
         children: &[Node],
         available: Rect,
-    ) -> Vec<VerticalMeasure> {
+    ) -> Vec<MeasuredSize> {
         children
             .iter()
-            .map(|child| match &child.kind {
-                NodeKind::ForEach { .. } => self.measure_virtual_list(child, available),
-                _ => VerticalMeasure {
-                    size: self.measure(child, available),
-                    entries: 1,
-                },
-            })
+            .map(|child| self.measure(child, available))
             .collect()
-    }
-
-    fn measure_virtual_list(&mut self, node: &Node, available: Rect) -> VerticalMeasure {
-        let NodeKind::ForEach {
-            collection,
-            template,
-        } = &node.kind
-        else {
-            unreachable!("only list nodes have virtual list geometry")
-        };
-        let item_count = self
-            .collection_items(collection)
-            .map_or(0, <[StateValue]>::len);
-        if item_count == 0 {
-            return VerticalMeasure {
-                size: MeasuredSize::default(),
-                entries: 0,
-            };
-        }
-        let available_width = available.width.to_bits();
-        if let Some(layout) = self.virtual_lists.get(&node.identity).copied()
-            && layout.item_count == item_count
-            && layout.available_width == available_width
-        {
-            return VerticalMeasure {
-                size: MeasuredSize {
-                    width: layout.row_width,
-                    height: layout.row_height * item_count as f32,
-                },
-                entries: item_count,
-            };
-        }
-
-        let item = self
-            .collection_items(collection)
-            .and_then(|items| items.first())
-            .cloned()
-            .expect("a non-empty virtual list has a first item");
-        let mut row = self.materialise(
-            template,
-            Some(MaterialisedItem {
-                value: &item,
-                index: 0,
-            }),
-        );
-        assert_eq!(row.len(), 1, "a virtual list template has one root");
-        let size = self.measure(&row.remove(0), available);
-        self.virtual_lists.insert(
-            node.identity,
-            VirtualListLayout {
-                item_count,
-                available_width,
-                row_width: size.width,
-                row_height: size.height,
-            },
-        );
-        VerticalMeasure {
-            size: MeasuredSize {
-                width: size.width,
-                height: size.height * item_count as f32,
-            },
-            entries: item_count,
-        }
-    }
-
-    fn collection_items(&self, collection: &Collection) -> Option<&[StateValue]> {
-        let value = match collection {
-            Collection::State(state) => self.state.get(state.0)?,
-            Collection::Resource(resource, path) => {
-                let value = match self.resources.get(resource.0)? {
-                    ResourceState::Ready(value) | ResourceState::BackgroundReady { value, .. } => {
-                        value
-                    }
-                    _ => return None,
-                };
-                item_at_path(value, path)?
-            }
-            Collection::Controller(controller, path) => {
-                let definition = self.definition.controllers.get(controller.0)?;
-                item_at_path(self.state.get(definition.state.0)?, path)?
-            }
-        };
-        match value {
-            StateValue::List(items) => Some(items),
-            _ => None,
-        }
     }
 
     fn layout(&mut self, node: &Node, rect: Rect) {
@@ -4332,22 +2666,152 @@ impl Engine {
         if self.scrolling
             && !matches!(
                 &node.kind,
-                NodeKind::Screen { .. } | NodeKind::Stack { .. } | NodeKind::Tabs { .. }
+                NodeKind::Screen { .. }
+                    | NodeKind::Stack { .. }
+                    | NodeKind::Tabs { .. }
+                    | NodeKind::ReactList { .. }
             )
             && (visible.width == 0.0 || visible.height == 0.0)
         {
             return;
         }
         match &node.kind {
+            NodeKind::ReactList { children, start, gap, .. } => {
+                self.react_list_positions.insert(node.identity.0, rect.y + self.scroll_origin);
+                let Some(metrics) = self.list_metrics.get(&node.identity.0) else { return; };
+                let offsets: Vec<_> = (*start..=(*start + children.len()).min(metrics.keys.len()))
+                    .map(|row| metrics.offset(row)).collect();
+                let count = metrics.keys.len();
+                for (index, child) in children.iter().enumerate() {
+                    let row = start + index;
+                    if index + 1 >= offsets.len() { break; }
+                    let gap = if row + 1 < count { self.scaled(*gap) } else { 0.0 };
+                    self.layout(child, Rect {
+                        y: rect.y + offsets[index],
+                        height: (offsets[index + 1] - offsets[index] - gap).max(0.0),
+                        ..rect
+                    });
+                }
+            }
+
+            NodeKind::ConversationComposer { children } => {
+                let side = self.scaled(28.0);
+                let gap = self.scaled(12.0);
+                for (index, child) in children.iter().enumerate() {
+                    let (x, width) = match (children.len(), index) {
+                        (2, 0) => (rect.x, (rect.width - side - gap).max(0.0)),
+                        (3, 0) => (rect.x, side),
+                        (3, 1) => (rect.x + side + gap, (rect.width - (side + gap) * 2.0).max(0.0)),
+                        _ => (rect.x + rect.width - side, side),
+                    };
+                    let size = self.measure(child, Rect { width, ..rect });
+                    let child_rect = Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width, height: size.height };
+                    if let NodeKind::TextInput { placeholder, state, action, clear, .. } = &child.kind {
+                        self.layout_text_input(placeholder, *state, *action, clear,
+                            Rect { width: width + side + gap, ..child_rect }, side + gap);
+                    } else {
+                        let first_hit = self.hit_regions.len();
+                        self.layout(child, child_rect);
+                        // Send dismisses the keyboard with the React message update.
+                        if children.len() == 3 && index == 2 {
+                            for hit in &mut self.hit_regions[first_hit..] { hit.preserve_input = true; }
+                        }
+                    }
+                }
+            }
+            NodeKind::Message { children, outgoing } => {
+                if let Some(child) = children.first() {
+                    let max_width = rect.width * 0.85;
+                    let size = self.measure(child, Rect { width: max_width, ..rect });
+                    let width = size.width.ceil().min(max_width);
+                    self.layout(child, Rect { x: if *outgoing { rect.x + rect.width - width } else { rect.x }, width, ..rect });
+                }
+            }
+            NodeKind::MessageQuote { children } => {
+                let inset = self.scaled(10.0);
+                self.scene.quads.push(Quad { rect: Rect { width: self.scaled(2.0), ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
+                if let Some(child) = children.first() { self.layout(child, Rect { x: rect.x + inset, width: (rect.width - inset).max(0.0), ..rect }); }
+            }
+            NodeKind::PlayingLayout { children, centred } => {
+                let inset = self.scaled(CONTENT_INSET_START);
+                let body = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), ..rect };
+                let footer = self.measure(&children[1], body);
+                let bottom = rect.y + rect.height - self.scaled(CONTENT_BOTTOM);
+                self.layout(&children[1], Rect { y: bottom - footer.height, height: footer.height, ..body });
+                let available = Rect { height: (bottom - footer.height - self.scaled(12.0) - body.y).max(0.0), ..body };
+                let size = self.measure(&children[0], available);
+                let y = available.y + if *centred { (available.height - size.height).max(0.0) / 2.0 } else { 0.0 };
+                self.layout(&children[0], Rect { y, height: size.height, ..available });
+            }
+            NodeKind::PlayingTransport { children } => {
+                for (index, child) in children.iter().enumerate() {
+                    let size = self.measure(child, rect);
+                    let x = match index {
+                        0 => rect.x,
+                        1 => rect.x + (rect.width - size.width) / 2.0,
+                        _ => rect.x + rect.width - size.width,
+                    };
+                    self.layout(child, Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width: size.width, height: size.height });
+                }
+            }
+            NodeKind::PlayingPressable { children, action, long_action, selected } => {
+                if *selected {
+                    let height = self.control_line_height();
+                    self.scene.quads.push(Quad {
+                        rect: Rect { x: rect.x - self.scaled(3.0), y: rect.y + rect.height + self.scaled(5.0), width: rect.width + self.scaled(6.0), height },
+                        clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+                    });
+                }
+                if let Some(action) = action {
+                    let hit = if children.first().is_some_and(|child| matches!(child.kind, NodeKind::Icon { .. })) {
+                        let width = rect.width.max(self.scaled(52.0));
+                        let height = rect.height.max(self.scaled(52.0));
+                        Rect { x: rect.x - (width - rect.width) / 2.0, y: rect.y - (height - rect.height) / 2.0, width, height }
+                    } else { rect };
+                    self.push_press_region(hit, action.clone(), long_action.clone());
+                }
+                if let Some(child) = children.first() { self.layout(child, rect); }
+            }
+            NodeKind::PlayingProgress { position, duration, seek } => {
+                let ratio = if *duration > 0.0 { (position / duration).clamp(0.0, 1.0) } else { 0.0 };
+                for (width, height) in [(rect.width, self.scaled(2.0)), (rect.width * ratio, self.scaled(6.0))] {
+                    self.scene.quads.push(Quad { rect: Rect { y: rect.y + (rect.height - height) / 2.0, width, height, ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
+                }
+                if *seek && *duration > 0.0 {
+                    self.push_hit_region(Rect { y: rect.y - self.scaled(15.0), height: self.scaled(36.0), ..rect }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
+                }
+            }
+            NodeKind::Row { children, has_image, action } => {
+                let image_width = if *has_image { self.scaled(65.0).min(rect.width) } else { 0.0 };
+                if *has_image {
+                    if let Some(image) = children.first() {
+                        let size = self.scaled(50.0).min(rect.width);
+                        self.layout(image, Rect { width: size, height: size, y: rect.y + (rect.height - size) / 2.0, ..rect });
+                    }
+                }
+                if let Some(text) = children.last() {
+                    let available = Rect { x: rect.x + image_width, width: (rect.width - image_width).max(0.0), ..rect };
+                    let size = self.measure(text, available);
+                    self.layout(text, Rect { y: rect.y + (rect.height - size.height) / 2.0, height: size.height, ..available });
+                }
+                if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
+            }
             NodeKind::Screen {
                 children,
                 title,
                 centred,
-                ..
+                footer,
+                pinned_header,
+                pinned_footer,
+                right_action,
             } => self.layout_screen(
                 children,
                 title.as_deref(),
                 *centred,
+                footer.as_ref(),
+                *pinned_header,
+                *pinned_footer,
+                right_action.as_ref(),
                 screen_bottom_inset,
                 rect,
             ),
@@ -4366,41 +2830,12 @@ impl Engine {
                 rect,
             ),
             NodeKind::Text {
-                parts,
+                text,
                 font_size,
                 align,
                 max_lines,
             } => {
-                let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
-                let font_size = self.scaled_font(size);
-                let text = self.resolve_text(parts);
-                let lines = self.wrap_text(&text, font_size, rect.width, *max_lines);
-                let line_height = self.text_line_height(size, lines.len());
-                for (index, line) in lines.into_iter().enumerate() {
-                    let mut line_rect = Rect {
-                        y: rect.y + line_height * index as f32,
-                        height: line_height
-                            .min((rect.height - line_height * index as f32).max(0.0)),
-                        ..rect
-                    };
-                    if size == DEFAULT_TEXT_SIZE {
-                        line_rect.y += self.scaled(1.0);
-                        line_rect.height = (line_rect.height - self.scaled(1.0)).max(0.0);
-                    }
-                    self.scene.text.push(TextRun {
-                        text: line.text,
-                        rect: line_rect,
-                        clip: self.clip,
-                        font_size,
-                        colour: Colour::WHITE,
-                        align: if *align == TextAlign::Justify && !line.wrapped {
-                            TextAlign::Start
-                        } else {
-                            *align
-                        },
-                        scrolling: self.scrolling,
-                    });
-                }
+                self.layout_text(text, *font_size, *align, *max_lines, rect);
             }
             NodeKind::TextInput {
                 placeholder,
@@ -4408,7 +2843,7 @@ impl Engine {
                 action,
                 clear,
                 ..
-            } => self.layout_text_input(placeholder, *state, *action, clear, rect),
+            } => self.layout_text_input(placeholder, *state, *action, clear, rect, 0.0),
             NodeKind::Button {
                 label,
                 icon,
@@ -4420,11 +2855,15 @@ impl Engine {
                 value,
                 action,
             } => self.layout_field(label, value, action, rect),
-            NodeKind::Icon { mask, tone, .. } => self.scene.masks.push(MaskRun {
+            NodeKind::Icon { mask, tone, bounds, .. } => self.scene.masks.push(MaskRun {
                 mask: mask.clone(),
-                rect,
+                rect: bounds.map_or(rect, |bounds| {
+                    let width = rect.width / bounds.width;
+                    let height = rect.height / bounds.height;
+                    Rect { x: rect.x - bounds.x * width, y: rect.y - bounds.y * height, width, height }
+                }),
                 clip: self.clip,
-                colour: tone_colour(*tone),
+                colour: self.scene.colour(tone_colour(*tone)),
                 scrolling: self.scrolling,
             }),
             NodeKind::Image {
@@ -4446,342 +2885,22 @@ impl Engine {
             }
             NodeKind::Toggle {
                 label,
-                state,
+                value,
                 action,
                 off,
                 on,
-            } => self.layout_toggle(label, *state, action, off.clone(), on.clone(), rect),
-            NodeKind::Tabs { state, tabs } => self.layout_tabs(*state, tabs, rect),
-            NodeKind::Navigator { .. } => unreachable!("navigator is resolved before layout"),
-            NodeKind::Conditional { .. } | NodeKind::ForEach { .. } => {
-                unreachable!("dynamic nodes are materialised before layout")
-            }
-        }
-    }
-
-    fn materialise(&self, node: &Node, item: Option<MaterialisedItem<'_>>) -> Vec<Node> {
-        let identity = node.identity;
-        let node = match &node.kind {
-            NodeKind::Screen {
-                children,
-                title,
-                centred,
-                resources,
-                controllers,
-            } => Node::screen(
-                self.materialise_vertical_children(children, item),
-                title.clone(),
-                *centred,
-                resources.clone(),
-                controllers.clone(),
-            ),
-            NodeKind::Stack {
-                children,
-                axis,
-                gap,
-                align,
-                justify,
-            } => Node::stack(
-                if *axis == Axis::Vertical {
-                    self.materialise_vertical_children(children, item)
-                } else {
-                    self.materialise_children(children, item)
-                },
-                *axis,
-                *gap,
-                *align,
-                *justify,
-            ),
-            NodeKind::Text {
-                parts,
-                font_size,
-                align,
-                max_lines,
-            } => Node::text(
-                self.materialise_text(parts, item),
-                *font_size,
-                *align,
-                *max_lines,
-            ),
-            NodeKind::Button {
-                label,
-                icon,
-                underline,
-                action,
-            } => Node::button(
-                self.materialise_text(label, item),
-                icon.clone(),
-                *underline,
-                action
-                    .as_ref()
-                    .map(|action| self.materialise_action(action, item)),
-            ),
-            NodeKind::Image {
-                source,
-                fallback,
-                bleed,
-                zoomable,
-                width,
-                height,
-                fit,
-            } => Node::image(
-                match source {
-                    ImageSource::Asset(asset) => ImageSource::Asset(asset.clone()),
-                    ImageSource::Remote(parts) => {
-                        ImageSource::Remote(self.materialise_text(parts, item))
-                    }
-                    ImageSource::Native(module, parts) => {
-                        ImageSource::Native(module.clone(), self.materialise_text(parts, item))
-                    }
-                },
-                fallback.clone(),
-                *bleed,
-                *zoomable,
-                *width,
-                *height,
-                *fit,
-            ),
-            NodeKind::CameraPreview { controller, kind } => {
-                Node::camera_preview(*controller, *kind)
-            }
-            NodeKind::Field {
-                label,
-                value,
-                action,
-            } => Node::field(
-                label.clone(),
-                self.materialise_text(value, item),
-                action
-                    .as_ref()
-                    .map(|action| self.materialise_action(action, item)),
-            ),
-            NodeKind::Tabs { state, tabs } => Node::tabs(
-                *state,
-                tabs.iter()
-                    .map(|tab| {
-                        let mut screens = self.materialise(&tab.screen, item);
-                        assert_eq!(screens.len(), 1, "a tab has exactly one screen");
-                        Tab::new(tab.icon.clone(), tab.action.clone(), screens.remove(0))
-                    })
-                    .collect(),
-            ),
-            NodeKind::Navigator { routes, back } => Node::navigator(
-                routes
-                    .iter()
-                    .map(|route| {
-                        let mut screens = self.materialise(&route.screen, item);
-                        assert_eq!(screens.len(), 1, "a route has exactly one screen");
-                        Route::new(route.path.clone(), screens.remove(0))
-                    })
-                    .collect(),
-                back.clone(),
-            ),
-            NodeKind::Conditional {
-                condition,
-                consequent,
-                alternate,
             } => {
-                let enabled = self.condition_enabled(condition);
-                return if enabled {
-                    self.materialise(consequent, item)
-                } else {
-                    alternate
-                        .as_deref()
-                        .map_or_else(Vec::new, |alternate| self.materialise(alternate, item))
-                };
+                let enabled = *value;
+                self.layout_toggle(
+                    label,
+                    enabled,
+                    action.as_ref(),
+                    off.clone(),
+                    on.clone(),
+                    rect,
+                );
             }
-            NodeKind::ForEach {
-                collection,
-                template,
-            } => {
-                let items = match collection {
-                    Collection::State(state) => match self.state.get(state.0) {
-                        Some(StateValue::List(items)) => items.clone(),
-                        _ => return Vec::new(),
-                    },
-                    Collection::Resource(resource, path) => match self
-                        .resource_field_value(*resource, &ResourceField::Value(path.clone()))
-                    {
-                        Some(StateValue::List(items)) => items,
-                        _ => return Vec::new(),
-                    },
-                    Collection::Controller(controller, path) => {
-                        match self.controller_field_value(*controller, path) {
-                            Some(StateValue::List(items)) => items.clone(),
-                            _ => return Vec::new(),
-                        }
-                    }
-                };
-                if items.is_empty() {
-                    return Vec::new();
-                }
-                return items
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(index, value)| {
-                        self.materialise(template, Some(MaterialisedItem { value, index }))
-                    })
-                    .collect();
-            }
-            _ => node.clone(),
-        };
-        let mut node = node;
-        node.identity = identity;
-        vec![node]
-    }
-
-    fn materialise_vertical_children(
-        &self,
-        children: &[Node],
-        item: Option<MaterialisedItem<'_>>,
-    ) -> Vec<Node> {
-        children
-            .iter()
-            .flat_map(|child| {
-                if let NodeKind::ForEach { template, .. } = &child.kind
-                    && virtualisable_template(template)
-                {
-                    vec![child.clone()]
-                } else {
-                    self.materialise(child, item)
-                }
-            })
-            .collect()
-    }
-
-    fn materialise_children(
-        &self,
-        children: &[Node],
-        item: Option<MaterialisedItem<'_>>,
-    ) -> Vec<Node> {
-        children
-            .iter()
-            .flat_map(|child| self.materialise(child, item))
-            .collect()
-    }
-
-    fn materialise_text(
-        &self,
-        parts: &[TextPart],
-        item: Option<MaterialisedItem<'_>>,
-    ) -> Vec<TextPart> {
-        parts
-            .iter()
-            .map(|part| match part {
-                TextPart::Item(path) => {
-                    let item = item.expect("list-item text has a mapped item");
-                    let value =
-                        item_at_path(item.value, path).expect("compiled list-item path is valid");
-                    TextPart::literal(value.to_string())
-                }
-                TextPart::Value(value) => TextPart::Value(self.materialise_value(value, item)),
-                part => part.clone(),
-            })
-            .collect()
-    }
-
-    fn materialise_action(&self, action: &Action, item: Option<MaterialisedItem<'_>>) -> Action {
-        match action {
-            Action::SetList { state, value } => Action::SetList {
-                state: *state,
-                value: self.materialise_value(value, item),
-            },
-            Action::AppendList { state, value } => Action::AppendList {
-                state: *state,
-                value: self.materialise_value(value, item),
-            },
-            Action::RemoveCurrentListItem { state } => Action::RemoveListItem {
-                state: *state,
-                index: item.expect("list action has a mapped item").index,
-            },
-            Action::ReplaceCurrentListItem { state, value } => Action::ReplaceListItem {
-                state: *state,
-                index: item.expect("list action has a mapped item").index,
-                value: self.materialise_value(value, item),
-            },
-            Action::Controller {
-                controller,
-                operation,
-                payload,
-            } => Action::Controller {
-                controller: *controller,
-                operation: operation.clone(),
-                payload: self.materialise_payload(payload, item),
-            },
-            Action::Native { operation } => Action::Native {
-                operation: NativeOperation::templated(
-                    operation.module.clone(),
-                    operation.operation.clone(),
-                    self.materialise_payload(&operation.payload, item),
-                    operation.timeout_ms,
-                ),
-            },
-            Action::Navigate { path, params } => Action::Navigate {
-                path: path.clone(),
-                params: params
-                    .iter()
-                    .map(|(name, value)| (name.clone(), self.materialise_value(value, item)))
-                    .collect(),
-            },
-            Action::Sequence(actions) => Action::Sequence(
-                actions
-                    .iter()
-                    .map(|action| self.materialise_action(action, item))
-                    .collect(),
-            ),
-            action => action.clone(),
-        }
-    }
-
-    fn materialise_payload(
-        &self,
-        payload: &[PayloadPart],
-        item: Option<MaterialisedItem<'_>>,
-    ) -> Vec<PayloadPart> {
-        payload
-            .iter()
-            .map(|part| match part {
-                PayloadPart::Item(path) => {
-                    let value = item
-                        .and_then(|item| item_at_path(item.value, path))
-                        .expect("compiled list-item payload path is valid");
-                    PayloadPart::Literal(
-                        json_value(value).expect("list-item payload is valid JSON"),
-                    )
-                }
-                part => part.clone(),
-            })
-            .collect()
-    }
-
-    fn materialise_value(&self, value: &Value, item: Option<MaterialisedItem<'_>>) -> Value {
-        match value {
-            Value::Item(path) => value_from_state(
-                item.and_then(|item| item_at_path(item.value, path))
-                    .expect("compiled list-item path is valid"),
-            ),
-            Value::List(values) => Value::List(
-                values
-                    .iter()
-                    .map(|value| self.materialise_value(value, item))
-                    .collect(),
-            ),
-            Value::Object(fields) => Value::Object(
-                fields
-                    .iter()
-                    .map(|(name, value)| (name.clone(), self.materialise_value(value, item)))
-                    .collect(),
-            ),
-            Value::Binary {
-                left,
-                operator,
-                right,
-            } => Value::Binary {
-                left: Box::new(self.materialise_value(left, item)),
-                operator: *operator,
-                right: Box::new(self.materialise_value(right, item)),
-            },
-            value => value.clone(),
+            NodeKind::Tabs { value, tabs } => self.layout_tabs(value, tabs, rect),
         }
     }
 
@@ -4790,10 +2909,14 @@ impl Engine {
         children: &[Node],
         title: Option<&str>,
         centred: bool,
+        footer: Option<&(String, Option<Action>)>,
+        pinned_header: bool,
+        pinned_footer: bool,
+        right_action: Option<&(Mask, Action)>,
         bottom_inset: bool,
         rect: Rect,
     ) {
-        let has_header = title.is_some() || self.back_icon.is_some();
+        let has_header = title.is_some() || self.back_icon.is_some() || right_action.is_some();
         let header_height = if has_header {
             self.scaled(HEADER_HEIGHT)
         } else {
@@ -4812,9 +2935,26 @@ impl Engine {
                 Action::Back,
             );
         }
+        if let Some((icon, action)) = right_action {
+            let action_rect = Rect {
+                x: rect.x + rect.width - header_inset - header_button_size,
+                y: rect.y + (header_height - header_button_size) / 2.0,
+                width: header_button_size,
+                height: header_button_size,
+            };
+            self.push_hit_region(action_rect, action.clone());
+            let size = self.scaled(HEADER_BACK_ICON_SIZE);
+            self.scene.masks.push(MaskRun {
+                mask: icon.clone(),
+                rect: Rect { x: action_rect.x + (header_button_size - size) / 2.0, y: action_rect.y + (header_button_size - size) / 2.0, width: size, height: size },
+                clip: self.clip,
+                colour: self.scene.colour(Colour::WHITE),
+                scrolling: false,
+            });
+        }
         if let Some(title) = title {
             let title_inset = header_inset
-                + if self.back_icon.is_some() {
+                + if self.back_icon.is_some() || right_action.is_some() {
                     header_button_size
                 } else {
                     0.0
@@ -4832,22 +2972,97 @@ impl Engine {
                 rect: title_rect,
                 clip: self.clip,
                 font_size,
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 align: TextAlign::Centre,
                 scrolling: self.scrolling,
             });
         }
 
+        let content_inset = if pinned_footer { 16.0 } else { CONTENT_INSET_START };
+        let scroll_track_end = SCROLL_TRACK_END + content_inset - CONTENT_INSET_START;
+        let scroll_content_inset_end = scroll_track_end * 2.0 - SCROLL_TRACK_WIDTH;
+
+        let (children, rect) = if pinned_footer {
+            let (composer, messages) = children.split_last().expect("screen footer requires a child");
+            let inset = self.scaled(content_inset);
+            let available = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), height: (rect.height - header_height).max(0.0), ..rect };
+            let size = self.measure(composer, available);
+            let bottom = if self.keyboard_inset > 0 { 0.0 } else { self.scaled(CONTENT_BOTTOM) };
+            let height = size.height + bottom + self.scaled(10.0);
+            self.layout(composer, Rect { y: rect.y + rect.height - bottom - size.height, height: size.height, ..available });
+            (messages, Rect { height: (rect.height - height).max(header_height), ..rect })
+        } else { (children, rect) };
+
+        let rect = if let Some((label, action)) = footer {
+            let font_size = self.scaled_font(40.0);
+            let inset = self.scaled(CONTENT_INSET_START);
+            let available_width = (rect.width - inset * 2.0).max(0.0);
+            let lines = self.wrap_text(label, font_size, available_width, None);
+            let line_height = self.text_line_height(40.0, lines.len());
+            let height = (line_height * lines.len() as f32 + self.scaled(CONTENT_BOTTOM))
+                .min((rect.height - header_height).max(0.0));
+            let action_rect = Rect {
+                x: rect.x + inset,
+                y: rect.y + rect.height - height,
+                width: available_width,
+                height,
+            };
+            let scaled = self.font.as_scaled(PxScale::from(font_size));
+            let baseline = (line_height - scaled.height()) / 2.0 + scaled.ascent();
+            let ink_bottom = lines.last().into_iter().flat_map(|line| line.text.chars())
+                .filter_map(|character| self.font.outline_glyph(self.font.glyph_id(character).with_scale(font_size)))
+                .map(|glyph| glyph.px_bounds().max.y)
+                .reduce(f32::max)
+                .unwrap_or(0.0);
+            let baseline_shift = line_height - baseline - ink_bottom;
+            for (index, line) in lines.iter().enumerate() {
+                self.scene.text.push(TextRun {
+                    text: line.text.clone(),
+                    rect: Rect {
+                        y: action_rect.y + index as f32 * line_height + baseline_shift,
+                        height: line_height,
+                        ..action_rect
+                    },
+                    clip: action_rect.intersection(self.clip),
+                    font_size,
+                    colour: self.scene.colour(if action.is_some() { Colour::WHITE } else { Colour::MUTED }),
+                    align: TextAlign::Centre,
+                    scrolling: false,
+                });
+            }
+            if let Some(action) = action {
+                self.push_hit_region(action_rect, action.clone());
+            }
+            Rect { height: rect.height - height, ..rect }
+        } else {
+            rect
+        };
+
+        let (children, header_height) = if pinned_header && !children.is_empty() {
+            let top = self.scaled(if has_header { HEADER_CONTENT_TOP } else { CONTENT_TOP });
+            let available = Rect {
+                x: rect.x + self.scaled(CONTENT_INSET_START),
+                y: rect.y + header_height + top,
+                width: (rect.width - self.scaled(CONTENT_INSET_START + CONTENT_INSET_END)).max(0.0),
+                height: (rect.height - header_height - top - self.scaled(CONTENT_BOTTOM)).max(0.0),
+            };
+            let size = self.measure(&children[0], available);
+            self.layout(&children[0], Rect { height: size.height, ..available });
+            (&children[1..], header_height + size.height + self.scaled(CONTENT_GAP))
+        } else {
+            (children, header_height)
+        };
+
         let fills_remaining = children.len() == 1 && fills_remaining_screen(&children[0]);
         let inset_start = if fills_remaining {
             0.0
         } else {
-            self.scaled(CONTENT_INSET_START)
+            self.scaled(content_inset)
         };
         let inset_end = if fills_remaining {
             0.0
         } else {
-            self.scaled(CONTENT_INSET_END)
+            self.scaled(content_inset)
         };
         let first_child_is_full_bleed = children.first().is_some_and(full_bleed_image);
         let inset_top = if fills_remaining || first_child_is_full_bleed {
@@ -4857,7 +3072,7 @@ impl Engine {
         } else {
             self.scaled(CONTENT_TOP)
         };
-        let requested_bottom_inset = if bottom_inset && !fills_remaining {
+        let requested_bottom_inset = if bottom_inset && !fills_remaining && !pinned_footer {
             self.scaled(CONTENT_BOTTOM)
         } else {
             0.0
@@ -4879,12 +3094,9 @@ impl Engine {
         };
         let (mut sizes, mut content_height) = if fills_remaining {
             (
-                vec![VerticalMeasure {
-                    size: MeasuredSize {
-                        width: unbounded_content.width,
-                        height: unbounded_content.height,
-                    },
-                    entries: 1,
+                vec![MeasuredSize {
+                    width: unbounded_content.width,
+                    height: unbounded_content.height,
                 }],
                 unbounded_content.height,
             )
@@ -4903,7 +3115,7 @@ impl Engine {
         };
         if content_height > content.height && !fills_remaining {
             unbounded_content.width =
-                (rect.width - inset_start - self.scaled(SCROLL_CONTENT_INSET_END)).max(0.0);
+                (rect.width - inset_start - self.scaled(scroll_content_inset_end)).max(0.0);
             (sizes, content_height) = self.measure_screen_content(children, unbounded_content, gap);
             inset_bottom = if first_child_is_full_bleed {
                 requested_bottom_inset
@@ -4941,7 +3153,7 @@ impl Engine {
             children,
             sizes,
             gap,
-            Alignment::Stretch,
+            if centred { Alignment::Centre } else { Alignment::Stretch },
             if centred && self.scroll_max == 0.0 {
                 Justification::Centre
             } else {
@@ -4959,7 +3171,7 @@ impl Engine {
         if self.scroll_max > 0.0 {
             let track_width = self.scaled(SCROLL_TRACK_WIDTH);
             let thumb_width = self.scaled(SCROLL_THUMB_WIDTH);
-            let track_x = rect.x + rect.width - self.scaled(SCROLL_TRACK_END);
+            let track_x = rect.x + rect.width - self.scaled(scroll_track_end);
             self.scene.scroll_bar = Some(ScrollBar {
                 track: Rect {
                     x: track_x,
@@ -4982,7 +3194,7 @@ impl Engine {
                     height: icon_size,
                 },
                 clip: self.clip,
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
         }
@@ -4993,10 +3205,10 @@ impl Engine {
         children: &[Node],
         available: Rect,
         gap: f32,
-    ) -> (Vec<VerticalMeasure>, f32) {
+    ) -> (Vec<MeasuredSize>, f32) {
         let sizes = self.measure_vertical_children(children, available);
-        let entries = sizes.iter().map(|measure| measure.entries).sum::<usize>();
-        let height = sizes.iter().map(|measure| measure.size.height).sum::<f32>()
+        let entries = sizes.len();
+        let height = sizes.iter().map(|measure| measure.height).sum::<f32>()
             + gap * entries.saturating_sub(1) as f32;
         (sizes, height)
     }
@@ -5033,27 +3245,18 @@ impl Engine {
     fn layout_vertical_children_with_sizes(
         &mut self,
         children: &[Node],
-        sizes: Vec<VerticalMeasure>,
+        sizes: Vec<MeasuredSize>,
         gap: f32,
         align: Alignment,
         justify: Justification,
         rect: Rect,
     ) {
-        let entries = sizes.iter().map(|measure| measure.entries).sum::<usize>();
-        let content_height = sizes.iter().map(|measure| measure.size.height).sum::<f32>()
+        let entries = sizes.len();
+        let content_height = sizes.iter().map(|measure| measure.height).sum::<f32>()
             + gap * entries.saturating_sub(1) as f32;
         let (mut cursor, actual_gap) =
             distribution(rect.y, rect.height, content_height, gap, entries, justify);
-        for (child, measure) in children.iter().zip(sizes) {
-            if measure.entries == 0 {
-                continue;
-            }
-            let size = measure.size;
-            if matches!(&child.kind, NodeKind::ForEach { .. }) {
-                self.layout_virtual_list(child, cursor, actual_gap, align, rect);
-                cursor += size.height + actual_gap * measure.entries as f32;
-                continue;
-            }
+        for (child, size) in children.iter().zip(sizes) {
             let bleed = full_bleed_image(child);
             let width = if bleed {
                 self.viewport.width as f32
@@ -5062,8 +3265,20 @@ impl Engine {
             } else {
                 size.width.min(rect.width)
             };
+            let page_centred_image = matches!(child.kind, NodeKind::Image { .. })
+                && matches!(align, Alignment::Centre | Alignment::Stretch)
+                && self.scroll_max > 0.0
+                && (rect.x - self.scaled(CONTENT_INSET_START)).abs() < 1.0
+                && (rect.width
+                    - (self.viewport.width as f32
+                        - self.scaled(CONTENT_INSET_START)
+                        - self.scaled(SCROLL_CONTENT_INSET_END)))
+                .abs()
+                    < 1.0;
             let x = if bleed {
                 0.0
+            } else if page_centred_image {
+                (self.viewport.width as f32 - width) / 2.0
             } else {
                 cross_position(rect.x, rect.width, width, align)
             };
@@ -5077,87 +3292,6 @@ impl Engine {
                 },
             );
             cursor += size.height + actual_gap;
-        }
-    }
-
-    fn layout_virtual_list(
-        &mut self,
-        node: &Node,
-        top: f32,
-        gap: f32,
-        align: Alignment,
-        available: Rect,
-    ) {
-        let NodeKind::ForEach {
-            collection,
-            template,
-        } = &node.kind
-        else {
-            unreachable!("only list nodes have virtual list layout")
-        };
-        let Some(layout) = self.virtual_lists.get(&node.identity).copied() else {
-            return;
-        };
-        let stride = layout.row_height + gap;
-        if layout.item_count == 0 || stride <= 0.0 {
-            return;
-        }
-        let overscan = 1.0;
-        let first = (((self.clip.y - top) / stride).floor() - overscan)
-            .max(0.0)
-            .min(layout.item_count as f32) as usize;
-        let last = ((((self.clip.y + self.clip.height - top) / stride).ceil() + overscan)
-            .max(0.0)
-            .min(layout.item_count as f32)) as usize;
-
-        for index in first..last {
-            let Some(item) = self
-                .collection_items(collection)
-                .and_then(|items| items.get(index))
-                .cloned()
-            else {
-                break;
-            };
-            let mut row = self.materialise(
-                template,
-                Some(MaterialisedItem {
-                    value: &item,
-                    index,
-                }),
-            );
-            assert_eq!(row.len(), 1, "a virtual list template has one root");
-            let row = row.remove(0);
-            let row_y = top + stride * index as f32;
-            let size = self.measure(
-                &row,
-                Rect {
-                    y: row_y,
-                    height: layout.row_height,
-                    ..available
-                },
-            );
-            let bleed = full_bleed_image(&row);
-            let width = if bleed {
-                self.viewport.width as f32
-            } else if align == Alignment::Stretch && stretchable(&row) {
-                available.width
-            } else {
-                size.width.min(available.width)
-            };
-            let x = if bleed {
-                0.0
-            } else {
-                cross_position(available.x, available.width, width, align)
-            };
-            self.layout(
-                &row,
-                Rect {
-                    x,
-                    y: row_y,
-                    width,
-                    height: layout.row_height,
-                },
-            );
         }
     }
 
@@ -5205,15 +3339,16 @@ impl Engine {
 
     fn layout_button(
         &mut self,
-        label: &[TextPart],
+        label: &str,
         icon: Option<Mask>,
         underline: bool,
         action: &Option<Action>,
         rect: Rect,
     ) {
+        let colour = self.scene.colour(if action.is_some() { Colour::WHITE } else { Colour::MUTED });
         let mut text_x = rect.x;
         if let Some(mask) = icon {
-            let size = self.scaled(BUTTON_ICON_SIZE);
+            let size = self.scaled(if label.is_empty() { BUTTON_HEIGHT } else { BUTTON_ICON_SIZE });
             self.scene.masks.push(MaskRun {
                 mask,
                 rect: Rect {
@@ -5223,10 +3358,10 @@ impl Engine {
                     height: size,
                 },
                 clip: self.clip,
-                colour: Colour::WHITE,
+                colour,
                 scrolling: self.scrolling,
             });
-            text_x += size + self.scaled(BUTTON_ICON_GAP);
+            text_x += size + if label.is_empty() { 0.0 } else { self.scaled(BUTTON_ICON_GAP) };
         }
 
         let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
@@ -5236,15 +3371,14 @@ impl Engine {
             width: (rect.x + rect.width - text_x).max(0.0),
             height: (rect.height - self.scaled(1.0)).max(0.0),
         };
-        let label = self.resolve_text(label);
-        let visible_label = self.ellipsize(&label, font_size, text_rect.width);
+        let visible_label = self.ellipsize(label, font_size, text_rect.width);
         let text_width = self.text_width(&visible_label, font_size);
         self.scene.text.push(TextRun {
             text: visible_label,
             rect: text_rect,
             clip: self.clip,
             font_size,
-            colour: Colour::WHITE,
+            colour,
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
@@ -5258,7 +3392,7 @@ impl Engine {
                     height: underline_height,
                 },
                 clip: self.clip,
-                colour: Colour::WHITE,
+                colour,
                 scrolling: self.scrolling,
             });
         }
@@ -5267,13 +3401,39 @@ impl Engine {
         }
     }
 
-    fn layout_field(
-        &mut self,
-        label: &str,
-        value: &[TextPart],
-        action: &Option<Action>,
-        rect: Rect,
-    ) {
+    fn layout_text(&mut self, text: &str, font_size: Option<f32>, align: TextAlign, max_lines: Option<u32>, rect: Rect) {
+        let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
+        let font_size = self.scaled_font(size);
+        let lines = self.wrap_text(text, font_size, rect.width, max_lines);
+        let line_height = self.text_line_height(size, lines.len());
+        for (index, line) in lines.into_iter().enumerate() {
+            let mut line_rect = Rect {
+                y: rect.y + line_height * index as f32,
+                height: line_height
+                    .min((rect.height - line_height * index as f32).max(0.0)),
+                ..rect
+            };
+            if size == DEFAULT_TEXT_SIZE {
+                line_rect.y += self.scaled(1.0);
+                line_rect.height = (line_rect.height - self.scaled(1.0)).max(0.0);
+            }
+            self.scene.text.push(TextRun {
+                text: line.text,
+                rect: line_rect,
+                clip: self.clip,
+                font_size,
+                colour: self.scene.colour(Colour::WHITE),
+                align: if align == TextAlign::Justify && !line.wrapped {
+                    TextAlign::Start
+                } else {
+                    align
+                },
+                scrolling: self.scrolling,
+            });
+        }
+    }
+
+    fn layout_field(&mut self, label: &str, value: &str, action: &Option<Action>, rect: Rect) {
         let label_height = self.scaled(FIELD_LABEL_HEIGHT).min(rect.height);
         let label_font_size = self.scaled_font(FIELD_LABEL_SIZE);
         self.scene.text.push(TextRun {
@@ -5284,15 +3444,15 @@ impl Engine {
             },
             clip: self.clip,
             font_size: label_font_size,
-            colour: Colour::WHITE,
+            colour: self.scene.colour(Colour::WHITE),
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
-        self.layout_button(
+        self.layout_text(
             value,
             None,
-            false,
-            &None,
+            TextAlign::Start,
+            None,
             Rect {
                 y: rect.y + label_height,
                 height: (rect.height - label_height).max(0.0),
@@ -5304,6 +3464,73 @@ impl Engine {
         }
     }
 
+    fn input_lines(&self, value: &str, width: f32) -> Vec<(usize, usize)> {
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let mut lines = Vec::new();
+        let mut offset = 0;
+        for paragraph in value.split('\n') {
+            let mut start = 0;
+            if paragraph.is_empty() { lines.push((offset, offset)); }
+            while start < paragraph.len() {
+                let end = self.forced_text_break(paragraph, start, font_size, width);
+                lines.push((offset + start, offset + end));
+                start = end;
+            }
+            offset += paragraph.len() + 1;
+        }
+        lines
+    }
+
+    fn layout_multiline_input(&mut self, placeholder: &str, state: StateId, rect: Rect, trailing_width: f32) {
+        let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.clone(), _ => String::new() };
+        let focused = self.focused_input == Some(state);
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
+        let cursor_width = self.scaled(1.0);
+        let viewport = Rect { width: (rect.width - trailing_width - cursor_width).max(0.0), height: (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0), ..rect };
+        let lines = self.input_lines(&value, viewport.width);
+        let cursor = if focused { self.focused_input_cursor } else { value.len() };
+        let cursor_line = lines.iter().rposition(|(start, _)| *start <= cursor).unwrap_or(0);
+        let scroll_max = (lines.len() as f32 * line_height - viewport.height).max(0.0);
+        let scroll_offset = self.text_input_scroll_offsets.get(&state).copied()
+            .unwrap_or((cursor_line + 1) as f32 * line_height - viewport.height)
+            .clamp(0.0, scroll_max);
+        let clip = viewport.intersection(self.clip);
+        let text_run = self.scene.text.len();
+        let showing_placeholder = value.is_empty() && !focused;
+        for (index, (start, end)) in lines.iter().copied().enumerate() {
+            self.scene.text.push(TextRun {
+                text: if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
+                rect: Rect { y: viewport.y + index as f32 * line_height - scroll_offset, height: line_height, ..viewport },
+                clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
+                align: TextAlign::Start, scrolling: self.scrolling,
+            });
+        }
+        if focused {
+            let (start, end) = lines[cursor_line];
+            self.scene.text_cursor = Some(Quad {
+                rect: Rect {
+                    x: viewport.x + self.text_width(&value[start..cursor.min(end)], font_size),
+                    y: viewport.y + cursor_line as f32 * line_height - scroll_offset + self.scaled(2.0),
+                    width: cursor_width, height: (line_height - self.scaled(4.0)).max(0.0),
+                },
+                clip: Rect { width: viewport.width + cursor_width, ..viewport }.intersection(self.clip),
+                colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+            });
+        }
+        let underline_height = self.control_line_height();
+        self.scene.quads.push(Quad {
+            rect: Rect { y: (rect.y + rect.height).round() - underline_height, height: underline_height, ..rect },
+            clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+        });
+        self.text_inputs.push(TextInputLayout {
+            state, action: TextInputAction::Return, text_run, rect, text_rect: viewport,
+            hit_rect: Rect { width: (rect.width - trailing_width).max(0.0), ..rect }.intersection(self.clip),
+            scroll_offset, scroll_max, scrolling: self.scrolling,
+        });
+        self.push_hit_region(rect, Action::FocusTextInput { state, action: TextInputAction::Return });
+    }
+
     fn layout_text_input(
         &mut self,
         placeholder: &str,
@@ -5311,32 +3538,38 @@ impl Engine {
         action: TextInputAction,
         clear: &Mask,
         rect: Rect,
+        trailing_width: f32,
     ) {
+        if action == TextInputAction::Return {
+            self.layout_multiline_input(placeholder, state, rect, trailing_width);
+            return;
+        }
         let value = match self.state.get(state.0) {
             Some(StateValue::String(value)) => value.clone(),
             _ => String::new(),
         };
         let focused = self.focused_input == Some(state);
-        let text = if value.is_empty() && !focused {
+        let showing_placeholder = value.is_empty() && !focused;
+        let text = if showing_placeholder {
             placeholder
         } else {
             &value
         };
         let text_height = (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0);
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let clear_button_width = if value.is_empty() {
+        let clear_button_width = if value.is_empty() || trailing_width > 0.0 {
             0.0
         } else {
             self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE + TEXT_INPUT_CLEAR_PADDING * 2.0)
         };
-        let clear_gap = if value.is_empty() {
+        let clear_gap = if value.is_empty() || trailing_width > 0.0 {
             0.0
         } else {
             self.scaled(TEXT_INPUT_CLEAR_GAP)
         };
         let cursor_width = self.scaled(1.0);
         let text_viewport = Rect {
-            width: (rect.width - clear_button_width - clear_gap - cursor_width).max(0.0),
+            width: (rect.width - trailing_width - clear_button_width - clear_gap - cursor_width).max(0.0),
             height: text_height,
             ..rect
         };
@@ -5365,7 +3598,7 @@ impl Engine {
             },
             clip: text_viewport.intersection(self.clip),
             font_size,
-            colour: Colour::WHITE,
+            colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
@@ -5384,7 +3617,7 @@ impl Engine {
                     height: (text_height - self.scaled(4.0)).max(0.0),
                 },
                 clip: cursor_clip.intersection(self.clip),
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
         }
@@ -5397,7 +3630,7 @@ impl Engine {
                 height: underline_height,
             },
             clip: self.clip,
-            colour: Colour::WHITE,
+            colour: self.scene.colour(Colour::WHITE),
             scrolling: self.scrolling,
         });
         self.text_inputs.push(TextInputLayout {
@@ -5405,17 +3638,18 @@ impl Engine {
             action,
             text_run,
             hit_rect: Rect {
-                width: (rect.width - clear_button_width).max(0.0),
+                width: (rect.width - trailing_width - clear_button_width).max(0.0),
                 ..rect
             }
             .intersection(self.clip),
             text_rect: text_viewport,
+            rect,
             scroll_offset,
             scroll_max,
             scrolling: self.scrolling,
         });
         self.push_hit_region(rect, Action::FocusTextInput { state, action });
-        if !value.is_empty() {
+        if !value.is_empty() && trailing_width == 0.0 {
             let icon_size = self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE);
             let clear_rect = Rect {
                 x: rect.x + rect.width - clear_button_width,
@@ -5432,32 +3666,22 @@ impl Engine {
                     height: icon_size,
                 },
                 clip: rect.intersection(self.clip),
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
-            self.push_hit_region(
-                clear_rect,
-                Action::Sequence(vec![
-                    Action::SetValue {
-                        state,
-                        value: Value::String(String::new()),
-                    },
-                    Action::FocusTextInput { state, action },
-                ]),
-            );
+            self.push_hit_region(clear_rect, Action::ClearInput { state });
         }
     }
 
     fn layout_toggle(
         &mut self,
         label: &str,
-        state: StateId,
-        action: &Action,
+        enabled: bool,
+        action: Option<&Action>,
         off: Mask,
         on: Mask,
         rect: Rect,
     ) {
-        let enabled = matches!(self.state.get(state.0), Some(StateValue::Bool(true)));
         let icon_size = self.scaled(TOGGLE_ICON_SIZE);
         let mask_padding = self.scaled(TOGGLE_MASK_PADDING);
         let mask_size = icon_size + mask_padding * 2.0;
@@ -5475,7 +3699,7 @@ impl Engine {
                     height: line_height,
                 },
                 clip: self.clip,
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
             x += line_width;
@@ -5488,7 +3712,7 @@ impl Engine {
                     height: mask_size,
                 },
                 clip: self.clip,
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
         } else {
@@ -5501,7 +3725,7 @@ impl Engine {
                     height: mask_size,
                 },
                 clip: self.clip,
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
             x += icon_size;
@@ -5513,7 +3737,7 @@ impl Engine {
                     height: line_height,
                 },
                 clip: self.clip,
-                colour: Colour::WHITE,
+                colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
         }
@@ -5532,25 +3756,32 @@ impl Engine {
             rect: label_rect,
             clip: self.clip,
             font_size: label_font_size,
-            colour: Colour::WHITE,
+            colour: self.scene.colour(Colour::WHITE),
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
-        self.push_hit_region(rect, action.clone());
+        if let Some(action) = action {
+            self.push_hit_region(rect, action.clone());
+        }
     }
 
-    fn layout_tabs(&mut self, state: StateId, tabs: &[Tab], rect: Rect) {
-        let nav_height = self.scaled(NAV_HEIGHT).min(rect.height);
+    fn layout_tabs(&mut self, value: &usize, tabs: &[Tab], rect: Rect) {
+        let keyboard_visible = self.text_input_active();
+        let nav_height = if keyboard_visible {
+            0.0
+        } else {
+            self.scaled(NAV_HEIGHT).min(rect.height)
+        };
         let content = Rect {
             height: (rect.height - nav_height).max(0.0),
             ..rect
         };
-        let active = self.active_tab_index(state, tabs.len()).unwrap_or(0);
+        let active = self.active_tab_index(value, tabs.len()).unwrap_or(0);
         if let Some(tab) = tabs.get(active) {
             self.layout_node(&tab.screen, content, false);
         }
 
-        if tabs.is_empty() {
+        if keyboard_visible || tabs.is_empty() {
             return;
         }
         let nav_y = rect.y + rect.height - nav_height;
@@ -5600,9 +3831,9 @@ impl Engine {
                 },
                 clip: self.clip,
                 colour: if index == active {
-                    Colour::WHITE
+                    self.scene.colour(Colour::WHITE)
                 } else {
-                    Colour::MUTED
+                    self.scene.colour(Colour::MUTED)
                 },
                 scrolling: self.scrolling,
             });
@@ -5610,53 +3841,8 @@ impl Engine {
         }
     }
 
-    fn active_tab_index(&self, state: StateId, tab_count: usize) -> Option<usize> {
-        if tab_count == 0 {
-            return None;
-        }
-        let active = match self.state.get(state.0) {
-            Some(StateValue::Number(value)) if value.fract() == 0.0 && *value >= 0.0 => {
-                *value as usize
-            }
-            _ => 0,
-        };
-        Some(active.min(tab_count - 1))
-    }
-
-    fn resolve_text(&self, parts: &[TextPart]) -> String {
-        let mut text = String::new();
-        for part in parts {
-            match part {
-                TextPart::Literal(value) => text.push_str(value),
-                TextPart::State(state) => {
-                    if let Some(value) = self.state.get(state.0) {
-                        text.push_str(&value.to_string());
-                    }
-                }
-                TextPart::Resource(resource, field) => {
-                    if let Some(value) = self.resource_field_value(*resource, field) {
-                        text.push_str(&value.to_string());
-                    }
-                }
-                TextPart::Controller(controller, path) => {
-                    if let Some(value) = self.controller_field_value(*controller, path) {
-                        text.push_str(&value.to_string());
-                    }
-                }
-                TextPart::ListLength(state) => {
-                    if let Some(StateValue::List(value)) = self.state.get(state.0) {
-                        text.push_str(&value.len().to_string());
-                    }
-                }
-                TextPart::Item(_) => unreachable!("list items are materialised before layout"),
-                TextPart::Value(value) => {
-                    if let Some(value) = self.evaluate_value(value) {
-                        text.push_str(&value.to_string());
-                    }
-                }
-            }
-        }
-        text
+    fn active_tab_index(&self, value: &usize, tab_count: usize) -> Option<usize> {
+        (*value < tab_count).then_some(*value)
     }
 
     fn layout_image(
@@ -5674,41 +3860,15 @@ impl Engine {
         }
         let image = match source {
             ImageSource::Asset(asset) => Some(ImageData::Asset(asset.clone())),
-            ImageSource::Remote(parts) => {
-                let url = self.resolve_text(parts);
-                if url.is_empty() {
-                    fallback.cloned().map(ImageData::Asset)
-                } else {
-                    let key = RemoteImageKey {
-                        module: "network".to_owned(),
-                        url,
-                        width: rect.width.ceil().max(1.0) as u32,
-                        height: rect.height.ceil().max(1.0) as u32,
-                        fit,
-                    };
-                    self.visible_images.insert(key.clone());
-                    let loaded = match self.remote_images.get(&key) {
-                        Some(RemoteImageState::Ready(image)) => {
-                            Some(ImageData::Remote(image.clone()))
-                        }
-                        _ => None,
-                    };
-                    if loaded.is_none() {
-                        self.queue_remote_image(key);
-                    }
-                    loaded.or_else(|| fallback.cloned().map(ImageData::Asset))
-                }
-            }
-            ImageSource::Native(module, parts) => {
-                let source = self.resolve_text(parts);
+            ImageSource::Native(module, source) => {
                 if source.is_empty() {
                     fallback.cloned().map(ImageData::Asset)
                 } else {
                     let key = RemoteImageKey {
                         module: module.clone(),
-                        url: source,
+                        url: source.clone(),
                         width: rect.width.ceil().max(1.0) as u32,
-                        height: rect.height.ceil().max(1.0) as u32,
+                        height: if module == "barcode" { rect.width.ceil().max(1.0) as u32 } else { rect.height.ceil().max(1.0) as u32 },
                         fit,
                     };
                     self.visible_images.insert(key.clone());
@@ -5767,151 +3927,11 @@ impl Engine {
             colour: Colour::BLACK,
             scrolling: self.scrolling,
         });
-        if let Some(source) = self.camera_reviews.get(&controller).cloned() {
-            let action_height = self.scaled(CAMERA_REVIEW_ACTION_HEIGHT).min(rect.height);
-            self.layout_image(
-                NodeIdentity(0),
-                &ImageSource::Native("camera".to_owned(), vec![TextPart::Literal(source)]),
-                None,
-                ImageFit::Contain,
-                false,
-                Rect {
-                    height: (rect.height - action_height).max(0.0),
-                    ..rect
-                },
-            );
-            let actions = Rect {
-                y: rect.y + rect.height - action_height,
-                height: action_height,
-                ..rect
-            };
-            let half = actions.width / 2.0;
-            for (label, operation, action_rect) in [
-                (
-                    "Retake",
-                    "retake",
-                    Rect {
-                        width: half,
-                        ..actions
-                    },
-                ),
-                (
-                    "Use photo",
-                    "use-photo",
-                    Rect {
-                        x: actions.x + half,
-                        width: actions.width - half,
-                        ..actions
-                    },
-                ),
-            ] {
-                self.scene.text.push(TextRun {
-                    text: label.to_owned(),
-                    rect: action_rect,
-                    clip: self.clip,
-                    font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
-                    colour: Colour::WHITE,
-                    align: TextAlign::Centre,
-                    scrolling: self.scrolling,
-                });
-                self.push_hit_region(
-                    action_rect,
-                    Action::Controller {
-                        controller,
-                        operation: operation.to_owned(),
-                        payload: Vec::new(),
-                    },
-                );
-            }
-            return;
-        }
-
-        let status = self
-            .controller_field_value(controller, &["status".to_owned()])
-            .and_then(|value| match value {
-                StateValue::String(value) => Some(value),
-                _ => None,
-            })
-            .unwrap_or_else(|| "idle".to_owned());
-        if status == "ready" {
-            match kind {
-                CameraPreviewKind::Photo => {
-                    if let Some(StateValue::String(source)) = self.controller_field_value(
-                        controller,
-                        &["value".to_owned(), "source".to_owned()],
-                    ) {
-                        self.layout_image(
-                            NodeIdentity(0),
-                            &ImageSource::Native(
-                                "camera".to_owned(),
-                                vec![TextPart::Literal(source)],
-                            ),
-                            None,
-                            ImageFit::Contain,
-                            false,
-                            rect,
-                        );
-                    }
-                }
-                CameraPreviewKind::Scanner => {
-                    let text = self
-                        .controller_field_value(
-                            controller,
-                            &["value".to_owned(), "text".to_owned()],
-                        )
-                        .map_or_else(String::new, |value| value.to_string());
-                    self.scene.text.push(TextRun {
-                        text,
-                        rect,
-                        clip: self.clip,
-                        font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
-                        colour: Colour::WHITE,
-                        align: TextAlign::Centre,
-                        scrolling: self.scrolling,
-                    });
-                }
-            }
-            self.push_hit_region(
-                rect,
-                Action::Controller {
-                    controller,
-                    operation: "open".to_owned(),
-                    payload: Vec::new(),
-                },
-            );
-        } else if status == "error" {
-            let message = self
-                .controller_field_value(controller, &["error".to_owned(), "message".to_owned()])
-                .map_or_else(String::new, |value| value.to_string());
-            self.scene.text.push(TextRun {
-                text: message,
-                rect,
-                clip: self.clip,
-                font_size: self.scaled_font(DEFAULT_TEXT_SIZE),
-                colour: Colour::WHITE,
-                align: TextAlign::Centre,
-                scrolling: self.scrolling,
-            });
-            let retryable = self
-                .controller_field_value(controller, &["error".to_owned(), "retryable".to_owned()])
-                .is_some_and(|value| matches!(value, StateValue::Bool(true)));
-            if retryable {
-                self.push_hit_region(
-                    rect,
-                    Action::Controller {
-                        controller,
-                        operation: "open".to_owned(),
-                        payload: Vec::new(),
-                    },
-                );
-            }
-        } else {
-            self.scene.camera_portal = Some(CameraPortal {
-                controller,
-                kind,
-                rect,
-            });
-        }
+        self.scene.camera_portal = Some(CameraPortal {
+            controller,
+            kind,
+            rect,
+        });
     }
 
     fn wrap_text(
@@ -6089,47 +4109,21 @@ impl Engine {
     }
 
     fn push_hit_region(&mut self, rect: Rect, action: Action) {
+        self.push_press_region(rect, action, None);
+    }
+
+    fn push_press_region(&mut self, rect: Rect, action: Action, long_action: Option<Action>) {
         let rect = rect.intersection(self.clip);
         if rect.width > 0.0 && rect.height > 0.0 {
             self.hit_regions.push(HitRegion {
                 rect,
                 action,
+                long_action,
                 scrolling: self.scrolling,
+                preserve_input: false,
             });
         }
     }
-}
-
-fn evaluate_binary(
-    left: StateValue,
-    operator: ValueOperator,
-    right: StateValue,
-) -> Option<StateValue> {
-    match (left, operator, right) {
-        (StateValue::Number(left), ValueOperator::Add, StateValue::Number(right)) => {
-            finite_number(left + right)
-        }
-        (StateValue::Number(left), ValueOperator::Subtract, StateValue::Number(right)) => {
-            finite_number(left - right)
-        }
-        (StateValue::Number(left), ValueOperator::Multiply, StateValue::Number(right)) => {
-            finite_number(left * right)
-        }
-        (StateValue::Number(left), ValueOperator::Divide, StateValue::Number(right))
-            if right != 0.0 =>
-        {
-            finite_number(left / right)
-        }
-        (StateValue::String(mut left), ValueOperator::Add, StateValue::String(right)) => {
-            left.push_str(&right);
-            Some(StateValue::String(left))
-        }
-        _ => None,
-    }
-}
-
-fn finite_number(value: f64) -> Option<StateValue> {
-    value.is_finite().then_some(StateValue::Number(value))
 }
 
 fn text_cursor_boundary(text: &str, cursor: usize) -> usize {
@@ -6206,137 +4200,12 @@ fn skip_whitespace_start(text: &str, start: usize) -> usize {
         .map_or(text.len(), |(index, _)| start + index)
 }
 
-fn assign_node_identities(node: &mut Node, next: &mut usize) {
-    node.identity = NodeIdentity(*next);
-    *next = next.checked_add(1).expect("an app has too many nodes");
-    match &mut node.kind {
-        NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => {
-            for child in children {
-                assign_node_identities(child, next);
-            }
-        }
-        NodeKind::Tabs { tabs, .. } => {
-            for tab in tabs {
-                assign_node_identities(&mut tab.screen, next);
-            }
-        }
-        NodeKind::Navigator { routes, .. } => {
-            for route in routes {
-                assign_node_identities(&mut route.screen, next);
-            }
-        }
-        NodeKind::Conditional {
-            consequent,
-            alternate,
-            ..
-        } => {
-            assign_node_identities(consequent, next);
-            if let Some(alternate) = alternate {
-                assign_node_identities(alternate, next);
-            }
-        }
-        NodeKind::ForEach { template, .. } => assign_node_identities(template, next),
-        NodeKind::Text { .. }
-        | NodeKind::TextInput { .. }
-        | NodeKind::Button { .. }
-        | NodeKind::Field { .. }
-        | NodeKind::Icon { .. }
-        | NodeKind::Image { .. }
-        | NodeKind::CameraPreview { .. }
-        | NodeKind::Toggle { .. } => {}
-    }
-}
-
-fn subtree_contains_target(node: &Node, targets: &[NodeIdentity]) -> bool {
-    subtree_contains(node, |identity| targets.contains(&identity))
-}
-
-fn subtree_node_count(node: &Node) -> usize {
-    1 + match &node.kind {
-        NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => {
-            children.iter().map(subtree_node_count).sum()
-        }
-        NodeKind::Tabs { tabs, .. } => tabs.iter().map(|tab| subtree_node_count(&tab.screen)).sum(),
-        NodeKind::Navigator { routes, .. } => routes
-            .iter()
-            .map(|route| subtree_node_count(&route.screen))
-            .sum(),
-        NodeKind::Conditional {
-            consequent,
-            alternate,
-            ..
-        } => {
-            subtree_node_count(consequent)
-                + alternate.as_deref().map(subtree_node_count).unwrap_or(0)
-        }
-        NodeKind::ForEach { template, .. } => subtree_node_count(template),
-        NodeKind::Text { .. }
-        | NodeKind::TextInput { .. }
-        | NodeKind::Button { .. }
-        | NodeKind::Field { .. }
-        | NodeKind::Icon { .. }
-        | NodeKind::Image { .. }
-        | NodeKind::CameraPreview { .. }
-        | NodeKind::Toggle { .. } => 0,
-    }
-}
-
-fn subtree_contains_identity(node: &Node, identity: NodeIdentity) -> bool {
-    subtree_contains(node, |candidate| candidate == identity)
-}
-
-fn subtree_contains(node: &Node, predicate: impl Copy + Fn(NodeIdentity) -> bool) -> bool {
-    if predicate(node.identity) {
-        return true;
-    }
-    match &node.kind {
-        NodeKind::Screen { children, .. } | NodeKind::Stack { children, .. } => children
-            .iter()
-            .any(|child| subtree_contains(child, predicate)),
-        NodeKind::Tabs { tabs, .. } => tabs
-            .iter()
-            .any(|tab| subtree_contains(&tab.screen, predicate)),
-        NodeKind::Navigator { routes, .. } => routes
-            .iter()
-            .any(|route| subtree_contains(&route.screen, predicate)),
-        NodeKind::Conditional {
-            consequent,
-            alternate,
-            ..
-        } => {
-            subtree_contains(consequent, predicate)
-                || alternate
-                    .as_deref()
-                    .is_some_and(|node| subtree_contains(node, predicate))
-        }
-        NodeKind::ForEach { template, .. } => subtree_contains(template, predicate),
-        NodeKind::Text { .. }
-        | NodeKind::TextInput { .. }
-        | NodeKind::Button { .. }
-        | NodeKind::Field { .. }
-        | NodeKind::Icon { .. }
-        | NodeKind::Image { .. }
-        | NodeKind::CameraPreview { .. }
-        | NodeKind::Toggle { .. } => false,
-    }
-}
-
-fn virtualisable_template(node: &Node) -> bool {
-    match &node.kind {
-        NodeKind::Stack { children, .. } => children.iter().all(virtualisable_template),
-        NodeKind::Text { .. }
-        | NodeKind::TextInput { .. }
-        | NodeKind::Button { .. }
-        | NodeKind::Field { .. }
-        | NodeKind::Icon { .. }
-        | NodeKind::Image { .. }
-        | NodeKind::Toggle { .. } => true,
-        NodeKind::Screen { .. }
-        | NodeKind::CameraPreview { .. }
-        | NodeKind::Tabs { .. }
-        | NodeKind::Navigator { .. }
-        | NodeKind::Conditional { .. }
-        | NodeKind::ForEach { .. } => false,
+fn invert_colour(colour: Colour) -> Colour {
+    Colour {
+        red: 1.0 - colour.red,
+        green: 1.0 - colour.green,
+        blue: 1.0 - colour.blue,
+        ..colour
     }
 }
 
@@ -6345,220 +4214,6 @@ fn tone_colour(tone: Tone) -> Colour {
         Tone::Primary => Colour::WHITE,
         Tone::Muted => Colour::MUTED,
     }
-}
-
-fn item_at_path<'a>(mut item: &'a StateValue, path: &[String]) -> Option<&'a StateValue> {
-    for field in path {
-        let StateValue::Object(fields) = item else {
-            return None;
-        };
-        item = fields
-            .iter()
-            .find_map(|(name, value)| (name == field).then_some(value))?;
-    }
-    Some(item)
-}
-
-fn value_from_state(value: &StateValue) -> Value {
-    match value {
-        StateValue::Null => Value::Null,
-        StateValue::Number(value) => Value::Number(*value),
-        StateValue::Bool(value) => Value::Bool(*value),
-        StateValue::String(value) => Value::String(value.clone()),
-        StateValue::List(values) => Value::List(values.iter().map(value_from_state).collect()),
-        StateValue::Object(fields) => Value::Object(
-            fields
-                .iter()
-                .map(|(name, value)| (name.clone(), value_from_state(value)))
-                .collect(),
-        ),
-    }
-}
-
-fn json_value(value: &StateValue) -> Option<String> {
-    match value {
-        StateValue::Null => Some("null".to_owned()),
-        StateValue::Number(value) if value.is_finite() => serde_json::Number::from_f64(*value)
-            .map(serde_json::Value::Number)
-            .map(|value| value.to_string()),
-        StateValue::Bool(value) => Some(value.to_string()),
-        StateValue::String(value) => serde_json::to_string(value).ok(),
-        StateValue::Number(_) | StateValue::List(_) | StateValue::Object(_) => None,
-    }
-}
-
-fn state_from_json(
-    shape: &StateShape,
-    value: &serde_json::Value,
-    path: &str,
-) -> Result<StateValue, ResourceError> {
-    let mismatch = || {
-        ResourceError::new(
-            ResourceErrorKind::Protocol,
-            format!("response field {path} had the wrong type"),
-            false,
-        )
-    };
-    match shape {
-        StateShape::Null => value
-            .is_null()
-            .then_some(StateValue::Null)
-            .ok_or_else(mismatch),
-        StateShape::Number => value
-            .as_f64()
-            .filter(|value| value.is_finite())
-            .map(StateValue::Number)
-            .ok_or_else(mismatch),
-        StateShape::Bool => value.as_bool().map(StateValue::Bool).ok_or_else(mismatch),
-        StateShape::String => value
-            .as_str()
-            .map(|value| StateValue::String(value.to_owned()))
-            .ok_or_else(mismatch),
-        StateShape::Literal(expected) => {
-            let value = match expected {
-                StateLiteral::Number(_) => value
-                    .as_f64()
-                    .filter(|value| value.is_finite())
-                    .map(StateValue::Number),
-                StateLiteral::Bool(_) => value.as_bool().map(StateValue::Bool),
-                StateLiteral::String(_) => value
-                    .as_str()
-                    .map(|value| StateValue::String(value.to_owned())),
-            };
-            value
-                .filter(|value| expected.accepts(value))
-                .ok_or_else(mismatch)
-        }
-        StateShape::Optional(shape) => {
-            if value.is_null() {
-                Ok(StateValue::Null)
-            } else {
-                state_from_json(shape, value, path)
-            }
-        }
-        StateShape::Union(shapes) => shapes
-            .iter()
-            .find_map(|shape| state_from_json(shape, value, path).ok())
-            .ok_or_else(mismatch),
-        StateShape::List(item_shape) => value
-            .as_array()
-            .ok_or_else(mismatch)?
-            .iter()
-            .enumerate()
-            .map(|(index, value)| state_from_json(item_shape, value, &format!("{path}[{index}]")))
-            .collect::<Result<Vec<_>, _>>()
-            .map(StateValue::List),
-        StateShape::Object(fields) => {
-            let object = value.as_object().ok_or_else(mismatch)?;
-            fields
-                .iter()
-                .map(|(name, shape)| {
-                    let field_path = format!("{path}.{name}");
-                    let value = match object.get(name) {
-                        None if matches!(shape, StateShape::Optional(_)) => StateValue::Null,
-                        Some(value) => state_from_json(shape, value, &field_path)?,
-                        None => {
-                            return Err(ResourceError::new(
-                                ResourceErrorKind::Protocol,
-                                format!("response was missing field {field_path}"),
-                                false,
-                            ));
-                        }
-                    };
-                    Ok((name.clone(), value))
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(StateValue::Object)
-        }
-    }
-}
-
-fn parse_background_state(shape: &StateShape, bytes: &[u8]) -> ResourceState {
-    let attempted_at_ms = now_ms_fallback();
-    let failure = |message: String| {
-        ResourceState::BackgroundFailed(BackgroundError {
-            kind: "unexpected".to_owned(),
-            message,
-            retryable: false,
-            attempted_at_ms,
-        })
-    };
-    let value: serde_json::Value = match serde_json::from_slice(bytes) {
-        Ok(value) => value,
-        Err(error) => return failure(format!("background state was not valid JSON: {error}")),
-    };
-    let Some(object) = value.as_object() else {
-        return failure("background state was not an object".to_owned());
-    };
-    let Some(status) = object.get("status").and_then(serde_json::Value::as_str) else {
-        return failure("background state had no status".to_owned());
-    };
-    let parse_error = || -> Option<BackgroundError> {
-        let error = object.get("error")?.as_object()?;
-        let kind = error.get("kind")?.as_str()?;
-        if ![
-            "unavailable",
-            "timeout",
-            "protocol",
-            "http",
-            "invalid-data",
-            "storage",
-            "scheduler",
-            "unexpected",
-        ]
-        .contains(&kind)
-        {
-            return None;
-        }
-        Some(BackgroundError {
-            kind: kind.to_owned(),
-            message: error.get("message")?.as_str()?.to_owned(),
-            retryable: error.get("retryable")?.as_bool()?,
-            attempted_at_ms: error.get("attemptedAtMs")?.as_f64()?,
-        })
-    };
-    match status {
-        "waiting" => ResourceState::BackgroundWaiting,
-        "ready" | "stale" => {
-            let Some(updated_at_ms) = object
-                .get("updatedAtMs")
-                .and_then(serde_json::Value::as_f64)
-            else {
-                return failure("background state had no update time".to_owned());
-            };
-            let Some(json) = object.get("value") else {
-                return failure("background state had no value".to_owned());
-            };
-            let value = match state_from_json(shape, json, "$.value") {
-                Ok(value) => value,
-                Err(error) => return failure(error.message),
-            };
-            let error = if status == "stale" {
-                let Some(error) = parse_error() else {
-                    return failure("stale background state had no valid error".to_owned());
-                };
-                Some(error)
-            } else {
-                None
-            };
-            ResourceState::BackgroundReady {
-                value,
-                updated_at_ms,
-                error,
-            }
-        }
-        "error" => parse_error().map_or_else(
-            || failure("failed background state had no valid error".to_owned()),
-            ResourceState::BackgroundFailed,
-        ),
-        _ => failure(format!("unknown background status {status:?}")),
-    }
-}
-
-fn now_ms_fallback() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0.0, |duration| duration.as_millis() as f64)
 }
 
 fn image_id(key: &RemoteImageKey) -> u64 {
@@ -6571,6 +4226,11 @@ fn stretchable(node: &Node) -> bool {
     matches!(
         &node.kind,
         NodeKind::Stack { .. }
+            | NodeKind::ConversationComposer { .. }
+            | NodeKind::Message { .. }
+            | NodeKind::MessageQuote { .. }
+            | NodeKind::PlayingTransport { .. }
+            | NodeKind::Row { .. }
             | NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
@@ -6583,7 +4243,6 @@ fn stretchable(node: &Node) -> bool {
 fn full_bleed_image(node: &Node) -> bool {
     match &node.kind {
         NodeKind::Image { bleed: true, .. } => true,
-        NodeKind::ForEach { template, .. } => full_bleed_image(template),
         _ => false,
     }
 }
@@ -6629,7 +4288,7 @@ fn constrained_axis(content_start: f32, content_size: f32, view_start: f32, view
 fn fills_remaining_screen(node: &Node) -> bool {
     matches!(
         &node.kind,
-        NodeKind::CameraPreview { .. }
+        NodeKind::PlayingLayout { .. } | NodeKind::CameraPreview { .. }
             | NodeKind::Image {
                 bleed: true,
                 zoomable: true,

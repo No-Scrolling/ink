@@ -1,137 +1,49 @@
 # Benchmarks
 
-These benchmarks compare equivalent Ink, Expo, and Light SDK apps on a physical Light Phone III. Lower values are better unless the metric says otherwise.
+The counter and 1,000-row scrolling apps use React with Ink's QuickJS-ng runtime. The scrolling fixture deliberately renders all rows to keep its workload comparable with the earlier fixture; it does not use list virtualisation.
 
-Values are medians unless a row states otherwise. Sizes use decimal megabytes.
+## Recorded results
 
-## Results
+The [current Ink, Expo and Light SDK comparison](results/optimised-comparison-lp3-2026-09-06.md) reruns all six ARM64 release apps in one interleaved LP3 session after Ink's memory optimisations. It supplies the root README figures, raw runtime samples and three-round build timings. Ink's median idle PSS is **18.1 MiB for the counter and 25.7 MiB for the non-virtualised list**.
 
-### Counter app
+The earlier [React counter and scrolling results](results/ink-react-lp3-2026-09-06.md) and [Expo and Light SDK results](results/expo-light-sdk-lp3-2026-09-06.md) are retained as historical measurements from before this combined rerun.
 
-The counter app shows a title, a count, and one button.
+A later [lazy image resources and compact native nodes comparison](results/renderer-nodes-lp3-2026-09-06.md) measures **17.84 MiB for the counter and 22.59 MiB for the non-virtualised list**. Compact nodes save approximately 3 MiB on the list; the counter difference is within measurement variation. This targeted Ink follow-up does not replace the full-framework comparison.
 
-| Metric | Ink | Expo | Light SDK | Result |
-| --- | ---: | ---: | ---: | --- |
-| App file size | **3.00 MB** | 32.00 MB | 25.83 MB | Ink is 88% smaller than the next-smallest app. |
-| Clean release build | **1.27 s** | 36.20 s | 47.92 s | Ink builds 29 times faster than the next-fastest app. |
-| Typical cold start | **292 ms** | 516 ms | 1,186 ms | Ink starts fastest. |
-| Slow cold start (95th percentile) | **314 ms** | 591 ms | 1,226 ms | Ink remains fastest in slower runs. |
-| Active memory while idle | **17.1 MiB** | 66.6 MiB | 18.1 MiB | Ink uses slightly less memory than Light SDK and 74% less than Expo. |
-| CPU time for 100 taps | **860 ms** | 4,300 ms | 3,650 ms | Ink uses 76% less CPU time than the next-best result. |
+The [memory investigation](results/memory-lp3-2026-09-06.md) profiles eager web polyfills, garbage collection, allocator purging and list virtualisation on LP3. These exploratory variants are separate from the published comparison benchmarks.
 
-### 1,000-row scrolling app
+The [optional web-code split](results/split-web-lp3-2026-09-06.md) saves another 5.16 MiB in the counter and 4.91 MiB in the unchanged non-virtualised list in the LP3 experiment. Release apps now package web code separately and load it automatically on first use. `INK_SPLIT_WEB=0` retains the previous packaging for comparison.
 
-The scrolling app shows a title and 1,000 text rows.
+The subsequent [native startup memory reductions](results/native-memory-lp3-2026-09-06.md) bring median idle PSS to **18.07 MiB for the counter and 25.80 MiB for the non-virtualised list**, through deferred native initialisation, fuller startup purging and software rendering of the surrounding Android views. Ink's scene still uses Vulkan. The report includes paired measurements and remaining verification limits.
 
-| Metric | Ink | Expo | Light SDK | Result |
-| --- | ---: | ---: | ---: | --- |
-| App file size | **3.00 MB** | 31.98 MB | 25.93 MB | Ink is at least 88% smaller. |
-| Clean release build | **1.26 s** | 36.39 s | 46.87 s | Ink builds 29 times faster than the next-fastest app. |
-| Rebuild with no code changes | **1.11 s** | 9.99 s | 8.54 s | Ink rebuilds almost eight times faster than the next-fastest app. |
-| Typical cold start | **285 ms** | 476 ms | 1,185 ms | Ink starts fastest. |
-| Slow cold start (95th percentile) | **301 ms** | 1,373 ms | 1,233 ms | Ink remains fastest in slower runs. |
-| Active memory while idle | **17.3 MiB** | 116.6 MiB | 32.3 MiB | Ink uses 46% less memory than the next-best result. |
-| CPU time for 12 swipes | **890 ms** | 2,960 ms | 4,040 ms | Ink uses 70% less CPU time than the next-best result. |
-| Average frame rate during swipes | 59.2 fps | 55.7 fps | **59.5 fps** | Light SDK has the highest average rate by 0.3 fps. |
-| 99% of uninterrupted frame intervals are at most | **16 ms** | **16 ms** | **16 ms** | All three stay within one 60 Hz refresh. |
-| Intervals longer than 17 ms during a five-second drag | **0** | 1 | **0** | Ink and Light SDK record no long intervals. |
+The [runtime comparison](results/runtime-lp3.md) and [QuickJS-ng / Hermes comparison](results/runtime-engines-lp3.md) record the JavaScript runtime experiments on a physical Light Phone III. Their reports describe the measured builds and limitations.
 
-Android reports active memory as proportional set size (PSS).
+Apart from the current results and runtime experiments above, files in `results/`, along with `baselines/`, `budgets.json` and `budgets-lp3.json`, are historical measurements or budgets from the removed declarative engine. They do not describe current React app performance. The `ink-updates` results measured that engine's state-to-scene path; its fixture and instrumentation harness have been removed. Check out the recorded source revisions to reproduce those measurements.
 
-## Methodology
+## Run current benchmarks
 
-### Test apps
-
-All six apps use Public Sans, black-and-white styling, one screen, and comparable geometry.
-
-- The counter app shows a title, a count, and one increment button.
-- The scrolling app shows a title and 1,000 text rows.
-
-### Test environment
-
-All runtime measurements ran on the same Light Phone III (`TLP301`). The device used Android 14, API 34, arm64-v8a, a 1080 × 1240 display at 480 dpi, and a 60 Hz refresh rate. Window and transition animations were disabled. Android reported thermal status 0 before and after the run.
-
-All apps were arm64 release builds. Expo used Hermes, code shrinking, and resource shrinking. Light SDK used Compose, code shrinking, and resource shrinking. A common debug certificate signed the release builds so that the harness could install them.
-
-Build times were measured on the same development computer. Dependency installation, native project generation, and toolchain downloads were excluded. The framework versions were Light SDK commit `3df3c24` and Expo source commit `5a5eaad`. Expo and Light SDK were measured on 31 August 2026; Ink was refreshed on 1 September 2026.
-
-### Measurements
-
-The harness alternated framework order between rounds to reduce ordering bias.
-
-- Builds: three rounds with warmed dependency and toolchain caches. A clean build removed app outputs. It did not redownload dependencies.
-- Startup: one warm-up followed by 15 cold process starts. The harness stopped every benchmark process before each launch. Android `am start -W` supplied the launch time.
-- Memory: five samples after the app remained idle for two seconds. Android `dumpsys meminfo` supplied the values.
-- Counter workload: five rounds of 100 ADB taps on each app's visible increment control.
-- Scrolling workload: five rounds of six upward and six downward swipes. Each swipe lasted 350 ms.
-- Continuous scrolling: three uninterrupted five-second drags.
-
-Process CPU time comes from `/proc/<pid>/stat`. Frame measurements come from SurfaceFlinger timestats, which works with all three rendering systems.
-
-The physical-device data is in [lp3.json](results/lp3.json) and [lp3-build.csv](results/lp3-build.csv). Emulator benchmarks remain available for automated regression checks, but their results are not included in the tables.
-
-### Limits
-
-These results describe one Light Phone III under the recorded conditions. They do not measure battery drain or per-process GPU use. Battery testing requires external power measurement and a longer workload.
-
-Average frame rate and frame intervals describe different parts of scrolling performance. Read them together. A framework can report a short frame interval while producing frames less often during the same gesture.
-
-## Reproduce the benchmark
-
-Connect a Light Phone III through ADB. Prepare the Expo benchmark projects and add the Light SDK fixtures as temporary Gradle modules named `benchmark-counter` and `benchmark-scroll`.
-
-Set the project locations:
+Install workspace dependencies with `bun install`, build the current Ink CLI, and connect a Light Phone III through ADB:
 
 ```bash
-export LIGHT_SDK_DIR="$HOME/Developer/light-sdk"
-export EXPO_COUNTER_DIR=/path/to/prepared/expo-counter
-export EXPO_SCROLL_DIR=/path/to/prepared/expo-scroll
-export EXPO_COUNTER_APK="$EXPO_COUNTER_DIR/android/app/build/outputs/apk/release/app-release.apk"
-export EXPO_SCROLL_APK="$EXPO_SCROLL_DIR/android/app/build/outputs/apk/release/app-release.apk"
 export BENCHMARK_DEVICE=<adb-serial>
-```
-
-Measure build times:
-
-```bash
-BUILD_BENCHMARK_OUTPUT=benchmarks/results/lp3-build.csv \
-./benchmarks/measure-builds.sh
-```
-
-Measure runtime performance:
-
-```bash
-BENCHMARK_OUTPUT=benchmarks/results/lp3.json \
-bun benchmarks/measure.ts
-```
-
-To build, measure, and verify only Ink, run:
-
-```bash
 ./benchmarks/measure-ink.sh
 ```
 
-Use `BENCHMARK_STACKS` to select any combination of `ink`, `expo`, and `light-sdk`. Use `BUILD_BENCHMARK_STACKS` with `ink`, `expo`, and `light` for build measurements.
+This builds and measures the React counter and scrolling apps. Outputs default to `results/ink.json` and `results/ink-build.csv`; copy recorded results before overwriting them. No current runtime budget has been established. Set `INK_BENCHMARK_BUDGETS` to a budget for your runtime and device to enable verification.
 
-To verify an existing Ink-only result against its device budget, run:
+Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to preserve a named run. The build harness uses this checkout's `scripts/ink`. Its clean step removes each app's Android build outputs; shared Cargo, Gradle and dependency caches remain warm. These timings do not represent a first installation of the toolchain or a build with empty caches.
 
-```bash
-bun benchmarks/verify.ts benchmarks/results/ink.json benchmarks/results/ink-build.csv
-```
-
-For the focused state-to-frame benchmark, use the wrapper so the APK embeds its
-source revision and the harness verifies both that revision and the APK hash:
+For an existing measurement:
 
 ```bash
-./benchmarks/measure-updates.sh
+INK_BENCHMARK_BUDGETS=/path/to/budget.json \
+bun benchmarks/verify.ts /path/to/runtime.json /path/to/build.csv
 ```
 
-Set `UPDATE_BENCHMARK_ROUNDS` to change the default 25 balanced rounds. The
-harness fails if a tap produces no instrumented update frame or no scene rebuild.
-The [paired LP3 result](results/ink-updates-paired.json) contains 30 interleaved
-parent/head rounds. Its baseline records a link-only adjustment required to load
-the parent native library on the device. The
-[current-head instrumented result](results/ink-updates.json) contains 25 balanced
-rounds with complete per-frame phase data.
+To compare Expo and Light SDK, prepare the Expo fixtures and add the Light SDK fixtures as temporary Gradle modules named `benchmark-counter` and `benchmark-scroll`. Set `LIGHT_SDK_DIR`, `EXPO_COUNTER_DIR`, `EXPO_SCROLL_DIR`, `EXPO_COUNTER_APK` and `EXPO_SCROLL_APK` to those projects and release APKs. Then run `./benchmarks/measure-builds.sh` and `bun benchmarks/measure.ts`.
 
-Uninstall the six benchmark apps when the run finishes.
+Use `BENCHMARK_STACKS` to select `ink`, `expo` and `light-sdk`; use `BUILD_BENCHMARK_STACKS` with `ink`, `expo` and `light` for build measurements.
+
+The harness alternates framework order. It measures cold process starts with Android `am start -W`, memory with `dumpsys meminfo`, process CPU time from `/proc`, and frame intervals through SurfaceFlinger. Workloads use 100 counter taps, twelve scrolling swipes and uninterrupted five-second drags. These measurements do not measure battery drain or per-process GPU use.
+
+Uninstall benchmark apps when the run finishes.

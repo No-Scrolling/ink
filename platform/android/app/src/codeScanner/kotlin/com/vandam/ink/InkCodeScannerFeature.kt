@@ -16,6 +16,7 @@ import java.util.EnumMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
+import org.json.JSONArray
 
 internal fun createCodeScannerFeature(
     host: CameraSessionHost,
@@ -29,11 +30,16 @@ private class InkCodeScannerFeature(
     private val formats = config.getJSONArray("formats").let { values ->
         (0 until values.length()).map { values.getString(it) }
     }
+    private val continuous = config.optBoolean("continuous", false)
+    private val intervalMs = config.optLong("intervalMs", 1000L).coerceIn(100L, 60_000L)
+    private var lastCode: String? = null
+    private var lastScanAt = 0L
     private val reader = MultiFormatReader().apply {
         setHints(
             EnumMap<DecodeHintType, Any>(DecodeHintType::class.java).apply {
                 put(DecodeHintType.POSSIBLE_FORMATS, formats.map(FORMATS::getValue))
                 put(DecodeHintType.TRY_HARDER, true)
+                put(DecodeHintType.ALSO_INVERTED, true)
                 put(DecodeHintType.CHARACTER_SET, "UTF-8")
             },
         )
@@ -55,7 +61,7 @@ private class InkCodeScannerFeature(
     override fun start() {
         host.preview.contentDescription = "Scanning for a code"
         analysis.setAnalyzer(executor, ::analyse)
-        handler.postDelayed(timeout, SCAN_TIMEOUT_MS)
+        if (!continuous) handler.postDelayed(timeout, SCAN_TIMEOUT_MS)
     }
 
     override fun execute(operation: String): Boolean = false
@@ -89,18 +95,28 @@ private class InkCodeScannerFeature(
         }
         image.close()
         decoded.onSuccess { result ->
-            if (result != null && completed.compareAndSet(false, true)) {
+            if (result != null && !completed.get()) {
+                val now = android.os.SystemClock.elapsedRealtime()
+                val key = "${result.barcodeFormat}:${result.text}"
+                if (continuous && key == lastCode && now - lastScanAt < intervalMs) return@onSuccess
+                if (!continuous && !completed.compareAndSet(false, true)) return@onSuccess
+                lastCode = key
+                lastScanAt = now
                 val format = FORMAT_NAMES[result.barcodeFormat]
                 if (format == null) {
                     fail("decoder", "Scanner returned an unsupported code format", false)
                 } else {
                     host.activity.runOnUiThread {
                         handler.removeCallbacks(timeout)
-                        host.finish(
-                            JSONObject()
-                                .put("text", result.text)
-                                .put("format", format),
-                        )
+                        val value = JSONObject()
+                            .put("text", result.text)
+                            .put("format", format)
+                            .put("rawBytes", result.rawBytes?.let { bytes ->
+                                JSONArray(bytes.map { it.toInt() and 0xff })
+                            } ?: JSONObject.NULL)
+                        if (continuous) {
+                            if (!completed.get()) host.emit(value)
+                        } else host.finish(value)
                     }
                 }
             }

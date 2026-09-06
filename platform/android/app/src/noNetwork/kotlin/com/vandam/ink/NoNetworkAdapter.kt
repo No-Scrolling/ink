@@ -1,6 +1,6 @@
 package com.vandam.ink
 
-internal fun createNetworkAdapter(_activity: MainActivity): NetworkAdapter =
+internal fun createNetworkAdapter(_context: android.content.Context, _cacheName: String? = "ink-http"): NetworkAdapter =
     object : NetworkAdapter {
         override fun execute(
             requestId: Long,

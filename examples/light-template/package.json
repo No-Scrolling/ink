@@ -6,17 +6,21 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@ink/audio": "file:../../packages/audio",
-    "@ink/background": "file:../../packages/background",
-    "@ink/camera": "file:../../packages/camera",
-    "@ink/light-sdk": "file:../../packages/light-sdk",
-    "@ink/location": "file:../../packages/location",
-    "@ink/nfc": "file:../../packages/nfc",
-    "@ink/network": "file:../../packages/network",
-    "@ink/notifications": "file:../../packages/notifications",
-    "ink": "file:../../packages/ink"
+    "@ink/audio": "workspace:*",
+    "@ink/background": "workspace:*",
+    "@ink/camera": "workspace:*",
+    "@ink/location": "workspace:*",
+    "@ink/nfc": "workspace:*",
+    "@ink/notifications": "workspace:*",
+    "ink": "workspace:*",
+    "react": "19.2.8",
+    "@ink/store": "workspace:*",
+    "@ink/lightos": "workspace:*",
+    "@ink/barcode": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "7.0.2"
+    "typescript": "5.9.3",
+    "@types/react": "19.2.18",
+    "@types/react-reconciler": "0.33.0"
   }
 }

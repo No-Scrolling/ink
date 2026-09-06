@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "resolution": 52,
+  "names": [
+    "home",
+    "search",
+    "widgets",
+    "palette",
+    "settings",
+    "more_horiz",
+    "keyboard_arrow_down",
+    "keyboard_arrow_up",
+    "repeat",
+    "repeat_one",
+    "shuffle"
+  ]
+}

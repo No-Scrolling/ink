@@ -12,9 +12,15 @@ import org.json.JSONObject
 internal fun createLocationAdapter(activity: MainActivity): LocationAdapter =
     InkLocationAdapter(activity)
 
-private class InkLocationAdapter(private val activity: MainActivity) : LocationAdapter {
-    private val manager = activity.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+internal fun createWorkerLocationAdapter(context: Context): LocationAdapter =
+    InkLocationAdapter(context, allowUpdates = false)
+
+private class InkLocationAdapter(private val context: Context, private val allowUpdates: Boolean = true) : LocationAdapter {
+    private val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private val requests = mutableMapOf<Long, PendingLocation>()
+    private val watches = mutableMapOf<Long, Watch>()
+    private var nextWatch = 1L
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun execute(
         requestId: Long,
@@ -22,6 +28,14 @@ private class InkLocationAdapter(private val activity: MainActivity) : LocationA
         payload: String,
         complete: NativeResultHandler,
     ) {
+        if (operation.startsWith("watch-") || operation.startsWith("tracking-")) {
+            if (!allowUpdates) {
+                complete(protocol("Workers support one-off location only"))
+                return
+            }
+            executeUpdates(requestId, operation, payload, complete)
+            return
+        }
         if (operation != CURRENT_OPERATION) {
             complete(protocol("Unknown location operation: $operation"))
             return
@@ -81,7 +95,7 @@ private class InkLocationAdapter(private val activity: MainActivity) : LocationA
                 manager.getCurrentLocation(
                     provider,
                     cancellation,
-                    activity.mainExecutor,
+                    context.mainExecutor,
                 ) { location ->
                     if (location == null) {
                         pending.providerFinished()
@@ -97,6 +111,9 @@ private class InkLocationAdapter(private val activity: MainActivity) : LocationA
 
     override fun cancel(requestId: Long) {
         requests.remove(requestId)?.cancel()
+        watches.values.forEach { if (it.requestId == requestId) it.cancelPending() }
+        watches.filterValues { it.createdBy == requestId }.keys.toList().forEach { watches.remove(it)?.stop() }
+        if (allowUpdates) InkLocationService.cancel(requestId)
     }
 
     override fun requiredPermission(payload: String): String? = runCatching {
@@ -107,16 +124,116 @@ private class InkLocationAdapter(private val activity: MainActivity) : LocationA
         }
     }.getOrNull()
 
+    override fun pause() {
+        watches.values.forEach { it.updates.stop() }
+    }
+
+    override fun resume() {
+        watches.values.forEach { watch ->
+            runCatching { watch.updates.start() }.onFailure {
+                watch.error = unavailable(it.message ?: "Could not resume location watch")
+                watch.deliver()
+            }
+        }
+    }
+
     override fun stop() {
         requests.values.toList().forEach(PendingLocation::cancel)
         requests.clear()
+        watches.values.forEach(Watch::stop)
+        watches.clear()
+    }
+
+    private fun executeUpdates(requestId: Long, operation: String, payload: String, complete: NativeResultHandler) {
+        try {
+            val options = JSONObject(payload)
+            when (operation) {
+                "watch-start", "tracking-start" -> {
+                    validateLocationUpdates(options)
+                    if (!hasPermission(options.getString("accuracy"))) {
+                        complete(NativeResult.Failure(NativeErrorKind.PERMISSION_DENIED, "Location permission has not been granted", false))
+                        return
+                    }
+                    if (operation == "tracking-start") {
+                        InkLocationService.start(context as? MainActivity ?: error("Tracking requires a visible app"), requestId, options, complete)
+                    } else {
+                        check(watches.size < 16) { "Too many location watches" }
+                        val id = nextWatch++
+                        val watch = Watch(requestId)
+                        watch.updates = LocationUpdates(context, options, { location ->
+                            watch.version++
+                            watch.fix = location.toJson()
+                            watch.deliver()
+                        }, { error -> watch.error = error; watch.deliver() })
+                        watch.updates.start()
+                        watches[id] = watch
+                        complete(NativeResult.Success(id.toString()))
+                    }
+                }
+                "watch-next" -> {
+                    val watch = watches[options.getLong("watch")] ?: error("Location watch has stopped")
+                    check(watch.complete == null) { "Location watch already has a pending read" }
+                    watch.requestId = requestId
+                    watch.complete = complete
+                    watch.seen = options.getLong("version")
+                    watch.deliver()
+                    if (watch.complete != null) handler.postDelayed(watch.heartbeat, 20_000)
+                }
+                "watch-stop" -> {
+                    watches.remove(options.getLong("watch"))?.stop()
+                    complete(NativeResult.Success("stopped"))
+                }
+                "tracking-status" -> complete(NativeResult.Success(InkLocationService.status(context).toString()))
+                "tracking-stop" -> {
+                    InkLocationService.stop(context)
+                    complete(NativeResult.Success("stopped"))
+                }
+                else -> complete(protocol("Unknown location operation: $operation"))
+            }
+        } catch (error: SecurityException) {
+            complete(NativeResult.Failure(NativeErrorKind.PERMISSION_DENIED, error.message ?: "Location permission denied", false))
+        } catch (error: Exception) {
+            complete(unavailable(error.message ?: "Location updates failed"))
+        }
+    }
+
+    private inner class Watch(val createdBy: Long) {
+        lateinit var updates: LocationUpdates
+        var version = 0L
+        var fix: JSONObject? = null
+        var error: NativeResult.Failure? = null
+        var seen = 0L
+        var requestId = 0L
+        var complete: NativeResultHandler? = null
+        val heartbeat = Runnable { finish(NativeResult.Success("null")) }
+
+        fun deliver() {
+            error?.let { finish(it); return }
+            if (version > seen) finish(NativeResult.Success(JSONObject().put("version", version).put("fix", fix).toString()))
+        }
+
+        private fun finish(result: NativeResult) {
+            val callback = complete ?: return
+            cancelPending()
+            callback(result)
+        }
+
+        fun cancelPending() {
+            handler.removeCallbacks(heartbeat)
+            complete = null
+        }
+
+        fun stop() {
+            updates.stop()
+            finish(unavailable("Location watch stopped"))
+        }
     }
 
     private fun hasPermission(accuracy: String): Boolean {
-        val fine = activity.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+        val fine = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         return fine || accuracy == APPROXIMATE &&
-            activity.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
     }
 
@@ -136,6 +253,7 @@ private class InkLocationAdapter(private val activity: MainActivity) : LocationA
     }
 
     private fun cacheProviders(accuracy: String): List<String> = buildList {
+        add(LocationManager.FUSED_PROVIDER)
         if (accuracy == PRECISE) {
             add(LocationManager.GPS_PROVIDER)
         }
@@ -144,6 +262,10 @@ private class InkLocationAdapter(private val activity: MainActivity) : LocationA
     }
 
     private fun freshProviders(accuracy: String): List<String> = buildList {
+        if (accuracy == APPROXIMATE && providerEnabled(LocationManager.FUSED_PROVIDER)) {
+            add(LocationManager.FUSED_PROVIDER)
+            return@buildList
+        }
         if (accuracy == PRECISE && providerEnabled(LocationManager.GPS_PROVIDER)) {
             add(LocationManager.GPS_PROVIDER)
         }

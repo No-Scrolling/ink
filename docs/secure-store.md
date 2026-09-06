@@ -1,8 +1,10 @@
 ---
 title: "Secure store"
 description: "Persist credentials using Android-backed protection."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/secure-store` persists small secret strings with native encryption and Android Keystore-backed key protection. Use it for refresh tokens, provider credentials and account secrets.
 

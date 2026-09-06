@@ -9,6 +9,7 @@ plugins {
 }
 
 val repositoryRoot = rootProject.layout.projectDirectory.dir("../..")
+providers.gradleProperty("inkBuildRoot").orNull?.let { layout.buildDirectory.set(file(it)) }
 val generatedJniRoot = layout.buildDirectory.dir("generated/jniLibs")
 val inkAppName = providers.gradleProperty("inkAppName").orElse("Ink")
 val inkApplicationId = providers.gradleProperty("inkApplicationId").orElse("com.vandam.ink")
@@ -22,28 +23,15 @@ val inkCapabilitiesFile = inkCapabilitiesManifest.map(::file)
 val inkBenchmark = providers.environmentVariable("INK_BENCHMARK")
     .map { it == "1" }
     .orElse(false)
+val inkMemoryDiagnostics = providers.environmentVariable("INK_MEMORY_DIAGNOSTICS")
+    .map { it == "1" }
+    .orElse(false)
 val inkBenchmarkRevision = providers.environmentVariable("INK_BENCHMARK_REVISION")
     .orElse("unknown")
-val supportedInkCapabilities = setOf(
-    "audio",
-    "audio-detached",
-    "audio-playback",
-    "background",
-    "camera-permission",
-    "code-scanner",
-    "image",
-    "light-sdk",
-    "light-sdk-push",
-    "light-sdk-ringtone",
-    "location",
-    "microphone-permission",
-    "network",
-    "nfc",
-    "notification-permission",
-    "notifications",
-    "photo-capture",
-    "text-input",
-)
+val inkCapabilityCatalogueFile = repositoryRoot.file("crates/ink-compiler/capabilities-v1.json").asFile
+val inkCatalogue = JsonSlurper().parse(inkCapabilityCatalogueFile) as Map<*, *>
+val inkCapabilityCatalogue = inkCatalogue["capabilities"] as Map<*, *>
+val supportedInkCapabilities = inkCapabilityCatalogue.keys.map { it as String }.toSet()
 val inkCapabilities = providers.provider {
     val source = inkCapabilitiesFile.get()
     if (!source.isFile) {
@@ -84,6 +72,7 @@ val inkUsesDetachedAudio = inkUses("audio-detached")
 val inkUsesCameraPermission = inkUses("camera-permission")
 val inkUsesPhotoCapture = inkUses("photo-capture")
 val inkUsesCodeScanner = inkUses("code-scanner")
+val inkUsesBarcodeGenerate = inkUses("barcode-generate")
 val inkUsesImage = inkUses("image")
 val inkUsesMicrophonePermission = inkUses("microphone-permission")
 val inkUsesLocation = inkUses("location")
@@ -95,40 +84,10 @@ val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").or
 val inkUsesTextInput = inkUses("text-input")
 val inkLightSdkVersion = "0.1.1"
 val inkCapabilityFingerprint = inkCapabilities.map { it.sorted().joinToString(",") }
-val inkPermissions = buildList {
-    if (
-        inkUsesNetwork.get() ||
-        inkUsesDetachedAudio.get() ||
-        inkUsesBackground.get() ||
-        inkUsesLightSdkPush.get()
-    ) {
-        add("android.permission.ACCESS_NETWORK_STATE")
-        add("android.permission.INTERNET")
-    }
-    if (inkUsesDetachedAudio.get()) {
-        add("android.permission.FOREGROUND_SERVICE")
-        add("android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK")
-    }
-    if (inkUsesCameraPermission.get()) {
-        add("android.permission.CAMERA")
-    }
-    if (inkUsesMicrophonePermission.get()) {
-        add("android.permission.RECORD_AUDIO")
-    }
-    if (inkUsesLocation.get()) {
-        add("android.permission.ACCESS_COARSE_LOCATION")
-        add("android.permission.ACCESS_FINE_LOCATION")
-    }
-    if (inkUsesNfc.get()) {
-        add("android.permission.NFC")
-    }
-    if (inkUsesNotificationPermission.get() || inkUsesLightSdkPush.get()) {
-        add("android.permission.POST_NOTIFICATIONS")
-    }
-    if (inkUsesBackground.get() || inkUsesNotifications.get()) {
-        add("android.permission.RECEIVE_BOOT_COMPLETED")
-    }
-}
+val inkPermissions = inkCapabilities.get().flatMap { name ->
+    val declaration = inkCapabilityCatalogue[name] as Map<*, *>
+    (declaration["permissions"] as List<*>).map { it as String }
+}.distinct().sorted()
 val inkFeatures = buildList {
     if (inkUsesCameraPermission.get()) {
         add("android.hardware.camera")
@@ -137,6 +96,7 @@ val inkFeatures = buildList {
 val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
 val generateInkPermissionManifest by tasks.registering {
     inputs.file(inkCapabilitiesFile)
+    inputs.file(inkCapabilityCatalogueFile)
     inputs.property("permissions", inkPermissions.joinToString())
     inputs.property("features", inkFeatures.joinToString())
     inputs.property("nfc", inkUsesNfc)
@@ -169,20 +129,27 @@ val generateInkPermissionManifest by tasks.registering {
             }
             val hasInkComponents = inkUsesBackground.get() ||
                 inkUsesNotifications.get() ||
-                inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get()
+                inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get() ||
+                inkUsesLocation.get() || inkUsesNfc.get() || inkUsesNetwork.get()
             if (hasInkComponents) {
-                val networkSecurity = if (inkUsesLightSdkPush.get()) {
-                    " android:networkSecurityConfig=\"@xml/ink_light_push_network_security\""
+                val networkSecurity = if (inkUsesLightSdkPush.get() || inkUsesNetwork.get()) {
+                    " android:networkSecurityConfig=\"@xml/ink_network_security\""
                 } else {
                     ""
                 }
                 appendLine("    <application$networkSecurity>")
             }
             if (inkUsesBackground.get()) {
-                appendLine("        <service")
-                appendLine("            android:name=\".InkBackgroundJobService\"")
-                appendLine("            android:exported=\"true\"")
-                appendLine("            android:permission=\"android.permission.BIND_JOB_SERVICE\" />")
+                appendLine("        <service android:name=\".InkWorkerJobService\" android:exported=\"true\" android:permission=\"android.permission.BIND_JOB_SERVICE\" />")
+            }
+            if (inkUsesLocation.get()) {
+                appendLine("        <service android:name=\"com.vandam.ink.InkLocationService\" android:exported=\"false\" android:foregroundServiceType=\"location\" />")
+            }
+            if (inkUsesNfc.get()) {
+                appendLine("        <service android:name=\".InkHostApduService\" android:exported=\"true\" android:permission=\"android.permission.BIND_NFC_SERVICE\">")
+                appendLine("            <intent-filter><action android:name=\"android.nfc.cardemulation.action.HOST_APDU_SERVICE\" /></intent-filter>")
+                appendLine("            <meta-data android:name=\"android.nfc.cardemulation.host_apdu_service\" android:resource=\"@xml/ink_host_apdu_service\" />")
+                appendLine("        </service>")
             }
             if (inkUsesNotifications.get()) {
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationAlarmReceiver\" android:exported=\"false\" />")
@@ -190,6 +157,7 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationBootReceiver\" android:exported=\"true\">")
                 appendLine("            <intent-filter>")
                 appendLine("                <action android:name=\"android.intent.action.BOOT_COMPLETED\" />")
+                appendLine("                <action android:name=\"android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED\" />")
                 appendLine("            </intent-filter>")
                 appendLine("        </receiver>")
             }
@@ -229,6 +197,7 @@ android {
     defaultConfig {
         applicationId = inkApplicationId.get()
         minSdk = 34
+        ndk { abiFilters += "arm64-v8a" }
         targetSdk = 36
         versionCode = inkVersionCode.get().toInt()
         versionName = inkVersionName.get()
@@ -266,135 +235,40 @@ android {
 
     sourceSets {
         getByName("main").res.srcDir(inkAndroidResources)
+        if (inkUsesNfc.get()) getByName("main").res.srcDir("src/nfc/res")
         getByName("main").assets.srcDir(inkAndroidAssets)
         getByName("debug").manifest.srcFile(inkPermissionManifest)
         getByName("release").manifest.srcFile(inkPermissionManifest)
-        getByName("main").java.srcDir(
-            if (inkUsesTextInput.get()) {
-                "src/textInput/kotlin"
-            } else {
-                "src/noTextInput/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesNotifications.get() || inkUsesLightSdkPush.get()) {
-                "src/notifications/kotlin"
-            } else {
-                "src/noNotifications/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesAudio.get()) {
-                "src/audio/kotlin"
-            } else {
-                "src/noAudio/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesLightSdkRingtone.get()) {
-                "src/lightSdkRingtone/kotlin"
-            } else {
-                "src/noLightSdkRingtone/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesLightSdkPush.get()) {
-                "src/lightSdkPush/kotlin"
-            } else {
-                "src/noLightSdkPush/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesAudioPlayback.get()) {
-                "src/audioPlayback/kotlin"
-            } else {
-                "src/noAudioPlayback/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesDetachedAudio.get()) {
-                "src/audioDetached/kotlin"
-            } else {
-                "src/noAudioDetached/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesNetwork.get()) {
-                "src/network/kotlin"
-            } else {
-                "src/noNetwork/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesLightSdk.get()) {
-                "src/lightSdk/kotlin"
-            } else {
-                "src/noLightSdk/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesLocation.get()) {
-                "src/location/kotlin"
-            } else {
-                "src/noLocation/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesNfc.get()) {
-                "src/nfc/kotlin"
-            } else {
-                "src/noNfc/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesBackground.get()) {
-                "src/background/kotlin"
-            } else {
-                "src/noBackground/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
-                "src/cameraSession/kotlin"
-            } else if (inkUsesCameraPermission.get()) {
-                "src/cameraPermission/kotlin"
-            } else {
-                "src/noCamera/kotlin"
-            },
-        )
-        if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
-            getByName("main").java.srcDir(
-                if (inkUsesPhotoCapture.get()) {
-                    "src/photoCapture/kotlin"
-                } else {
-                    "src/noPhotoCapture/kotlin"
-                },
-            )
-            getByName("main").java.srcDir(
-                if (inkUsesCodeScanner.get()) {
-                    "src/codeScanner/kotlin"
-                } else {
-                    "src/noCodeScanner/kotlin"
-                },
-            )
+        inkCapabilityCatalogue.forEach { (name, value) ->
+            val group = (value as Map<*, *>)["androidSourceGroup"] as? Map<*, *>
+            if (group != null) {
+                val selected = group[if (name in inkCapabilities.get()) "enabled" else "disabled"] as String
+                getByName("main").java.srcDir("src/$selected/kotlin")
+            }
+        }
+        val camera = inkCatalogue["androidCameraSources"] as Map<*, *>
+        val session = camera["session"] as Map<*, *>
+        val cameraSession = (session["capabilities"] as List<*>).any { it in inkCapabilities.get() }
+        val cameraSource = if (cameraSession) session["enabled"] else if (inkUsesCameraPermission.get()) camera["permission"] else session["disabled"]
+        getByName("main").java.srcDir("src/$cameraSource/kotlin")
+        if (cameraSession) {
+            for (kind in listOf("photo", "scanner")) {
+                val group = camera[kind] as Map<*, *>
+                val selected = group[if (group["capability"] in inkCapabilities.get()) "enabled" else "disabled"]
+                getByName("main").java.srcDir("src/$selected/kotlin")
+            }
         }
         if (inkUsesTextInput.get()) {
             getByName("main").res.srcDir("src/textInput/res")
         }
-        if (inkUsesLightSdkPush.get()) {
-            getByName("main").res.srcDir("src/lightSdkPush/res")
+        if (inkUsesLightSdkPush.get() || inkUsesNetwork.get()) {
+            getByName("main").res.srcDir("src/networkSecurity/res")
         }
         getByName("debug").jniLibs.srcDir(generatedJniRoot.map { it.dir("debug") })
         getByName("release").jniLibs.srcDir(generatedJniRoot.map { it.dir("release") })
     }
 
     buildTypes {
-        debug {
-            ndk {
-                abiFilters += "arm64-v8a"
-            }
-        }
-
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -402,9 +276,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            ndk {
-                abiFilters += "arm64-v8a"
-            }
             if (inkSigning.get() == "release") {
                 signingConfig = signingConfigs.getByName("inkRelease")
             }
@@ -431,90 +302,49 @@ tasks.withType<KotlinCompile>().configureEach {
     inputs.property("inkCapabilityFingerprint", inkCapabilityFingerprint)
 }
 
-val cargoBuildDebug by tasks.registering(Exec::class) {
-    group = "rust"
-    description = "Builds the Ink runtime for the arm64 LP3 emulator."
-    workingDir(repositoryRoot)
-    inputs.property("inkBenchmark", inkBenchmark)
-    inputs.property("inkBenchmarkRevision", inkBenchmarkRevision)
-    commandLine(buildList {
-        addAll(
-            listOf(
-                "cargo",
-                "ndk",
-                "-t",
-                "arm64-v8a",
-                "-o",
-                generatedJniRoot.get().dir("debug").asFile.absolutePath,
-                "build",
-                "-p",
-                "ink-android",
-                "--profile",
-                "ink-dev",
-            ),
-        )
-        if (inkUsesNetwork.get()) {
-            addAll(listOf("--features", "network"))
-        }
-        if (inkUsesImage.get()) {
-            addAll(listOf("--features", "image"))
-        }
-        if (inkUsesAudio.get()) {
-            addAll(listOf("--features", "audio"))
-        }
-        if (inkUsesBackground.get()) {
-            addAll(listOf("--features", "background"))
-        }
-        if (inkUsesPhotoCapture.get()) {
-            addAll(listOf("--features", "camera-photo"))
-        }
-        if (inkBenchmark.get()) {
-            addAll(listOf("--features", "benchmark"))
-        }
-    })
-}
-
-val cargoBuildRelease by tasks.registering(Exec::class) {
+fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<Exec>(
+    "cargoBuild" + variant.replaceFirstChar(Char::uppercaseChar),
+) {
     group = "rust"
     description = "Builds the Ink runtime for the LP3 arm64 ABI."
     workingDir(repositoryRoot)
     inputs.property("inkBenchmark", inkBenchmark)
+    inputs.property("inkMemoryDiagnostics", inkMemoryDiagnostics)
     inputs.property("inkBenchmarkRevision", inkBenchmarkRevision)
+    environment("INK_BENCHMARK_REVISION", inkBenchmarkRevision.get())
     commandLine(buildList {
-        addAll(
-            listOf(
-                "cargo",
-                "ndk",
-                "-t",
-                "arm64-v8a",
-                "-o",
-                generatedJniRoot.get().dir("release").asFile.absolutePath,
-                "build",
-                "-p",
-                "ink-android",
-                "--release",
-            ),
-        )
-        if (inkUsesNetwork.get()) {
-            addAll(listOf("--features", "network"))
-        }
-        if (inkUsesImage.get()) {
-            addAll(listOf("--features", "image"))
-        }
-        if (inkUsesAudio.get()) {
-            addAll(listOf("--features", "audio"))
-        }
-        if (inkUsesBackground.get()) {
-            addAll(listOf("--features", "background"))
-        }
-        if (inkUsesPhotoCapture.get()) {
-            addAll(listOf("--features", "camera-photo"))
-        }
-        if (inkBenchmark.get()) {
-            addAll(listOf("--features", "benchmark"))
+        addAll(listOf(
+            "cargo", "ndk", "-t", "arm64-v8a",
+            "-o", generatedJniRoot.get().dir(variant).asFile.absolutePath,
+            "build", "-p", "ink-android",
+        ))
+        addAll(profile)
+        for ((feature, enabled) in listOf(
+            "network" to inkUsesNetwork,
+            "image" to inkUsesImage,
+            "audio" to inkUsesAudio,
+            "background" to inkUsesBackground,
+            "camera-photo" to inkUsesPhotoCapture,
+            "benchmark" to inkBenchmark,
+            "memory-diagnostics" to inkMemoryDiagnostics,
+        )) {
+            if (enabled.get()) addAll(listOf("--features", feature))
         }
     })
+    doFirst {
+        delete(generatedJniRoot.get().dir(variant))
+        val prebuilt = android.ndkDirectory.resolve("toolchains/llvm/prebuilt")
+            .listFiles()!!.single { it.isDirectory }
+        val sysroot = prebuilt.resolve("sysroot")
+        environment(
+            "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android",
+            "--sysroot=$sysroot -I$sysroot/usr/include/aarch64-linux-android",
+        )
+    }
 }
+
+val cargoBuildDebug = registerCargoBuild("debug", listOf("--profile", "ink-dev"))
+val cargoBuildRelease = registerCargoBuild("release", listOf("--release"))
 
 tasks.configureEach {
     when (name) {
@@ -526,14 +356,15 @@ tasks.configureEach {
 }
 
 dependencies {
+    if (inkUsesNetwork.get()) {
+        implementation("com.squareup.okhttp3:okhttp:5.4.0")
+    }
     implementation("androidx.core:core-splashscreen:1.0.1")
     if (inkUsesLightSdkPush.get()) {
         implementation("org.unifiedpush.android:connector:3.3.2")
     }
-    if (inkUsesAudioPlayback.get()) {
+    if (inkUsesAudioPlayback.get() || inkUsesDetachedAudio.get()) {
         implementation("androidx.media3:media3-exoplayer:1.10.1")
-    }
-    if (inkUsesDetachedAudio.get()) {
         implementation("androidx.media3:media3-session:1.10.1")
     }
     if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
@@ -542,7 +373,7 @@ dependencies {
         implementation("androidx.camera:camera-lifecycle:1.5.0")
         implementation("androidx.camera:camera-view:1.5.0")
     }
-    if (inkUsesCodeScanner.get()) {
+    if (inkUsesCodeScanner.get() || inkUsesBarcodeGenerate.get()) {
         implementation("com.google.zxing:core:3.5.4")
     }
 }

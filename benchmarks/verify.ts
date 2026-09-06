@@ -85,10 +85,8 @@ type Budgets = {
 };
 
 const results = await Bun.file(resultsPath).json() as Results;
-const budgetsPath = process.env.INK_BENCHMARK_BUDGETS ??
-  (results.environment.model === "TLP301"
-    ? "benchmarks/budgets-lp3.json"
-    : "benchmarks/budgets.json");
+const budgetsPath = process.env.INK_BENCHMARK_BUDGETS;
+if (!budgetsPath) throw new Error("Set INK_BENCHMARK_BUDGETS to a budget for the measured runtime and device");
 const budgets = await Bun.file(budgetsPath).json() as Budgets;
 const failures: string[] = [];
 

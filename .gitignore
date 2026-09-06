@@ -1,5 +1,7 @@
 # Rust
 /target/
+/.agent-tools/
+__pycache__/
 **/*.rs.bk
 
 # TypeScript

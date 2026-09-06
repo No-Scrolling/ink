@@ -53,6 +53,8 @@ internal interface CameraSessionHost {
 
     fun clearReview()
 
+    fun emit(value: JSONObject)
+
     fun finish(value: JSONObject)
 
     fun fail(kind: String, message: String, retryable: Boolean)
@@ -71,7 +73,7 @@ private class InkCameraAdapter(
     private val autoOpenRequested = mutableSetOf<Long>()
     private val photoDirectory = File(activity.noBackupFilesDir, PHOTO_DIRECTORY).apply {
         mkdirs()
-        listFiles().orEmpty().forEach(File::delete)
+        listFiles().orEmpty().filter { it.extension == "partial" }.forEach(File::delete)
     }
     private var portal: CameraPortal? = null
     private var session: CameraSession? = null
@@ -87,6 +89,7 @@ private class InkCameraAdapter(
             PERMISSION_STATUS -> complete(NativeResult.Success(permissionStatus()))
             REQUEST_PERMISSION -> requestPermission(complete)
             IMAGE -> loadImage(payload, complete)
+            "remove-photo" -> removePhoto(payload, complete)
             else -> complete(protocol("Unknown camera operation: $operation"))
         }
     }
@@ -102,7 +105,7 @@ private class InkCameraAdapter(
             ACTIVATE -> activate(controller, payload, complete)
             DEACTIVATE -> deactivate(controller, complete)
             OPEN -> open(requestId, controller, complete)
-            RETAKE, USE_PHOTO -> {
+            RETAKE, USE_PHOTO, "capture" -> {
                 val active = session?.takeIf { it.controller == controller }
                 if (active == null || !active.execute(operation)) {
                     complete(protocol("Camera session cannot $operation now"))
@@ -183,7 +186,7 @@ private class InkCameraAdapter(
 
     override fun stop() {
         session?.close(restore = false)
-        photoDirectory.listFiles().orEmpty().forEach(File::delete)
+        photoDirectory.listFiles().orEmpty().filter { it.extension == "partial" }.forEach(File::delete)
         controllers.clear()
         readyStates.clear()
         pendingRequests.clear()
@@ -218,7 +221,7 @@ private class InkCameraAdapter(
     private fun deactivate(controller: Long, complete: NativeResultHandler) {
         session?.takeIf { it.controller == controller }?.close(restore = false)
         controllers.remove(controller)
-        readyStates.remove(controller)?.let(::deleteReadyPhoto)
+        readyStates.remove(controller)
         autoOpenRequested.remove(controller)
         updateReview(controller, null)
         complete(NativeResult.Success(""))
@@ -340,21 +343,23 @@ private class InkCameraAdapter(
     }
 
     private fun publishReady(controller: Long, value: JSONObject) {
-        if (controllers[controller]?.kind == PHOTO) {
-            readyStates[controller]?.let(::deleteReadyPhoto)
-        }
         val state = state(controller, "ready", value)
         readyStates[controller] = state
         publish(controller, state)
     }
 
-    private fun deleteReadyPhoto(state: String) {
-        runCatching {
-            val source = JSONObject(state).getJSONObject(VALUE).getString(SOURCE)
-            val id = source.removePrefix(PHOTO_PREFIX)
-            if (source != id && PHOTO_ID.matches(id)) {
-                File(photoDirectory, "$id.jpg").delete()
-            }
+    private fun removePhoto(payload: String, complete: NativeResultHandler) {
+        val source = runCatching { JSONObject(payload).getString(SOURCE) }.getOrNull()
+        val id = source?.takeIf { it.startsWith(PHOTO_PREFIX) }?.removePrefix(PHOTO_PREFIX)
+        if (id == null || !PHOTO_ID.matches(id)) {
+            complete(protocol("Invalid captured photo source"))
+            return
+        }
+        val file = File(photoDirectory, "$id.jpg")
+        if (file.exists() && !file.delete()) {
+            complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Photo could not be removed", true))
+        } else {
+            complete(NativeResult.Success(""))
         }
     }
 
@@ -439,6 +444,9 @@ private class InkCameraAdapter(
         }
         private val lifecycleOwner = CameraLifecycleOwner()
         private val cameraPreview = Preview.Builder().build()
+        private val selector = if (recipe.config.optString("facing", "back") == "front") {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        } else CameraSelector.DEFAULT_BACK_CAMERA
         private var provider: ProcessCameraProvider? = null
         private var feature: CameraSessionFeature? = null
         private var requestCompleted = false
@@ -460,10 +468,10 @@ private class InkCameraAdapter(
                     }
                     provider = cameraProvider
                     if (!runCatching {
-                            cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)
+                            cameraProvider.hasCamera(selector)
                         }.getOrDefault(false)
                     ) {
-                        fail("unavailable", "No back camera is available", false)
+                        fail("unavailable", "The requested camera is unavailable", false)
                         return@addListener
                     }
                     val selected = if (recipe.kind == PHOTO) {
@@ -542,6 +550,10 @@ private class InkCameraAdapter(
             updateReview(controller, null)
         }
 
+        override fun emit(value: JSONObject) {
+            if (!closed) publish(controller, state(controller, "active", value))
+        }
+
         override fun finish(value: JSONObject) {
             if (closed) {
                 return
@@ -592,7 +604,7 @@ private class InkCameraAdapter(
             return runCatching {
                 cameraProvider.bindToLifecycle(
                     lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    selector,
                     cameraPreview,
                     *useCases.toTypedArray(),
                 )

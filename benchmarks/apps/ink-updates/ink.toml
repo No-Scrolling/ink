@@ -1,8 +1,0 @@
-name = "Ink Updates Benchmark"
-package = "com.vandam.benchmark.ink.updates"
-version = "1.0.0"
-version_code = 1
-
-[signing]
-keystore = ".benchmark/debug.keystore"
-key_alias = "androiddebugkey"

@@ -1,24 +1,46 @@
-import { lightSdkPermission, lightSdkVersion } from "@ink/light-sdk";
-import { Button, Field, Screen, match } from "ink";
+import { useCallback, useEffect } from "react";
+import { lightos } from "@ink/lightos";
+import { Button, Field, Screen, useAction } from "ink";
 
 export default function Connection() {
-  const version = lightSdkVersion();
-  const camera = lightSdkPermission("camera");
+  const version = useAction(lightos.getVersion);
+  const preferences = useAction(lightos.getPreferences);
+  const keyboard = useAction(lightos.getKeyboardOptions);
+  const camera = useAction(useCallback(() => lightos.getPermission("camera"), []));
+  const request = useAction(async () => {
+    await lightos.requestPermission("camera");
+    camera.run();
+  });
+  useEffect(() => {
+    version.run();
+    camera.run();
+    preferences.run();
+    keyboard.run();
+  }, [version.run, camera.run, preferences.run, keyboard.run]);
 
   return (
     <Screen title="Connection & Permissions">
-      {match(version, {
-        loading: () => <Field label="Light SDK">Connecting...</Field>,
-        ready: (result) => <Field label="Light SDK version">{result.value}</Field>,
-        error: (result) => <Field label="Light SDK">{result.error.message}</Field>,
-      })}
-      <Button onPress={() => version.reload()}>Refresh</Button>
-      {match(camera, {
-        loading: () => <Field label="Camera permission">Checking...</Field>,
-        ready: (result) => <Field label="Camera permission">{result.value}</Field>,
-        error: (result) => <Field label="Camera permission">{result.error.message}</Field>,
-      })}
-      <Button onPress={() => camera.request()}>Request Camera</Button>
+      <Field label="Light SDK version">
+        {version.status === "success" ? version.data : version.status === "error" ? version.error.message : "Connecting..."}
+      </Field>
+      <Button disabled={version.status === "pending"} onPress={() => {
+        version.run();
+        preferences.run();
+        keyboard.run();
+      }}>Refresh</Button>
+      <Field label="Host haptics">
+        {preferences.status === "success" ? preferences.data.hapticsEnabled ? "On" : "Off"
+          : preferences.status === "error" ? preferences.error.message : "Loading..."}
+      </Field>
+      <Field label="Keyboard voice input">
+        {keyboard.status === "success" ? keyboard.data.displayVoice ? "Available" : "Hidden"
+          : keyboard.status === "error" ? keyboard.error.message : "Loading..."}
+      </Field>
+      <Field label="Camera permission">
+        {camera.status === "success" ? camera.data : camera.status === "error" ? camera.error.message : "Checking..."}
+      </Field>
+      <Button disabled={request.status === "pending"} onPress={() => request.run()}>Request Camera</Button>
+      {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
     </Screen>
   );
 }

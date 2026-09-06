@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ink_audio::{AudioFormat, AudioProcessor, LevelProcessor, PitchProcessor};
-use ink_core::{ControllerId, Engine};
+use ink_core::{ControllerId, StateValue};
 
 struct Processor {
     enabled: bool,
@@ -52,7 +52,12 @@ impl AudioRuntime {
         true
     }
 
-    pub fn process(&mut self, engine: &mut Engine, samples: &[i16], sample_rate: u32) -> bool {
+    pub fn process(
+        &mut self,
+        samples: &[i16],
+        sample_rate: u32,
+        mut publish: impl FnMut(ControllerId, StateValue) -> bool,
+    ) -> bool {
         let format = AudioFormat {
             sample_rate,
             channels: 1,
@@ -68,7 +73,7 @@ impl AudioRuntime {
             if processor.enabled
                 && let Some(value) = processor.inner.process(samples)
             {
-                changed |= engine.update_controller(*controller, value);
+                changed |= publish(*controller, value);
             }
         }
         changed

@@ -1,14 +1,11 @@
 {
-  "compilerOptions": {
-    "jsx": "preserve",
-    "jsxImportSource": "ink",
-    "customConditions": ["ink"],
-    "module": "Preserve",
-    "moduleResolution": "bundler",
-    "noEmit": true,
-    "preserveSymlinks": true,
-    "strict": true,
-    "target": "ESNext"
-  },
-  "include": ["**/*.tsx"]
+  "extends": "ink/tsconfig",
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    ".ink"
+  ]
 }

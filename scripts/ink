@@ -11,4 +11,5 @@ while [ -L "$script" ]; do
 done
 
 repository=$(cd -P "$(dirname "$script")/.." && pwd)
+export INK_SDK_ROOT="${INK_SDK_ROOT:-$repository}"
 exec cargo +1.96.0 run --quiet --manifest-path "$repository/Cargo.toml" -p ink-cli -- "$@"

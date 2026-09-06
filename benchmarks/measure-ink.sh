@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 
+build_output="${BUILD_BENCHMARK_OUTPUT:-benchmarks/results/ink-build.csv}"
 BUILD_BENCHMARK_STACKS=ink \
-  BUILD_BENCHMARK_OUTPUT=benchmarks/results/ink-build.csv \
+  BUILD_BENCHMARK_OUTPUT="$build_output" \
   ./benchmarks/measure-builds.sh
 
 adb="${ADB:-$HOME/Library/Android/sdk/platform-tools/adb}"
@@ -17,6 +18,6 @@ BENCHMARK_STACKS=ink \
   BENCHMARK_DEVICE="$benchmark_device" \
   BENCHMARK_OUTPUT="$benchmark_output" \
   bun benchmarks/measure.ts
-bun benchmarks/verify.ts \
-  "$benchmark_output" \
-  benchmarks/results/ink-build.csv
+if [ -n "${INK_BENCHMARK_BUDGETS:-}" ]; then
+  bun benchmarks/verify.ts "$benchmark_output" "$build_output"
+fi

@@ -25,6 +25,14 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum InkCommand {
+    /// Create an app using the selected local SDK
+    Create {
+        directory: PathBuf,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long, default_value = "com.example.inkapp")]
+        package: String,
+    },
     /// Validate the application without producing build artefacts
     Check,
 

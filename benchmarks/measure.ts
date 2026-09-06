@@ -207,19 +207,15 @@ function wakeAndUnlock() {
   shell("input keyevent 224");
   sleep(300);
   const initialWindows = shell("dumpsys window");
-  if (
-    /mCurrentFocus=.*com\.vandam\.luma/.test(initialWindows) ||
-    /mObscuringWindow=.*Luma Unlock Gate/.test(initialWindows)
-  ) {
+  if (/m(?:CurrentFocus|ObscuringWindow)=.*Luma Unlock Gate/.test(initialWindows)) {
     shell("input swipe 540 1150 540 300 300");
   }
   const deadline = performance.now() + 5_000;
   while (performance.now() < deadline) {
     const power = shell("dumpsys power");
     const windows = shell("dumpsys window");
-    const lumaHasFocus = /mCurrentFocus=.*com\.vandam\.luma/.test(windows);
-    const lumaObscures = /mObscuringWindow=.*Luma Unlock Gate/.test(windows);
-    if (power.includes("mWakefulness=Awake") && !lumaHasFocus && !lumaObscures) return;
+    const unlockGate = /m(?:CurrentFocus|ObscuringWindow)=.*Luma Unlock Gate/.test(windows);
+    if (power.includes("mWakefulness=Awake") && !unlockGate) return;
     sleep(100);
   }
   throw new Error("The Luma unlock gate remained visible after the unlock gesture");
@@ -232,10 +228,19 @@ function start(app: App): number {
   const result = shell(`am start -W -n ${app.component}`);
   const match = result.match(/^(?:TotalTime|WaitTime):\s+(\d+)/m);
   if (!match) throw new Error(`No launch time for ${app.packageName}:\n${result}`);
+  checkForeground(app);
   return Number(match[1]);
 }
 
+function checkForeground(app: App) {
+  const focus = shell("dumpsys window").split("\n").find((line) => line.includes("mCurrentFocus="));
+  if (!focus?.includes(app.packageName)) {
+    throw new Error(`Expected ${app.packageName} in the foreground: ${focus}`);
+  }
+}
+
 function memory(app: App): MemorySample {
+  checkForeground(app);
   const result = shell(`dumpsys meminfo ${app.packageName}`);
   const pss = result.match(/TOTAL PSS:\s+(\d+)/);
   const rss = result.match(/TOTAL RSS:\s+(\d+)/);
@@ -245,6 +250,12 @@ function memory(app: App): MemorySample {
     throw new Error(`Could not read memory for ${app.packageName}`);
   }
   return { pssKb: Number(pss[1]), rssKb: Number(rss[1]), threads };
+}
+
+function checkRuntimeErrors(app: App) {
+  const pid = shell(`pidof -s ${app.packageName}`).trim();
+  const errors = run([...adbCommand, "logcat", "-d", "--pid", pid, "-v", "brief", "-s", "Ink:E", "ReactNativeJS:E", "AndroidRuntime:E"], true);
+  if (/^[EF]\//m.test(errors)) throw new Error(`${app.packageName} reported a runtime error:\n${errors}`);
 }
 
 function cpuTicks(app: App): number {
@@ -262,13 +273,17 @@ function thermalStatus(): number {
 }
 
 function surfaceStats(app: App) {
+  checkForeground(app);
   const dump = shell("dumpsys SurfaceFlinger --timestats -dump");
   const blocks = dump.match(/displayRefreshRate =[\s\S]*?(?=\ndisplayRefreshRate =|$)/g) ?? [];
   const candidates = blocks
     .filter((block) => block.includes(app.packageName))
     .map((block) => ({ block, frames: Number(block.match(/totalFrames = (\d+)/)?.[1] ?? 0) }))
     .sort((a, b) => b.frames - a.frames);
-  const block = candidates[0]?.block ?? "";
+  if (!candidates.length || candidates[0].frames === 0) {
+    throw new Error(`No rendered frames recorded for ${app.packageName}; cannot report this workload`);
+  }
+  const block = candidates[0].block;
   const histogramAfter = (name: string) => block.match(new RegExp(`${name} histogram is as below:\\n([^\\n]+)`))?.[1];
   const presented = histogramAfter("present2present");
   return {
@@ -352,6 +367,8 @@ function restoreDeviceSettings() {
   }
 }
 process.on("exit", restoreDeviceSettings);
+process.once("SIGINT", () => { restoreDeviceSettings(); process.exit(130); });
+process.once("SIGTERM", () => { restoreDeviceSettings(); process.exit(143); });
 shell("settings put global stay_on_while_plugged_in 7");
 clockTicksPerSecond = Number(shell("getconf CLK_TCK").trim());
 if (!Number.isFinite(clockTicksPerSecond) || clockTicksPerSecond <= 0) {
@@ -375,6 +392,8 @@ for (const app of apps) {
   run([...adbCommand, "install", "-r", app.apk], true);
   start(app);
   sleep(2_000);
+  checkRuntimeErrors(app);
+  await Bun.sleep(0);
 }
 
 const startup = Object.fromEntries(apps.map((app) => [app.packageName, [] as number[]]));
@@ -383,6 +402,7 @@ for (let round = 0; round < 15; round += 1) {
   for (const app of order) {
     startup[app.packageName].push(start(app));
     sleep(350);
+    await Bun.sleep(0);
   }
   console.log(`Startup round ${round + 1}/15`);
 }
@@ -394,6 +414,7 @@ for (let round = 0; round < 5; round += 1) {
     start(app);
     sleep(2_000);
     idle[app.packageName].push(memory(app));
+    await Bun.sleep(0);
   }
   console.log(`Idle-memory round ${round + 1}/5`);
 }
@@ -404,6 +425,7 @@ for (let round = 0; round < 5; round += 1) {
   for (const app of order) {
     console.log(`Workload ${round + 1}/5: ${app.stack} ${app.scenario}`);
     workloads[app.packageName].push(workload(app));
+    await Bun.sleep(0);
   }
 }
 
@@ -418,6 +440,7 @@ for (let round = 0; round < 3; round += 1) {
   for (const app of order) {
     console.log(`Continuous scroll ${round + 1}/3: ${app.stack}`);
     continuousScrolls[app.packageName].push(continuousScroll(app));
+    await Bun.sleep(0);
   }
 }
 

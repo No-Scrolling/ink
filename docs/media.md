@@ -1,8 +1,10 @@
 ---
 title: "Media"
 description: "Pick, inspect and prepare photos, audio and video."
-tag: "Design specification"
+tag: "Planned"
 ---
+
+> **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
 `@ink/media` provides native media selection and preparation. Use it for a chat attachment, avatar, saved cover or imported audio file.
 

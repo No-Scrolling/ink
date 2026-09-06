@@ -1,10 +1,14 @@
 ---
 title: "Store"
 description: "Persist small settings with explicit decoding and migrations."
-tag: "Design specification"
+tag: "In development"
 ---
 
+> **In development.** SQLite persistence, revision-checked updates, decoding, migrations and snapshots across runtimes and processes are implemented. Corruption, migration and contention scenarios need broader verification.
+
 `@ink/store` stores small JSON values: selected units, saved locations, a sort order or the last selected account. Use [Records](records.md) for indexed collections and [Secure store](secure-store.md) for credentials.
+
+Committed writes notify active observers in other app runtimes through private Android broadcasts. Observers reload the changed key; a newly started process reads SQLite directly.
 
 ```ts
 import { createStore } from "@ink/store";

@@ -5,6 +5,8 @@ internal fun createNotificationsAdapter(
     update: (Long, String) -> Unit,
 ): NotificationsAdapter = NoNotificationsAdapter
 
+internal fun createWorkerNotificationsAdapter(context: android.content.Context): NativeAdapter = NoNotificationsAdapter
+
 private object NoNotificationsAdapter : NotificationsAdapter {
     override fun start() = Unit
 
