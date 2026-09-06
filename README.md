@@ -35,7 +35,7 @@ export default function Counter() {
 
 ## Documentation
 
-Please see [ink.noscroll.ing](https://ink.noscroll.ing).
+Please see [ink.noscroll.ing](https://ink.noscroll.ing)
 
 ## Development
 
@@ -54,8 +54,7 @@ bun install
 - `ink info` shows bundle size, native capabilities and project details.
 - `ink devices`, `ink logs` and `ink doctor` help with device setup and debugging.
 
-Builds target the LP3's ARM64 ABI. Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`. `ink dev` selects the appropriate host service for the phone or emulator.
-
+Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`.
 
 ## Benchmarks
 
