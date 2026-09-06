@@ -71,6 +71,9 @@ Ink uses Public Sans, strong contrast, clear text and a small set of familiar co
 | `Image` | Imported image assets, HTTPS images and camera-managed images, with optional native zooming. |
 | `List` | Virtualised, automatically content-measured rows using the screen’s native scrolling. |
 | `Screen`, `Stack` | Page structure and layout. |
+| `Row` | Tappable title/subtitle with optional artwork. |
+| `PlayingScreen` | Player layout; the app supplies playback state and callbacks. |
+| `ConversationScreen`, `Message` | Conversation presentation and interaction, or a standalone message. |
 
 Keep button labels and important values readable without relying on truncation. `Text`, `Button`, `Field` values and `Confirmation` messages accept text content, including components that produce text. Nested `Text` is flattened: the outer text style applies, so nested size/alignment props do not create styled spans. Layout controls and inputs must be siblings rather than text children.
 
@@ -78,7 +81,7 @@ Keep button labels and important values readable without relying on truncation. 
 
 ## Common screen patterns
 
-Compose these inside a `Screen`; they use the same native text, controls and spacing as other Ink content:
+Compose the state and settings patterns inside a `Screen`; `Confirmation` owns its screen. They use the same native text, controls and spacing as other Ink content:
 
 | Component | Interface |
 | --- | --- |
@@ -120,6 +123,8 @@ The `search` and `done` actions submit to `onSubmit`; navigating away closes the
 Update the controlled `value` synchronously in `onChange`, as above; debounce network requests or other effects instead. Native event counters protect against older commits while JavaScript is busy. They do not infer which later asynchronous value updates an application intended to keep.
 
 Centred images in a full-width vertical stack stay centred on the page when it scrolls; text and controls retain space for the scrollbar.
+
+Placeholders use the theme's muted grey. The keyboard has no bottom dismiss row; it ends with Ink's standard 20-unit bottom inset. Back dismisses it. Multiline edits retain the input's scroll position while the cursor remains visible, and only adjust it when necessary to reveal the cursor.
 
 Remote images use HTTPS. Images require explicit positive `width` and `height`, can use `fit="contain"` or `"cover"`, and currently have no fallback prop. `bleed` extends an image to the viewport width while preserving the declared aspect ratio. `zoomable` enables gestures; it defaults to false. Arbitrary `file://` images are not accepted by `Image`. Decoding, downsampling, texture caching, pinch zoom and panning stay native. Large media bytes need not pass through JavaScript. For a zoomable image, double-tap cycles through 2×, 3× and 4× magnification, then resets to the fitted image; drag to pan while zoomed. Pinch interaction still needs device verification.
 
@@ -260,3 +265,5 @@ Long-pressing a message or its image opens its preview and the built-in Reply ac
 `timestamp` is milliseconds since the Unix epoch. Ink displays local time for today and adds the month and day for older messages. Set `group` for group chats to show incoming authors; single chats hide authors and outgoing messages never show “You” in their subtitle. Reactions share the subtitle. Optional statuses are `sending`, `sent`, `delivered`, `read` and `failed`; the app supplies them from its messaging service. A failed message offers “Tap to try again” when `onRetry` is supplied. An image supplies `src`, `width` and `height`; a stored `reply` supplies `author` and `text`.
 
 Use `onLoadOlder` and `hasOlder` to prepend history. `onAttach` supplies the composer's plus action. The Single chat and Group chat examples use local data and demonstrate text, image-only messages, replies, reactions and delivery states.
+
+Sending requests keyboard dismissal and the bottom scroll position in the same React update as clearing the reply. The app should add its outgoing message and clear its controlled draft in `onSend`; Ink does not wait for a network acknowledgement. `sending` disables sending, and `loading` shows the initial loading content. Playback and conversation examples have focused emulator verification; real-service integration and physical LP3 workflow validation remain deferred.

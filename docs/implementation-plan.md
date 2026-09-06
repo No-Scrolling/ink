@@ -1,6 +1,8 @@
 # Completing Ink's developer experience
 
-Status: framework implementation delivered, with focused verification completed on 6 September 2026. Physical LP3 counter/scroll benchmarks are now complete. Real-app workflows remain explicitly deferred for a joint session with the user. The detailed sections below preserve the intended design and its acceptance criteria; they are not a claim that every device scenario has been exercised.
+Status: the agreed framework and component implementation is delivered, including PlayingScreen, ConversationScreen and the three-line scrolling composer. Focused emulator verification and historical physical LP3 counter/scroll benchmarks are recorded. Real-app workflows remain deferred for a joint session. The active benchmark now contains aligned counters only; its fresh physical comparison remains pending. The detailed sections below retain the original design problems and acceptance criteria, not a list of outstanding implementation tasks or a claim that every device scenario has been exercised.
+
+This plan does not include implementing every proposed package. Auth, Bluetooth, Connectivity, Downloads, Files, Maps, Media, Reader, Records, Secure Store, Sensors and System remain planned; their individual package pages describe proposals rather than available APIs.
 
 ## Current implementation status
 
@@ -22,7 +24,7 @@ An author can create an app outside this repository, write ordinary TypeScript a
 
 Keep React, QuickJS-ng on its dedicated thread, native Rust layout and interaction, Vulkan rendering and separate background runtimes. Accessibility, React Native compatibility and automatic LightOS colour matching are outside scope. The phone investigation established that the inspected SDK does not expose its invert-colours preference.
 
-Existing TypeScript interfaces are the starting point. New interfaces described here are proposals. Asset and package changes require migration of the examples and documentation.
+The sections below preserve the original plan. The current public interfaces are documented in [Build with Ink](ink.md), [list behaviour](lists.md) and the package guides. Later component additions are tracked in [example coverage](example-pattern-coverage.md).
 
 ## 1. Predictable builds and assets
 
@@ -93,7 +95,7 @@ Watch resolved compiler inputs, including linked packages outside the app root. 
 
 **Files:** `packages/ink/src/list.ts`, native `ReactList` layout and `ReactTree::viewport_events`.
 
-Keep fixed-height lists as the simple fast path. Add an estimated-height mode using the existing items, keys and renderItem model; authors must not calculate message heights.
+The final design uses one automatically measured List with items, keys and renderItem. The earlier separate fixed-height/estimated-height proposal was removed; authors provide neither a mode nor height hints.
 
 **Implementation:**
 

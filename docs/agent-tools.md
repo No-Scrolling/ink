@@ -23,9 +23,9 @@ Results default to the ignored `.agent-tools/` directory. Set `INK_AGENT_TOOLS_D
 
 ```sh
 scripts/agent-tools experiment --ref HEAD \
-  --app benchmarks/apps/ink-counter --app benchmarks/apps/ink-scroll --background
+  --app benchmarks/apps/ink-counter --background
 scripts/agent-tools experiment --working-tree \
-  --app benchmarks/apps/ink-counter --app benchmarks/apps/ink-scroll --background
+  --app benchmarks/apps/ink-counter --background
 ```
 
 Record the returned baseline and candidate IDs. `--ref` resolves an existing commit and archives it. `--working-tree` copies tracked files and non-ignored untracked files, including local edits. Ignored build outputs and dependencies are excluded. The snapshot has per-file hashes, executable modes and a combined hash in `source.json`. `source.tar.gz` retains the actual inputs, including uncommitted changes, after workspace cleanup. Avoid editing source while a snapshot is being copied.
@@ -51,12 +51,9 @@ The supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1` and `INK_MEMORY
 scripts/agent-tools bench --baseline BASELINE_ID --candidate CANDIDATE_ID \
   --app benchmarks/apps/ink-counter --serial LP3LHMA531900140 \
   --rounds 3 --scenario counter --background
-scripts/agent-tools bench --baseline BASELINE_ID --candidate CANDIDATE_ID \
-  --app benchmarks/apps/ink-scroll --serial LP3LHMA531900140 \
-  --rounds 3 --scenario scroll --background
 ```
 
-Run device operations sequentially: a second benchmark cannot take an already reserved device. Counter and scroll presets use the existing Ink fixture coordinates on a 1080×1240 display. Counter performs 100 taps. Scroll performs six swipes each way, then a separate five-second drag. `--scenario idle` omits interaction and works with other display sizes and apps. The tool does not change or virtualise the fixtures; inspect the source manifests to establish fixture equivalence.
+Run device operations sequentially: a second benchmark cannot take an already reserved device. Counter and scroll presets use LP3 interaction coordinates on a 1080×1240 display. The active benchmark fixture is Counter, which performs 100 taps. The generic scroll preset remains available for other apps. Scroll performs six swipes each way, then a separate five-second drag. `--scenario idle` omits interaction and works with other display sizes and apps. The tool does not change or virtualise the fixtures; inspect the source manifests to establish fixture equivalence.
 
 Baseline/candidate order alternates each round. Each APK starts in a fresh process and settles for two seconds. Samples require the expected foreground app, thermal status 0 and no reported Ink/Android runtime errors. Foreground changes, process restarts during interaction and missing frame evidence fail the operation rather than producing a successful comparison. Earlier accepted samples remain on disk.
 
@@ -100,3 +97,9 @@ Inspect an already running foreground app. The tool saves Android's meminfo and 
 Opt-in native counters report host-node and text-node counts, raw text payload bytes, inline host-node bytes and child-ID capacity. Renderer counters report requested GPU instance-buffer capacities, retained CPU instance snapshots, font/image/system-glyph texture payload sizes and whether the image pipeline exists. Normal releases compile out this accounting.
 
 These counters are partial logical sizes, **not a full allocation profiler**: they omit allocator overhead, JSON-map allocations, other retained scene/cache structures, JavaScript heaps, driver allocations and pipeline memory. They overlap Android's PSS and must not be added to it. The log describes the latest rendered frame, not necessarily the instant meminfo was sampled. Missing counters are reported as unavailable, never as zero.
+
+## Three-framework counter comparison
+
+Use `scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SERIAL --background` to run the counter-only comparison harness. The JSON object maps `ink`, `expo` and `light-sdk` to their release APK paths. The tool copies and hashes the APKs, reserves the device, runs 15 launches, five idle samples and five 100-tap workloads per app, then uninstalls its apps and restores settings. It refuses pre-existing benchmark installations. This mode uses the fixed comparison protocol rather than paired `--rounds`/`--scenario` options.
+
+The evidence directory retains the harness, APK hashes, runtime log, raw samples, screenshots after each workload, and before/after settings. Use `wait ID --after CURSOR` and `result ID --full` as for paired benchmarks. Check the screenshots to confirm that injected taps reached Count: 100 before publishing results.

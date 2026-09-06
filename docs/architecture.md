@@ -4,7 +4,7 @@ description: "TypeScript app behaviour, QuickJS-ng execution and retained native
 tag: "In development"
 ---
 
-> **In development.** React, QuickJS-ng, retained rendering, background runtimes, fixed- and variable-height list virtualisation and native subtree updates are implemented. Physical-device workflow and performance verification remain outstanding.
+> **In development.** React, QuickJS-ng, retained rendering, background runtimes, automatically measured lists and native subtree updates are implemented. Focused emulator checks and physical LP3 benchmarks are recorded; real-app workflow validation remains deferred. See [verification](verification-2026-09-06.md).
 
 Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler type-checks and bundles the app, prepares its assets and selects native integrations.
 
@@ -41,7 +41,7 @@ enabled = true
 
 ## Build responsibilities
 
-The build resolves normal package exports, removes TypeScript types, compiles JSX, bundles reachable code and includes declared assets. The current build emits a single UI bundle and, when configured, a worker bundle. Separate dynamic chunks are not implemented; they are not a way to download executable code after installation.
+The build resolves normal package exports, removes TypeScript types, compiles JSX, bundles reachable code and includes declared assets. It emits a UI bundle and, when configured, a worker bundle. Release builds also package web runtime code separately for loading on first use; `INK_SPLIT_WEB=0` disables that split for comparisons. General application code splitting and downloading executable code after installation are not supported.
 
 Supported packages declare module requirements. One versioned capability catalogue supplies dependency closure, permissions and Android source groups to the compiler and Gradle. A general third-party native ABI/build extension contract remains separate. Native modules and required capability groups are linked together into the APK. Tree shaking can remove unused JavaScript; it cannot guarantee that one method can be extracted from an indivisible native SDK.
 
@@ -53,7 +53,7 @@ The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScri
 
 Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches changes across the native seam and applies consistent updates at frame boundaries. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
 
-Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using fixed heights or cached measurements and estimates. Stable keys preserve the visible anchor; see [list behaviour](lists.md).
+Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](lists.md).
 
 A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 
@@ -64,8 +64,8 @@ A visually idle app requests no rendering frames. This is not a promise of zero 
 | Component | Form state, actions, memoised calculations | Unmount |
 | Visible screen | Resource observations, camera, foreground location | Hidden screen or backgrounded app |
 | App runtime | Account module, shared in-memory store | Process/runtime disposal |
-| Native service | Detached audio, managed downloads | Explicit stop or Android termination |
-| Durable storage | Preferences, records, files, queued jobs | Explicit deletion or app-data removal |
+| Native service | Detached audio | Explicit stop or Android termination |
+| Durable storage | Store preferences, queued jobs | Explicit deletion or app-data removal |
 
 JavaScript garbage collection is not a lifecycle mechanism for a camera, socket or player. UI hooks and explicit `close()`/unsubscribe operations release native work. Reactivation obtains fresh handles; stale results cannot update a replacement owner. Native handles may be held in memory but are not serialisable. Durable IDs reconnect to stored state instead of reviving an old pointer.
 

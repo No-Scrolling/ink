@@ -30,4 +30,14 @@ Compilation does not establish cancellation/pause/restart stress behaviour, deta
 
 ## Subsequent physical LP3 benchmarks
 
+This section records the fixtures measured at the time. The active harness is now counter-only; the [matching-counter emulator record](../benchmarks/results/matching-counter-emulator-2026-09-06/README.md) covers their later alignment. Previous physical timings do not measure those updated fixtures.
+
 Release counter and non-virtualised 1,000-row scroll benchmarks completed on the physical LP3 for Ink, Expo and Light SDK. The Ink release check exposed an R8-stripped JNI callback; its keep rule was corrected before measurements. Separate counter checks reached 100, and scroll fixtures rendered and responded to swipes. See the [Ink results](../benchmarks/results/ink-react-lp3-2026-09-06.md) and [Expo/Light SDK results](../benchmarks/results/expo-light-sdk-lp3-2026-09-06.md). Device settings were restored and benchmark apps/APKs removed. These measurements do not cover the deferred real-app workflows or variable-height list stress scenarios.
+
+## Subsequent conversation and keyboard checks
+
+The template was rebuilt and installed with `ink dev --device emulator-5554 --once`. Local-fixture checks covered text/image message actions, Back, reactions, reply previews, replying from older history and sending replies. Slow upward drags across history loading and a small continued movement after loading retained the visible messages.
+
+Keyboard checks covered removal of the dismiss row, Return inserting newlines and sending multiline text. A five-line draft stayed in a three-line composer and scrolled back to its first line. Editing line 2 retained lines 1–3 in place. Reopening the empty composer after sending, including a tap with slight movement, was exercised. Sending while scrolled above the newest message closed the keyboard, cleared the draft and showed the new message at the bottom.
+
+Framework/template TypeScript checks, Rust workspace checks with all features and diff whitespace checks passed during these changes. No automated tests were added. These checks do not establish every frame of the keyboard transition, physical touch behaviour, long-running messaging, real services or race behaviour under delayed JavaScript. Those remain part of the joint real-app session.
