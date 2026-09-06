@@ -323,8 +323,8 @@ impl AndroidEngine {
         &mut self,
         text_cursor_visible: bool,
     ) -> Option<ink_renderer_wgpu::SystemGlyphRequest> {
-        // Keep the last complete frame until React supplies the requested rows.
-        if !self.engine.list_viewports_ready() {
+        // Keep the last complete frame while rows or the camera review image load.
+        if !self.engine.list_viewports_ready() || !self.engine.camera_review_ready() {
             return None;
         }
         let Some(surface) = &mut self.surface else {
@@ -452,6 +452,17 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePublicSans<'local>
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraReviewReady(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_none_or(|engine| engine.engine.camera_review_ready()) as jboolean
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
@@ -459,8 +470,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'loca
 ) -> JString<'local> {
     let value = engine(handle)
         .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| engine.engine.scene().camera_portal)
-        .map_or_else(String::new, |portal| {
+        .and_then(|engine| {
+            let scene = engine.engine.scene();
+            scene.camera_portal.map(|portal| (portal, scene.light))
+        })
+        .map_or_else(String::new, |(portal, light)| {
             let kind = match portal.kind {
                 CameraPreviewKind::Photo => "photo",
                 CameraPreviewKind::Scanner => "scanner",
@@ -470,13 +484,14 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'loca
             let right = (portal.rect.x + portal.rect.width).round() as i32;
             let bottom = (portal.rect.y + portal.rect.height).round() as i32;
             format!(
-                "{{\"controller\":{},\"kind\":\"{}\",\"x\":{},\"y\":{},\"width\":{},\"height\":{}}}",
+                "{{\"controller\":{},\"kind\":\"{}\",\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"light\":{}}}",
                 portal.controller.index() as i64,
                 kind,
                 left,
                 top,
                 (right - left).max(1),
                 (bottom - top).max(1),
+                light,
             )
         });
     env.with_env(|env| env.new_string(value))
@@ -889,6 +904,30 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestPayload<'lo
     request_id: jlong,
 ) -> JString<'local> {
     native_request_string(&mut env, handle, request_id, |request| request.payload())
+}
+
+#[cfg(feature = "image")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompletePixels(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+    width: jint,
+    height: jint,
+    rgba: JByteArray<'_>,
+) -> jboolean {
+    if width <= 0 || height <= 0 {
+        return false as jboolean;
+    }
+    let pixels = env
+        .with_env(|env| env.convert_byte_array(&rgba))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| {
+            engine.complete_native_image(request_id as u64, width as u32, height as u32, pixels)
+        }) as jboolean
 }
 
 #[cfg(feature = "image")]

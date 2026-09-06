@@ -1275,6 +1275,17 @@ impl Engine {
             .filter(|request| request.id == id)
     }
 
+    pub fn camera_review_ready(&self) -> bool {
+        !self.visible_images.iter().any(|key| {
+            key.module == "camera"
+                && key.url.starts_with("ink-camera-review://")
+                && matches!(
+                    self.remote_images.get(key),
+                    Some(RemoteImageState::Loading { .. })
+                )
+        })
+    }
+
     pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit)> {
         let pending = self.in_flight_requests.get(&request_id)?;
         let RequestOwner::Image(key) = &pending.owner else {

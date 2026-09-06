@@ -33,7 +33,7 @@ internal fun createCameraAdapter(
 
     override fun cancel(requestId: Long) = Unit
 
-    override fun syncPortal(portal: CameraPortal?) = Unit
+    override fun syncPortal(portal: CameraPortal?, reviewReady: Boolean) = Unit
 
     override fun pause() = Unit
 

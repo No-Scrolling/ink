@@ -7,6 +7,7 @@ internal data class CameraPortal(
     val y: Int,
     val width: Int,
     val height: Int,
+    val light: Boolean,
 )
 
 internal interface CameraAdapter : NativeAdapter {
@@ -25,7 +26,7 @@ internal interface CameraAdapter : NativeAdapter {
         complete: NativeResultHandler,
     )
 
-    fun syncPortal(portal: CameraPortal?)
+    fun syncPortal(portal: CameraPortal?, reviewReady: Boolean)
 
     fun pause()
 

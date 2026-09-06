@@ -1,8 +1,10 @@
 package com.vandam.ink
 
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
+import android.graphics.Canvas
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import androidx.camera.core.UseCase
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -17,21 +19,71 @@ private class InkPhotoCaptureFeature(
     private val host: CameraSessionHost,
     private val directory: File,
 ) : CameraSessionFeature {
-    private val imageCapture = ImageCapture.Builder()
-        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-        .build()
     private val executor = Executors.newSingleThreadExecutor()
     private var staged: CapturedFile? = null
     private var capturing = false
     private var stopped = false
+    private var attempt: String? = null
+    private var reviewPixels: NativeResult.Pixels? = null
 
-    override val useCases = listOf(imageCapture)
+    private val camera = InkDirectPhotoCamera(
+        host.activity,
+        host.facing,
+        onReview = { pixels ->
+            val current = attempt
+            if (!stopped && current != null) {
+                reviewPixels = pixels
+                host.review("$REVIEW_PREFIX$current", saving = true)
+            }
+        },
+        onPhoto = { bytes, width, height, capturedAt ->
+            val current = attempt
+            if (!stopped && current != null) {
+                executor.execute { save(bytes, width, height, capturedAt, current) }
+            }
+        },
+        onError = { kind, message, retryable -> fail(kind, message, retryable) },
+    )
+    private var flashAwaitingDraw = false
+    private val flashView: View = object : View(host.activity) {
+        init {
+            visibility = GONE
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (flashAwaitingDraw) {
+                flashAwaitingDraw = false
+                postDelayed(clearFlash, 100)
+            }
+        }
+    }
+    private val clearFlash: Runnable = Runnable {
+        flashAwaitingDraw = false
+        flashView.visibility = View.GONE
+    }
+
+    override fun image(source: String): NativeResult.Pixels? =
+        if (source == "$REVIEW_PREFIX$attempt") reviewPixels else null
+
+    override val useCases = emptyList<UseCase>()
+    override val capturePreview = FrameLayout(host.activity).apply {
+        addView(camera.preview, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        addView(flashView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+    }
+    override fun openCamera(onReady: () -> Unit) = camera.open(onReady)
+    override fun releaseCamera() = camera.release()
 
     override fun start() {
-        host.preview.contentDescription = "Tap to take photo"
-        host.preview.isClickable = true
-        host.preview.isFocusable = true
-        host.preview.setOnClickListener { capture() }
+        camera.preview.contentDescription = "Tap to take photo"
+        camera.preview.isClickable = true
+        camera.preview.isFocusable = true
+        camera.preview.setOnClickListener { capture() }
     }
 
     override fun execute(operation: String): Boolean = when (operation) {
@@ -54,8 +106,13 @@ private class InkPhotoCaptureFeature(
 
     override fun stop() {
         stopped = true
-        host.preview.setOnClickListener(null)
-        executor.shutdownNow()
+        flashView.removeCallbacks(clearFlash)
+        clearFlash.run()
+        camera.stop()
+        camera.preview.setOnClickListener(null)
+        attempt = null
+        reviewPixels = null
+        executor.shutdown()
         staged?.file?.delete()
         staged = null
     }
@@ -65,45 +122,28 @@ private class InkPhotoCaptureFeature(
             return
         }
         capturing = true
-        host.preview.isClickable = false
-        imageCapture.takePicture(
-            executor,
-            object : ImageCapture.OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                    save(image)
-                }
-
-                override fun onError(exception: ImageCaptureException) {
-                    val (kind, retryable) = when (exception.imageCaptureError) {
-                        ImageCapture.ERROR_FILE_IO -> "storage" to true
-                        ImageCapture.ERROR_CAMERA_CLOSED -> "unavailable" to true
-                        ImageCapture.ERROR_INVALID_CAMERA -> "unavailable" to false
-                        else -> "capture" to true
-                    }
-                    fail(kind, exception.message ?: "Photo capture failed", retryable)
-                }
-            },
-        )
+        val current = UUID.randomUUID().toString()
+        attempt = current
+        camera.preview.isClickable = false
+        flashView.removeCallbacks(clearFlash)
+        flashView.setBackgroundColor(host.flashColour)
+        flashAwaitingDraw = true
+        flashView.visibility = View.VISIBLE
+        if (!camera.capture()) {
+            fail("unavailable", "Camera is not ready to capture", true, current)
+        }
     }
 
-    private fun save(image: ImageProxy) {
-        val width = if (image.imageInfo.rotationDegrees % 180 == 0) image.width else image.height
-        val height = if (image.imageInfo.rotationDegrees % 180 == 0) image.height else image.width
-        val capturedAt = System.currentTimeMillis()
-        val id = UUID.randomUUID().toString()
+    private fun save(bytes: ByteArray, width: Int, height: Int, capturedAt: Long, current: String) {
+        val id = current
         val output = File(directory, "$id.partial")
         val result = runCatching {
-            val plane = image.planes.firstOrNull() ?: error("Camera returned no JPEG data")
-            val buffer = plane.buffer
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
             output.outputStream().buffered().use { it.write(bytes) }
             CapturedFile(id, output, width, height, capturedAt)
         }
-        image.close()
         result.onSuccess { captured ->
             host.activity.runOnUiThread {
-                if (stopped) {
+                if (stopped || attempt != current) {
                     captured.file.delete()
                 } else {
                     staged = captured
@@ -112,13 +152,15 @@ private class InkPhotoCaptureFeature(
             }
         }.onFailure { error ->
             output.delete()
-            fail("storage", error.message ?: "Photo could not be saved", true)
+            fail("storage", error.message ?: "Photo could not be saved", true, current)
         }
     }
 
     private fun retake() {
-        val captured = staged ?: return
-        captured.file.delete()
+        if (!capturing) return
+        attempt = null
+        reviewPixels = null
+        staged?.file?.delete()
         staged = null
         capturing = false
         host.rebindCamera()
@@ -155,9 +197,9 @@ private class InkPhotoCaptureFeature(
         )
     }
 
-    private fun fail(kind: String, message: String, retryable: Boolean) {
+    private fun fail(kind: String, message: String, retryable: Boolean, current: String? = attempt) {
         host.activity.runOnUiThread {
-            if (!stopped) {
+            if (!stopped && attempt == current) {
                 host.fail(kind, message, retryable)
             }
         }

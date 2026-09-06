@@ -2,6 +2,7 @@ package com.vandam.ink
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -33,6 +34,13 @@ internal fun createCameraAdapter(
 
 internal interface CameraSessionFeature {
     val useCases: List<UseCase>
+    val capturePreview: View? get() = null
+
+    fun image(source: String): NativeResult.Pixels? = null
+
+    fun openCamera(onReady: () -> Unit) = Unit
+
+    fun releaseCamera() = Unit
 
     fun start()
 
@@ -44,12 +52,14 @@ internal interface CameraSessionFeature {
 internal interface CameraSessionHost {
     val activity: MainActivity
     val preview: PreviewView
+    val facing: String
+    val flashColour: Int
 
     fun releaseCamera()
 
     fun rebindCamera()
 
-    fun review(source: String)
+    fun review(source: String, saving: Boolean = false)
 
     fun clearReview()
 
@@ -156,11 +166,15 @@ private class InkCameraAdapter(
         )
     }
 
-    override fun syncPortal(portal: CameraPortal?) {
+    override fun syncPortal(portal: CameraPortal?, reviewReady: Boolean) {
         this.portal = portal
         val active = session
         if (portal == null) {
-            if (active != null && !active.reviewing) {
+            if (active?.reviewing == true) {
+                if (reviewReady) active.revealReview()
+                return
+            }
+            if (active != null && !active.awaitingPreview) {
                 active.close(restore = false)
             } else {
                 active?.mountPreview(null)
@@ -320,8 +334,12 @@ private class InkCameraAdapter(
                 source.removePrefix(REVIEW_PREFIX) to ".partial"
             else -> null to null
         }
-        if (id == null || suffix == null || !PHOTO_ID.matches(id)) {
+        if (source == null || id == null || suffix == null || !PHOTO_ID.matches(id)) {
             complete(protocol("Ink produced an invalid captured photo source"))
+            return
+        }
+        session?.image(source)?.let {
+            complete(it)
             return
         }
         val file = File(photoDirectory, "$id$suffix")
@@ -431,6 +449,8 @@ private class InkCameraAdapter(
         private val complete: NativeResultHandler,
     ) : CameraSessionHost {
         override val activity = this@InkCameraAdapter.activity
+        override val facing = recipe.config.optString("facing", "back")
+        override val flashColour get() = if (portal?.light == true) Color.WHITE else Color.BLACK
         override var preview = createPreviewView()
             private set
         private val previewHost = FrameLayout(activity).apply {
@@ -446,13 +466,15 @@ private class InkCameraAdapter(
         }
         private val lifecycleOwner = CameraLifecycleOwner()
         private val cameraPreview = Preview.Builder().build()
-        private val selector = if (recipe.config.optString("facing", "back") == "front") {
+        private val selector = if (facing == "front") {
             CameraSelector.DEFAULT_FRONT_CAMERA
         } else CameraSelector.DEFAULT_BACK_CAMERA
         private var provider: ProcessCameraProvider? = null
         private var feature: CameraSessionFeature? = null
         private var requestCompleted = false
         private var closed = false
+        var awaitingPreview = true
+            private set
         var reviewing = false
             private set
 
@@ -486,6 +508,13 @@ private class InkCameraAdapter(
                         return@addListener
                     }
                     feature = selected
+                    selected.capturePreview?.let { view ->
+                        previewHost.removeAllViews()
+                        previewHost.addView(view, FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        ))
+                    }
                     lifecycleOwner.start()
                     selected.start()
                     bindCameraAfterLayout {
@@ -498,10 +527,12 @@ private class InkCameraAdapter(
         }
 
         fun mountPreview(portal: CameraPortal?) {
-            if (portal == null || reviewing || closed) {
+            if (reviewing && !closed) return
+            if (portal == null || closed) {
                 (previewHost.parent as? ViewGroup)?.removeView(previewHost)
                 return
             }
+            awaitingPreview = false
             val params = FrameLayout.LayoutParams(portal.width, portal.height).apply {
                 leftMargin = portal.x
                 topMargin = portal.y
@@ -513,16 +544,28 @@ private class InkCameraAdapter(
             }
         }
 
+        fun image(source: String): NativeResult.Pixels? = feature?.image(source)
+
         fun execute(operation: String): Boolean = feature?.execute(operation) == true
 
         override fun releaseCamera() {
+            feature?.releaseCamera()
             val cameraProvider = provider ?: return
             val uses = feature?.useCases.orEmpty()
             cameraProvider.unbind(cameraPreview, *uses.toTypedArray())
         }
 
         override fun rebindCamera() {
+            awaitingPreview = true
+            releaseCamera()
             reviewing = false
+            if (feature?.capturePreview != null) {
+                feature?.start()
+                updateReview(controller, null)
+                mountPreview(portal?.takeIf { it.controller == controller })
+                bindCameraAfterLayout {}
+                return
+            }
             (previewHost.parent as? ViewGroup)?.removeView(previewHost)
             previewHost.removeAllViews()
             preview = createPreviewView()
@@ -540,11 +583,18 @@ private class InkCameraAdapter(
             bindCameraAfterLayout {}
         }
 
-        override fun review(source: String) {
+        override fun review(source: String, saving: Boolean) {
             reviewing = true
+            publish(controller, JSONObject()
+                .put("status", "review")
+                .put("reviewSource", source)
+                .put("saving", saving).toString())
+        }
+
+        fun revealReview() {
+            if (previewHost.parent == null) return
             releaseCamera()
-            updateReview(controller, source)
-            mountPreview(null)
+            (previewHost.parent as? ViewGroup)?.removeView(previewHost)
         }
 
         override fun clearReview() {
@@ -614,8 +664,8 @@ private class InkCameraAdapter(
         }
 
         private fun bindCameraAfterLayout(onBound: () -> Unit) {
-            val target = preview
-            if (target.isLaidOut && target.width > 0 && target.height > 0) {
+            val target = feature?.capturePreview ?: preview
+            if (target.isAttachedToWindow && target.isLaidOut && target.width > 0 && target.height > 0) {
                 finishBinding(onBound)
                 return
             }
@@ -632,8 +682,9 @@ private class InkCameraAdapter(
                         oldRight: Int,
                         oldBottom: Int,
                     ) {
+                        if (!target.isAttachedToWindow || right <= left || bottom <= top) return
                         target.removeOnLayoutChangeListener(this)
-                        if (target === preview) {
+                        if (target === (feature?.capturePreview ?: preview)) {
                             finishBinding(onBound)
                         }
                     }
@@ -643,6 +694,11 @@ private class InkCameraAdapter(
 
         private fun finishBinding(onBound: () -> Unit) {
             if (closed || reviewing) {
+                return
+            }
+            val active = feature
+            if (active?.capturePreview != null) {
+                active.openCamera(onBound)
                 return
             }
             if (!bindCamera()) {

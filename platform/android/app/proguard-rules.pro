@@ -7,3 +7,7 @@
     public void onJavaScriptReady();
     public java.lang.String loadWebRuntime();
 }
+
+-keepclasseswithmembernames class com.vandam.ink.InkDirectPhotoCamera {
+    native <methods>;
+}

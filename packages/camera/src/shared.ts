@@ -27,9 +27,10 @@ interface CameraState<T> {
   ready: boolean;
   value: T | null;
   reviewSource: string | null;
+  saving: boolean;
   error: Error | null;
 }
-function initial<T>(): CameraState<T> { return { status: "idle", ready: false, value: null, reviewSource: null, error: null }; }
+function initial<T>(): CameraState<T> { return { status: "idle", ready: false, value: null, reviewSource: null, saving: false, error: null }; }
 function decodePhoto(value: unknown): CapturedPhoto {
   if (typeof value !== "object" || value === null
     || !("source" in value) || typeof value.source !== "string"
@@ -72,7 +73,7 @@ function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown) => T,
         if ("reviewSource" in value) {
           if (typeof value.reviewSource !== "string") throw new NativeError("protocol", "Invalid photo review source");
           const source = value.reviewSource;
-          setState(previous => source ? { ...previous, status: "review", ready: false, reviewSource: source }
+          setState(previous => source ? { ...previous, status: "review", ready: false, reviewSource: source, saving: "saving" in value && value.saving === true }
             : previous.status === "review" ? { ...initial<T>(), status: "active", ready: true } : previous);
           return;
         }
@@ -123,7 +124,7 @@ export function CameraPreview({ controller }: { controller: ReturnType<typeof us
     content = createElement(Stack, { align: "stretch", gap: 47 },
       createElement(Image, { src: state.reviewSource, width: 300, height: 340 }),
       createElement(Button, { disabled: command.status === "pending", onPress: () => command.run(controller.retake) }, "Retake"),
-      createElement(Button, { disabled: command.status === "pending", onPress: () => command.run(controller.accept) }, "Use photo"));
+      createElement(Button, { disabled: state.saving || command.status === "pending", onPress: () => command.run(controller.accept) }, state.saving ? "Saving photo…" : "Use photo"));
   } else if (state.status === "ready" && state.value) {
     content = createElement(Stack, { align: "stretch", gap: 47 },
       "source" in state.value ? createElement(Image, { src: state.value.source, width: 300, height: 340 }) : createElement(Field, { label: "Code" }, state.value.text),

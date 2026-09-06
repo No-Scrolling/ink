@@ -13,6 +13,7 @@ internal fun javascriptResult(id: Long, result: NativeResult): String {
             .put("kind", result.kind.wireName)
             .put("message", result.message)
             .put("retryable", result.retryable)
+        is NativeResult.Pixels -> response.put("kind", "protocol").put("message", "Pixel results require an image request")
         is NativeResult.File -> {
             if (result.deleteAfterRead) java.io.File(result.path).delete()
             response.put("kind", "protocol").put("message", "File results require a managed-file operation")
@@ -38,6 +39,8 @@ internal sealed interface NativeResult {
     data class Success(val value: String) : NativeResult
 
     data class Bytes(val value: ByteArray) : NativeResult
+
+    data class Pixels(val width: Int, val height: Int, val rgba: ByteArray) : NativeResult
 
     data class File(val path: String, val deleteAfterRead: Boolean = true) : NativeResult
 

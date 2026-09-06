@@ -666,10 +666,11 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                     y = value.getInt("y"),
                     width = value.getInt("width"),
                     height = value.getInt("height"),
+                    light = value.getBoolean("light"),
                 )
             }.getOrNull()
         }
-        cameraAdapter.syncPortal(portal)
+        cameraAdapter.syncPortal(portal, nativeCameraReviewReady(engineHandle))
         val map = nativeMapPortal(engineHandle)
         mapsAdapter.syncPortal(if (map.isEmpty()) null else {
             val value = JSONObject(map)
@@ -942,6 +943,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
         logResource("$outcome $requestId $label ${elapsed}ms")
         val changed = when (result) {
             is NativeResult.Success, is NativeResult.Bytes -> nativeCompleteAction(engineHandle, requestId)
+            is NativeResult.Pixels -> nativeCompletePixels(engineHandle, requestId, result.width, result.height, result.rgba)
             is NativeResult.File -> {
                 completeImage(requestId, result)
                 return
@@ -1500,6 +1502,13 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
 
         @JvmStatic
         private external fun nativeCameraPortal(handle: Long): String
+
+        @JvmStatic
+        private external fun nativeCompletePixels(handle: Long, requestId: Long, width: Int, height: Int, rgba: ByteArray): Boolean
+
+        @JvmStatic
+        private external fun nativeCameraReviewReady(handle: Long): Boolean
+
         @JvmStatic
         private external fun nativeMapPortal(handle: Long): String
 
