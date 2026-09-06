@@ -11,6 +11,9 @@
 
 A React and TypeScript framework to create Light Phone III apps. Powered by QuickJS-ng and Ink's Rust/Vulkan renderer.
 
+> [!IMPORTANT]
+> Ink is currently under heavy development.
+
 ## Example
 
 ```tsx
