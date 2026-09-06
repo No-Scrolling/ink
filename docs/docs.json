@@ -72,5 +72,13 @@
         ]
       }
     ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "href": "https://github.com/vandamd/ink",
+        "label": "GitHub"
+      }
+    ]
   }
 }
