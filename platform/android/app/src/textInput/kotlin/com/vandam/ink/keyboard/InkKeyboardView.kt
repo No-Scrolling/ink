@@ -26,7 +26,6 @@ internal interface KeyboardListener {
     fun onText(text: String)
     fun onBackspace()
     fun onAction()
-    fun onDismiss()
 }
 
 internal class InkKeyboardView @JvmOverloads constructor(
@@ -116,15 +115,17 @@ internal class InkKeyboardView @JvmOverloads constructor(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val desiredHeight = dp(KEYBOARD_HEIGHT_DP + DISMISS_HEIGHT_DP).toInt()
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), resolveSize(desiredHeight, heightMeasureSpec))
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        // Match Ink's 20-unit content inset and its viewport scale.
+        val bottomInset = 20f * width / 1080f * 2.55f
+        val desiredHeight = (dp(KEYBOARD_HEIGHT_DP) + bottomInset).toInt()
+        setMeasuredDimension(width, resolveSize(desiredHeight, heightMeasureSpec))
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         keys.clear()
         drawLayout(canvas, KeyboardLayouts.forMode(mode, emojiKeys))
-        drawDismiss(canvas)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -246,7 +247,6 @@ internal class InkKeyboardView @JvmOverloads constructor(
                 KeyboardCommand.Emoji -> drawIcon(canvas, KeyboardIcon.Mood, x, y)
                 KeyboardCommand.Submit -> drawIcon(canvas, action.icon, x, y)
                 KeyboardCommand.Space -> drawSpace(canvas, placed.bounds)
-                KeyboardCommand.Dismiss -> drawIcon(canvas, KeyboardIcon.Dismiss, x, y)
                 KeyboardCommand.Letters -> drawIcon(canvas, KeyboardIcon.MatchCase, x, y)
                 KeyboardCommand.Numbers, KeyboardCommand.Symbols -> Unit
             }
@@ -299,24 +299,6 @@ internal class InkKeyboardView @JvmOverloads constructor(
         canvas.drawLine(bounds.left, y, bounds.right, y, linePaint)
     }
 
-    private fun drawDismiss(canvas: Canvas) {
-        val size = dp(DISMISS_HIT_SIZE_DP)
-        val centreY = (dp(KEYBOARD_HEIGHT_DP) + height) / 2f
-        val bounds = RectF(
-            (width - size) / 2f,
-            centreY - size / 2f,
-            (width + size) / 2f,
-            centreY + size / 2f,
-        )
-        val key = KeyboardKey.Command(
-            KeyboardCommand.Dismiss,
-            widthDp = DISMISS_HIT_SIZE_DP,
-        )
-        val placed = PlacedKey(key, bounds)
-        keys += placed
-        drawCommand(canvas, placed, key)
-    }
-
     private fun displayedText(value: String): String =
         if (mode == KeyboardMode.Letters && shifted) value.uppercase() else value
 
@@ -342,7 +324,6 @@ internal class InkKeyboardView @JvmOverloads constructor(
             KeyboardCommand.Emoji -> show(KeyboardMode.Emoji)
             KeyboardCommand.Space -> listener?.onText(" ")
             KeyboardCommand.Submit -> listener?.onAction()
-            KeyboardCommand.Dismiss -> listener?.onDismiss()
         }
     }
 
@@ -389,7 +370,6 @@ internal class InkKeyboardView @JvmOverloads constructor(
     private companion object {
         private const val KEYBOARD_TOP_PADDING_DP = 4f
         private const val CONTENT_EDGE_OFFSET_DP = 18f
-        private const val DISMISS_HIT_SIZE_DP = 36f
         private const val SPACE_HIT_EXTENSION_DP = 8f
         private const val BACKSPACE_DELAY_MS = 350L
         private const val BACKSPACE_REPEAT_MS = 65L

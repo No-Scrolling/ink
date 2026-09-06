@@ -80,7 +80,8 @@ private class InkKeyboardAdapter(
         if (!keyboardView.isInitialized() || keyboard.visibility != View.VISIBLE) {
             return false
         }
-        onDismiss()
+        onEdit(TextEdit.Dismiss)
+        sync(false, 0)
         return true
     }
 
@@ -101,12 +102,11 @@ private class InkKeyboardAdapter(
     }
 
     override fun onAction() {
-        onEdit(TextEdit.Submit)
-        sync(false, 0)
-    }
-
-    override fun onDismiss() {
-        onEdit(TextEdit.Dismiss)
-        sync(false, 0)
+        if (keyboard.action == KeyboardAction.Return) {
+            onEdit(TextEdit.Insert("\n"))
+        } else {
+            onEdit(TextEdit.Submit)
+            sync(false, 0)
+        }
     }
 }

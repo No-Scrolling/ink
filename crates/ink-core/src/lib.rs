@@ -71,6 +71,7 @@ const DEFAULT_TEXT_SIZE: f32 = 30.0;
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
 const TEXT_INPUT_HEIGHT: f32 = 38.0;
 const TEXT_INPUT_BOTTOM_PADDING: f32 = 6.0;
+const TEXT_INPUT_MAX_LINES: usize = 3;
 const TEXT_INPUT_CLEAR_ICON_SIZE: f32 = 24.0;
 const TEXT_INPUT_CLEAR_GAP: f32 = 20.0;
 const TEXT_INPUT_CLEAR_PADDING: f32 = 5.0;
@@ -978,6 +979,7 @@ struct HitRegion {
     action: Action,
     long_action: Option<Action>,
     scrolling: bool,
+    preserve_input: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1511,11 +1513,14 @@ impl Engine {
                 };
                 region.rect.contains(x, y)
             })
-            .map(|region| match region.action.clone() {
+            .map(|region| (match region.action.clone() {
                 Action::Seek { id, left, width, duration } => react::event(id, "onSeek", vec![serde_json::json!(((x - left) / width).clamp(0.0, 1.0) * duration)]),
                 action => action,
-            });
+            }, region.preserve_input));
+        let preserve_input = action.as_ref().is_some_and(|(_, preserve)| *preserve);
+        let action = action.map(|(action, _)| action);
         let blurred = self.focused_input.is_some()
+            && !preserve_input
             && !matches!(
                 action.as_ref(),
                 Some(Action::FocusTextInput { .. } | Action::ClearInput { .. } | Action::Back)
@@ -1672,7 +1677,7 @@ impl Engine {
                 ..
             }) => PointerOutcome::activated(self.tap(x, y)),
             Pointer::TextInput(pointer) if !pointer.dragging => {
-                PointerOutcome::activated(self.focus_text_input(pointer.input, x))
+                PointerOutcome::activated(self.focus_text_input(pointer.input, x, y))
             }
             Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
@@ -1863,14 +1868,22 @@ impl Engine {
         })
     }
 
-    fn focus_text_input(&mut self, input: TextInputLayout, x: f32) -> bool {
+    fn focus_text_input(&mut self, input: TextInputLayout, x: f32, y: f32) -> bool {
         let Some(StateValue::String(value)) = self.state.get(input.state.0) else {
             return false;
         };
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let target = (x - input.text_rect.x + input.scroll_offset)
-            .clamp(0.0, self.text_width(value, font_size));
-        let cursor = self.text_cursor_for_offset(value, font_size, target);
+        let cursor = if input.action == TextInputAction::Return {
+            let lines = self.input_lines(value, input.text_rect.width);
+            let y = if input.scrolling { y + self.scroll_offset - self.scroll_origin } else { y };
+            let line = ((y - input.text_rect.y + input.scroll_offset) / self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING)).max(0.0) as usize;
+            let (start, end) = lines[line.min(lines.len() - 1)];
+            start + self.text_cursor_for_offset(&value[start..end], font_size, (x - input.text_rect.x).max(0.0))
+        } else {
+            let target = (x - input.text_rect.x + input.scroll_offset)
+                .clamp(0.0, self.text_width(value, font_size));
+            self.text_cursor_for_offset(value, font_size, target)
+        };
         let changed = self.focused_input != Some(input.state)
             || self.focused_input_action != input.action
             || self.focused_input_cursor != cursor;
@@ -1905,6 +1918,18 @@ impl Engine {
     ) -> PointerOutcome {
         let horizontal = pointer.start_x - x;
         let vertical = pointer.start_y - y;
+        if pointer.input.action == TextInputAction::Return {
+            if pointer.input.scroll_max == 0.0 { return PointerOutcome::default(); }
+            if !pointer.dragging {
+                if vertical.abs() <= tap_slop { return PointerOutcome::default(); }
+                pointer.start_y -= vertical.signum() * tap_slop;
+                pointer.dragging = true;
+            }
+            self.pointer = Some(Pointer::TextInput(pointer));
+            let next = (pointer.input.scroll_offset + pointer.start_y - y)
+                .clamp(0.0, pointer.input.scroll_max);
+            return PointerOutcome::changed(self.set_text_input_scroll(pointer.input.state, next)).captured();
+        }
         if !pointer.dragging {
             if horizontal.abs() <= tap_slop && vertical.abs() <= tap_slop {
                 self.pointer = Some(Pointer::TextInput(pointer));
@@ -1949,6 +1974,10 @@ impl Engine {
             return false;
         }
         self.text_input_scroll_offsets.insert(state, offset);
+        if self.text_inputs.iter().any(|input| input.state == state && input.action == TextInputAction::Return) {
+            self.relayout_scene();
+            return true;
+        }
         let delta = offset - current;
         for input in self
             .text_inputs
@@ -1981,6 +2010,19 @@ impl Engine {
             return;
         };
         let cursor = self.focused_input_cursor;
+        if input.action == TextInputAction::Return {
+            let lines = self.input_lines(value, input.text_rect.width);
+            let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
+            let line = lines.iter().rposition(|(start, _)| *start <= cursor).unwrap_or(0);
+            let height = lines.len().min(TEXT_INPUT_MAX_LINES) as f32 * line_height;
+            let current = self.text_input_scroll_offsets.get(&state).copied().unwrap_or(input.scroll_offset);
+            let top = line as f32 * line_height;
+            let next = if top < current { top }
+                else if top + line_height > current + height { top + line_height - height }
+                else { current };
+            self.text_input_scroll_offsets.insert(state, next.max(0.0));
+            return;
+        }
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
         let cursor_offset = self.text_width(&value[..cursor], font_size);
         let scroll_max = (self.text_width(value, font_size) - input.text_rect.width).max(0.0);
@@ -2101,7 +2143,7 @@ impl Engine {
         };
         let mut mutated = false;
         let changed = match edit {
-            TextEdit::Insert(text) if !text.chars().any(char::is_control) => {
+            TextEdit::Insert(text) if !text.chars().any(|c| c.is_control() && !(c == '\n' && self.focused_input_action == TextInputAction::Return)) => {
                 let cursor = self.focused_input_cursor;
                 let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
                     return false;
@@ -2519,9 +2561,13 @@ impl Engine {
                     height: (line_height * lines.len() as f32).min(available.height),
                 }
             }
-            NodeKind::TextInput { .. } => MeasuredSize {
+            NodeKind::TextInput { state, action, .. } => MeasuredSize {
                 width: available.width,
-                height: self.scaled(TEXT_INPUT_HEIGHT).min(available.height),
+                height: if *action == TextInputAction::Return {
+                    let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.as_str(), _ => "" };
+                    let lines = self.input_lines(value, (available.width - self.scaled(1.0)).max(0.0)).len().min(TEXT_INPUT_MAX_LINES);
+                    self.scaled((TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING) * lines as f32 + TEXT_INPUT_BOTTOM_PADDING).min(available.height)
+                } else { self.scaled(TEXT_INPUT_HEIGHT).min(available.height) },
             },
             NodeKind::Button { label, icon, .. } => {
                 let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
@@ -2668,7 +2714,12 @@ impl Engine {
                         self.layout_text_input(placeholder, *state, *action, clear,
                             Rect { width: width + side + gap, ..child_rect }, side + gap);
                     } else {
+                        let first_hit = self.hit_regions.len();
                         self.layout(child, child_rect);
+                        // Send dismisses the keyboard with the React message update.
+                        if children.len() == 3 && index == 2 {
+                            for hit in &mut self.hit_regions[first_hit..] { hit.preserve_input = true; }
+                        }
                     }
                 }
             }
@@ -3417,6 +3468,73 @@ impl Engine {
         }
     }
 
+    fn input_lines(&self, value: &str, width: f32) -> Vec<(usize, usize)> {
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let mut lines = Vec::new();
+        let mut offset = 0;
+        for paragraph in value.split('\n') {
+            let mut start = 0;
+            if paragraph.is_empty() { lines.push((offset, offset)); }
+            while start < paragraph.len() {
+                let end = self.forced_text_break(paragraph, start, font_size, width);
+                lines.push((offset + start, offset + end));
+                start = end;
+            }
+            offset += paragraph.len() + 1;
+        }
+        lines
+    }
+
+    fn layout_multiline_input(&mut self, placeholder: &str, state: StateId, rect: Rect, trailing_width: f32) {
+        let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.clone(), _ => String::new() };
+        let focused = self.focused_input == Some(state);
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
+        let cursor_width = self.scaled(1.0);
+        let viewport = Rect { width: (rect.width - trailing_width - cursor_width).max(0.0), height: (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0), ..rect };
+        let lines = self.input_lines(&value, viewport.width);
+        let cursor = if focused { self.focused_input_cursor } else { value.len() };
+        let cursor_line = lines.iter().rposition(|(start, _)| *start <= cursor).unwrap_or(0);
+        let scroll_max = (lines.len() as f32 * line_height - viewport.height).max(0.0);
+        let scroll_offset = self.text_input_scroll_offsets.get(&state).copied()
+            .unwrap_or((cursor_line + 1) as f32 * line_height - viewport.height)
+            .clamp(0.0, scroll_max);
+        let clip = viewport.intersection(self.clip);
+        let text_run = self.scene.text.len();
+        let showing_placeholder = value.is_empty() && !focused;
+        for (index, (start, end)) in lines.iter().copied().enumerate() {
+            self.scene.text.push(TextRun {
+                text: if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
+                rect: Rect { y: viewport.y + index as f32 * line_height - scroll_offset, height: line_height, ..viewport },
+                clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
+                align: TextAlign::Start, scrolling: self.scrolling,
+            });
+        }
+        if focused {
+            let (start, end) = lines[cursor_line];
+            self.scene.text_cursor = Some(Quad {
+                rect: Rect {
+                    x: viewport.x + self.text_width(&value[start..cursor.min(end)], font_size),
+                    y: viewport.y + cursor_line as f32 * line_height - scroll_offset + self.scaled(2.0),
+                    width: cursor_width, height: (line_height - self.scaled(4.0)).max(0.0),
+                },
+                clip: Rect { width: viewport.width + cursor_width, ..viewport }.intersection(self.clip),
+                colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+            });
+        }
+        let underline_height = self.control_line_height();
+        self.scene.quads.push(Quad {
+            rect: Rect { y: (rect.y + rect.height).round() - underline_height, height: underline_height, ..rect },
+            clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+        });
+        self.text_inputs.push(TextInputLayout {
+            state, action: TextInputAction::Return, text_run, rect, text_rect: viewport,
+            hit_rect: Rect { width: (rect.width - trailing_width).max(0.0), ..rect }.intersection(self.clip),
+            scroll_offset, scroll_max, scrolling: self.scrolling,
+        });
+        self.push_hit_region(rect, Action::FocusTextInput { state, action: TextInputAction::Return });
+    }
+
     fn layout_text_input(
         &mut self,
         placeholder: &str,
@@ -3426,6 +3544,10 @@ impl Engine {
         rect: Rect,
         trailing_width: f32,
     ) {
+        if action == TextInputAction::Return {
+            self.layout_multiline_input(placeholder, state, rect, trailing_width);
+            return;
+        }
         let value = match self.state.get(state.0) {
             Some(StateValue::String(value)) => value.clone(),
             _ => String::new(),
@@ -4002,6 +4124,7 @@ impl Engine {
                 action,
                 long_action,
                 scrolling: self.scrolling,
+                preserve_input: false,
             });
         }
     }

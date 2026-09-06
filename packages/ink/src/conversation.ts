@@ -91,11 +91,14 @@ export type ConversationScreenProps<T extends ConversationMessage = Conversation
 export function ConversationScreen<T extends ConversationMessage>({ title, group = false, messages, draft, onDraftChange, onSend, onAttach, onRetry, onImagePress, onDoubleTap, actions, onLoadOlder, hasOlder = false, loading = false, sending = false }: ConversationScreenProps<T>) {
   const [reply, setReply] = useState<T>();
   const [scrollToEnd, setScrollToEnd] = useState(0);
+  const [dismissKeyboard, setDismissKeyboard] = useState(0);
   const text = draft.trim();
   const send = () => {
     if (!text || sending) return;
     onSend({ text, replyTo: reply });
     setReply(undefined);
+    setScrollToEnd(request => request + 1);
+    setDismissKeyboard(request => request + 1);
   };
   function replyPreview(message: T): ReplyPreview {
     return { author: message.outgoing ? "You" : message.author ?? title, text: message.text || "Photo" };
@@ -129,7 +132,7 @@ export function ConversationScreen<T extends ConversationMessage>({ title, group
   }
   const iconButton = (name: string, onPress?: () => void) => createElement("PlayingPressable", { onPress },
     createElement("Icon", { name, size: 28, filled: true, tone: onPress ? "primary" : "muted" }));
-  return createElement("Screen", { title, pinnedFooter: true, initialEnd: true, scrollToEnd },
+  return createElement("Screen", { title, pinnedFooter: true, initialEnd: true, scrollToEnd, dismissKeyboard },
     loading ? createElement(Text, { size: 18, align: "center" }, "Loading…")
       : createElement(List<T>, { items: messages, keyExtractor: message => message.id, renderItem: messageItem, gap: 28, followEnd: true, initialEnd: true, onLoadOlder, hasOlder }),
     !loading && messages.length === 0 && createElement(Text, { size: 18, align: "center" }, "No messages yet"),
@@ -138,7 +141,7 @@ export function ConversationScreen<T extends ConversationMessage>({ title, group
         createElement(Reply, replyPreview(reply)), iconButton(icons.close, () => setReply(undefined))),
       createElement("ConversationComposer", null,
         onAttach ? iconButton(icons.add, onAttach) : createElement(Stack),
-        createElement(TextInput, { value: draft, onChange: onDraftChange, onSubmit: send, placeholder: "Message…", action: "done" }),
+        createElement(TextInput, { value: draft, onChange: onDraftChange, placeholder: "Message…", action: "return" }),
         iconButton(icons.send, text && !sending ? send : undefined)),
     ));
 }

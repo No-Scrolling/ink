@@ -4,7 +4,6 @@ import android.icu.text.BreakIterator
 import java.util.Locale
 
 internal const val KEYBOARD_HEIGHT_DP = 164f
-internal const val DISMISS_HEIGHT_DP = 56f
 
 internal enum class KeyboardMode {
     Letters,
@@ -22,7 +21,6 @@ internal enum class KeyboardCommand {
     Emoji,
     Space,
     Submit,
-    Dismiss,
 }
 
 internal enum class KeyContentAlignment {

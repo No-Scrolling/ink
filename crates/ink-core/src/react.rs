@@ -262,6 +262,7 @@ impl ReactTree {
             .any(|operation| !matches!(operation, Operation::Update { .. }));
         let mut targets = HashSet::new();
         let mut scroll_to_end = HashSet::new();
+        let mut dismiss_keyboard = HashSet::new();
         for operation in operations {
             match operation {
                 Operation::Create { id, r#type, props } => {
@@ -281,6 +282,10 @@ impl ReactTree {
                 }
                 Operation::Update { id, props } => {
                     let node = self.node_mut(id)?;
+                    if node.kind == HostKind::Screen && props.get("dismissKeyboard").is_some()
+                        && props.get("dismissKeyboard") != node.props.get("dismissKeyboard") {
+                        dismiss_keyboard.insert(id);
+                    }
                     if node.kind == HostKind::Screen && props.get("scrollToEnd").is_some()
                         && props.get("scrollToEnd") != node.props.get("scrollToEnd") {
                         scroll_to_end.insert(id);
@@ -315,7 +320,7 @@ impl ReactTree {
         }
         engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
         self.sync_inputs(engine)?;
-        if !structural && scroll_to_end.is_empty()
+        if !structural && scroll_to_end.is_empty() && dismiss_keyboard.is_empty()
             && targets.iter().all(|id| {
                 self.nodes
                     .get(id)
@@ -391,6 +396,9 @@ impl ReactTree {
         if scroll_to_end.contains(&screen_id) {
             engine.scroll_offset = f32::MAX;
             engine.react_list_positions.clear();
+        }
+        if dismiss_keyboard.contains(&screen_id) {
+            engine.focused_input = None;
         }
         self.scroll_positions
             .retain(|id, _| self.nodes.contains_key(id));

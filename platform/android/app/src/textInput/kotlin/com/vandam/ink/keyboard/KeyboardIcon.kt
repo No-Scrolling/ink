@@ -9,7 +9,6 @@ internal enum class KeyboardIcon(
     ChevronLeft(R.drawable.ink_keyboard_chevron_left, 32f),
     KeyboardArrowUp(R.drawable.ink_keyboard_arrow_up, 30f),
     KeyboardArrowDown(R.drawable.ink_keyboard_arrow_down, 30f),
-    Dismiss(R.drawable.ink_keyboard_arrow_down, 44f),
     MatchCase(R.drawable.ink_keyboard_match_case, 30f),
     Mood(R.drawable.ink_keyboard_mood, 24f),
     KeyboardReturn(R.drawable.ink_keyboard_return, 30f),
