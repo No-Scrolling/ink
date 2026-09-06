@@ -19,10 +19,6 @@ pub struct RasterIcon {
     pub pixels: Vec<u8>,
 }
 
-pub fn exists(name: &str) -> bool {
-    find(name).is_some()
-}
-
 pub fn raster(name: &str, logical_size: f32) -> Result<RasterIcon> {
     raster_variant(name, logical_size, false)
 }

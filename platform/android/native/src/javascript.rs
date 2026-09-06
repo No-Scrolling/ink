@@ -182,6 +182,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
             let Ok(mut engine) = engine.lock() else {
                 return false as jboolean;
             };
+            engine.javascript_error = None;
             engine.script = Some(ScriptRuntime {
                 runtime,
                 events,
@@ -225,6 +226,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDrainJavaScript(
                 ANDROID_LOG_ERROR,
                 &format!("JavaScript app failed: {error:#}"),
             );
+            engine.javascript_error = Some(format!("{error:#}"));
             false as jboolean
         }
     }
@@ -277,4 +279,25 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeIsLightAppearance(
     engine(handle)
         .and_then(|engine| engine.lock().ok().map(|engine| engine.engine.scene().light))
         .unwrap_or(false) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptError<'local>(
+    mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong,
+) -> JString<'local> {
+    let error = engine(handle).and_then(|engine| engine.lock().ok())
+        .and_then(|mut engine| engine.javascript_error.take()).unwrap_or_default();
+    env.with_env(|env| env.new_string(error)).resolve::<jni::errors::LogErrorAndDefault>()
+}
+
+#[cfg(debug_assertions)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRefreshJavaScript(
+    mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, source: JString<'_>,
+) -> jboolean {
+    let source = env.with_env(|env| source.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    let Some(engine) = engine(handle) else { return false as jboolean; };
+    let Ok(engine) = engine.lock() else { return false as jboolean; };
+    engine.script.as_ref().is_some_and(|script| script.runtime.evaluate_development(source).is_ok()) as jboolean
 }

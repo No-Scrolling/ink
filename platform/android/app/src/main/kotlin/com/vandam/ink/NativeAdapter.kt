@@ -10,7 +10,7 @@ internal fun javascriptResult(id: Long, result: NativeResult): String {
         is NativeResult.Success -> response.put("value", result.value)
         is NativeResult.Bytes -> response.put("value", result.value.toString(Charsets.UTF_8))
         is NativeResult.Failure -> response
-            .put("kind", result.kind.name.lowercase())
+            .put("kind", result.kind.wireName)
             .put("message", result.message)
             .put("retryable", result.retryable)
         is NativeResult.File -> {
@@ -48,15 +48,16 @@ internal sealed interface NativeResult {
     ) : NativeResult
 }
 
-internal enum class NativeErrorKind(val code: Int) {
-    UNAVAILABLE(0),
-    PERMISSION_DENIED(1),
-    TIMEOUT(2),
-    PROTOCOL(3),
-    UNEXPECTED(4),
-    PERMISSION_BLOCKED(5),
-    LOCATION_DISABLED(6),
-    NFC_DISABLED(7),
+internal enum class NativeErrorKind(val code: Int, val wireName: String) {
+    UNAVAILABLE(0, "unavailable"),
+    PERMISSION_DENIED(1, "permission-denied"),
+    TIMEOUT(2, "timeout"),
+    PROTOCOL(3, "protocol"),
+    UNEXPECTED(4, "unexpected"),
+    PERMISSION_BLOCKED(5, "permission-blocked"),
+    LOCATION_DISABLED(6, "location-disabled"),
+    NFC_DISABLED(7, "nfc-disabled"),
+    BUSY(8, "busy"),
 }
 
 internal fun inkError(

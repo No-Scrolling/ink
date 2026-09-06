@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0",
+  "protocolVersion": 1,
+  "distribution": "local-checkout",
+  "react": "19.2.8",
+  "reactReconciler": "0.33.0"
+}

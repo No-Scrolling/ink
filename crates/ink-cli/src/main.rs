@@ -1,5 +1,7 @@
 mod android;
+mod development;
 mod cli;
+mod create;
 mod output;
 mod process;
 mod watch;
@@ -28,6 +30,10 @@ fn run() -> Result<()> {
     };
 
     match command {
+        InkCommand::Create { directory, name, package } => {
+            let directory = cli.directory.as_deref().unwrap_or(Path::new(".")).join(directory);
+            create::create(&directory, name.as_deref(), &package)
+        }
         InkCommand::Doctor => android::doctor(),
         InkCommand::Devices => list_devices(),
         InkCommand::Check => {
@@ -71,101 +77,8 @@ fn run() -> Result<()> {
     }
 }
 
-fn develop(
-    project: Project,
-    requested_device: Option<&str>,
-    once: bool,
-    logs: bool,
-    verbose: bool,
-) -> Result<()> {
-    let device = android::select_device(requested_device)?;
-    output::info(format!("Using {}", device.description()));
-    let config_path = project.config_path().to_owned();
-    let project_root = project.root().to_owned();
-    let mut project = project;
-    let mut baseline = watch::capture(&project_root)?;
-
-    loop {
-        let watched = (!once).then_some(&baseline);
-        match develop_once(&project, &device, logs, verbose, watched) {
-            Ok(DevOutcome::Changed) => {
-                baseline = watch::settle(&project_root, watch::capture(&project_root)?)?;
-                project = Project::load(&config_path)?;
-                continue;
-            }
-            Ok(DevOutcome::Complete(log_stream)) if once => {
-                if let Some(mut log_stream) = log_stream {
-                    output::info(format!(
-                        "Streaming logs for {}. Press Ctrl-C to stop.",
-                        project.package()
-                    ));
-                    return log_stream.wait();
-                }
-                return Ok(());
-            }
-            Ok(DevOutcome::Complete(log_stream)) => {
-                output::info("Watching for changes. Press Ctrl-C to stop.");
-                baseline = watch::wait(&project_root, &baseline)?;
-                drop(log_stream);
-            }
-            Err(error) if once => return Err(error),
-            Err(error) => {
-                output::error(format!("{error:#}"));
-                baseline = watch::wait(&project_root, &baseline)?;
-            }
-        }
-        output::info("Change detected, rebuilding");
-        project = match Project::load(&config_path) {
-            Ok(project) => project,
-            Err(error) => {
-                output::error(format!("{error:#}"));
-                baseline = watch::wait(&project_root, &baseline)?;
-                continue;
-            }
-        };
-    }
-}
-
-enum DevOutcome {
-    Complete(Option<android::LogStream>),
-    Changed,
-}
-
-fn develop_once(
-    project: &Project,
-    device: &android::Device,
-    logs: bool,
-    verbose: bool,
-    baseline: Option<&watch::Snapshot>,
-) -> Result<DevOutcome> {
-    let artifact = match baseline {
-        Some(baseline) => {
-            match android::build_watched(
-                project,
-                android::Profile::Debug,
-                verbose,
-                baseline,
-                device,
-            )? {
-                android::BuildOutcome::Complete(artifact) => artifact,
-                android::BuildOutcome::Changed => return Ok(DevOutcome::Changed),
-            }
-        }
-        None => android::build_for_device(project, device, android::Profile::Debug, verbose)?,
-    };
-    if let Some(baseline) = baseline
-        && watch::changed(project.root(), baseline)?
-    {
-        output::info("Files changed before installation; rebuilding");
-        return Ok(DevOutcome::Changed);
-    }
-    android::install(device, &artifact.apk, verbose)?;
-    let log_stream = logs
-        .then(|| android::LogStream::start(device, project.package(), false))
-        .transpose()?;
-    android::launch(device, project, verbose)?;
-    output::success(format!("Launched {}", project.name()));
-    Ok(DevOutcome::Complete(log_stream))
+fn develop(project: Project, requested_device: Option<&str>, once: bool, logs: bool, verbose: bool) -> Result<()> {
+    development::run(project, requested_device, once, logs, verbose)
 }
 
 fn list_devices() -> Result<()> {
@@ -206,6 +119,9 @@ fn show_info(project: &Project) -> Result<()> {
         "JavaScript",
         format!("{} bytes (minified)", app.javascript_bytes),
     );
+    output::field("Resolved inputs", app.resolved_inputs.to_string());
+    output::field("Imported media", app.asset_count.to_string());
+    output::field("Icon variants", app.icon_variants.to_string());
     output::field(
         "Capabilities",
         if app.capabilities.is_empty() {

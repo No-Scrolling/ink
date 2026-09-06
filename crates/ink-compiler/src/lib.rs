@@ -1,6 +1,5 @@
 mod capability;
 mod config;
-mod design;
 mod icon;
 mod icons;
 mod javascript;
@@ -18,6 +17,9 @@ use config::ResolvedConfig;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppInfo {
     pub javascript_bytes: usize,
+    pub resolved_inputs: usize,
+    pub asset_count: usize,
+    pub icon_variants: usize,
     pub capabilities: Vec<String>,
     pub capability_details: Vec<String>,
 }
@@ -87,6 +89,10 @@ impl Project {
         self.root().join(".ink/android/assets")
     }
 
+    pub fn bundle_manifest_path(&self) -> PathBuf {
+        self.android_assets_path().join("ink-bundle-v1.json")
+    }
+
     pub fn capability_manifest_path(&self) -> PathBuf {
         self.android_assets_path().join(capability::MANIFEST_NAME)
     }
@@ -99,8 +105,12 @@ pub fn check(project: &Project) -> Result<()> {
 
 pub fn inspect(project: &Project) -> Result<AppInfo> {
     let bundle = javascript::bundle(project)?;
+    let manifest: serde_json::Value = serde_json::from_slice(&bundle.manifest)?;
     Ok(AppInfo {
         javascript_bytes: bundle.source.len(),
+        resolved_inputs: manifest["inputs"].as_array().map_or(0, Vec::len),
+        asset_count: manifest["assets"].as_array().map_or(0, Vec::len),
+        icon_variants: manifest["icons"].as_array().map_or(0, Vec::len),
         capabilities: bundle
             .capabilities
             .iter()
@@ -115,7 +125,25 @@ pub fn inspect(project: &Project) -> Result<AppInfo> {
 }
 
 pub fn compile(project: &Project) -> Result<Capabilities> {
-    let bundle = javascript::bundle(project)?;
+    compile_profile(project, false)
+}
+
+pub fn compile_development(project: &Project) -> Result<Capabilities> {
+    compile_profile(project, true)
+}
+
+fn compile_profile(project: &Project, development: bool) -> Result<Capabilities> {
+    let bundle = javascript::bundle_profile(project, development)?;
+    write_if_changed(&project.bundle_manifest_path(), &bundle.manifest)?;
+    for name in ["app.js.map", "worker.js.map"] {
+        let path = project.root().join(".ink/bundle").join(name);
+        let destination = project.android_assets_path().join(name);
+        if development && (name == "app.js.map" || bundle.worker.is_some()) && path.is_file() {
+            write_if_changed(&destination, &std::fs::read(path)?)?;
+        } else {
+            remove_obsolete_output(&destination)?;
+        }
+    }
     let asset_directory = project.android_assets_path().join("ink-assets");
     let names: BTreeSet<_> = bundle
         .assets

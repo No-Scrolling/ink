@@ -79,7 +79,32 @@ internal object InkWorkerJobs {
         val scheduler = context.getSystemService(JobScheduler::class.java).forNamespace(NAMESPACE)
         val existing = scheduler.allPendingJobs
         val matching = existing.filter { it.extras.getString("key") == key }
+        val workerBytes = if (BuildConfig.DEBUG) {
+            val selected = java.io.File(context.filesDir, "ink-dev/active-worker")
+            val generation = selected.takeIf { it.isFile }?.readText()
+            val candidate = generation?.takeIf { it.matches(Regex("[0-9]+")) }
+                ?.let { java.io.File(context.filesDir, "ink-dev/$it/worker.js") }
+            candidate?.takeIf { it.isFile }?.readBytes() ?: context.assets.open("worker.js").use { it.readBytes() }
+        } else context.assets.open("worker.js").use { it.readBytes() }
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(workerBytes)
+            .joinToString("") { "%02x".format(it) }
+        val pinned = java.io.File(context.filesDir, "ink-workers/$digest.js")
+        pinned.parentFile!!.mkdirs()
+        if (!pinned.exists()) {
+            val atomic = android.util.AtomicFile(pinned)
+            val stream = atomic.startWrite()
+            try {
+                stream.write(workerBytes)
+                atomic.finishWrite(stream)
+            } catch (error: Exception) {
+                atomic.failWrite(stream)
+                throw error
+            }
+        }
+
         val extras = PersistableBundle().apply {
+            putString("workerBundle", digest)
+
             putString("key", key)
             putString("task", task)
             putString("input", encodedInput)
@@ -123,7 +148,7 @@ class InkWorkerJobService : JobService() {
     private val running = ConcurrentHashMap<Int, InkWorker>()
 
     override fun onStartJob(params: JobParameters): Boolean {
-        val worker = InkWorker(applicationContext)
+        val worker = InkWorker(applicationContext, params.extras.getString("workerBundle"))
         running[params.jobId] = worker
         InkWorkerJobs.started(params.jobId)
         executor.execute {

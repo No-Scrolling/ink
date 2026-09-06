@@ -4,7 +4,7 @@ description: "Small TypeScript apps with a native Light Phone interface."
 tag: "In development"
 ---
 
-> **In development.** React apps, native components, navigation, fixed-height lists and native subtree updates are implemented.
+> **In development.** React apps, native components, navigation, fixed-height and measured lists, and native subtree updates are implemented.
 
 Build Light Phone III apps with React and TypeScript. Ink provides native components, navigation, rendering and device APIs.
 
@@ -19,7 +19,7 @@ cargo run -p ink-cli -- -C examples/light-template check
 cargo run -p ink-cli -- -C examples/light-template dev --device emulator-5554 --once
 ```
 
-Use `ink devices` to find the serial of a connected LP3 or emulator. The template contains `App.tsx`, `ink.toml` and TypeScript configuration. `ink dev` builds, installs and launches the APK; omit `--once` to watch for changes and rebuild. A published `bun create ink` starter and JavaScript-only reload are planned.
+Use `ink devices` to find the serial of a connected LP3 or emulator. The template contains `App.tsx`, `ink.toml` and TypeScript configuration. `ink dev` installs the development host and launches the app; omit `--once` to watch for changes. Compatible edits use JavaScript reload or refresh, while native changes rebuild the APK. See [the development loop](development.md) and [standalone setup](standalone.md).
 
 ```tsx
 import { useState } from "react";
@@ -59,7 +59,7 @@ export default function Settings() {
 
 `Screen` owns the header, back affordance, content insets and safe space above tabs. It scrolls ordinary content when needed. `Stack` arranges children vertically; `axis="horizontal"` creates a row. Use `gap`, `align` and `justify` rather than repeated spacer elements.
 
-Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. General icons are Material Symbols; declare the icons your app can select dynamically so they can be bundled.
+Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. General icons are imported Material Symbol collections. `Icon.name`, `Button.icon` and `Tab.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](build-contracts.md) for formats and migration.
 
 | Component | Use |
 | --- | --- |
@@ -68,11 +68,11 @@ Ink uses Public Sans, strong contrast, clear text and a small set of familiar co
 | `Field` | A single-line label and wrapping value, optionally actionable. The field grows with its value and keeps the whole area tappable. |
 | `Toggle` | A labelled boolean input. |
 | `TextInput` | Controlled input with Ink's native keyboard. |
-| `Image` | Bundled, remote or managed-file imagery with native zooming. |
-| `List` | Virtualised fixed-height rows using the screen’s native scrolling. |
+| `Image` | Imported image assets, HTTPS images and camera-managed images, with optional native zooming. |
+| `List` | Virtualised fixed-height or content-measured rows using the screen’s native scrolling. |
 | `Screen`, `Stack` | Page structure and layout. |
 
-Keep button labels and important values readable without relying on truncation.
+Keep button labels and important values readable without relying on truncation. `Text`, `Button`, `Field` values and `Confirmation` messages accept text content, including components that produce text. Nested `Text` is flattened: the outer text style applies, so nested size/alignment props do not create styled spans. Layout controls and inputs must be siblings rather than text children.
 
 `useAction(operation)` tracks an asynchronous command as `idle`, `pending`, `success` (with `data`) or `error` (with `error`). Call `action.run(...args)` from a control and disable it while pending. Repeated calls while pending are ignored; failures become state rather than unhandled promise rejections. Unmounting the component or hiding it through navigation discards its eventual UI result, but does not cancel the underlying operation.
 
@@ -102,7 +102,6 @@ The template demonstrates each pattern: Search submits from the keyboard to a se
 
 ## Input and images
 
-
 ```tsx
 import { useState } from "react";
 import { navigate, Screen, TextInput } from "ink";
@@ -116,15 +115,19 @@ export function Search() {
 }
 ```
 
-Submitting to an `onSubmit` handler preserves focus; navigating away closes the keyboard with the page change. Without a handler, submission dismisses the keyboard. Input actions are `search`, `return` and `done`; `autoFocus` focuses once per screen visit. The keyboard and cursor interaction stay native. The keyboard reserves space below the screen, and viewport changes reveal the focused input. LightOS preferences inform haptics and keyboard behaviour where the host exposes them. Use a dedicated input screen with its action in the keyboard, and show results on a separate page. Inputs should stay outside scrolling content; a scrollbar belongs only to any separate content region below an input. `Field` displays a text value and cannot contain an input.
+Submitting to an `onSubmit` handler preserves focus; navigating away closes the keyboard with the page change. Without a handler, submission dismisses the keyboard. Input actions are `search`, `return` and `done`; `autoFocus` focuses once per screen visit. The keyboard and cursor interaction stay native. The keyboard reserves space below the screen, and viewport changes reveal the focused input. LightOS preferences inform haptics and keyboard behaviour where the host exposes them. Use a dedicated input screen with its action in the keyboard, and show results on a separate page. `Field` displays a text value and cannot contain an input.
+
+Update the controlled `value` synchronously in `onChange`, as above; debounce network requests or other effects instead. Native event counters protect against older commits while JavaScript is busy. They do not infer which later asynchronous value updates an application intended to keep.
 
 Centred images in a full-width vertical stack stay centred on the page when it scrolls; text and controls retain space for the scrollbar.
 
-Remote images use HTTPS. Images require dimensions or a bounded parent, can use `fit="contain"` or `"cover"`, and currently have no fallback prop. Decoding, downsampling, texture caching, pinch zoom and panning stay native. Large media bytes need not pass through JavaScript. For a zoomable image, double-tap cycles through 2×, 3× and 4× magnification, then resets to the fitted image; drag to pan while zoomed. Pinch interaction still needs device verification.
+Remote images use HTTPS. Images require explicit positive `width` and `height`, can use `fit="contain"` or `"cover"`, and currently have no fallback prop. `bleed` extends an image to the viewport width while preserving the declared aspect ratio. `zoomable` enables gestures; it defaults to false. Arbitrary `file://` images are not accepted by `Image`. Decoding, downsampling, texture caching, pinch zoom and panning stay native. Large media bytes need not pass through JavaScript. For a zoomable image, double-tap cycles through 2×, 3× and 4× magnification, then resets to the fitted image; drag to pan while zoomed. Pinch interaction still needs device verification.
 
 ## Collections
 
-Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side:
+Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Use `itemHeight` for fixed rows or `estimatedItemHeight` for content-measured rows; `gap` adds spacing and `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor. See [list behaviour and limits](lists.md).
+
+For fixed rows:
 
 ```tsx
 <List
@@ -135,7 +138,7 @@ Use `.map()` with stable keys for small collections. For large collections, `Lis
 />
 ```
 
-`itemHeight` is the full height of every row in Ink layout units. Keep each row’s content within that height; variable-height rows are not supported. `List` uses its containing screen’s scroll position and preserves the full collection’s scroll extent. Keys must be stable and unique. Rows outside the window unmount, so keep durable row state in the parent or a store. The initial window contains up to 32 rows until the native viewport arrives.
+`itemHeight` is the full height of every row in Ink layout units. Keep fixed-row content within that height; use `estimatedItemHeight` for variable-height content. `List` uses its containing screen’s scroll position and preserves the full collection’s scroll extent. Keys must be stable and unique. Rows outside the window unmount, so keep durable row state in the parent or a store. The initial window contains up to 32 rows until the native viewport arrives.
 
 ## Navigation
 
@@ -144,14 +147,15 @@ import { Navigator, Route, Tab, Tabs } from "ink";
 import Home from "./screens/Home";
 import Settings from "./screens/Settings";
 import Forecast from "./screens/Forecast";
+import icons from "./navigation.ink-icons";
 
 export default function App() {
   return (
     <Navigator>
       <Route path="/">
         <Tabs>
-          <Tab id="home" icon="home"><Home /></Tab>
-          <Tab id="settings" icon="settings"><Settings /></Tab>
+          <Tab id="home" icon={icons.home}><Home /></Tab>
+          <Tab id="settings" icon={icons.settings}><Settings /></Tab>
         </Tabs>
       </Route>
       <Route path="/forecast"><Forecast /></Route>

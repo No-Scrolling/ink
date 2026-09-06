@@ -93,6 +93,7 @@ unsafe extern "C" {
 struct AndroidEngine {
     engine: Engine,
     script: Option<javascript::ScriptRuntime>,
+    javascript_error: Option<String>,
     surface: Option<AttachedSurface>,
     #[cfg(feature = "audio")]
     audio: crate::audio::AudioRuntime,
@@ -124,6 +125,7 @@ impl AndroidEngine {
         Self {
             engine: Engine::new(),
             script: None,
+            javascript_error: None,
             surface: None,
             #[cfg(feature = "audio")]
             audio: crate::audio::AudioRuntime::default(),
@@ -894,6 +896,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
         5 => ResourceErrorKind::PermissionBlocked,
         6 => ResourceErrorKind::LocationDisabled,
         7 => ResourceErrorKind::NfcDisabled,
+        8 => ResourceErrorKind::Busy,
         _ => ResourceErrorKind::Unexpected,
     };
     engine(handle)

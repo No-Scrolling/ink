@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fs, process::Command};
 
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{Capability, Project, write_if_changed};
 
@@ -11,9 +11,10 @@ pub(super) struct Bundle {
     pub icons: Vec<u8>,
     pub capabilities: crate::Capabilities,
     pub assets: Vec<Asset>,
+    pub manifest: Vec<u8>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub(super) struct Asset {
     pub name: String,
     pub path: std::path::PathBuf,
@@ -27,34 +28,22 @@ struct IconUse {
 }
 
 #[derive(Deserialize)]
-struct DynamicIcons {
-    size: f32,
-    filled: bool,
-}
-
-#[derive(Deserialize)]
 struct Metadata {
-    packages: Vec<String>,
+    #[serde(rename = "devRuntimeHash")]
+    dev_runtime_hash: Option<String>,
+    #[serde(rename = "refreshCompatibilityHash")]
+    refresh_compatibility_hash: Option<String>,
+    inputs: Vec<std::path::PathBuf>,
     assets: Vec<Asset>,
-    #[serde(rename = "remoteImages")]
-    remote_images: bool,
-    #[serde(rename = "detachedAudio")]
-    detached_audio: bool,
-    #[serde(rename = "audioPlayback")]
-    audio_playback: bool,
-    #[serde(rename = "audioCapture")]
-    audio_capture: bool,
-    #[serde(rename = "photoCapture")]
-    photo_capture: bool,
-    #[serde(rename = "codeScanner")]
-    code_scanner: bool,
-    components: Vec<String>,
+    capabilities: Vec<Capability>,
     icons: Vec<IconUse>,
-    dynamic: Vec<DynamicIcons>,
-    strings: Vec<String>,
 }
 
 pub(super) fn bundle(project: &Project) -> Result<Bundle> {
+    bundle_profile(project, false)
+}
+
+pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bundle> {
     let compiler = project
         .root()
         .ancestors()
@@ -80,7 +69,12 @@ pub(super) fn bundle(project: &Project) -> Result<Bundle> {
         .arg(&builder)
         .arg(project.root())
         .arg(&entry)
-        .arg(&output))?;
+        .arg(&output)
+        .arg(if development {
+            "development"
+        } else {
+            "release"
+        }))?;
     let source =
         fs::read(&output).with_context(|| format!("could not read {}", output.display()))?;
     let mut uses: Metadata =
@@ -98,21 +92,18 @@ pub(super) fn bundle(project: &Project) -> Result<Bundle> {
             .arg(&builder)
             .arg(project.root())
             .arg(&entry)
-            .arg(&output))?;
+            .arg(&output)
+            .arg(if development {
+                "development"
+            } else {
+                "release"
+            }))?;
         let worker: Metadata =
             serde_json::from_slice(&fs::read(output.with_extension("js.metadata.json"))?)?;
-        anyhow::ensure!(
-            worker.components.is_empty(),
-            "Background workers cannot render UI components"
-        );
-        uses.packages.extend(worker.packages);
+        uses.inputs.extend(worker.inputs);
         uses.assets.extend(worker.assets);
-        uses.remote_images |= worker.remote_images;
-        uses.detached_audio |= worker.detached_audio;
-        uses.audio_playback |= worker.audio_playback;
-        uses.audio_capture |= worker.audio_capture;
-        uses.photo_capture |= worker.photo_capture;
-        uses.code_scanner |= worker.code_scanner;
+        uses.capabilities.extend(worker.capabilities);
+        uses.icons.extend(worker.icons);
         Some(fs::read(output)?)
     } else {
         None
@@ -121,53 +112,13 @@ pub(super) fn bundle(project: &Project) -> Result<Bundle> {
     for capability in &project.config.capabilities {
         capabilities.insert(*capability);
     }
-    for package in &uses.packages {
-        let required: &[Capability] = match package.as_str() {
-            "@ink/audio" => &[Capability::Audio],
-            "@ink/location" => &[Capability::LightSdk, Capability::Location],
-            "@ink/nfc" => &[Capability::Nfc],
-            "@ink/background" | "@ink/background/worker" => &[Capability::Background],
-            "@ink/notifications" => &[
-                Capability::Notifications,
-                Capability::NotificationPermission,
-            ],
-            "@ink/camera" => &[Capability::LightSdk, Capability::CameraPermission],
-            "@ink/lightos" => &[Capability::LightSdk],
-            "@ink/lightos/ringtone" => &[Capability::LightSdk, Capability::LightSdkRingtone],
-            "@ink/lightos/push" => &[
-                Capability::LightSdk,
-                Capability::LightSdkPush,
-                Capability::Notifications,
-                Capability::Network,
-            ],
-            "@ink/barcode/generate" => &[Capability::BarcodeGenerate, Capability::Image],
-            _ => &[],
-        };
-        for capability in required {
-            capabilities.insert(*capability);
-        }
+    for capability in &uses.capabilities {
+        capabilities.insert(*capability);
     }
-    for (enabled, capability) in [
-        (worker.is_some(), Capability::Background),
-        (uses.photo_capture, Capability::PhotoCapture),
-        (
-            uses.photo_capture || uses.components.iter().any(|name| name == "Image"),
-            Capability::Image,
-        ),
-        (uses.code_scanner, Capability::CodeScanner),
-        (uses.audio_capture, Capability::MicrophonePermission),
-        (uses.audio_playback, Capability::AudioPlayback),
-        (uses.detached_audio, Capability::AudioDetached),
-        (uses.remote_images, Capability::Network),
-        (
-            uses.components.iter().any(|name| name == "TextInput"),
-            Capability::TextInput,
-        ),
-    ] {
-        if enabled {
-            capabilities.insert(capability);
-        }
+    if worker.is_some() {
+        capabilities.insert(Capability::Background);
     }
+    capabilities.resolve_dependencies()?;
     let mut icons = BTreeMap::<(String, bool), f32>::new();
     let mut add = |name: String, size: f32, filled| -> Result<()> {
         anyhow::ensure!(
@@ -180,37 +131,10 @@ pub(super) fn bundle(project: &Project) -> Result<Bundle> {
             .or_insert(size);
         Ok(())
     };
-    if uses
-        .components
-        .iter()
-        .any(|component| component == "Navigator")
-    {
-        add(
-            "arrow_back_ios".into(),
-            crate::design::HEADER_BACK_ICON_SIZE,
-            false,
-        )?;
-    }
-    if uses
-        .components
-        .iter()
-        .any(|component| component == "TextInput")
-    {
-        add(
-            "close".into(),
-            crate::design::TEXT_INPUT_CLEAR_ICON_SIZE,
-            false,
-        )?;
-    }
+    add("arrow_back_ios".into(), 52.0, false)?;
+    add("close".into(), 52.0, false)?;
     for icon in uses.icons {
         add(icon.name, icon.size, icon.filled)?;
-    }
-    for dynamic in uses.dynamic {
-        for name in &uses.strings {
-            if crate::icons::exists(name) {
-                add(name.clone(), dynamic.size, dynamic.filled)?;
-            }
-        }
     }
     let icons = icons
         .into_iter()
@@ -230,8 +154,33 @@ pub(super) fn bundle(project: &Project) -> Result<Bundle> {
             })
         })
         .collect::<Result<Vec<_>>>()?;
+    uses.inputs.push(project.config_path().to_path_buf());
+    for name in ["tsconfig.json", "package.json", "bun.lock", "bun.lockb"] {
+        let path = project.root().join(name);
+        if path.is_file() {
+            uses.inputs.push(path);
+        }
+    }
+    uses.inputs.sort();
+    uses.inputs.dedup();
+    uses.assets.sort_by(|a, b| a.name.cmp(&b.name));
+    uses.assets.dedup_by(|a, b| a.name == b.name);
+    let manifest = serde_json::to_vec_pretty(&serde_json::json!({
+        "version": 1, "frameworkVersion": env!("CARGO_PKG_VERSION"), "protocolVersion": 1,
+        "inputs": uses.inputs, "assets": uses.assets,
+        "icons": icons.iter().map(|icon| serde_json::json!({"name": icon.name, "filled": icon.filled, "width": icon.width, "height": icon.height})).collect::<Vec<_>>(),
+        "capabilities": capabilities.iter().collect::<Vec<_>>(), "worker": worker.is_some(),
+        "devRuntimeHash": uses.dev_runtime_hash,
+        "refreshCompatibilityHash": uses.refresh_compatibility_hash,
+        "profile": if development { "development" } else { "release" },
+    }))?;
+    write_if_changed(
+        &project.root().join(".ink/bundle/ink-bundle-v1.json"),
+        &manifest,
+    )?;
     Ok(Bundle {
         source,
+        manifest,
         worker,
         icons: serde_json::to_vec(&icons)?,
         capabilities,

@@ -8,18 +8,24 @@
     "./renderer": "./src/renderer.ts",
     "./native": "./src/native.ts",
     "./native/controller": "./src/controller.ts",
-    "./runtime": "./src/web.ts"
+    "./runtime": "./src/web.ts",
+    "./assets": "./src/assets.ts",
+    "./runtime-types": "./runtime.d.ts",
+    "./tsconfig": "./tsconfig.app.json"
   },
   "dependencies": {
+    "@babel/core": "8.0.1",
+    "@babel/plugin-transform-modules-commonjs": "8.0.1",
+    "@babel/plugin-transform-typescript": "8.0.1",
+    "@jridgewell/remapping": "2.3.5",
+    "@types/whatwg-url": "13.0.0",
     "base64-js": "1.5.1",
     "react-reconciler": "0.33.0",
+    "react-refresh": "0.18.0",
     "web-streams-polyfill": "4.3.0",
     "whatwg-url": "14.2.0"
   },
   "peerDependencies": {
     "react": "19.2.8"
-  },
-  "devDependencies": {
-    "@types/whatwg-url": "13.0.0"
   }
 }

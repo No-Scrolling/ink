@@ -1,3 +1,4 @@
+import type { IconAsset } from "./assets";
 import {
   Activity, Children, createContext, createElement, isValidElement, useContext,
   useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode,
@@ -98,7 +99,7 @@ export function Navigator({ children }: { children: ReactNode }) {
   );
 }
 
-type TabProps = { id?: string; icon: string; children: ReactNode };
+type TabProps = { id?: string; icon: IconAsset; children: ReactNode };
 export function Tab(_props: TabProps): ReactNode {
   throw new Error("Tab must be a direct child of Tabs");
 }

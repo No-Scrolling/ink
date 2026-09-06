@@ -31,52 +31,20 @@ pub enum Capability {
 }
 
 impl Capability {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Audio => "audio",
-            Self::AudioDetached => "audio-detached",
-            Self::AudioPlayback => "audio-playback",
-            Self::Background => "background",
-            Self::BarcodeGenerate => "barcode-generate",
-            Self::CameraPermission => "camera-permission",
-            Self::CodeScanner => "code-scanner",
-            Self::Image => "image",
-            Self::LightSdk => "light-sdk",
-            Self::LightSdkPush => "light-sdk-push",
-            Self::LightSdkRingtone => "light-sdk-ringtone",
-            Self::Location => "location",
-            Self::MicrophonePermission => "microphone-permission",
-            Self::Network => "network",
-            Self::Nfc => "nfc",
-            Self::NotificationPermission => "notification-permission",
-            Self::Notifications => "notifications",
-            Self::PhotoCapture => "photo-capture",
-            Self::TextInput => "text-input",
-        }
+    pub fn name(self) -> &'static str {
+        let value = serde_json::to_value(self).expect("capability name");
+        catalogue()
+            .as_object()
+            .expect("capability catalogue")
+            .get_key_value(value.as_str().expect("capability name"))
+            .expect("capability exists in catalogue")
+            .0
     }
 
-    pub const fn native_cost(self) -> &'static str {
-        match self {
-            Self::Audio => "audio adapter",
-            Self::AudioDetached => "foreground playback service",
-            Self::AudioPlayback => "Media3 playback",
-            Self::Background => "background job service and network access",
-            Self::BarcodeGenerate => "native barcode encoder",
-            Self::CameraPermission => "camera permission adapter",
-            Self::CodeScanner => "camera session and barcode scanner",
-            Self::Image => "image decoder",
-            Self::LightSdk => "LightOS Binder adapter",
-            Self::LightSdkPush => "LightOS push receivers and network access",
-            Self::LightSdkRingtone => "LightOS ringtone provider",
-            Self::Location => "location adapter and coarse/fine permissions",
-            Self::MicrophonePermission => "microphone permission and recording access",
-            Self::Network => "HTTP client and network permissions",
-            Self::Nfc => "NFC adapter and hardware permission",
-            Self::NotificationPermission => "Android notification permission",
-            Self::Notifications => "alarm store and notification receivers",
-            Self::PhotoCapture => "camera session and photo capture",
-            Self::TextInput => "Public Sans keyboard adapter",
-        }
+    pub fn native_cost(self) -> &'static str {
+        catalogue()[self.name()]["cost"]
+            .as_str()
+            .expect("catalogue cost")
     }
 }
 
@@ -86,6 +54,23 @@ pub struct Capabilities(BTreeSet<Capability>);
 impl Capabilities {
     pub(crate) fn insert(&mut self, capability: Capability) {
         self.0.insert(capability);
+    }
+
+    pub(crate) fn resolve_dependencies(&mut self) -> Result<()> {
+        loop {
+            let before = self.0.len();
+            for capability in self.iter().collect::<Vec<_>>() {
+                for dependency in catalogue()[capability.name()]["dependencies"]
+                    .as_array()
+                    .context("missing capability dependencies")?
+                {
+                    self.insert(serde_json::from_value(dependency.clone())?);
+                }
+            }
+            if self.0.len() == before {
+                return Ok(());
+            }
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Capability> + '_ {
@@ -105,4 +90,12 @@ impl Capabilities {
 struct Manifest {
     version: u32,
     capabilities: Vec<Capability>,
+}
+
+fn catalogue() -> &'static serde_json::Value {
+    static VALUE: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+    &VALUE.get_or_init(|| {
+        serde_json::from_str(include_str!("../capabilities-v1.json"))
+            .expect("valid capability catalogue")
+    })["capabilities"]
 }

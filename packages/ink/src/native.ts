@@ -7,7 +7,7 @@ const pending = new Map<number, {
   reject: (error: unknown) => void;
   dispose: () => void;
 }>();
-let nextId = 1;
+declare const __inkNextId: () => number;
 
 export class NativeError extends Error {
   constructor(readonly kind: string, message: string, readonly retryable = false) {
@@ -56,7 +56,7 @@ export function callNative(
     return Promise.reject(new RangeError("Native request timeout must be a positive 32-bit integer"));
   }
   if (pending.size >= 256) return Promise.reject(new NativeError("busy", "Too many pending native requests", true));
-  const id = nextId++;
+  const id = __inkNextId();
   return new Promise((resolve, reject) => {
     const abort = () => {
       const request = pending.get(id);
@@ -73,7 +73,8 @@ export function callNative(
     } catch (error) {
       pending.delete(id);
       signal?.removeEventListener("abort", abort);
-      reject(error);
+      const message = error instanceof Error ? error.message : String(error);
+      reject(message.startsWith("busy:") ? new NativeError("busy", message.slice(6), true) : error);
     }
   });
 }

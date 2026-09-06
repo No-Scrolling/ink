@@ -4,7 +4,7 @@ description: "TypeScript app behaviour, QuickJS-ng execution and retained native
 tag: "In development"
 ---
 
-> **In development.** React, QuickJS-ng, retained rendering, background runtimes, fixed-height list virtualisation and native subtree updates are implemented.
+> **In development.** React, QuickJS-ng, retained rendering, background runtimes, fixed- and variable-height list virtualisation and native subtree updates are implemented. Physical-device workflow and performance verification remain outstanding.
 
 Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler type-checks and bundles the app, prepares its assets and selects native integrations.
 
@@ -37,13 +37,13 @@ version_code = 1
 enabled = true
 ```
 
-`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The current build discovers supported native integrations from the app and package imports. General native-package manifests and `ink add` are planned.
+`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The build reads versioned `ink-native.json` requirements from resolved package modules. Explicit app capabilities are additive. See [build contracts](build-contracts.md).
 
 ## Build responsibilities
 
 The build resolves normal package exports, removes TypeScript types, compiles JSX, bundles reachable code and includes declared assets. The current build emits a single UI bundle and, when configured, a worker bundle. Separate dynamic chunks are not implemented; they are not a way to download executable code after installation.
 
-A general native package-manifest contract for entry points, ABI compatibility and build dependencies is planned. The current compiler and Android build contain the supported capability mappings. Native modules and required capability groups are linked together into the APK. Tree shaking can remove unused JavaScript; it cannot guarantee that one method can be extracted from an indivisible native SDK.
+Supported packages declare module requirements. One versioned capability catalogue supplies dependency closure, permissions and Android source groups to the compiler and Gradle. A general third-party native ABI/build extension contract remains separate. Native modules and required capability groups are linked together into the APK. Tree shaking can remove unused JavaScript; it cannot guarantee that one method can be extracted from an indivisible native SDK.
 
 Apps ship bundled JavaScript, prepared icons, assets and native capability metadata. The build currently bundles JavaScript source for both development and release.
 
@@ -53,7 +53,7 @@ The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScri
 
 Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches changes across the native seam and applies consistent updates at frame boundaries. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
 
-Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Fixed-height lists mount a window of rows based on the native viewport.
+Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using fixed heights or cached measurements and estimates. Stable keys preserve the visible anchor; see [list behaviour](lists.md).
 
 A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 

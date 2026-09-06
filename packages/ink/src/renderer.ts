@@ -1,3 +1,4 @@
+declare const process: { env: { NODE_ENV: string } };
 import { createContext, type ReactNode } from "react";
 import Reconciler from "react-reconciler";
 import { ConcurrentRoot, DefaultEventPriority, DiscreteEventPriority } from "react-reconciler/constants";
@@ -158,7 +159,17 @@ export function dispatchEvent(id: number, name: string, args: unknown[]) {
   }
 }
 
+let developmentRoot: ReturnType<typeof reconciler.createContainer> | undefined;
+if (process.env.NODE_ENV === "development") {
+  reconciler.injectIntoDevTools({ bundleType: 1, version: "19.2.8", rendererPackageName: "ink" });
+}
+
 export function render(element: ReactNode) {
+  if (process.env.NODE_ENV === "development" && developmentRoot) {
+    const root = developmentRoot;
+    reconciler.updateContainer(element, root, null, null);
+    return () => reconciler.updateContainer(null, root, null, null);
+  }
   onNativeMessage("event", message => {
     if (typeof message.id !== "number" || !Number.isSafeInteger(message.id)
       || typeof message.name !== "string" || !Array.isArray(message.args)) {
@@ -168,6 +179,7 @@ export function render(element: ReactNode) {
   });
   const container: Container = { id: 0, children: [] };
   const root = reconciler.createContainer(container, ConcurrentRoot, null, false, null, "", report, report, report, () => {});
+  if (process.env.NODE_ENV === "development") developmentRoot = root;
   reconciler.updateContainer(element, root, null, null);
   return () => reconciler.updateContainer(null, root, null, null);
 }

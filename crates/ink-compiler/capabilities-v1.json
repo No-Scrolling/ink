@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "capabilities": {
+    "audio": {
+      "cost": "audio adapter",
+      "dependencies": [],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "audio",
+        "disabled": "noAudio"
+      }
+    },
+    "audio-detached": {
+      "cost": "foreground playback service",
+      "dependencies": [
+        "audio-playback",
+        "network"
+      ],
+      "permissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "androidSourceGroup": {
+        "enabled": "audioDetached",
+        "disabled": "noAudioDetached"
+      }
+    },
+    "audio-playback": {
+      "cost": "Media3 playback",
+      "dependencies": [
+        "audio"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "audioPlayback",
+        "disabled": "noAudioPlayback"
+      }
+    },
+    "background": {
+      "cost": "background job service and network access",
+      "dependencies": [
+        "network"
+      ],
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ],
+      "androidSourceGroup": {
+        "enabled": "background",
+        "disabled": "noBackground"
+      }
+    },
+    "barcode-generate": {
+      "cost": "native barcode encoder",
+      "dependencies": [],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "barcode",
+        "disabled": "noBarcode"
+      }
+    },
+    "camera-permission": {
+      "cost": "camera permission adapter",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "code-scanner": {
+      "cost": "camera session and barcode scanner",
+      "dependencies": [
+        "camera-permission"
+      ],
+      "permissions": []
+    },
+    "image": {
+      "cost": "image decoder",
+      "dependencies": [],
+      "permissions": []
+    },
+    "light-sdk": {
+      "cost": "LightOS Binder adapter",
+      "dependencies": [],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "lightSdk",
+        "disabled": "noLightSdk"
+      }
+    },
+    "light-sdk-push": {
+      "cost": "LightOS push receivers and network access",
+      "dependencies": [
+        "light-sdk",
+        "notifications",
+        "network"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "lightSdkPush",
+        "disabled": "noLightSdkPush"
+      }
+    },
+    "light-sdk-ringtone": {
+      "cost": "LightOS ringtone provider",
+      "dependencies": [
+        "light-sdk"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "lightSdkRingtone",
+        "disabled": "noLightSdkRingtone"
+      }
+    },
+    "location": {
+      "cost": "location adapter and coarse/fine permissions",
+      "dependencies": [
+        "light-sdk",
+        "notification-permission"
+      ],
+      "permissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "androidSourceGroup": {
+        "enabled": "location",
+        "disabled": "noLocation"
+      }
+    },
+    "microphone-permission": {
+      "cost": "microphone permission and recording access",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "network": {
+      "cost": "HTTP client and network permissions",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.INTERNET"
+      ],
+      "androidSourceGroup": {
+        "enabled": "network",
+        "disabled": "noNetwork"
+      }
+    },
+    "nfc": {
+      "cost": "NFC adapter and hardware permission",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.NFC"
+      ],
+      "androidSourceGroup": {
+        "enabled": "nfc",
+        "disabled": "noNfc"
+      }
+    },
+    "notification-permission": {
+      "cost": "Android notification permission",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "notifications": {
+      "cost": "alarm store and notification receivers",
+      "dependencies": [
+        "notification-permission"
+      ],
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ],
+      "androidSourceGroup": {
+        "enabled": "notifications",
+        "disabled": "noNotifications"
+      }
+    },
+    "photo-capture": {
+      "cost": "camera session and photo capture",
+      "dependencies": [
+        "camera-permission",
+        "image"
+      ],
+      "permissions": []
+    },
+    "text-input": {
+      "cost": "Public Sans keyboard adapter",
+      "dependencies": [],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "textInput",
+        "disabled": "noTextInput"
+      }
+    }
+  },
+  "androidCameraSources": {
+    "session": {
+      "capabilities": [
+        "photo-capture",
+        "code-scanner"
+      ],
+      "enabled": "cameraSession",
+      "disabled": "noCamera"
+    },
+    "permission": "cameraPermission",
+    "photo": {
+      "capability": "photo-capture",
+      "enabled": "photoCapture",
+      "disabled": "noPhotoCapture"
+    },
+    "scanner": {
+      "capability": "code-scanner",
+      "enabled": "codeScanner",
+      "disabled": "noCodeScanner"
+    }
+  }
+}

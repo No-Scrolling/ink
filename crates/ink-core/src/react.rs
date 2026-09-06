@@ -53,7 +53,7 @@ pub struct ReactTree {
     free_input_states: Vec<StateId>,
     active_screen: Option<usize>,
     scroll_positions: HashMap<usize, f32>,
-    list_windows: HashMap<usize, (usize, usize)>,
+    list_windows: HashMap<usize, (usize, usize, u64)>,
 }
 
 #[derive(Default)]
@@ -177,6 +177,7 @@ impl ReactTree {
                 }
             }
         }
+        engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
         self.sync_inputs(engine)?;
         if !structural
             && targets.iter().all(|id| {
@@ -242,6 +243,7 @@ impl ReactTree {
                 .get(&screen_id)
                 .copied()
                 .unwrap_or(0.0);
+            engine.react_list_positions.clear();
             engine.pointer = None;
             engine.focused_input = None;
             engine.auto_focus_node = None;
@@ -316,19 +318,13 @@ impl ReactTree {
             return vec![];
         };
         let mut events = Vec::new();
-        for (id, (top, height, count)) in &engine.react_list_positions {
-            let first = ((clip.y + engine.scroll_offset - top) / height)
-                .floor()
-                .max(0.0) as usize;
-            let visible = (clip.height / height).ceil() as usize + 1;
-            let start = first.saturating_sub(visible).min(*count);
-            let end = first.saturating_add(visible * 2).min(*count);
-            let window = (start, end);
+        for (id, top) in &engine.react_list_positions {
+            let Some(metrics) = engine.list_metrics.get(id) else { continue; };
+            let (start, end) = metrics.window(clip.y + engine.scroll_offset - top, clip.height);
+            let window = (start, end, metrics.revision);
             if self.list_windows.get(id) != Some(&window) {
                 self.list_windows.insert(*id, window);
-                events.push(
-                    json!({"type":"event", "id": id, "name":"onWindow", "args":[start, end]}),
-                );
+                events.push(json!({"type":"event", "id": id, "name":"onWindow", "args":[start, end, metrics.revision]}));
             }
         }
         events
@@ -445,31 +441,27 @@ impl ReactTree {
         let props = &host.props;
         let mut node = match host.kind.as_str() {
             "List" => {
-                let count = props
-                    .get("count")
-                    .and_then(Json::as_u64)
-                    .context("List requires count")? as usize;
-                let start = props
-                    .get("start")
-                    .and_then(Json::as_u64)
-                    .context("List requires start")? as usize;
-                let row_height =
-                    number(props, "itemHeight")?.context("List requires itemHeight")?;
-                ensure!(
-                    row_height > 0.0
-                        && (row_height * count as f32).is_finite()
-                        && count <= 1_000_000
-                        && start <= count
-                        && host.children.len() <= count - start,
-                    "invalid List dimensions"
-                );
+                let keys: Vec<String> = serde_json::from_value(props.get("keys").cloned().context("List requires keys")?)?;
+                let count = keys.len();
+                let content_versions: Vec<u64> = serde_json::from_value(props.get("contentVersions").cloned().context("List requires contentVersions")?)?;
+                ensure!(content_versions.len() == count, "List content versions must match keys");
+                let start = props.get("start").and_then(Json::as_u64).context("List requires start")? as usize;
+                let revision = props.get("revision").and_then(Json::as_u64).context("List requires revision")?;
+                let fixed = number(props, "itemHeight")?;
+                let estimate = number(props, "estimatedItemHeight")?;
+                ensure!(fixed.is_some() != estimate.is_some(), "List requires itemHeight or estimatedItemHeight");
+                let row_height = fixed.or(estimate).unwrap();
+                let gap = number(props, "gap")?.unwrap_or(0.0);
+                ensure!(row_height > 0.0 && gap >= 0.0 && ((row_height + gap) * count as f32).is_finite()
+                    && count <= 1_000_000 && start <= count && host.children.len() <= count - start,
+                    "invalid List dimensions");
+                ensure!(keys.iter().collect::<HashSet<_>>().len() == count, "List keys must be unique");
                 Node {
                     identity: NodeIdentity(id),
                     kind: NodeKind::ReactList {
-                        children: self.children(host, depth)?,
-                        start,
-                        count,
-                        row_height,
+                        children: self.children(host, depth)?, start, keys, content_versions, revision, row_height,
+                        estimated: estimate.is_some(), gap,
+                        follow_end: props.get("followEnd") == Some(&Json::Bool(true)),
                     },
                 }
             }

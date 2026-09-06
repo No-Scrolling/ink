@@ -1,2 +1,0 @@
-pub const HEADER_BACK_ICON_SIZE: f32 = 28.0;
-pub const TEXT_INPUT_CLEAR_ICON_SIZE: f32 = 24.0;

@@ -202,10 +202,96 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             backCallback,
         )
         enterFullscreen()
-        val source = assets.open("app.js").bufferedReader().use { it.readText() }
-        val icons = assets.open("ink-icons-v1.json").use { it.readBytes() }
-        check(nativeStartJavaScript(engineHandle, source, icons, this)) { "Ink could not start JavaScript" }
+        startDevelopmentBundle(null)
+        if (BuildConfig.DEBUG) intent.getStringExtra("ink.dev.generation")?.let(::activateDevelopmentBundle)
         handleNotificationIntent(intent)
+    }
+
+    private var developmentBundle: java.io.File? = null
+    private var developmentIcons: ByteArray? = null
+    private var refreshCompatibility: String? = null
+    private var developmentError: android.app.AlertDialog? = null
+
+    internal fun openBundleAsset(path: String): java.io.InputStream =
+        developmentBundle?.let { java.io.File(it, path).inputStream() } ?: assets.open(path)
+
+    private fun activateDevelopmentBundle(generation: String) {
+        if (!BuildConfig.DEBUG || !generation.matches(Regex("[0-9]+"))) return
+        developmentError?.dismiss()
+        val directory = java.io.File(filesDir, "ink-dev/$generation")
+        try {
+            check(java.io.File(directory, "complete").isFile) { "Bundle transfer is incomplete: ${directory.absolutePath}/complete" }
+            val source = java.io.File(directory, "app.js").readText()
+            val icons = java.io.File(directory, "ink-icons-v1.json").readBytes()
+            val compatibility = JSONObject(java.io.File(directory, "ink-bundle-v1.json").readText())
+                .optString("refreshCompatibilityHash")
+            if (compatibility.isNotEmpty() && compatibility == refreshCompatibility &&
+                developmentIcons?.contentEquals(icons) == true && nativeRefreshJavaScript(engineHandle, source)) {
+                developmentBundle = directory
+            } else startDevelopmentBundle(directory)
+            if (developmentBundle == directory) {
+                java.io.File(filesDir, "ink-dev/active-worker").writeText(generation)
+                java.io.File(filesDir, "ink-dev").listFiles().orEmpty()
+                    .filter { it.isDirectory && it.name.matches(Regex("[0-9]+")) }
+                    .sortedByDescending { it.name }.drop(3).filter { it != developmentBundle }
+                    .forEach { it.deleteRecursively() }
+            }
+        } catch (error: Exception) {
+            android.util.Log.e("Ink", "Bundle activation failed", error)
+            developmentError = android.app.AlertDialog.Builder(this).setTitle("Ink development error")
+                .setMessage(error.message).setPositiveButton("Reload") { _, _ -> activateDevelopmentBundle(generation) }
+                .setNegativeButton("Close", null).show()
+        }
+    }
+
+    internal fun bundledAudioUri(source: String): android.net.Uri {
+        if (!BuildConfig.DEBUG || developmentBundle == null) return android.net.Uri.parse(source)
+        val path = source.removePrefix("asset:///")
+        require(path.matches(Regex("ink-assets/[a-f0-9]{64}\\.mp3"))) { "Invalid bundled audio source" }
+        val pinned = java.io.File(filesDir, "ink-media/${path.substringAfterLast('/')}")
+        pinned.parentFile!!.mkdirs()
+        if (!pinned.isFile) {
+            val atomic = android.util.AtomicFile(pinned)
+            val stream = atomic.startWrite()
+            try {
+                openBundleAsset(path).use { it.copyTo(stream) }
+                atomic.finishWrite(stream)
+            } catch (error: Exception) {
+                atomic.failWrite(stream)
+                throw error
+            }
+        }
+
+        return android.net.Uri.fromFile(pinned)
+    }
+
+    private fun startDevelopmentBundle(directory: java.io.File?) {
+        try {
+            developmentError?.dismiss()
+            if (BuildConfig.DEBUG && directory == null) java.io.File(filesDir, "ink-dev/active-worker").delete()
+            val source = if (directory == null) assets.open("app.js").bufferedReader().use { it.readText() }
+                else java.io.File(directory, "app.js").readText()
+            val icons = if (directory == null) assets.open("ink-icons-v1.json").use { it.readBytes() }
+                else java.io.File(directory, "ink-icons-v1.json").readBytes()
+            val manifest = if (directory == null) assets.open("ink-bundle-v1.json").bufferedReader().use { it.readText() }
+                else java.io.File(directory, "ink-bundle-v1.json").readText()
+            refreshCompatibility = JSONObject(manifest).optString("refreshCompatibilityHash")
+            stopJavaScriptSession()
+            nativeRequestHandler.removeCallbacks(drainJavaScript)
+            javascriptPending.set(false)
+            developmentIcons = icons
+            check(nativeStartJavaScript(engineHandle, source, icons, this)) { "Ink could not start JavaScript; see ink logs" }
+            developmentBundle = directory
+            inkView.requestFrame()
+        } catch (error: Exception) {
+            if (!BuildConfig.DEBUG) throw error
+            android.util.Log.e("Ink", "Bundle activation failed", error)
+            developmentError = android.app.AlertDialog.Builder(this)
+                .setTitle("Ink development error")
+                .setMessage("${error.message}\nFix the source and save, or reload this generation.")
+                .setPositiveButton("Reload") { _, _ -> startDevelopmentBundle(directory) }
+                .setNegativeButton("Close", null).show()
+        }
     }
 
     private val javascriptPending = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -222,7 +308,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val drainJavaScript = Runnable {
         javascriptPending.set(false)
         if (engineHandle != 0L) {
-            if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
+if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
+            if (BuildConfig.DEBUG) {
+                val error = nativeTakeJavaScriptError(engineHandle)
+                if (error.isNotEmpty()) {
+                    stopJavaScriptSession()
+                    val mapped = DevelopmentErrors.map(error) { openBundleAsset("app.js.map").bufferedReader().use { it.readText() } }
+                    android.util.Log.e("Ink", mapped)
+                    developmentError = android.app.AlertDialog.Builder(this).setTitle("Ink development error")
+                        .setMessage(mapped).setPositiveButton("Reload") { _, _ -> startDevelopmentBundle(developmentBundle) }
+                        .setNegativeButton("Close", null).show()
+                }
+            }
             val light = nativeIsLightAppearance(engineHandle)
             textInputAdapter.setLightAppearance(light)
             window.statusBarColor = if (light) Color.WHITE else Color.BLACK
@@ -235,15 +332,40 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    private data class JavaScriptRequest(val adapter: NativeAdapter, val timeout: Runnable)
-    private val javascriptRequests = mutableMapOf<Long, JavaScriptRequest>()
+    private var javascriptSession: Any? = null
+    private var javascriptRequests = newJavaScriptRequests()
+    private val javascriptControllers = mutableMapOf<Long, String>()
+    private fun newJavaScriptRequests(): NativeRequests {
+        val session = Any()
+        javascriptSession = session
+        return NativeRequests(nativeRequestHandler) { id, result ->
+            runOnUiThread {
+                if (javascriptSession === session) sendJavaScriptResult(id, result)
+                else disposeNativeResult(result)
+            }
+        }
+    }
+
+
+    private fun stopJavaScriptSession() {
+        javascriptSession = null
+        javascriptRequests.close()
+        javascriptControllers.toMap().forEach { (controller, module) ->
+            val complete: NativeResultHandler = { disposeNativeResult(it) }
+            when (module) {
+                AUDIO_MODULE -> audioAdapter.executeController(-controller, "deactivate", "{}", complete)
+                NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, "deactivate", "{}", complete)
+                CAMERA_MODULE -> cameraAdapter.executeController(0, -controller, "deactivate", "{}", complete)
+            }
+        }
+        javascriptControllers.clear()
+        javascriptRequests = newJavaScriptRequests()
+    }
 
     private fun executeJavaScriptCall(call: JSONObject) {
         val id = call.getLong("id")
         if (call.getString("type") == "cancel") {
-            val request = javascriptRequests.remove(id) ?: return
-            nativeRequestHandler.removeCallbacks(request.timeout)
-            request.adapter.cancel(-id)
+            javascriptRequests.cancel(id)
             return
         }
         val module = call.getString("module")
@@ -265,51 +387,38 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             sendJavaScriptResult(id, NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Unknown native module: $module", false))
             return
         }
-        val handle = engineHandle
-        val complete: NativeResultHandler = { result ->
-            runOnUiThread {
-                val request = javascriptRequests.remove(id)
-                if (engineHandle == handle && request != null) {
-                    nativeRequestHandler.removeCallbacks(request.timeout)
-                    sendJavaScriptResult(id, result)
-                } else if (result is NativeResult.File && result.deleteAfterRead) {
-                    File(result.path).delete()
-                }
-            }
-        }
-        val timeout = Runnable {
-            if (javascriptRequests.remove(id) == null) return@Runnable
-            adapter.cancel(-id)
-            sendJavaScriptResult(id, NativeResult.Failure(NativeErrorKind.TIMEOUT, "Native request timed out", true))
-        }
-        javascriptRequests[id] = JavaScriptRequest(adapter, timeout)
-        nativeRequestHandler.postDelayed(timeout, call.getLong("timeoutMs"))
-        try {
+        javascriptRequests.execute(id, call.optLong("timeoutMs", 30_000), { adapter.cancel(-id) }) { complete ->
             val operation = call.getString("operation")
-            val payload = call.opt("payload").toString()
+            val payload = (call.opt("payload") ?: JSONObject.NULL).toString()
             if (call.has("controller")) {
                 val controller = call.getLong("controller")
                 require(controller in 1..9_007_199_254_740_991L) { "Invalid JavaScript controller ID" }
-                when (module) {
-                    AUDIO_MODULE -> audioAdapter.executeController(-controller, operation, payload, complete)
-                    NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, operation, payload, complete)
-                    CAMERA_MODULE -> {
-                        if (operation == OPEN_OPERATION) openCameraController(-id, -controller, payload, complete)
-                        else cameraAdapter.executeController(-id, -controller, operation, payload, complete)
+                if (operation == "activate") javascriptControllers[controller] = module
+                if (operation == "deactivate") javascriptControllers.remove(controller)
+                val finish: NativeResultHandler = { result ->
+                    if (operation == "activate" && result is NativeResult.Failure) {
+                        runOnUiThread { javascriptControllers.remove(controller) }
                     }
-                    else -> complete(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Unsupported controller module: $module", false))
+                    complete(result)
+                }
+                when (module) {
+                    AUDIO_MODULE -> audioAdapter.executeController(-controller, operation, payload, finish)
+                    NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, operation, payload, finish)
+                    CAMERA_MODULE -> {
+                        if (operation == OPEN_OPERATION) openCameraController(-id, -controller, payload, finish)
+                        else cameraAdapter.executeController(-id, -controller, operation, payload, finish)
+                    }
+                    else -> finish(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Unsupported controller module: $module", false))
                 }
             } else {
                 adapter.execute(-id, operation, payload, complete)
             }
-        } catch (error: Exception) {
-            complete(NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Native request failed", false))
         }
     }
 
     private fun updateController(controller: Long, value: String) {
         runOnUiThread {
-            if (engineHandle != 0L) {
+            if (engineHandle != 0L && javascriptControllers.containsKey(-controller)) {
                 val event = JSONObject().put("type", "controller").put("id", -controller)
                     .put("value", JSONObject(value))
                 var message = event.toString()
@@ -336,6 +445,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (BuildConfig.DEBUG) intent.getStringExtra("ink.dev.generation")?.let(::activateDevelopmentBundle)
         handleNotificationIntent(intent)
     }
 
@@ -412,12 +522,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (usesPermissions) permissionsAdapter.stop()
         lightSdkAdapter.stop()
         notificationsAdapter.stop()
-        val requests = javascriptRequests.toMap()
-        javascriptRequests.clear()
-        for ((id, request) in requests) {
-            nativeRequestHandler.removeCallbacks(request.timeout)
-            request.adapter.cancel(-id)
-        }
+        stopJavaScriptSession()
         if (usesAssets) assetsAdapter.stop()
         if (usesBarcode) barcodeAdapter.stop()
         networkAdapter.stop()
@@ -776,7 +881,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             SystemClock.elapsedRealtime() - it
         } ?: 0L
         val outcome = if (result is NativeResult.Failure) {
-            "error:${result.kind.name.lowercase()}"
+            "error:${result.kind.wireName}"
         } else {
             "ready"
         }
@@ -1221,6 +1326,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeCreate(): Long
+
+        @JvmStatic
+        private external fun nativeTakeJavaScriptError(handle: Long): String
+
+        @JvmStatic
+        private external fun nativeRefreshJavaScript(handle: Long, source: String): Boolean
 
         @JvmStatic
         private external fun nativeStartJavaScript(handle: Long, source: String, icons: ByteArray, activity: MainActivity): Boolean

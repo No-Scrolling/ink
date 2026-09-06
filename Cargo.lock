@@ -587,6 +587,7 @@ dependencies = [
  "indicatif",
  "ink-compiler",
  "owo-colors",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,4 +1,5 @@
 /// <reference path="./assets.d.ts" />
+import type { IconAsset } from "./assets";
 import "./web";
 import { createElement, useState, type ReactNode } from "react";
 import { navigate, type Destination } from "./navigation";
@@ -35,7 +36,7 @@ export function Button(props: {
   href?: Destination;
   disabled?: boolean;
   selected?: boolean;
-  icon?: string;
+  icon?: IconAsset;
 }) {
   const { href, onPress, ...rest } = props;
   if (href !== undefined && onPress) throw new Error("Button accepts either href or onPress");
@@ -63,7 +64,7 @@ export function Toggle(props: {
 }
 
 export function Icon(props: {
-  name: string;
+  name: IconAsset;
   size?: number;
   tone?: "primary" | "muted";
 }) {
@@ -108,3 +109,5 @@ export {
   type SettingsChoice, type SettingsChoicesProps, type EmptyStateProps,
   type ErrorStateProps, type ConfirmationProps,
 } from "./patterns";
+
+export { findIcon, type IconAsset } from "./assets";

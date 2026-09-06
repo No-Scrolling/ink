@@ -1,191 +1,188 @@
-import { resolve, extname } from "node:path";
-const [root, entry, output] = Bun.argv.slice(2);
-const ts = await import(Bun.resolveSync("typescript", root));
-const icons = new Map();
-const strings = new Set();
-const dynamicIcons = new Map();
-const components = new Set();
-const packages = new Set();
+import { dirname, resolve, relative, extname } from "node:path";
+import { realpath } from "node:fs/promises";
+const [root, entry, output, profile = "release"] = Bun.argv.slice(2);
+const development = profile === "development";
+const inputs = new Set();
+const capabilities = new Set();
 const assets = new Map();
-let remoteImages = false;
-let detachedAudio = false;
-let audioPlayback = false;
-let audioCapture = false;
-let photoCapture = false;
-let codeScanner = false;
+const icons = new Map();
+const declarations = new Map();
+const shared = new Map();
+const components = new Set();
+const persistentModules = new Map();
+const sourceMaps = new Map();
+const bundleDirectory = await realpath(process.cwd());
+const ts = await import(Bun.resolveSync("typescript", root));
+ts.getParsedCommandLineOfConfigFile(resolve(root, "tsconfig.json"), {}, {
+  ...ts.sys,
+  readFile(path) {
+    const contents = ts.sys.readFile(path);
+    if (contents !== undefined) inputs.add(resolve(path));
+    return contents;
+  },
+  onUnRecoverableConfigFileDiagnostic(diagnostic) {
+    throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
+  },
+});
+for (let directory = root; ; directory = dirname(directory)) {
+  for (const name of ["bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"]) {
+    const path = resolve(directory, name);
+    if (await Bun.file(path).exists()) inputs.add(await realpath(path));
+  }
+  if (dirname(directory) === directory) break;
+}
+const frameworkDirectory = dirname(Bun.resolveSync("ink", root));
+const remapping = development ? (await import(Bun.resolveSync("@jridgewell/remapping", frameworkDirectory))).default : null;
+const babel = development ? await import(Bun.resolveSync("@babel/core", frameworkDirectory)) : null;
+const refreshPlugin = development ? (await import(Bun.resolveSync("react-refresh/babel", frameworkDirectory))).default : null;
+const commonjsPlugin = development ? (await import(Bun.resolveSync("@babel/plugin-transform-modules-commonjs", frameworkDirectory))).default : null;
+const typescriptPlugin = development ? (await import(Bun.resolveSync("@babel/plugin-transform-typescript", frameworkDirectory))).default : null;
+async function inspect(path) {
+  path = await realpath(path);
+  inputs.add(path);
+  let directory = dirname(path);
+  while (true) {
+    const metadataPath = resolve(directory, "package.json");
+    if (await Bun.file(metadataPath).exists()) {
+      inputs.add(metadataPath);
+      if (!declarations.has(directory)) {
+        const pkg = await Bun.file(metadataPath).json();
+        const declarationPath = resolve(directory, "ink-native.json");
+        let declaration;
+        if (await Bun.file(declarationPath).exists()) {
+          inputs.add(declarationPath);
+          declaration = await Bun.file(declarationPath).json();
+          if (declaration.version !== 1 || !declaration.modules || typeof declaration.modules !== "object" || Array.isArray(declaration.modules) || Object.values(declaration.modules).some(names => !Array.isArray(names) || names.some(name => typeof name !== "string"))) throw new Error(`Unsupported native requirements declaration: ${declarationPath}`);
+        } else if (pkg.name === "ink" || pkg.name?.startsWith("@ink/")) {
+          throw new Error(`Package ${pkg.name} is missing ink-native.json; reinstall a compatible Ink package or declare its native requirements.`);
+        }
+        declarations.set(directory, { pkg, declaration });
+      }
+      const { pkg, declaration } = declarations.get(directory);
+      if (declaration) {
+        const module = relative(directory, path).replaceAll("\\", "/");
+        for (const name of [...(declaration.modules["*"] ?? []), ...(declaration.modules[module] ?? [])]) capabilities.add(name);
+      }
+      return pkg.name;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return;
+    directory = parent;
+  }
+}
 async function addAsset(path) {
-  if (!/\.(?:png|jpe?g|webp|mp3)$/i.test(path)) throw new Error(`Unsupported asset format: ${path}`);
+  inputs.add(await realpath(path));
   const bytes = await Bun.file(path).bytes();
-  const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
-  const name = `${hash}${extname(path).toLowerCase()}`;
+  const name = `${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}${extname(path).toLowerCase()}`;
   assets.set(name, path);
   return `${extname(path).toLowerCase() === ".mp3" ? "asset:///" : "asset://"}ink-assets/${name}`;
 }
-function addIcon(name, size, filled) {
-  const key = `${name}:${filled}`;
-  const previous = icons.get(key);
-  if (!previous || previous.size < size) icons.set(key, { name, size, filled });
-}
-function iconNames(node) {
-  if (!node) return undefined;
-  if (ts.isStringLiteralLike(node)) return [node.text];
-  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node)) return iconNames(node.expression);
-  if (ts.isConditionalExpression(node)) {
-    const yes = iconNames(node.whenTrue);
-    const no = iconNames(node.whenFalse);
-    if (yes && no) return [...yes, ...no];
-  }
-  return undefined;
-}
-async function inspectModule(path, contents) {
-  const replacements = [];
-  const source = ts.createSourceFile(path, contents, ts.ScriptTarget.Latest, true);
-  const aliases = new Map();
-  const players = new Set();
-  const imageImports = new Set();
-  for (const statement of source.statements) {
-    if (ts.isImportDeclaration(statement) && statement.moduleSpecifier.text === "@ink/camera" && !statement.importClause?.isTypeOnly) {
-      const bindings = statement.importClause?.namedBindings;
-      if (bindings && ts.isNamedImports(bindings)) {
-        for (const binding of bindings.elements) {
-          if (binding.isTypeOnly) continue;
-          const name = binding.propertyName?.text ?? binding.name.text;
-          if (name === "useCamera") photoCapture = true;
-          if (name === "useCodeScanner") codeScanner = true;
+function buildOptions(bootstrap = false) { return {
+  entrypoints: [entry], target: "browser", format: development && !bootstrap ? "cjs" : "iife", minify: !development,
+  sourcemap: development ? "external" : "none",
+  define: { "process.env.NODE_ENV": JSON.stringify(development ? "development" : "production") },
+  plugins: [{ name: "ink-resolved-inputs", setup(build) {
+    build.onLoad({ filter: /\.ink-icons$/ }, async ({ path }) => {
+      await inspect(path);
+      const descriptor = await Bun.file(path).json();
+      if (descriptor.version !== 1 || !Array.isArray(descriptor.names) || !Number.isInteger(descriptor.resolution) || descriptor.resolution < 16 || descriptor.resolution > 128) throw new Error(`Invalid icon collection ${path}: version 1, names and resolution 16–128 required`);
+      const references = {};
+      for (const name of descriptor.names) {
+        if (typeof name !== "string") throw new Error(`Invalid icon name in ${path}`);
+        references[name] = name;
+        for (const filled of [false, true]) icons.set(`${name}:${filled}`, { name, filled, size: Math.max(icons.get(`${name}:${filled}`)?.size ?? 0, descriptor.resolution) });
+      }
+      return { contents: `export default Object.freeze(${JSON.stringify(references)});`, loader: "js" };
+    });
+    build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
+    build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
+      const resolved = await realpath(Bun.resolveSync(path, /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
+      const name = await inspect(resolved);
+      if (development && !bootstrap && importer && (name === "ink" || name === "react" || name?.startsWith("@ink/") || resolved.includes("/node_modules/"))) {
+        shared.set(path, resolved);
+        return { path: resolved, external: true };
+      }
+      return { path: resolved };
+    });
+    build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async ({ path }) => {
+      await inspect(path);
+      const extension = extname(path).slice(1);
+      let contents = await Bun.file(path).text();
+      if (development && !bootstrap && !path.includes("/node_modules/")) {
+        const original = contents;
+        let transformed = await babel.transformAsync(contents, {
+          filename: path, babelrc: false, configFile: false, sourceMaps: true, ast: true,
+          plugins: [[typescriptPlugin, { isTSX: extension === "tsx", allExtensions: true }], [refreshPlugin, { skipEnvCheck: true }]],
+          parserOpts: { plugins: ["tsx", "jsx"].includes(extension) ? ["jsx"] : [] },
+        });
+        let prefix = 'const $RefreshReg$ = (type, id) => globalThis.__inkFramework.refresh.register(type, ' + JSON.stringify(path + ' ') + ' + id);\nconst $RefreshSig$ = globalThis.__inkFramework.refresh.createSignatureFunctionForTransform;\n';
+        let suffix = "";
+        const mixedExports = transformed.ast.program.body.some(node => {
+          if (node.type === "ExportAllDeclaration") return true;
+          if (node.type !== "ExportNamedDeclaration") return false;
+          if (node.specifiers.length) return true;
+          const declaration = node.declaration;
+          if (declaration?.type === "FunctionDeclaration") return !/^[A-Z]/.test(declaration.id?.name ?? "");
+          if (declaration?.type === "VariableDeclaration") return declaration.declarations.some(item => item.id.type !== "Identifier" || !/^[A-Z]/.test(item.id.name));
+          return !!declaration;
+        });
+        if (transformed.code.includes("$RefreshReg$(") && !mixedExports) {
+          components.add(path);
+        } else if (!path.includes("/.ink/")) {
+          persistentModules.set(path, new Bun.CryptoHasher("sha256").update(original).digest("hex"));
+          transformed = await babel.transformAsync(transformed.code, { filename: path, babelrc: false, configFile: false, sourceMaps: true, inputSourceMap: transformed.map, plugins: [commonjsPlugin], parserOpts: { plugins: ["jsx"] } });
+          const key = JSON.stringify(path);
+          prefix = 'if (globalThis.__inkFramework.appModules[' + key + ']) { module.exports = globalThis.__inkFramework.appModules[' + key + ']; } else {\n' + prefix;
+          suffix = '\nglobalThis.__inkFramework.appModules[' + key + '] = module.exports;\n}';
         }
-      } else if (bindings && ts.isNamespaceImport(bindings)) {
-        photoCapture = true;
-        codeScanner = true;
+        transformed.map.mappings = ";".repeat(prefix.split("\n").length - 1) + transformed.map.mappings;
+        transformed.map.sources = [path];
+        sourceMaps.set(path, transformed.map);
+        contents = prefix + transformed.code + suffix;
       }
-    }
-    if (ts.isImportDeclaration(statement) && statement.moduleSpecifier.text === "@ink/audio") {
-      const bindings = statement.importClause?.namedBindings;
-      if (!statement.importClause?.isTypeOnly && bindings && ts.isNamedImports(bindings)) {
-        for (const binding of bindings.elements) {
-          if (!binding.isTypeOnly && ["microphone", "useRecorder", "useLevelMeter", "usePitchDetector"].includes(binding.propertyName?.text ?? binding.name.text)) audioCapture = true;
-          if (!binding.isTypeOnly && (binding.propertyName?.text ?? binding.name.text) === "usePlayer") {
-            players.add(binding.name.text);
-            audioPlayback = true;
-          }
-        }
-      } else if (!statement.importClause?.isTypeOnly && bindings && ts.isNamespaceImport(bindings)) {
-        audioCapture = true;
-        audioPlayback = true;
-        detachedAudio = true;
-      }
-    }
-    if (ts.isImportDeclaration(statement) && statement.moduleSpecifier.text.startsWith("@ink/")) packages.add(statement.moduleSpecifier.text);
-    if (ts.isImportDeclaration(statement) && /\.(?:png|jpe?g|webp)$/i.test(statement.moduleSpecifier.text)
-      && statement.importClause?.name) imageImports.add(statement.importClause.name.text);
-    if (ts.isImportDeclaration(statement) && statement.moduleSpecifier.text === "ink") {
-      const bindings = statement.importClause?.namedBindings;
-      if (bindings && ts.isNamedImports(bindings)) {
-        for (const binding of bindings.elements) aliases.set(binding.name.text, binding.propertyName?.text ?? binding.name.text);
-      }
-    }
-  }
-  function visit(node) {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && players.has(node.expression.text)) {
-      const options = node.arguments[0];
-      if (options && !ts.isObjectLiteralExpression(options)) detachedAudio = true;
-      else if (options) {
-        for (const property of options.properties) {
-          if (ts.isSpreadAssignment(property)) detachedAudio = true;
-          else if (property.name && ts.isComputedPropertyName(property.name)) detachedAudio = true;
-          else if (property.name?.text === "mode") {
-            if (!ts.isPropertyAssignment(property) || !ts.isStringLiteral(property.initializer)
-              || property.initializer.text !== "attached") detachedAudio = true;
-          }
-        }
-      }
-    }
-    if (ts.isStringLiteralLike(node)) strings.add(node.text);
-    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
-      const localTag = node.tagName.getText(source).split(".").at(-1);
-      const tag = aliases.get(localTag) ?? localTag;
-      components.add(tag);
-      const attributes = node.attributes.properties;
-      if (tag === "Image") {
-        const src = attributes.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(source) === "src");
-        const value = src?.initializer;
-        const expression = value && ts.isJsxExpression(value) ? value.expression : value;
-        if (expression && ts.isStringLiteralLike(expression)) {
-          if (expression.text.startsWith("https://")) remoteImages = true;
-          else if (!expression.text.startsWith("asset://")) {
-            replacements.push({ start: expression.getStart(source), end: expression.end, path: resolve(root, expression.text) });
-          }
-        } else if (!expression || !ts.isIdentifier(expression) || !imageImports.has(expression.text)) remoteImages = true;
-      }
-      const icon = attributes.find(attr => ts.isJsxAttribute(attr)
-        && attr.name.getText(source) === (tag === "Icon" ? "name" : "icon"));
-      if (icon || tag === "Icon" && attributes.some(ts.isJsxSpreadAttribute)) {
-        const sizeAttribute = attributes.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(source) === "size");
-        const sizeExpression = sizeAttribute?.initializer;
-        const numericSize = sizeExpression && ts.isJsxExpression(sizeExpression)
-          && sizeExpression.expression && ts.isNumericLiteral(sizeExpression.expression)
-          ? Number(sizeExpression.expression.text) : undefined;
-        const size = tag === "Tab" ? 52 : tag === "Icon" ? numericSize ?? (sizeAttribute ? 52 : 28) : 30;
-        const filled = tag === "Tab";
-        const value = icon?.initializer;
-        const expression = value && ts.isJsxExpression(value) ? value.expression : value;
-        const names = iconNames(expression);
-        if (names) {
-          for (const name of names) addIcon(name, size, filled);
-        } else {
-          dynamicIcons.set(filled, Math.max(dynamicIcons.get(filled) ?? 0, size));
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(source);
-  for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
-    contents = contents.slice(0, replacement.start) + JSON.stringify(await addAsset(replacement.path)) + contents.slice(replacement.end);
-  }
-  return contents;
+      return { contents, loader: extension === "tsx" || extension === "jsx" ? extension : ["ts", "mts", "cts"].includes(extension) ? "ts" : "js" };
+    });
+    build.onLoad({ filter: /\.json$/ }, async ({ path }) => {
+      await inspect(path);
+      return { contents: await Bun.file(path).text(), loader: "json" };
+    });
+  }}],
+}; }
+let result = await Bun.build(buildOptions());
+if (development && result.success && components.size) {
+  const refreshEntry = resolve(dirname(output), "refresh-entry.js");
+  await Bun.write(refreshEntry, [...components].sort().map(path => "import " + JSON.stringify(path) + ";").join("\n") + "\nimport " + JSON.stringify(entry) + ";\n");
+  const options = buildOptions();
+  options.entrypoints = [refreshEntry];
+  result = await Bun.build(options);
 }
-const result = await Bun.build({
-  entrypoints: [entry],
-  target: "browser",
-  format: "iife",
-  minify: true,
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [{
-    name: "ink-shared-dependencies",
-    setup(build) {
-      build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3)$/i }, async ({ path }) => ({
-        contents: `export default ${JSON.stringify(await addAsset(path))}`,
-        loader: "js",
-      }));
-      build.onResolve({ filter: /^(?:react|ink)(?:\/.*)?$/ }, ({ path }) => ({
-        path: Bun.resolveSync(path, root),
-      }));
-      build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async ({ path }) => {
-        const contents = await inspectModule(path, await Bun.file(path).text());
-        const extension = path.split(".").at(-1);
-        const loader = extension === "tsx" || extension === "jsx" ? extension
-          : extension === "ts" || extension === "mts" || extension === "cts" ? "ts" : "js";
-        return { contents, loader };
-      });
-    },
-  }],
-});
-if (!result.success) {
-  for (const log of result.logs) console.error(log);
-  process.exit(1);
+if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1); }
+let devRuntimeHash;
+if (development) {
+  const bootstrapEntry = resolve(dirname(output), "framework-entry.js");
+  const refreshPath = Bun.resolveSync("react-refresh/runtime", frameworkDirectory);
+  let bootstrapSource = 'import Refresh from ' + JSON.stringify(refreshPath) + ';\nRefresh.injectIntoGlobalHook(globalThis);\nglobalThis.__inkFramework = {refresh: Refresh, modules: Object.create(null), appModules: Object.create(null)};\n';
+  for (const path of [...shared.keys()].sort()) bootstrapSource += 'globalThis.__inkFramework.modules[' + JSON.stringify(path) + '] = require(' + JSON.stringify(shared.get(path)) + ');\n';
+  await Bun.write(bootstrapEntry, bootstrapSource);
+  const options = buildOptions(true);
+  options.entrypoints = [bootstrapEntry];
+  options.sourcemap = "none";
+  const bootstrap = await Bun.build(options);
+  if (!bootstrap.success) throw new AggregateError(bootstrap.logs, "Could not build development framework");
+  const framework = await bootstrap.outputs[0].text();
+  devRuntimeHash = new Bun.CryptoHasher("sha256").update(framework).digest("hex");
+  const prefix = 'if (!globalThis.__inkFramework) {\n' + framework + '\n}\n(function(require, module, exports) {\n';
+  const suffix = '\n})(id => { if (!(id in globalThis.__inkFramework.modules)) throw new Error("Development module missing: " + id); return globalThis.__inkFramework.modules[id]; }, {exports:{}}, {});\nglobalThis.__inkFramework.refresh.performReactRefresh();\n';
+  const code = await result.outputs.find(item => item.kind !== "sourcemap").text();
+  await Bun.write(output, prefix + code + suffix);
+  const mapArtifact = result.outputs.find(item => item.kind === "sourcemap");
+  if (mapArtifact) {
+    const map = JSON.parse(await mapArtifact.text());
+    map.mappings = ";".repeat(prefix.split("\n").length - 1) + map.mappings;
+    const originalMap = remapping(map, (source, context) => context.depth === 1 ? sourceMaps.get(resolve(bundleDirectory, source)) : null);
+    await Bun.write(output + ".map", JSON.stringify(originalMap));
+  }
+} else {
+  for (const artifact of result.outputs) await Bun.write(artifact.kind === "sourcemap" ? output + ".map" : output, artifact);
 }
-await Bun.write(output, result.outputs[0]);
-await Bun.write(`${output}.metadata.json`, JSON.stringify({
-  components: [...components].sort(),
-  packages: [...packages].sort(),
-  assets: [...assets].map(([name, path]) => ({ name, path })),
-  remoteImages,
-  detachedAudio,
-  audioPlayback,
-  audioCapture,
-  photoCapture,
-  codeScanner,
-  icons: [...icons.values()],
-  dynamic: [...dynamicIcons].map(([filled, size]) => ({ filled, size })),
-  strings: dynamicIcons.size ? [...strings].sort() : [],
-}));
+await Bun.write(`${output}.metadata.json`, JSON.stringify({ devRuntimeHash, refreshCompatibilityHash: development ? new Bun.CryptoHasher("sha256").update(JSON.stringify([...persistentModules].sort())).digest("hex") : undefined, inputs: [...inputs].sort(), capabilities: [...capabilities].sort(), assets: [...assets].map(([name,path])=>({name,path})), icons: [...icons.values()] }));

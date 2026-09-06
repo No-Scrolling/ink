@@ -1,22 +1,20 @@
 # Completing Ink's developer experience
 
-Status: partially implemented. Audited against the working tree and this session's emulator verification on 5 September 2026. The implementation sections below remain the target, not a claim that every item is complete.
+Status: framework implementation delivered, with focused verification completed on 6 September 2026. Real-app workflows and physical LP3 measurements are explicitly deferred for a joint session with the user. The detailed sections below preserve the intended design and its acceptance criteria; they are not a claim that every device scenario has been exercised.
 
 ## Current implementation status
 
 | Step | Status | Evidence and remaining work |
 | --- | --- | --- |
-| 1. Predictable builds and assets | Incomplete | `bundle-javascript.js` still inspects hook imports, option expressions and icon literals. Package requirements declarations and the unified bundle manifest remain outstanding. |
-| 2. Native requests and lifetimes | Partial foundations | Cancellation and controllers exist, but foreground and worker request bookkeeping remain separate. Kotlin still derives error names with `name.lowercase()`. Due timers still run only on receive timeout. Session isolation and lifecycle stress verification remain outstanding. |
-| 3. Development reload and refresh | Incomplete | `ink dev` still builds, installs and launches an APK. Bundle-only reload, state-preserving refresh and the full error-recovery workflow remain outstanding. |
-| 4. Shared screen behaviour | Substantially implemented; verification incomplete | Appearance, persisted settings, navigation fallback, keyboard layout/dismissal, field wrapping and shared screen patterns are implemented. Emulator flows were checked, including transition recordings. Delayed-JS input stress, composition coverage, a complete public-prop audit and physical-device behaviour are not signed off. |
-| 5. Variable-height lists | Incomplete | `List` still requires `itemHeight`. Estimated measurements, stable anchors and chat-follow behaviour are outstanding. |
-| 6. Compatibility and standalone installation | Partial foundations | Runtime facilities and packages exist. The template does not restrict its TypeScript libraries to implemented globals, `ink` remains private, and CLI framework discovery still depends on the checkout. Standalone creation/distribution and dependency demonstrations remain outstanding. |
-| 7. Real workflows and documentation | Partial | Template UI flows have been exercised in the emulator and API documentation updated. Physical LP3 workflow verification, release measurements and the wider documentation audit remain outstanding. |
+| 1. Predictable builds and assets | Implemented | Resolved-graph `ink-native.json` declarations, a shared capability catalogue, imported media/icon collections and a manifest consumed by watching and `ink info`. Counter and benchmark release checks pass. See [build contracts](build-contracts.md). |
+| 2. Native requests and lifetimes | Implemented; device stress deferred | Shared foreground/worker bookkeeping, stable errors, process-wide identifiers, controller ordering, fair timers and explicit queue failures. Rust and full-capability Kotlin compilation pass. See [native contracts](runtime-contracts.md). |
+| 3. Development reload and refresh | Implemented; focused emulator checks passed | ADB bundle generations, compatible React Refresh, graph watching, mapped errors and immutable worker code. Emulator checks cover state-preserving edits, hook resets, linked modules and exact-location error recovery without APK installation. See [development](development.md). |
+| 4. Shared screen behaviour | Implemented; bounded verification | Prior template emulator work covers appearance, navigation, keyboard transitions, wrapping fields and common screen patterns. The [public-prop audit](public-props-audit.md) traces public interfaces to implementation and removes stale claims. Delayed input and wider composition/device stress are not signed off. |
+| 5. Variable-height lists | Implemented; focused fixture checks passed | Estimated heights, key/content/width measurement caches, anchored scrolling, bounded windows and optional end-following. Expansion, scrolling and prepend anchoring were checked in the emulator; fixed-height updates still work. See [lists](lists.md). Physical performance remains unmeasured. |
+| 6. Compatibility and standalone installation | Implemented for an explicit local SDK | Shared runtime typings/configuration, `ink create`, explicit SDK discovery and per-app Android output isolation. An app outside the repository installed dependencies, checked, launched in the emulator and produced signature-verified debug/release APKs. Public registry naming/publication remain release decisions. See [standalone setup](standalone.md) and [runtime compatibility](runtime-compatibility.md). |
+| 7. Real workflows and documentation | Documentation updated; workflows deferred by request | Compiler/runtime/development/list/distribution guides and API claims updated. Passes, Spotify and Beeper-style workflows, physical LP3 release measurements and wider dependency exercises will be done with the user later. |
 
-Recent screen work includes Settings with Invert Colours and Selection; dedicated Search and Search Results; Examples with dynamic and fixed-height virtualised lists; a single-action Confirmation screen; and wrapping Field values. Keyboard presentation uses a fixed-size rendering surface, and submit handlers retain focus until navigation removes the input. These improvements do not complete the compiler, development-loop, list or distribution milestones.
-
-Verification recorded here is bounded to the scenarios actually exercised. Reading the physical phone's confirmation screen provided a visual reference; it did not validate Ink running on that phone.
+See [the verification record](verification-2026-09-06.md) for commands, scenarios and limits. No automated tests were added. Compilation and the focused emulator scenarios establish only the behaviours actually exercised; they do not establish hardware performance or production readiness. Reading the phone's existing confirmation screen was a visual reference, not verification of Ink running on that phone.
 
 ## Outcome
 

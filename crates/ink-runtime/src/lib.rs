@@ -5,8 +5,8 @@ use std::{
     collections::{BTreeMap, HashMap},
     rc::Rc,
     sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
     },
     thread::{self, JoinHandle},
@@ -27,6 +27,8 @@ pub enum Event {
 }
 
 enum Command {
+    #[cfg(debug_assertions)]
+    EvaluateDevelopment(String),
     Message(String),
     Stop,
 }
@@ -34,6 +36,7 @@ enum Command {
 pub struct AppRuntime {
     commands: SyncSender<Command>,
     stopped: Arc<AtomicBool>,
+    delivery_failed: Arc<Mutex<Option<String>>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -54,12 +57,20 @@ impl AppRuntime {
         };
         let stopped = Arc::new(AtomicBool::new(false));
         let cancelled = stopped.clone();
+        let delivery_failed = Arc::new(Mutex::new(None));
+        let failure = delivery_failed.clone();
         let thread = thread::Builder::new()
             .name("ink-js".into())
             .stack_size(2 * 1024 * 1024)
             .spawn(move || {
-                if let Err(error) = run(source, incoming, outgoing.clone(), cancelled.clone()) {
-                    let _ = outgoing.try_send(Event::Error(format!("{error:#}")));
+                if let Err(error) = run(
+                    source,
+                    incoming,
+                    outgoing.clone(),
+                    cancelled.clone(),
+                    failure,
+                ) {
+                    outgoing.send_terminal(Event::Error(format!("{error:#}")), &cancelled);
                 }
                 cancelled.store(true, Ordering::Release);
                 let _ = outgoing.try_send(Event::Stopped);
@@ -69,6 +80,7 @@ impl AppRuntime {
             Self {
                 commands,
                 stopped,
+                delivery_failed,
                 thread: Some(thread),
             },
             events,
@@ -85,9 +97,26 @@ impl AppRuntime {
         self.commands
             .try_send(Command::Message(message))
             .map_err(|error| match error {
-                TrySendError::Full(_) => anyhow!("JavaScript message queue is full"),
+                TrySendError::Full(_) => {
+                    let message = "JavaScript message queue is full; reload the runtime";
+                    if let Ok(mut failure) = self.delivery_failed.lock() {
+                        *failure = Some(message.into());
+                    }
+                    anyhow!(message)
+                }
+
                 TrySendError::Disconnected(_) => anyhow!("JavaScript runtime is closed"),
             })
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn evaluate_development(&self, source: String) -> Result<()> {
+        if source.len() > 16 * 1024 * 1024 {
+            return Err(anyhow!("development update exceeds 16 MiB"));
+        }
+        self.commands
+            .try_send(Command::EvaluateDevelopment(source))
+            .map_err(|_| anyhow!("development update queue is unavailable"))
     }
 
     pub fn stop(&self) {
@@ -112,6 +141,21 @@ struct EventSink {
 }
 
 impl EventSink {
+    fn send_terminal(&self, mut event: Event, stopped: &AtomicBool) {
+        loop {
+            match self.try_send(event) {
+                Ok(()) | Err(TrySendError::Disconnected(_)) => return,
+                Err(TrySendError::Full(returned)) => {
+                    if stopped.load(Ordering::Acquire) {
+                        return;
+                    }
+                    event = returned;
+                    thread::sleep(Duration::from_millis(1));
+                }
+            }
+        }
+    }
+
     fn try_send(&self, event: Event) -> std::result::Result<(), TrySendError<Event>> {
         let result = self.sender.try_send(event);
         (self.wake)();
@@ -126,6 +170,7 @@ fn run(
     commands: Receiver<Command>,
     events: EventSink,
     stopped: Arc<AtomicBool>,
+    delivery_failed: Arc<Mutex<Option<String>>>,
 ) -> Result<()> {
     let runtime = Runtime::new()?;
     runtime.set_memory_limit(64 * 1024 * 1024);
@@ -153,18 +198,36 @@ fn run(
             }
         },
     )));
+    let transport_failed = Rc::new(RefCell::new(false));
     let timers = Timers::default();
-    install(&context, events.clone(), timers.clone())?;
+    install(
+        &context,
+        events.clone(),
+        timers.clone(),
+        transport_failed.clone(),
+    )?;
     context.with(|ctx| {
-        ctx.eval::<(), _>(source)
-            .catch(&ctx)
-            .map_err(|error| anyhow!("{error}"))
+        ctx.eval_with_options::<(), _>(source, {
+            let mut options = rquickjs::context::EvalOptions::default();
+            options.filename = Some("app.js".into());
+            options
+        })
+        .catch(&ctx)
+        .map_err(|error| anyhow!("{error}"))
     })?;
     events
         .try_send(Event::Ready)
         .map_err(|_| anyhow!("native event queue is unavailable"))?;
 
     while !stopped.load(Ordering::Acquire) {
+        if let Ok(mut failure) = delivery_failed.lock()
+            && let Some(message) = failure.take()
+        {
+            return Err(anyhow!(message));
+        }
+        if *transport_failed.borrow() {
+            return Err(anyhow!("Native commit queue is full; reload the runtime"));
+        }
         // Bound each drain so messages and shutdown cannot be starved by promise chains.
         for _ in 0..256 {
             if stopped.load(Ordering::Acquire) {
@@ -187,6 +250,9 @@ fn run(
         {
             return Err(anyhow!(error.clone()));
         }
+        if *transport_failed.borrow() {
+            return Err(anyhow!("Native commit queue is full; reload the runtime"));
+        }
         let wait = if runtime.is_job_pending() {
             Some(Duration::ZERO)
         } else {
@@ -201,6 +267,16 @@ fn run(
             None => commands.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
         match command {
+            #[cfg(debug_assertions)]
+            Ok(Command::EvaluateDevelopment(source)) => context.with(|ctx| {
+                ctx.eval_with_options::<(), _>(source, {
+                    let mut options = rquickjs::context::EvalOptions::default();
+                    options.filename = Some("app.js".into());
+                    options
+                })
+                .catch(&ctx)
+                .map_err(|error| anyhow!("{error}"))
+            })?,
             Ok(Command::Message(message)) => context
                 .with(|ctx| {
                     let receive: Function = ctx.globals().get("__inkReceive")?;
@@ -211,34 +287,40 @@ fn run(
                         .with(|ctx| anyhow!("{}", rquickjs::CaughtError::from_error(&ctx, error)))
                 })?,
             Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
-            Err(RecvTimeoutError::Timeout) => {
-                let now = Instant::now();
-                let due = timers
-                    .borrow()
-                    .iter()
-                    .filter(|(_, deadline)| **deadline <= now)
-                    .min_by_key(|(id, deadline)| (**deadline, **id))
-                    .map(|(&id, _)| id);
-                if let Some(id) = due {
-                    timers.borrow_mut().remove(&id);
-                    context
-                        .with(|ctx| {
-                            let fire: Function = ctx.globals().get("__inkFireTimer")?;
-                            fire.call::<_, ()>((id,))
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+        if !stopped.load(Ordering::Acquire) {
+            let now = Instant::now();
+            let due = timers
+                .borrow()
+                .iter()
+                .filter(|(_, deadline)| **deadline <= now)
+                .min_by_key(|(id, deadline)| (**deadline, **id))
+                .map(|(&id, _)| id);
+            if let Some(id) = due {
+                timers.borrow_mut().remove(&id);
+                context
+                    .with(|ctx| {
+                        let fire: Function = ctx.globals().get("__inkFireTimer")?;
+                        fire.call::<_, ()>((id,))
+                    })
+                    .map_err(|error| {
+                        context.with(|ctx| {
+                            anyhow!("{}", rquickjs::CaughtError::from_error(&ctx, error))
                         })
-                        .map_err(|error| {
-                            context.with(|ctx| {
-                                anyhow!("{}", rquickjs::CaughtError::from_error(&ctx, error))
-                            })
-                        })?;
-                }
+                    })?;
             }
         }
     }
     Ok(())
 }
 
-fn install(context: &Context, events: EventSink, timers: Timers) -> Result<()> {
+fn install(
+    context: &Context,
+    events: EventSink,
+    timers: Timers,
+    transport_failed: Rc<RefCell<bool>>,
+) -> Result<()> {
     let start = Instant::now();
     context
         .with(|ctx| {
@@ -246,13 +328,40 @@ fn install(context: &Context, events: EventSink, timers: Timers) -> Result<()> {
             ctx.eval::<(), _>(include_str!("encoding.js"))?;
             let global = ctx.globals();
             global.set(
+                "__inkNextId",
+                Function::new(ctx.clone(), |ctx: Ctx<'_>| {
+                    static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+                    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+                    if id > 9_007_199_254_740_991 {
+                        return Err(Exception::throw_range(
+                            &ctx,
+                            "native identifier space is exhausted",
+                        ));
+                    }
+                    Ok(id as f64)
+                })?,
+            )?;
+
+            global.set(
                 "__inkPost",
                 Function::new(ctx.clone(), move |ctx: Ctx<'_>, message: String| {
                     if message.len() > MAX_MESSAGE_BYTES {
                         return Err(Exception::throw_range(&ctx, "native message is too large"));
                     }
-                    events.try_send(Event::Message(message)).map_err(|_| {
-                        Exception::throw_message(&ctx, "native event queue is unavailable")
+                    let commit = message.starts_with("{\"type\":\"commit\"");
+                    events.try_send(Event::Message(message)).map_err(|error| {
+                        if commit {
+                            *transport_failed.borrow_mut() = true;
+                        }
+                        Exception::throw_message(
+                            &ctx,
+                            match error {
+                                TrySendError::Full(_) => "busy: native event queue is full",
+                                TrySendError::Disconnected(_) => {
+                                    "unavailable: native event queue is closed"
+                                }
+                            },
+                        )
                     })
                 })?,
             )?;

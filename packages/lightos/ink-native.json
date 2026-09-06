@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "modules": {
+    "src/index.ts": [
+      "light-sdk"
+    ],
+    "src/ringtone.ts": [
+      "light-sdk-ringtone"
+    ],
+    "src/push.ts": [
+      "light-sdk-push"
+    ]
+  }
+}

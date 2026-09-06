@@ -6,17 +6,18 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import org.json.JSONObject
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-internal class InkWorker(private val context: Context) : AutoCloseable {
+internal class InkWorker(private val context: Context, private val bundle: String? = null) : AutoCloseable {
     private val handle = AtomicLong()
-    private val requests = ConcurrentHashMap<Long, NativeAdapter>()
-    private val timeouts = ConcurrentHashMap<Long, Runnable>()
+    private val requests = NativeRequests(handler) { id, result -> reply(handle.get(), id, result) }
     private val stopAfterCancel = Runnable { close() }
 
     fun run(task: String, input: Any?): JSONObject {
-        val source = context.assets.open("worker.js").bufferedReader().use { it.readText() }
+        val source = if (bundle != null) {
+            require(bundle.matches(Regex("[a-f0-9]{64}"))) { "Invalid worker bundle" }
+            java.io.File(context.filesDir, "ink-workers/$bundle.js").readText()
+        } else context.assets.open("worker.js").bufferedReader().use { it.readText() }
         val runtime = nativeStart(source)
         check(runtime != 0L) { "Could not start background JavaScript" }
         check(handle.compareAndSet(0, runtime)) {
@@ -45,12 +46,10 @@ internal class InkWorker(private val context: Context) : AutoCloseable {
                         "InkWorker", event.optString("message"))
                     "cancel" -> {
                         val id = event.getLong("id")
-                        timeouts.remove(id)?.let(handler::removeCallbacks)
-                        requests.remove(id)?.cancel(id)
+                        requests.cancel(id)
                     }
                     "call" -> {
                         val id = event.getLong("id")
-                        require(id > 0 && !requests.containsKey(id) && requests.size < 256) { "Invalid worker request ID" }
                         val operation = event.getString("operation")
                         val module = event.getString("module")
                         val adapter = when (module) {
@@ -69,28 +68,9 @@ internal class InkWorker(private val context: Context) : AutoCloseable {
                                 "This native operation is not available in a background worker", false))
                             continue
                         }
-                        requests[id] = adapter
-                        val timeout = Runnable {
-                            timeouts.remove(id)
-                            if (requests.remove(id, adapter)) {
-                                adapter.cancel(id)
-                                reply(runtime, id, NativeResult.Failure(NativeErrorKind.TIMEOUT, "Worker native request timed out", true))
-                            }
-                        }
-                        timeouts[id] = timeout
-                        handler.postDelayed(timeout, event.optLong("timeoutMs", 30_000).coerceIn(1, 120_000))
-                        try {
-                            adapter.execute(id, if (module == "permissions") "permission-status" else operation, event.opt("payload").toString()) { result ->
-                                if (requests.remove(id, adapter)) {
-                                    timeouts.remove(id)?.let(handler::removeCallbacks)
-                                    reply(runtime, id, result)
-                                }
-                            }
-                        } catch (error: Exception) {
-                            requests.remove(id)
-                            timeouts.remove(id)?.let(handler::removeCallbacks)
-                            reply(runtime, id, NativeResult.Failure(NativeErrorKind.UNEXPECTED,
-                                error.message ?: "Worker native request failed", false))
+                        requests.execute(id, event.optLong("timeoutMs", 30_000), { adapter.cancel(id) }) { complete ->
+                            adapter.execute(id, if (module == "permissions") "permission-status" else operation,
+                                (event.opt("payload") ?: JSONObject.NULL).toString(), complete)
                         }
                     }
                     else -> error("Unknown background JavaScript message")
@@ -108,7 +88,7 @@ internal class InkWorker(private val context: Context) : AutoCloseable {
 
     private fun reply(runtime: Long, id: Long, result: NativeResult) {
         val message = javascriptResult(id, result)
-        if (handle.get() == runtime && !nativeReceive(runtime, message)) {
+        if (runtime > 0 && handle.get() == runtime && !nativeReceive(runtime, message)) {
             Log.e("InkWorker", "Could not deliver native result to worker")
             close()
         }
@@ -116,11 +96,9 @@ internal class InkWorker(private val context: Context) : AutoCloseable {
 
     override fun close() {
         handler.removeCallbacks(stopAfterCancel)
+        requests.close()
         val runtime = handle.getAndSet(-1)
         if (runtime > 0) nativeStop(runtime)
-        timeouts.values.forEach(handler::removeCallbacks)
-        timeouts.clear()
-        requests.entries.forEach { (id, adapter) -> if (requests.remove(id, adapter)) adapter.cancel(id) }
     }
 
     fun cancel() {

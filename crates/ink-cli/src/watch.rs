@@ -8,6 +8,12 @@ use std::{
 
 use anyhow::{Context, Result};
 
+static FRAMEWORK: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+pub fn include_framework(root: PathBuf) {
+    let _ = FRAMEWORK.set(root);
+}
+
 const POLL_INTERVAL: Duration = Duration::from_millis(75);
 const DEBOUNCE: Duration = Duration::from_millis(225);
 
@@ -23,11 +29,76 @@ struct FileState {
 pub fn capture(root: &Path) -> Result<Snapshot> {
     let mut files = BTreeMap::new();
     visit(root, root, &mut files)?;
+    if let Some(framework) = FRAMEWORK.get() {
+        for name in [
+            "Cargo.toml",
+            "Cargo.lock",
+            "sdk.json",
+            "package.json",
+            "bun.lock",
+        ] {
+            let path = framework.join(name);
+            if let Ok(metadata) = fs::metadata(&path) {
+                files.insert(
+                    path,
+                    FileState {
+                        modified: metadata.modified()?,
+                        length: metadata.len(),
+                    },
+                );
+            }
+        }
+
+        for directory in [framework.join("platform/android"), framework.join("crates")] {
+            visit(&directory, &directory, &mut files)?;
+        }
+    }
+    let manifest = root.join(".ink/android/assets/ink-bundle-v1.json");
+    if let Ok(bytes) = fs::read(manifest)
+        && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
+        && let Some(inputs) = value["inputs"].as_array()
+    {
+        for input in inputs.iter().filter_map(serde_json::Value::as_str) {
+            let path = PathBuf::from(input);
+            if path.components().any(|part| part.as_os_str() == ".ink") {
+                continue;
+            }
+            if let Some(parent) = path.parent()
+                && let Ok(metadata) = fs::metadata(parent)
+            {
+                files.insert(
+                    parent.to_owned(),
+                    FileState {
+                        modified: metadata.modified()?,
+                        length: metadata.len(),
+                    },
+                );
+            }
+            if let Ok(metadata) = fs::metadata(&path) {
+                files.insert(
+                    path,
+                    FileState {
+                        modified: metadata.modified()?,
+                        length: metadata.len(),
+                    },
+                );
+            }
+        }
+    }
     Ok(Snapshot(files))
 }
 
-pub fn changed(root: &Path, baseline: &Snapshot) -> Result<bool> {
-    Ok(&capture(root)? != baseline)
+pub fn inputs_changed(before: &Snapshot, after: &Snapshot) -> bool {
+    before.0.iter().any(|(path, state)| {
+        !path.is_dir()
+            && match after.0.get(path) {
+                Some(current) => current != state,
+                None => fs::metadata(path).map_or(true, |metadata| {
+                    metadata.len() != state.length
+                        || metadata.modified().ok() != Some(state.modified)
+                }),
+            }
+    })
 }
 
 pub fn wait(root: &Path, baseline: &Snapshot) -> Result<Snapshot> {
@@ -74,7 +145,7 @@ fn visit(root: &Path, directory: &Path, files: &mut BTreeMap<PathBuf, FileState>
             visit(root, &path, files)?;
         } else if metadata.is_file() {
             files.insert(
-                relative.to_owned(),
+                path.to_owned(),
                 FileState {
                     modified: metadata
                         .modified()
@@ -88,10 +159,10 @@ fn visit(root: &Path, directory: &Path, files: &mut BTreeMap<PathBuf, FileState>
 }
 
 fn ignored(relative: &Path) -> bool {
-    relative.components().next().is_some_and(|component| {
+    relative.components().any(|component| {
         matches!(
             component.as_os_str().to_str(),
-            Some(".ink" | "dist" | "node_modules")
+            Some(".ink" | ".git" | "target" | "build" | ".gradle" | "dist" | "node_modules")
         )
     })
 }

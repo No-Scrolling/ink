@@ -1,3 +1,4 @@
+import icons from "./assets/navigation.ink-icons";
 import { Navigator, Route, Tab, Tabs } from "ink";
 import { AppearanceSettings } from "./data/appearance";
 import Confirm from "./screens/Confirm";
@@ -34,6 +35,7 @@ import Dialler from "./screens/modules/light-sdk/Dialler";
 import Push from "./screens/modules/light-sdk/Push";
 import Ringtone from "./screens/modules/light-sdk/Ringtone";
 import RemoteImage from "./screens/modules/network/RemoteImage";
+import VariableList from "./screens/settings/VariableList";
 import VirtualisedList from "./screens/settings/VirtualisedList";
 import DynamicUI from "./screens/settings/DynamicUI";
 import Selection from "./screens/settings/Selection";
@@ -46,19 +48,19 @@ export default function LightTemplate() {
       <Navigator>
         <Route path="/">
           <Tabs>
-            <Tab icon="home">
+            <Tab icon={icons.home}>
               <Home />
             </Tab>
-            <Tab icon="search">
+            <Tab icon={icons.search}>
               <Search />
             </Tab>
-            <Tab icon="widgets">
+            <Tab icon={icons.widgets}>
               <Modules />
             </Tab>
-            <Tab icon="palette">
+            <Tab icon={icons.palette}>
               <Examples />
             </Tab>
-            <Tab icon="settings">
+            <Tab icon={icons.settings}>
               <Settings />
             </Tab>
           </Tabs>
@@ -75,6 +77,7 @@ export default function LightTemplate() {
         <Route path="/settings/dynamic-ui">
           <DynamicUI />
         </Route>
+        <Route path="/settings/variable-list"><VariableList /></Route>
         <Route path="/settings/virtualised-list">
           <VirtualisedList />
         </Route>

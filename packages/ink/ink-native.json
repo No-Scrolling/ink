@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "modules": {
+    "src/index.ts": [
+      "image",
+      "network",
+      "text-input"
+    ],
+    "src/web.ts": [
+      "network"
+    ]
+  }
+}

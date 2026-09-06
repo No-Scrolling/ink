@@ -8,6 +8,7 @@ export default function Examples() {
       <Button href="/display/local-images">Local images</Button>
       <Button href="/settings/dynamic-ui">Dynamic UI</Button>
       <Button href="/settings/virtualised-list">Virtualised List</Button>
+      <Button href="/settings/variable-list">Variable-height List</Button>
       <Button href="/confirm">Confirmation</Button>
       <Button href="/settings/screen-states">Screen States</Button>
     </Screen>

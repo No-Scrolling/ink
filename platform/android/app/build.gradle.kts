@@ -9,6 +9,7 @@ plugins {
 }
 
 val repositoryRoot = rootProject.layout.projectDirectory.dir("../..")
+providers.gradleProperty("inkBuildRoot").orNull?.let { layout.buildDirectory.set(file(it)) }
 val generatedJniRoot = layout.buildDirectory.dir("generated/jniLibs")
 val inkAppName = providers.gradleProperty("inkAppName").orElse("Ink")
 val inkApplicationId = providers.gradleProperty("inkApplicationId").orElse("com.vandam.ink")
@@ -24,27 +25,10 @@ val inkBenchmark = providers.environmentVariable("INK_BENCHMARK")
     .orElse(false)
 val inkBenchmarkRevision = providers.environmentVariable("INK_BENCHMARK_REVISION")
     .orElse("unknown")
-val supportedInkCapabilities = setOf(
-    "audio",
-    "audio-detached",
-    "audio-playback",
-    "background",
-    "barcode-generate",
-    "camera-permission",
-    "code-scanner",
-    "image",
-    "light-sdk",
-    "light-sdk-push",
-    "light-sdk-ringtone",
-    "location",
-    "microphone-permission",
-    "network",
-    "nfc",
-    "notification-permission",
-    "notifications",
-    "photo-capture",
-    "text-input",
-)
+val inkCapabilityCatalogueFile = repositoryRoot.file("crates/ink-compiler/capabilities-v1.json").asFile
+val inkCatalogue = JsonSlurper().parse(inkCapabilityCatalogueFile) as Map<*, *>
+val inkCapabilityCatalogue = inkCatalogue["capabilities"] as Map<*, *>
+val supportedInkCapabilities = inkCapabilityCatalogue.keys.map { it as String }.toSet()
 val inkCapabilities = providers.provider {
     val source = inkCapabilitiesFile.get()
     if (!source.isFile) {
@@ -97,45 +81,10 @@ val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").or
 val inkUsesTextInput = inkUses("text-input")
 val inkLightSdkVersion = "0.1.1"
 val inkCapabilityFingerprint = inkCapabilities.map { it.sorted().joinToString(",") }
-val inkPermissions = buildList {
-    if (
-        inkUsesNetwork.get() ||
-        inkUsesDetachedAudio.get() ||
-        inkUsesBackground.get() ||
-        inkUsesLightSdkPush.get()
-    ) {
-        add("android.permission.ACCESS_NETWORK_STATE")
-        add("android.permission.INTERNET")
-    }
-    if (inkUsesDetachedAudio.get()) {
-        add("android.permission.FOREGROUND_SERVICE")
-        add("android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK")
-    }
-    if (inkUsesCameraPermission.get()) {
-        add("android.permission.CAMERA")
-    }
-    if (inkUsesMicrophonePermission.get()) {
-        add("android.permission.RECORD_AUDIO")
-    }
-    if (inkUsesLocation.get()) {
-        add("android.permission.FOREGROUND_SERVICE")
-        add("android.permission.FOREGROUND_SERVICE_LOCATION")
-        add("android.permission.ACCESS_COARSE_LOCATION")
-        add("android.permission.ACCESS_FINE_LOCATION")
-    }
-    if (inkUsesNfc.get()) {
-        add("android.permission.NFC")
-    }
-    if (inkUsesNotificationPermission.get() || inkUsesLightSdkPush.get() || inkUsesLocation.get()) {
-        add("android.permission.POST_NOTIFICATIONS")
-    }
-    if (inkUsesBackground.get() || inkUsesNotifications.get()) {
-        add("android.permission.RECEIVE_BOOT_COMPLETED")
-    }
-    if (inkUsesNotifications.get()) {
-        add("android.permission.SCHEDULE_EXACT_ALARM")
-    }
-}
+val inkPermissions = inkCapabilities.get().flatMap { name ->
+    val declaration = inkCapabilityCatalogue[name] as Map<*, *>
+    (declaration["permissions"] as List<*>).map { it as String }
+}.distinct().sorted()
 val inkFeatures = buildList {
     if (inkUsesCameraPermission.get()) {
         add("android.hardware.camera")
@@ -144,6 +93,7 @@ val inkFeatures = buildList {
 val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
 val generateInkPermissionManifest by tasks.registering {
     inputs.file(inkCapabilitiesFile)
+    inputs.file(inkCapabilityCatalogueFile)
     inputs.property("permissions", inkPermissions.joinToString())
     inputs.property("features", inkFeatures.joinToString())
     inputs.property("nfc", inkUsesNfc)
@@ -286,115 +236,24 @@ android {
         getByName("main").assets.srcDir(inkAndroidAssets)
         getByName("debug").manifest.srcFile(inkPermissionManifest)
         getByName("release").manifest.srcFile(inkPermissionManifest)
-        getByName("main").java.srcDir(
-            if (inkUsesTextInput.get()) {
-                "src/textInput/kotlin"
-            } else {
-                "src/noTextInput/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesNotifications.get() || inkUsesLightSdkPush.get()) {
-                "src/notifications/kotlin"
-            } else {
-                "src/noNotifications/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesAudio.get()) {
-                "src/audio/kotlin"
-            } else {
-                "src/noAudio/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesLightSdkRingtone.get()) {
-                "src/lightSdkRingtone/kotlin"
-            } else {
-                "src/noLightSdkRingtone/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesLightSdkPush.get()) {
-                "src/lightSdkPush/kotlin"
-            } else {
-                "src/noLightSdkPush/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesAudioPlayback.get()) {
-                "src/audioPlayback/kotlin"
-            } else {
-                "src/noAudioPlayback/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesDetachedAudio.get()) {
-                "src/audioDetached/kotlin"
-            } else {
-                "src/noAudioDetached/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesNetwork.get()) {
-                "src/network/kotlin"
-            } else {
-                "src/noNetwork/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesLightSdk.get()) {
-                "src/lightSdk/kotlin"
-            } else {
-                "src/noLightSdk/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(if (inkUsesBarcodeGenerate.get()) "src/barcode/kotlin" else "src/noBarcode/kotlin")
-        getByName("main").java.srcDir(
-            if (inkUsesLocation.get()) {
-                "src/location/kotlin"
-            } else {
-                "src/noLocation/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesNfc.get()) {
-                "src/nfc/kotlin"
-            } else {
-                "src/noNfc/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesBackground.get()) {
-                "src/background/kotlin"
-            } else {
-                "src/noBackground/kotlin"
-            },
-        )
-        getByName("main").java.srcDir(
-            if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
-                "src/cameraSession/kotlin"
-            } else if (inkUsesCameraPermission.get()) {
-                "src/cameraPermission/kotlin"
-            } else {
-                "src/noCamera/kotlin"
-            },
-        )
-        if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
-            getByName("main").java.srcDir(
-                if (inkUsesPhotoCapture.get()) {
-                    "src/photoCapture/kotlin"
-                } else {
-                    "src/noPhotoCapture/kotlin"
-                },
-            )
-            getByName("main").java.srcDir(
-                if (inkUsesCodeScanner.get()) {
-                    "src/codeScanner/kotlin"
-                } else {
-                    "src/noCodeScanner/kotlin"
-                },
-            )
+        inkCapabilityCatalogue.forEach { (name, value) ->
+            val group = (value as Map<*, *>)["androidSourceGroup"] as? Map<*, *>
+            if (group != null) {
+                val selected = group[if (name in inkCapabilities.get()) "enabled" else "disabled"] as String
+                getByName("main").java.srcDir("src/$selected/kotlin")
+            }
+        }
+        val camera = inkCatalogue["androidCameraSources"] as Map<*, *>
+        val session = camera["session"] as Map<*, *>
+        val cameraSession = (session["capabilities"] as List<*>).any { it in inkCapabilities.get() }
+        val cameraSource = if (cameraSession) session["enabled"] else if (inkUsesCameraPermission.get()) camera["permission"] else session["disabled"]
+        getByName("main").java.srcDir("src/$cameraSource/kotlin")
+        if (cameraSession) {
+            for (kind in listOf("photo", "scanner")) {
+                val group = camera[kind] as Map<*, *>
+                val selected = group[if (group["capability"] in inkCapabilities.get()) "enabled" else "disabled"]
+                getByName("main").java.srcDir("src/$selected/kotlin")
+            }
         }
         if (inkUsesTextInput.get()) {
             getByName("main").res.srcDir("src/textInput/res")

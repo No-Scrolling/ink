@@ -21,7 +21,7 @@ internal class AssetsAdapter(private val activity: MainActivity) : NativeAdapter
             val result = try {
                 val target = File.createTempFile("ink-asset-", ".image", activity.cacheDir)
                 file = target
-                activity.assets.open(path).use { input -> target.outputStream().use(input::copyTo) }
+                activity.openBundleAsset(path).use { input -> target.outputStream().use(input::copyTo) }
                 NativeResult.File(target.absolutePath)
             } catch (error: Exception) {
                 file?.delete()

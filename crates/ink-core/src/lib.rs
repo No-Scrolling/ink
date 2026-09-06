@@ -15,6 +15,7 @@ use unicode_properties::emoji::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+mod list;
 mod masks;
 mod react;
 
@@ -192,6 +193,7 @@ impl NativeOperation {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResourceErrorKind {
+    Busy,
     Unavailable,
     PermissionDenied,
     PermissionBlocked,
@@ -205,6 +207,7 @@ pub enum ResourceErrorKind {
 impl ResourceErrorKind {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Busy => "busy",
             Self::Unavailable => "unavailable",
             Self::PermissionDenied => "permission-denied",
             Self::PermissionBlocked => "permission-blocked",
@@ -529,8 +532,13 @@ enum NodeKind {
     ReactList {
         children: Vec<Node>,
         start: usize,
-        count: usize,
+        keys: Vec<String>,
+        content_versions: Vec<u64>,
+        revision: u64,
         row_height: f32,
+        estimated: bool,
+        gap: f32,
+        follow_end: bool,
     },
     Screen {
         children: Vec<Node>,
@@ -1117,7 +1125,8 @@ pub struct Engine {
     viewport: Viewport,
     keyboard_inset: u32,
     scene: Scene,
-    react_list_positions: HashMap<usize, (f32, f32, usize)>,
+    react_list_positions: HashMap<usize, f32>,
+    list_metrics: HashMap<usize, list::ListMetrics>,
     hit_regions: Vec<HitRegion>,
     text_inputs: Vec<TextInputLayout>,
     text_input_scroll_offsets: HashMap<StateId, f32>,
@@ -1166,6 +1175,7 @@ impl Engine {
             keyboard_inset: 0,
             scene: Scene::default(),
             react_list_positions: HashMap::new(),
+            list_metrics: HashMap::new(),
             hit_regions: Vec::new(),
             text_inputs: Vec::new(),
             text_input_scroll_offsets: HashMap::new(),
@@ -2176,7 +2186,35 @@ impl Engine {
     fn relayout_scene(&mut self) {
         #[cfg(feature = "perf")]
         let (started, trace) = (Instant::now(), PerfTraceSection::new(b"Ink relayout\0"));
+        let mut anchors: Vec<_> = self.react_list_positions.iter().filter_map(|(id, top)| {
+            let metrics = self.list_metrics.get(id)?;
+            let clip = self.scene.scroll_clip?;
+            if *top + metrics.total() < self.scroll_offset + clip.y || *top > self.scroll_offset + clip.y + clip.height {
+                return None;
+            }
+            let index = metrics.index_at(self.scroll_offset + clip.y - top);
+            Some((*id, metrics.keys.get(index)?.clone(), index,
+                top + metrics.offsets[index] - self.scroll_offset,
+                metrics.follow_end && self.scroll_max - self.scroll_offset <= self.scaled(64.0)))
+        }).collect();
+        let clip_top = self.scene.scroll_clip.map_or(0.0, |clip| clip.y);
+        anchors.sort_by(|left, right| (left.3 - clip_top).abs().total_cmp(&(right.3 - clip_top).abs()).then_with(|| left.0.cmp(&right.0)));
         self.relayout_scene_inner();
+        for (id, key, old_index, position, follow) in anchors {
+            let Some(top) = self.react_list_positions.get(&id) else { continue; };
+            let Some(metrics) = self.list_metrics.get(&id) else { continue; };
+            if metrics.keys.is_empty() { continue; }
+            let index = metrics.keys.iter().position(|candidate| candidate == &key)
+                .unwrap_or(old_index.min(metrics.keys.len() - 1));
+            let next = if follow { self.scroll_max } else { top + metrics.offsets[index] - position }
+                .clamp(0.0, self.scroll_max);
+            if (next - self.scroll_offset).abs() > 0.5 {
+                self.scroll_offset = next;
+                self.relayout_scene_inner();
+            }
+            break;
+        }
+
         #[cfg(feature = "perf")]
         {
             drop(trace);
@@ -2300,12 +2338,34 @@ impl Engine {
 
     fn measure_inner(&mut self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
-            NodeKind::ReactList {
-                count, row_height, ..
-            } => MeasuredSize {
-                width: available.width,
-                height: self.scaled(*row_height) * *count as f32,
-            },
+            NodeKind::ReactList { children, start, keys, content_versions, revision, row_height, estimated, gap, follow_end } => {
+                let mut metrics = self.list_metrics.remove(&node.identity.0).unwrap_or_default();
+                metrics.prepare_width(available.width);
+                let versions: HashMap<_, _> = keys.iter().zip(content_versions).collect();
+                metrics.heights.retain(|(key, _, version), _| versions.get(key).is_some_and(|current| **current == *version));
+                metrics.revision = *revision;
+                metrics.follow_end = *follow_end;
+                metrics.keys.clone_from(keys);
+                if *estimated {
+                    for (index, child) in children.iter().enumerate() {
+                        if let Some(key) = keys.get(start + index) {
+                            let size = self.measure(child, Rect { height: f32::INFINITY, ..available });
+                            metrics.heights.insert((key.clone(), available.width.to_bits(), content_versions[start + index]), size.height.max(1.0));
+                        }
+                    }
+                }
+                metrics.offsets.clear();
+                metrics.offsets.push(0.0);
+                for (index, key) in keys.iter().enumerate() {
+                    let height = if *estimated { metrics.heights.get(&(key.clone(), available.width.to_bits(), content_versions[index])).copied() } else { None }
+                        .unwrap_or_else(|| self.scaled(*row_height));
+                    let gap = if index + 1 < keys.len() { self.scaled(*gap) } else { 0.0 };
+                    metrics.offsets.push(metrics.total() + height + gap);
+                }
+                let height = metrics.total();
+                self.list_metrics.insert(node.identity.0, metrics);
+                MeasuredSize { width: available.width, height }
+            }
             NodeKind::Screen { .. } | NodeKind::Tabs { .. } => MeasuredSize {
                 width: available.width,
                 height: available.height,
@@ -2473,26 +2533,19 @@ impl Engine {
             return;
         }
         match &node.kind {
-            NodeKind::ReactList {
-                children,
-                start,
-                count,
-                row_height,
-            } => {
-                let height = self.scaled(*row_height);
-                self.react_list_positions.insert(
-                    node.identity.0,
-                    (rect.y + self.scroll_origin, height, *count),
-                );
+            NodeKind::ReactList { children, start, gap, .. } => {
+                self.react_list_positions.insert(node.identity.0, rect.y + self.scroll_origin);
+                let Some(metrics) = self.list_metrics.get(&node.identity.0) else { return; };
+                let offsets = metrics.offsets.clone();
                 for (index, child) in children.iter().enumerate() {
-                    self.layout(
-                        child,
-                        Rect {
-                            y: rect.y + (*start + index) as f32 * height,
-                            height,
-                            ..rect
-                        },
-                    );
+                    let row = start + index;
+                    if row + 1 >= offsets.len() { break; }
+                    let gap = if row + 2 < offsets.len() { self.scaled(*gap) } else { 0.0 };
+                    self.layout(child, Rect {
+                        y: rect.y + offsets[row],
+                        height: (offsets[row + 1] - offsets[row] - gap).max(0.0),
+                        ..rect
+                    });
                 }
             }
 

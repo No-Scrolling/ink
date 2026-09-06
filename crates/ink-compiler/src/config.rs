@@ -94,8 +94,7 @@ impl ResolvedConfig {
             }),
             light_server: config
                 .lightos
-                .map(|lightos| lightos.server)
-                .unwrap_or_else(default_light_server),
+                .map_or_else(default_light_server, |lightos| lightos.server),
         })
     }
 }

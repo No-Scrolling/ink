@@ -39,7 +39,7 @@ JavaScript runs on a dedicated thread. React batches UI changes into Ink's retai
 
 Use `ink` for components, navigation and async hooks. Device APIs live in `@ink/audio`, `@ink/camera`, `@ink/location`, `@ink/nfc`, `@ink/notifications`, `@ink/background`, `@ink/lightos`, `@ink/barcode` and `@ink/clipboard`. Preferences live in `@ink/store`. Networking uses `fetch`, streams and WebSocket.
 
-The build discovers supported native integrations from imports and explicit capabilities in `ink.toml`. JavaScript packages can be bundled when their required runtime APIs are available.
+The build reads native requirements from packages in the resolved module graph and adds explicit capabilities from `ink.toml`. Local images, audio and icon collections are imported assets. JavaScript packages can be bundled when their required runtime APIs are available.
 
 Read [the Ink documentation](docs/ink.md) and [how Ink works](docs/architecture.md). Package pages distinguish implemented features from planned packages.
 
@@ -53,13 +53,16 @@ bun install
 ./scripts/ink -C examples/light-template dev
 ```
 
+- `ink create <directory>` creates an app outside the repository using the selected local SDK.
 - `ink check` checks TypeScript and bundles an app.
-- `ink dev` builds, installs and watches an app; use `--device <serial>` to select a device.
+- `ink dev` installs a development host, then transfers bundle generations over ADB. Compatible component edits preserve React state; other JavaScript edits reload the runtime and native changes rebuild the APK. Use `--device <serial>` to select a device.
 - `ink build` creates an optimised, signed APK.
 - `ink info` shows bundle size, native capabilities and project details.
 - `ink devices`, `ink logs` and `ink doctor` help with device setup and debugging.
 
 Builds target the LP3's ARM64 ABI. Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`. `ink dev` selects the appropriate host service for the phone or emulator.
+
+See [standalone setup](docs/standalone.md), [development and refresh](docs/development.md), [build declarations and assets](docs/build-contracts.md), [runtime compatibility](docs/runtime-compatibility.md), [native lifetimes](docs/runtime-contracts.md) and [variable-height lists](docs/lists.md).
 
 ## Repository
 
@@ -74,4 +77,26 @@ Builds target the LP3's ARM64 ABI. Enable LightOS integration with `[lightos]` a
 
 ## Benchmarks
 
-[Recorded LP3 measurements](benchmarks/README.md) cover the earlier declarative engine. The [QuickJS-ng/Hermes comparison](benchmarks/results/runtime-engines-lp3.md) measures a small synchronous counter embedding. Neither measures the complete React runtime; see [the scope of those results](docs/architecture.md#lp3-runtime-benchmark).
+Physical Light Phone III measurements from 6 September 2026. Ink uses the current React/QuickJS-ng engine. Expo and Light SDK were measured in an interleaved run after Ink's run on the same phone. All APKs are release builds targeting ARM64. Values are medians unless stated.
+
+| Counter | Ink | Expo | Light SDK |
+| --- | ---: | ---: | ---: |
+| APK size | 4.30 MB | 26.32 MB | 10.24 MB |
+| Activity launch, median / p95 | 329 / 357 ms | 432 / 558 ms | 1,187 / 1,207 ms |
+| Idle memory (PSS) | 35.5 MiB | 54.7 MiB | 18.3 MiB |
+| CPU time for 100 taps | 1,400 ms | 4,370 ms | 3,530 ms |
+| Clean app build, warm caches | 1.67 s | 56.22 s | 49.04 s |
+
+| 1,000-row scroll | Ink | Expo | Light SDK |
+| --- | ---: | ---: | ---: |
+| APK size | 4.30 MB | 26.30 MB | 10.33 MB |
+| Activity launch, median / p95 | 327 / 366 ms | 1,308 / 1,377 ms | 1,204 / 1,225 ms |
+| Idle memory (PSS) | 45.6 MiB | 101.6 MiB | 32.5 MiB |
+| CPU time for 12 swipes | 1,490 ms | 2,860 ms | 4,170 ms |
+| Clean app build, warm caches | 1.74 s | 55.58 s | 45.14 s |
+| Continuous-scroll frame interval, p99 | 16 ms | 16 ms | 16 ms |
+| Intervals longer than 17 ms | 1 | 2 | 1 |
+
+The scrolling fixture renders all 1,000 rows without virtualisation. Builds were measured on an Apple M4 Pro Mac; clean steps remove app outputs while retaining compiler, Gradle and dependency caches. Activity launch uses Android's timing, not an instrumented time-to-interactive measurement. The framework-specific fixtures are not pixel-identical.
+
+See [the Ink report](benchmarks/results/ink-react-lp3-2026-09-06.md) and [the Expo/Light SDK report](benchmarks/results/expo-light-sdk-lp3-2026-09-06.md) for raw samples, versions and methodology. Light SDK now packages only ARM64 native libraries; its older multi-architecture APK sizes are not directly comparable.
