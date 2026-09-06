@@ -9,7 +9,7 @@
   <a href="LICENSE"><picture><source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/licence-MIT-e5e5e5?labelColor=5c5c5c"><source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/licence-MIT-black"><img src="https://img.shields.io/badge/licence-MIT-black" alt="MIT licence"></picture></a>
 </p>
 
-A React and TypeScript framework for Light Phone III apps, powered by QuickJS-ng and Ink's Rust/Vulkan renderer.
+A React and TypeScript framework to create Light Phone III apps. Powered by QuickJS-ng and Ink's Rust/Vulkan renderer.
 
 ## Example
 
@@ -33,19 +33,9 @@ export default function Counter() {
 }
 ```
 
-JavaScript runs on a dedicated thread. React batches UI changes into Ink's retained native tree; Rust owns layout, scrolling, text and rendering. Background jobs run in separate headless runtimes.
+## Documentation
 
-## Packages
-
-Use `ink` for components, navigation, async hooks, links and text sharing. Add device features through `@ink/*` packages. Native engines follow your imports, so playback-only apps do not include recording or scanning code.
-
-Packages cover audio, auth, background work, barcodes, camera, clipboard, connectivity, downloads, files, LightOS, location, maps, NFC, notifications, secure storage and Store. Networking uses `fetch`, streams and WebSocket. See [Build with Ink](docs/ink.md) for components and package guides.
-
-Import local images, audio and icon collections. You can use JavaScript libraries that support [Ink’s runtime APIs](docs/runtime-compatibility.md).
-
-See [how Ink works](docs/architecture.md) for the engine and [product design](docs/product-design.md) for scope.
-
-The template demonstrates the components and device packages. A [local fixture](examples/light-template/scripts/auth-server.md) supports account and transfer development.
+Please see [ink.noscroll.ing](https://ink.noscroll.ing).
 
 ## Development
 
@@ -66,18 +56,6 @@ bun install
 
 Builds target the LP3's ARM64 ABI. Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`. `ink dev` selects the appropriate host service for the phone or emulator.
 
-See [standalone setup](docs/standalone.md), [development and refresh](docs/development.md), [build declarations and assets](docs/build-contracts.md), [runtime compatibility](docs/runtime-compatibility.md), [native lifetimes](docs/runtime-contracts.md) and [variable-height lists](docs/lists.md).
-
-## Repository
-
-- `packages/`: TypeScript components, hooks and package APIs.
-- `crates/ink-runtime/`: QuickJS-ng and its event loop.
-- `crates/ink-core/`: retained UI, layout and interaction.
-- `crates/ink-renderer-wgpu/`: Vulkan rendering.
-- `crates/ink-compiler/` and `crates/ink-cli/`: bundling and development tools.
-- `platform/android/`: Android integration, native adapters and APK builds.
-- `examples/light-template/`: the reference app.
-- `docs/` and `benchmarks/`: documentation and performance measurements.
 
 ## Benchmarks
 
