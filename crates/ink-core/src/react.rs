@@ -15,7 +15,7 @@ use super::{
 enum Operation {
     Create {
         id: usize,
-        r#type: String,
+        r#type: HostKind,
         props: Map<String, Json>,
     },
     Update {
@@ -37,10 +37,98 @@ enum Operation {
     },
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+enum HostKind {
+    #[default]
+    #[serde(skip)]
+    Root,
+    #[serde(rename = "#text")]
+    RawText,
+    List,
+    Navigator,
+    Tab,
+    Tabs,
+    Confirmation,
+    Screen,
+    Stack,
+    Text,
+    TextInput,
+    Barcode,
+    CameraPreview,
+    Image,
+    Icon,
+    Toggle,
+    Button,
+    Field,
+}
+
+enum HostProps {
+    RawText(Box<str>),
+    Text {
+        size: Option<f32>,
+        align: TextAlign,
+        max_lines: Option<u32>,
+    },
+    Other(Map<String, Json>),
+}
+
+impl Default for HostProps {
+    fn default() -> Self {
+        Self::Other(Map::new())
+    }
+}
+
+impl HostProps {
+    fn new(kind: HostKind, mut props: Map<String, Json>) -> Result<Self> {
+        if kind == HostKind::RawText {
+            let Some(Json::String(text)) = props.remove("text") else {
+                bail!("invalid React text");
+            };
+            return Ok(Self::RawText(text.into_boxed_str()));
+        }
+        let props = Self::Other(props);
+        if kind == HostKind::Text {
+            let align = match string(&props, "align").unwrap_or("start") {
+                "start" => TextAlign::Start,
+                "center" => TextAlign::Centre,
+                "end" => TextAlign::End,
+                "justify" => TextAlign::Justify,
+                value => bail!("unsupported text alignment {value}"),
+            };
+            let max_lines = props
+                .get("maxLines")
+                .map(|value| {
+                    value
+                        .as_u64()
+                        .and_then(|value| u32::try_from(value).ok())
+                        .context("invalid maxLines")
+                })
+                .transpose()?;
+            return Ok(Self::Text {
+                size: number(&props, "size")?,
+                align,
+                max_lines,
+            });
+        }
+        Ok(props)
+    }
+
+    fn object(&self) -> Option<&Map<String, Json>> {
+        match self {
+            Self::Other(props) => Some(props),
+            _ => None,
+        }
+    }
+
+    fn get(&self, key: &str) -> Option<&Json> {
+        self.object()?.get(key)
+    }
+}
+
 #[derive(Default)]
 struct HostNode {
-    kind: String,
-    props: Map<String, Json>,
+    kind: HostKind,
+    props: HostProps,
     children: Vec<usize>,
     parent: Option<usize>,
     hidden: bool,
@@ -143,21 +231,22 @@ impl ReactTree {
                         id,
                         HostNode {
                             kind: r#type,
-                            props,
+                            props: HostProps::new(r#type, props)?,
                             ..HostNode::default()
                         },
                     );
                 }
                 Operation::Update { id, props } => {
-                    self.node_mut(id)?.props = props;
+                    let node = self.node_mut(id)?;
+                    node.props = HostProps::new(node.kind, props)?;
                     let mut target = id;
-                    while matches!(self.node(target)?.kind.as_str(), "#text" | "Text") {
+                    while matches!(self.node(target)?.kind, HostKind::RawText | HostKind::Text) {
                         let Some(parent) = self.node(target)?.parent else {
                             break;
                         };
                         if !matches!(
-                            self.node(parent)?.kind.as_str(),
-                            "Text" | "Button" | "Field"
+                            self.node(parent)?.kind,
+                            HostKind::Text | HostKind::Button | HostKind::Field
                         ) {
                             break;
                         }
@@ -183,7 +272,7 @@ impl ReactTree {
             && targets.iter().all(|id| {
                 self.nodes
                     .get(id)
-                    .is_some_and(|node| !matches!(node.kind.as_str(), "Tabs" | "Navigator" | "Tab"))
+                    .is_some_and(|node| !matches!(node.kind, HostKind::Tabs | HostKind::Navigator | HostKind::Tab))
             })
         {
             let patches = targets
@@ -216,7 +305,7 @@ impl ReactTree {
         };
         engine.navigation_handler = match roots.first() {
             Some(id)
-                if self.node(*id)?.kind == "Navigator"
+                if self.node(*id)?.kind == HostKind::Navigator
                     && self.node(*id)?.props.get("onBack") == Some(&Json::Bool(true)) =>
             {
                 Some((
@@ -270,7 +359,7 @@ impl ReactTree {
             false
         });
         for (id, node) in &self.nodes {
-            if node.kind != "TextInput" {
+            if node.kind != HostKind::TextInput {
                 continue;
             }
             let value =
@@ -413,16 +502,11 @@ impl ReactTree {
         if node.hidden {
             return Ok(String::new());
         }
-        if node.kind == "#text" {
-            return Ok(node
-                .props
-                .get("text")
-                .and_then(Json::as_str)
-                .context("invalid React text")?
-                .to_owned());
+        if let HostProps::RawText(text) = &node.props {
+            return Ok(text.to_string());
         }
         ensure!(
-            node.kind == "Text",
+            node.kind == HostKind::Text,
             "text children must be strings or Text components"
         );
         let mut text = String::new();
@@ -438,9 +522,19 @@ impl ReactTree {
         if host.hidden {
             return Ok(None);
         }
+        if let HostProps::Text {
+            size,
+            align,
+            max_lines,
+        } = &host.props
+        {
+            let mut node = Node::text(self.text(id, depth)?, *size, *align, *max_lines);
+            node.identity = NodeIdentity(id);
+            return Ok(Some(node));
+        }
         let props = &host.props;
-        let mut node = match host.kind.as_str() {
-            "List" => {
+        let mut node = match host.kind {
+            HostKind::List => {
                 let keys: Vec<String> = serde_json::from_value(props.get("keys").cloned().context("List requires keys")?)?;
                 let count = keys.len();
                 let content_versions: Vec<u64> = serde_json::from_value(props.get("contentVersions").cloned().context("List requires contentVersions")?)?;
@@ -466,12 +560,12 @@ impl ReactTree {
                 }
             }
 
-            "Navigator" | "Tab" => {
+            HostKind::Navigator | HostKind::Tab => {
                 let mut children = self.children(host, depth)?;
-                ensure!(children.len() <= 1, "{} requires one screen", host.kind);
+                ensure!(children.len() <= 1, "{:?} requires one screen", host.kind);
                 return Ok(children.pop());
             }
-            "Tabs" => {
+            HostKind::Tabs => {
                 let active = props
                     .get("active")
                     .and_then(Json::as_u64)
@@ -483,7 +577,7 @@ impl ReactTree {
                 let mut tabs = Vec::with_capacity(host.children.len());
                 for child in &host.children {
                     let tab = self.node(*child)?;
-                    ensure!(tab.kind == "Tab", "Tabs requires Tab children");
+                    ensure!(tab.kind == HostKind::Tab, "Tabs requires Tab children");
                     tabs.push(Tab::new(
                         self.icon(
                             string(&tab.props, "icon").context("Tab requires an icon")?,
@@ -496,7 +590,7 @@ impl ReactTree {
                 }
                 Node::tabs_with_value(active as usize, tabs)
             }
-            "Confirmation" => {
+            HostKind::Confirmation => {
                 let title = string(props, "title").context("Confirmation requires title")?;
                 let label = string(props, "confirmLabel").context("Confirmation requires confirmLabel")?;
                 ensure!(props.get("onConfirm") == Some(&Json::Bool(true)), "Confirmation requires onConfirm");
@@ -508,11 +602,12 @@ impl ReactTree {
                 }
                 screen
             }
-            "Screen" => {
+            HostKind::Screen => {
+                let props = props.object().context("invalid Screen properties")?;
                 let props: ScreenProps = serde_json::from_value(Json::Object(props.clone()))?;
                 Node::screen(self.children(host, depth)?, props.title, props.centered)
             }
-            "Stack" => {
+            HostKind::Stack => {
                 let axis = match string(props, "axis").unwrap_or("vertical") {
                     "vertical" => Axis::Vertical,
                     "horizontal" => Axis::Horizontal,
@@ -540,31 +635,7 @@ impl ReactTree {
                     justify,
                 )
             }
-            "Text" => {
-                let align = match string(props, "align").unwrap_or("start") {
-                    "start" => TextAlign::Start,
-                    "center" => TextAlign::Centre,
-                    "end" => TextAlign::End,
-                    "justify" => TextAlign::Justify,
-                    value => bail!("unsupported text alignment {value}"),
-                };
-                let max_lines = props
-                    .get("maxLines")
-                    .map(|value| {
-                        value
-                            .as_u64()
-                            .and_then(|value| u32::try_from(value).ok())
-                            .context("invalid maxLines")
-                    })
-                    .transpose()?;
-                Node::text(
-                    self.text(id, depth)?,
-                    number(props, "size")?,
-                    align,
-                    max_lines,
-                )
-            }
-            "TextInput" => {
+            HostKind::TextInput => {
                 let action = match string(props, "action").unwrap_or("search") {
                     "return" => TextInputAction::Return,
                     "search" => TextInputAction::Search,
@@ -582,7 +653,7 @@ impl ReactTree {
                     self.icon("close", false)?,
                 )
             }
-            "Barcode" => {
+            HostKind::Barcode => {
                 let value = string(props, "value").context("Barcode requires a value")?;
                 let format = string(props, "format").context("Barcode requires a format")?;
                 let size = number(props, "size")?.context("Barcode requires a size")?;
@@ -599,7 +670,7 @@ impl ReactTree {
                     ImageFit::Contain,
                 )
             }
-            "CameraPreview" => {
+            HostKind::CameraPreview => {
                 let id = props
                     .get("controller")
                     .and_then(Json::as_i64)
@@ -615,7 +686,7 @@ impl ReactTree {
                 };
                 Node::camera_preview(ControllerId::new((-id) as usize), kind)
             }
-            "Image" => {
+            HostKind::Image => {
                 let src = string(props, "src").context("Image requires a source")?;
                 let source = if let Some(path) = src.strip_prefix("asset://") {
                     ImageSource::Native("assets".into(), path.to_owned())
@@ -649,7 +720,7 @@ impl ReactTree {
                     fit,
                 )
             }
-            "Icon" => {
+            HostKind::Icon => {
                 let tone = match string(props, "tone").unwrap_or("primary") {
                     "primary" => Tone::Primary,
                     "muted" => Tone::Muted,
@@ -664,7 +735,7 @@ impl ReactTree {
                     tone,
                 )
             }
-            "Toggle" => {
+            HostKind::Toggle => {
                 let value = props
                     .get("value")
                     .and_then(Json::as_bool)
@@ -687,7 +758,7 @@ impl ReactTree {
                     },
                 }
             }
-            "Button" | "Field" => {
+            HostKind::Button | HostKind::Field => {
                 let mut label = String::new();
                 for child in &host.children {
                     label.push_str(&self.text(*child, depth + 1)?);
@@ -695,7 +766,7 @@ impl ReactTree {
                 let action = (props.get("onPress") == Some(&Json::Bool(true))
                     && props.get("disabled") != Some(&Json::Bool(true)))
                 .then(|| event(id, "onPress", vec![]));
-                if host.kind == "Field" {
+                if host.kind == HostKind::Field {
                     Node::field(
                         string(props, "label").context("Field requires a label")?,
                         label,
@@ -712,7 +783,7 @@ impl ReactTree {
                     )
                 }
             }
-            kind => bail!("unsupported Ink component {kind}"),
+            kind => bail!("unsupported Ink component {kind:?}"),
         };
         node.identity = NodeIdentity(id);
         Ok(Some(node))
@@ -733,11 +804,11 @@ struct ScreenProps {
     centered: bool,
 }
 
-fn string<'a>(props: &'a Map<String, Json>, key: &str) -> Option<&'a str> {
+fn string<'a>(props: &'a HostProps, key: &str) -> Option<&'a str> {
     props.get(key).and_then(Json::as_str)
 }
 
-fn number(props: &Map<String, Json>, key: &str) -> Result<Option<f32>> {
+fn number(props: &HostProps, key: &str) -> Result<Option<f32>> {
     props
         .get(key)
         .map(|value| {

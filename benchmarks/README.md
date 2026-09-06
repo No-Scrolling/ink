@@ -8,6 +8,8 @@ The [current Ink, Expo and Light SDK comparison](results/optimised-comparison-lp
 
 The earlier [React counter and scrolling results](results/ink-react-lp3-2026-09-06.md) and [Expo and Light SDK results](results/expo-light-sdk-lp3-2026-09-06.md) are retained as historical measurements from before this combined rerun.
 
+A later [lazy image resources and compact native nodes comparison](results/renderer-nodes-lp3-2026-09-06.md) measures **17.84 MiB for the counter and 22.59 MiB for the non-virtualised list**. Compact nodes save approximately 3 MiB on the list; the counter difference is within measurement variation. This targeted Ink follow-up does not replace the full-framework comparison.
+
 The [memory investigation](results/memory-lp3-2026-09-06.md) profiles eager web polyfills, garbage collection, allocator purging and list virtualisation on LP3. These exploratory variants are separate from the published comparison benchmarks.
 
 The [optional web-code split](results/split-web-lp3-2026-09-06.md) saves another 5.16 MiB in the counter and 4.91 MiB in the unchanged non-virtualised list in the LP3 experiment. Release apps now package web code separately and load it automatically on first use. `INK_SPLIT_WEB=0` retains the previous packaging for comparison.

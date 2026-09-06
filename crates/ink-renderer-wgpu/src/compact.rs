@@ -49,7 +49,7 @@ struct TransformUniform {
 }
 
 struct InstanceBuffer<T> {
-    buffer: wgpu::Buffer,
+    buffer: Option<wgpu::Buffer>,
     capacity: usize,
     instances: Vec<T>,
     label: &'static str,
@@ -58,18 +58,33 @@ struct InstanceBuffer<T> {
 impl<T: Pod + PartialEq> InstanceBuffer<T> {
     fn new(device: &wgpu::Device, label: &'static str, capacity: usize) -> Self {
         Self {
-            buffer: raw_instance_buffer::<T>(device, label, capacity),
+            buffer: Some(raw_instance_buffer::<T>(device, label, capacity)),
             capacity,
             instances: Vec::new(),
             label,
         }
     }
 
+    fn lazy(label: &'static str) -> Self {
+        Self {
+            buffer: None,
+            capacity: 0,
+            instances: Vec::new(),
+            label,
+        }
+    }
+
+    fn buffer(&self) -> &wgpu::Buffer {
+        self.buffer
+            .as_ref()
+            .expect("instances uploaded before drawing")
+    }
+
     fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, instances: &[T]) -> usize {
         let resized = instances.len() > self.capacity;
         if resized {
             self.capacity = instances.len().next_power_of_two();
-            self.buffer = raw_instance_buffer::<T>(device, self.label, self.capacity);
+            self.buffer = Some(raw_instance_buffer::<T>(device, self.label, self.capacity));
         }
         let start = if resized {
             0
@@ -91,7 +106,7 @@ impl<T: Pod + PartialEq> InstanceBuffer<T> {
         };
         let uploaded_bytes = if start < end {
             queue.write_buffer(
-                &self.buffer,
+                self.buffer(),
                 (start * size_of::<T>()) as u64,
                 bytemuck::cast_slice(&instances[start..end]),
             );
@@ -683,7 +698,8 @@ pub struct Renderer {
     overlay_instances: Vec<QuadInstance>,
     text_pipeline: wgpu::RenderPipeline,
     text_buffer: InstanceBuffer<TextInstance>,
-    image_pipeline: wgpu::RenderPipeline,
+    image_pipeline: Option<wgpu::RenderPipeline>,
+    transform_layout: wgpu::BindGroupLayout,
     image_buffer: InstanceBuffer<TextInstance>,
     image_cache: ImageCache,
     system_glyph_buffer: InstanceBuffer<TextInstance>,
@@ -780,11 +796,6 @@ impl Renderer {
             &device,
             "text_fragment",
             include_bytes!(concat!(env!("OUT_DIR"), "/text_fragment.spv")),
-        );
-        let image_fragment_shader = spirv_shader(
-            &device,
-            "image_fragment",
-            include_bytes!(concat!(env!("OUT_DIR"), "/image_fragment.spv")),
         );
         let transform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Ink transform bind group layout"),
@@ -908,74 +919,7 @@ impl Renderer {
             multiview_mask: None,
             cache: None,
         });
-        let image_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Ink image bind group layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-        let image_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Ink image pipeline layout"),
-            bind_group_layouts: &[Some(&transform_layout), Some(&image_bind_group_layout)],
-            immediate_size: 0,
-        });
-        let image_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Ink image pipeline"),
-            layout: Some(&image_layout),
-            vertex: wgpu::VertexState {
-                module: &text_vertex_shader,
-                entry_point: Some("text_vertex"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: size_of::<TextInstance>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 4]>() as u64,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 8]>() as u64,
-                            shader_location: 2,
-                        },
-                    ],
-                })],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &image_fragment_shader,
-                entry_point: Some("image_fragment"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(colour_target(format))],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let image_bind_group_layout = glyph_bind_group_layout.clone();
         let fixed_transform_buffer = transform_buffer(&device, "Ink fixed transform");
         let scroll_transform_buffer = transform_buffer(&device, "Ink scroll transform");
         let fixed_transform = transform_bind_group(
@@ -1000,11 +944,10 @@ impl Renderer {
         let quad_buffer = InstanceBuffer::new(&device, "Ink quad instances", MAX_QUADS);
         let overlay_buffer = InstanceBuffer::new(&device, "Ink overlay instances", 3);
         let text_buffer = InstanceBuffer::new(&device, "Ink text instances", MAX_GLYPHS);
-        let image_buffer = InstanceBuffer::new(&device, "Ink image instances", MAX_QUADS);
+        let image_buffer = InstanceBuffer::lazy("Ink image instances");
         let system_glyph_atlas = SystemGlyphAtlas::new(image_bind_group_layout.clone());
         let image_cache = ImageCache::new(image_bind_group_layout);
-        let system_glyph_buffer =
-            InstanceBuffer::new(&device, "Ink system glyph instances", MAX_GLYPHS);
+        let system_glyph_buffer = InstanceBuffer::lazy("Ink system glyph instances");
         let glyph_atlas = GlyphAtlas::new(&device, &glyph_bind_group_layout)?;
 
         Ok(Self {
@@ -1022,7 +965,8 @@ impl Renderer {
             overlay_instances: Vec::with_capacity(2),
             text_pipeline,
             text_buffer,
-            image_pipeline,
+            image_pipeline: None,
+            transform_layout,
             image_buffer,
             image_cache,
             system_glyph_buffer,
@@ -1054,8 +998,12 @@ impl Renderer {
         if self.config.width != scene.width || self.config.height != scene.height {
             self.resize(scene.width, scene.height);
         }
+        if !scene.images.is_empty() {
+            self.prepare_image_pipeline();
+        }
         if !self.prepared.ready || self.prepared.revision != scene.revision {
             if let Some(request) = self.system_glyph_atlas.request(scene) {
+                self.prepare_image_pipeline();
                 return Ok(RenderOutcome::NeedsSystemGlyph(request));
             }
             #[cfg(feature = "perf")]
@@ -1182,20 +1130,24 @@ impl Renderer {
             if !self.prepared.quad_fixed.is_empty() {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
-                pass.set_vertex_buffer(0, self.quad_buffer.buffer.slice(..));
+                pass.set_vertex_buffer(0, self.quad_buffer.buffer().slice(..));
                 pass.draw(0..6, self.prepared.quad_fixed.clone());
             }
             if !self.prepared.quad_scroll.is_empty() {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.scroll_transform, &[]);
-                pass.set_vertex_buffer(0, self.quad_buffer.buffer.slice(..));
+                pass.set_vertex_buffer(0, self.quad_buffer.buffer().slice(..));
                 set_scroll_scissor(&mut pass, scene);
                 pass.draw(0..6, self.prepared.quad_scroll.clone());
                 reset_scissor(&mut pass, scene);
             }
             if !self.prepared.image_draws.is_empty() {
-                pass.set_pipeline(&self.image_pipeline);
-                pass.set_vertex_buffer(0, self.image_buffer.buffer.slice(..));
+                pass.set_pipeline(
+                    self.image_pipeline
+                        .as_ref()
+                        .expect("image pipeline prepared before drawing"),
+                );
+                pass.set_vertex_buffer(0, self.image_buffer.buffer().slice(..));
                 for draw in &self.prepared.image_draws {
                     let image = self
                         .image_cache
@@ -1222,8 +1174,12 @@ impl Renderer {
                 reset_scissor(&mut pass, scene);
             }
             if !self.prepared.system_glyph_draws.is_empty() {
-                pass.set_pipeline(&self.image_pipeline);
-                pass.set_vertex_buffer(0, self.system_glyph_buffer.buffer.slice(..));
+                pass.set_pipeline(
+                    self.image_pipeline
+                        .as_ref()
+                        .expect("image pipeline prepared before drawing"),
+                );
+                pass.set_vertex_buffer(0, self.system_glyph_buffer.buffer().slice(..));
                 for draw in &self.prepared.system_glyph_draws {
                     pass.set_bind_group(
                         0,
@@ -1248,14 +1204,14 @@ impl Renderer {
                 pass.set_pipeline(&self.text_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
                 pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.text_buffer.buffer.slice(..));
+                pass.set_vertex_buffer(0, self.text_buffer.buffer().slice(..));
                 pass.draw(0..6, self.prepared.text_fixed.clone());
             }
             if !self.prepared.text_scroll.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
                 pass.set_bind_group(0, &self.scroll_transform, &[]);
                 pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.text_buffer.buffer.slice(..));
+                pass.set_vertex_buffer(0, self.text_buffer.buffer().slice(..));
                 set_scroll_scissor(&mut pass, scene);
                 pass.draw(0..6, self.prepared.text_scroll.clone());
                 reset_scissor(&mut pass, scene);
@@ -1275,7 +1231,7 @@ impl Renderer {
                     },
                     &[],
                 );
-                pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
+                pass.set_vertex_buffer(0, self.overlay_buffer.buffer().slice(..));
                 if scrolling {
                     set_scroll_scissor(&mut pass, scene);
                 }
@@ -1287,7 +1243,7 @@ impl Renderer {
             if cursor_end < overlay_end {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform, &[]);
-                pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
+                pass.set_vertex_buffer(0, self.overlay_buffer.buffer().slice(..));
                 pass.draw(0..6, cursor_end..overlay_end);
             }
         }
@@ -1362,6 +1318,17 @@ impl Renderer {
     pub fn install_system_glyph(&mut self, request_id: u64, pixels: Option<&[u8]>) -> Result<()> {
         self.system_glyph_atlas
             .install(&self.device, &self.queue, request_id, pixels)
+    }
+
+    fn prepare_image_pipeline(&mut self) {
+        if self.image_pipeline.is_none() {
+            self.image_pipeline = Some(image_pipeline(
+                &self.device,
+                self.config.format,
+                &self.transform_layout,
+                &self.image_cache.bind_group_layout,
+            ));
+        }
     }
 
     fn prepare(&mut self, scene: &Scene) -> Result<()> {
@@ -1687,6 +1654,70 @@ fn prepared_images_match(prepared: &[PreparedImageRun], current: &[ImageRun]) ->
             .iter()
             .zip(current)
             .all(|(prepared, current)| *prepared == PreparedImageRun::from(current))
+}
+
+fn image_pipeline(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+    transform_layout: &wgpu::BindGroupLayout,
+    image_bind_group_layout: &wgpu::BindGroupLayout,
+) -> wgpu::RenderPipeline {
+    let text_vertex_shader = spirv_shader(
+        device,
+        "text_vertex",
+        include_bytes!(concat!(env!("OUT_DIR"), "/text_vertex.spv")),
+    );
+    let image_fragment_shader = spirv_shader(
+        device,
+        "image_fragment",
+        include_bytes!(concat!(env!("OUT_DIR"), "/image_fragment.spv")),
+    );
+    let image_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Ink image pipeline layout"),
+        bind_group_layouts: &[Some(transform_layout), Some(image_bind_group_layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Ink image pipeline"),
+        layout: Some(&image_layout),
+        vertex: wgpu::VertexState {
+            module: &text_vertex_shader,
+            entry_point: Some("text_vertex"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: &[Some(wgpu::VertexBufferLayout {
+                array_stride: size_of::<TextInstance>() as u64,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x4,
+                        offset: 0,
+                        shader_location: 0,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x4,
+                        offset: size_of::<[f32; 4]>() as u64,
+                        shader_location: 1,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x4,
+                        offset: size_of::<[f32; 8]>() as u64,
+                        shader_location: 2,
+                    },
+                ],
+            })],
+        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &image_fragment_shader,
+            entry_point: Some("image_fragment"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[Some(colour_target(format))],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 fn colour_target(format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
