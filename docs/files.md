@@ -1,12 +1,14 @@
 ---
-title: "Files"
-description: "Managed files, imports and large content without JavaScript copies."
+title: "Files and media"
+description: "Pick photos, videos and documents, and manage attachment files."
 tag: "Planned"
 ---
 
 > **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
-`@ink/files` manages app documents, cache files and user-selected imports. A `FileRef` refers to native content; its `id` can be persisted. Opening that ID later can fail if the file was deleted or its external permission expired.
+The shared files and media proposal covers selecting photos, videos and documents, preparing images, and reading or saving attachment files. Package boundaries and final API names will be decided during implementation; the examples below illustrate the intended file operations.
+
+A `FileRef` refers to native content; its `id` can be persisted. Opening that ID later can fail if the file was deleted or its external permission expired.
 
 ```ts
 import { files } from "@ink/files";
@@ -21,6 +23,12 @@ if (selected) {
 Here `saveTicket` is the app's record operation. Picking grants access to a selection; importing copies it into managed documents for offline use. The picker survives its external activity round trip. User cancellation returns `null`.
 
 ## Ownership
+
+The photo/video picker should handle permissions and return a file reference with MIME type, size and available dimensions. Cancellation returns `null`. Apps own preview and upload actions; use [Camera](camera.md) for direct capture.
+
+Image preparation should apply orientation and resizing natively. Import externally owned selections into managed storage before adding them to a durable outbox. Picking a video does not provide video playback; Ink does not currently provide a video player.
+
+File sharing should grant temporary access to the receiving app through Android rather than exposing raw file paths.
 
 | Storage | Use | Lifetime |
 | --- | --- | --- |

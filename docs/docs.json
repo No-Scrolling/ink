@@ -34,29 +34,23 @@
       {
         "group": "Modules",
         "pages": [
-          "network",
-          "connectivity",
-          "downloads",
-          "store",
-          "records",
-          "secure-store",
-          "files",
-          "clipboard",
           "auth",
-          "system",
-          "light-sdk",
           "audio",
           "background",
-          "camera",
           "barcode",
+          "camera",
+          "clipboard",
+          "connectivity",
+          "downloads",
+          "files",
+          "light-sdk",
           "location",
           "maps",
-          "media",
+          "network",
           "nfc",
           "notifications",
-          "sensors",
-          "bluetooth",
-          "reader"
+          "secure-store",
+          "store"
         ]
       }
     ]

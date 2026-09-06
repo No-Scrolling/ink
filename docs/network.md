@@ -82,7 +82,7 @@ For ordered message streams, track provider cursors or sequence numbers and reco
 
 Retry selected reads with bounded backoff. Writes need an idempotency key or a way to reconcile uncertain outcomes. Going offline can leave a request accepted remotely even if no response arrives locally.
 
-Persist small results explicitly with [Store](store.md). [Records](records.md) is planned. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
+Persist small results explicitly with [Store](store.md); direct SQLite access is planned there for indexed collections. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
 
 Use [Downloads](downloads.md) for durable transfers and [Auth](auth.md) for account flows. An npm HTTP client is welcome if its requirements match the host profile.
 

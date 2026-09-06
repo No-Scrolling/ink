@@ -2,7 +2,7 @@
 
 Status: the agreed framework and component implementation is delivered, including PlayingScreen, ConversationScreen and the three-line scrolling composer. Focused emulator verification and historical physical LP3 counter/scroll benchmarks are recorded. Real-app workflows remain deferred for a joint session. The active benchmark now contains aligned counters only; its fresh physical comparison remains pending. The detailed sections below retain the original design problems and acceptance criteria, not a list of outstanding implementation tasks or a claim that every device scenario has been exercised.
 
-This plan does not include implementing every proposed package. Auth, Bluetooth, Connectivity, Downloads, Files, Maps, Media, Reader, Records, Secure Store, Sensors and System remain planned; their individual package pages describe proposals rather than available APIs.
+This plan does not include implementing every proposed capability. Auth, Connectivity, Downloads, Files and media, Maps and Secure Store remain planned; their individual pages describe proposals rather than available APIs. Direct SQLite access is planned within the storage offering. Opening external links and sharing text are planned framework operations; file sharing belongs with files and media. These additions do not introduce separate Records or System packages.
 
 ## Current implementation status
 

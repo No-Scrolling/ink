@@ -6,7 +6,7 @@ tag: "Planned"
 
 > **Planned.** This package is not implemented. The APIs below describe the proposed design.
 
-`@ink/downloads` owns transfer scheduling, progress, temporary files and completion. Use it for podcast episodes, tickets, reader documents and supported media-provider content.
+`@ink/downloads` owns transfer scheduling, progress, temporary files and completion. Use it for podcast episodes, tickets, documents and supported media-provider content.
 
 ```ts
 import { downloads } from "@ink/downloads";

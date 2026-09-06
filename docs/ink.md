@@ -1,13 +1,14 @@
 ---
 title: "Build with Ink"
 description: "Small TypeScript apps with a native Light Phone interface."
-tag: "In development"
 ---
-
-> **In development.** React apps, native components, navigation, automatically measured lists, and native subtree updates are implemented.
 
 Build Light Phone III apps with React and TypeScript. Ink provides native components, navigation, rendering and device APIs.
 
+
+## Planned external actions
+
+Opening external links and sharing text are planned framework operations; no public API is available yet. They should handle the external activity round trip and distinguish cancellation from failure. File sharing belongs with the planned [Files and media](files.md) capability. Appearance and screen lifecycle continue to use Ink's existing APIs.
 
 ## Run the template
 

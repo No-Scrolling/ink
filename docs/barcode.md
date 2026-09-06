@@ -1,10 +1,9 @@
 ---
 title: "Barcodes and passes"
 description: "Display codes and scan them natively."
-tag: "In development"
 ---
 
-> **In development.** Native generation supports 13 formats; scanning is provided by `@ink/camera`. Continuous scanning and raw-byte results are implemented but remain unverified.
+Native generation supports 13 formats; scanning is provided by `@ink/camera`, including continuous scanning and raw-byte results.
 
 `@ink/barcode` separates generation from scanning so a saved-pass viewer need not include camera code. Generation uses `@ink/barcode/generate`; scanning uses `@ink/camera`.
 
@@ -34,6 +33,6 @@ Scanning stays native. Release the camera on leaving the screen. A scan result i
 
 ## A pass library
 
-Store ID, title, format, payload, sort order and optional expiry in [Records](records.md). Keep originals in [Files](files.md) if a document contains information beyond the code. Editing a display name must not change the encoded value.
+Store ID, title, format, payload, sort order and optional expiry in [Store](store.md). Keeping original documents is covered by the planned [Files and media](files.md) capability. Editing a display name must not change the encoded value.
 
 Tickets with rotating codes or provider authentication need a provider integration. A screenshot or copied payload does not guarantee that the resulting pass remains valid. Keep a fallback human-readable reference where the issuer provides one.

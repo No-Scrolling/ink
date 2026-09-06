@@ -1,10 +1,9 @@
 ---
 title: "Background work"
 description: "Durable jobs with fresh JavaScript runtimes and recoverable inputs."
-tag: "In development"
 ---
 
-> **In development.** Persisted jobs, separate workers, constraints, retries and job-state observation are implemented. Concurrency and reboot recovery need broader verification.
+Background jobs support persistence, separate workers, constraints, retries and job-state observation.
 
 `@ink/background` runs deferrable work such as refreshing saved forecasts, synchronising a feed or draining a message outbox. Register worker code separately from the UI.
 

@@ -1,10 +1,7 @@
 ---
 title: "Notifications"
 description: "Local reminders and routes back into the app."
-tag: "In development"
 ---
-
-> **In development.** Local notifications, exact/inexact scheduling, cancellation and structured routes are implemented. Blocked-channel behaviour remains unverified.
 
 `@ink/notifications` creates native notifications and schedules supported local reminders. Use them for an actionable event, such as a download finishing or a saved departure approaching.
 

@@ -1,10 +1,9 @@
 ---
 title: "NFC"
 description: "Read supported tags through native sessions."
-tag: "In development"
 ---
 
-> **In development.** NDEF reading, raw ISO-DEP/NfcA connections and host card emulation are implemented. Physical NFC exchanges remain unverified. Tag writing is not supported.
+NDEF reading, raw ISO-DEP/NfcA connections and host card emulation are supported. Tag writing is not supported.
 
 `@ink/nfc` provides foreground tag sessions for shortcuts, identifiers and supported NDEF content.
 

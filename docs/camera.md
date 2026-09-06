@@ -1,10 +1,9 @@
 ---
 title: "Camera"
 description: "Native preview and capture owned by the visible screen."
-tag: "In development"
 ---
 
-> **In development.** Front/rear preview, capture, review and durable photo files are implemented. Camera availability and quality depend on the device.
+Front/rear preview, capture, review and durable photo files are supported. Camera availability and quality depend on the device.
 
 `@ink/camera` provides a native preview and still capture. Use it for a chat photo, a document image or an app-specific capture flow.
 
@@ -32,4 +31,4 @@ Use `useCamera({ facing: "front" })` to request the front camera. Missing hardwa
 
 The camera releases when its screen is covered or the app backgrounds, and reacquires on return. Interrupted capture rejects or completes with a result tied to the original request; it cannot update a replacement screen. Handle denial, camera-in-use and unavailable hardware distinctly.
 
-Use [Barcode](barcode.md) for code scanning and [Media](media.md) for choosing an existing photo. Apps should not build a JavaScript frame-processing loop merely to decode a code.
+Use [Barcode](barcode.md) for code scanning. Choosing an existing photo is covered by the planned [Files and media](files.md) capability. Apps should not build a JavaScript frame-processing loop merely to decode a code.

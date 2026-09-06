@@ -1,10 +1,9 @@
 ---
 title: "Location"
 description: "One-off fixes and visibility-scoped location updates."
-tag: "In development"
 ---
 
-> **In development.** One-off fixes, watches and foreground-service tracking are implemented. Location permission remains subject to host policy.
+One-off fixes, watches and foreground-service tracking are supported. Location permission remains subject to host policy.
 
 `@ink/location` provides native location without requiring a Google Play Services provider. Use a one-off fix for weather or nearby departures, and a visible watch when movement matters.
 

@@ -1,10 +1,9 @@
 ---
 title: "Audio"
 description: "Native playback, queues and media controls."
-tag: "In development"
 ---
 
-> **In development.** Native playback, named sessions, queue recovery and capture bindings are implemented. Physical focus interruptions and microphone capture still need device verification.
+Native playback supports named sessions, queue recovery and audio capture.
 
 `@ink/audio` owns decoding, buffering, audio focus, routing and media controls. JavaScript sends commands and observes useful state changes; it does not pump audio samples or playback timers.
 

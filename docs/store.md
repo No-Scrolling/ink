@@ -1,12 +1,15 @@
 ---
 title: "Store"
 description: "Persist small settings with explicit decoding and migrations."
-tag: "In development"
 ---
 
-> **In development.** SQLite persistence, revision-checked updates, decoding, migrations and snapshots across runtimes and processes are implemented. Corruption, migration and contention scenarios need broader verification.
+`@ink/store` stores small JSON values: selected units, saved locations, a sort order or the last selected account. Use [Secure store](secure-store.md) for credentials.
 
-`@ink/store` stores small JSON values: selected units, saved locations, a sort order or the last selected account. Use [Records](records.md) for indexed collections and [Secure store](secure-store.md) for credentials.
+## Planned SQLite access
+
+Direct SQLite access is a planned extension of the storage offering, not an available API or a separate Records package. Buses' bundled stops database is the first concrete use case. The initial scope is opening a bundled database and executing parameterised queries; writes, transactions and schema migrations should follow actual app requirements. The existing JSON store API remains available for settings and small collections.
+
+## JSON storage
 
 Committed writes notify active observers in other app runtimes through private Android broadcasts. Observers reload the changed key; a newly started process reads SQLite directly.
 
