@@ -4,7 +4,7 @@ description: "Observe network availability without treating it as request succes
 tag: "Planned"
 ---
 
-> **Planned.** This package is not implemented. The APIs below describe the proposed design.
+> **Not implemented yet.** This page defines the intended interface.
 
 `@ink/connectivity` exposes an immutable snapshot of the current network state.
 
@@ -14,11 +14,13 @@ import { connectivity } from "@ink/connectivity";
 
 export function ConnectionNotice() {
   const connection = useSnapshot(connectivity);
-  return connection.status === "offline" ? <Text>Offline · showing saved content</Text> : null;
+  return connection.status === "ready" && connection.data.status === "offline"
+    ? <Text>Offline · showing saved content</Text>
+    : null;
 }
 ```
 
-Snapshots distinguish unknown, offline and connected, with transport and metered state when known. Observation uses native connectivity events and pauses with the visible screen. Read a fresh snapshot on return.
+The snapshot uses Ink's standard loading/ready/error shape. Ready data distinguishes unknown, offline and connected, with transport and metered state when known. Observation uses native connectivity events while subscribed and reads fresh state when an observer reconnects. Ink's screen lifecycle disconnects hidden screen subscriptions; a background worker reads its own current snapshot rather than borrowing a screen's observer.
 
 Being connected does not prove that a provider is reachable or authenticated. Always handle request errors. A captive portal, DNS failure or expired account can coexist with a connected network.
 

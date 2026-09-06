@@ -1,35 +1,49 @@
 ---
 title: "Maps"
-description: "Native map views with explicit providers and offline regions."
+description: "An optional MapLibre map with markers and native gestures."
 tag: "Planned"
 ---
 
-> **Planned.** This package is not implemented. The APIs below describe the proposed design.
+> **Not implemented yet.** This page defines the intended interface.
 
-`@ink/maps` provides the native map surface; a provider package supplies its map source, attribution and supported capabilities. Choose and configure that provider explicitly.
+`@ink/maps` integrates MapLibre with Ink's renderer. It owns gestures, tile loading and marker rendering. Apps supply a style URL, coordinates and actions. Choosing a tile source does not require a separate Ink provider package.
 
 ```tsx
 import { Screen } from "ink";
 import { MapView } from "@ink/maps";
-import { mapSource } from "./map-provider";
 
-export function Nearby({ latitude, longitude }: {
-  latitude: number; longitude: number;
+export function VehicleMap({ styleURL, latitude, longitude }: {
+  styleURL: string;
+  latitude: number;
+  longitude: number;
 }) {
   return (
-    <Screen title="Nearby">
-      <MapView source={mapSource} centre={{ latitude, longitude }} zoom={14} />
+    <Screen title="Bus location">
+      <MapView
+        styleURL={styleURL}
+        initialCentre={{ latitude, longitude }}
+        initialZoom={14}
+        markers={[{ id: "bus", latitude, longitude }]}
+      />
     </Screen>
   );
 }
 ```
 
-`mapSource` is app configuration for an installed provider, not an implicit free tile service. Package size, rendering features, access tokens, attribution and offline rights depend on that provider.
+The map fills the available content area. Its engine is included only in apps importing the module.
 
-The native view owns panning, zooming, tile decoding and labels. Initial centre/zoom seed the view; use an explicit camera command for subsequent movements. Observe settled camera changes when useful, rather than sending every gesture frame through JavaScript.
+## React behaviour
 
-Markers use stable IDs, coordinates and compact metadata. Use native clustering for dense collections. A selected marker can open an Ink detail screen by record ID; do not recreate the map whenever a label changes.
+`initialCentre` and `initialZoom` seed the map on mount. Subsequent marker changes move markers without resetting the camera or interrupting a gesture. Replacing the React key intentionally creates a fresh map.
 
-Offline regions are explicit native download jobs with size estimates, progress and removal. A transient tile cache is not an offline guarantee. Register only supported provider capabilities, and retain attribution when displaying cached content.
+For explicit movements, `useMap()` provides a controller accepted by `MapView.controller`. Its `moveTo({ centre, zoom })` method returns a promise. Use this for a Centre on vehicle action; routine renders do not move the camera.
 
-Use [Location](location.md) for the device position. Routing, geocoding and traffic are separate provider services. A simple departure board may be clearer and smaller without a map.
+Markers have stable `id`, `latitude`, `longitude` and an optional `label`. `onMarkerPress(id)` lets the app open a detail page. `onCameraIdle({ centre, zoom })` reports the settled view when needed. Gestures and animation frames stay native.
+
+## Scope
+
+The initial scope is Buses' needs: one map, moving markers and explicit centring. Clustering, offline-region downloads, routing, geocoding, traffic and arbitrary React content inside markers are outside this scope.
+
+Apps configure the style and required credentials. Attribution stays visible; tile access and caching follow the source's terms. A tile cache is not an offline guarantee.
+
+Use [Location](location.md) for the phone's position. Location permission is not required merely to display supplied coordinates.

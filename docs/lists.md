@@ -25,7 +25,7 @@ Only ordered keys and layout metadata cross into native code; item objects remai
 
 The template's Follow new items page keeps Add and Clear actions in the screen's pinned `header` while the list scrolls below. Following is always enabled in this example. The Virtualised List page demonstrates 5,000 automatically sized rows. These are local fixtures, not real-app workflow validation.
 
-Measurements are cached by stable item key, content version and width. Ink keeps both the full and scrollbar-adjusted widths across layout passes. Replace changed items immutably so only their cached measurements are invalidated; prepend and reorder operations retain measurements for unchanged items. When an external value changes row geometry (for example typography or density), change `measurementKey` to invalidate offscreen measurements as well. Mounted rows are remeasured during native layout, including completed image loads.
+Measurements are cached by stable item key, content version and width. Ink keeps both the full and scrollbar-adjusted widths across layout passes. Replace changed items immutably so only their cached measurements are invalidated; prepend and reorder operations retain measurements for unchanged items. Mounted rows are remeasured during native layout, including completed image loads.
 
 The mounted window follows its existing first key immediately when items are prepended, preserving React identity for retained rows. If multiple lists are visible, the native anchor nearest the viewport top is used deterministically.
 
@@ -38,3 +38,11 @@ Append the fetched items immutably and set `hasMore` to false at the end. The ap
 The Pagination example simulates 20-item pages up to 100 items. It contains no manual load-more control.
 
 For history, provide `onLoadOlder` and `hasOlder`, then prepend fetched items immutably. Ink requests older rows when the backward overscan reaches the first loaded item. Requests are sequential and failures expose retry. `initialEnd` starts the mounted window at the last rows; it does not independently scroll a containing Screen. ConversationScreen owns both the initial bottom position and subsequent reply/send scroll requests. All lists use the containing screen's scrolling, rather than independent nested scroll containers.
+
+## Advanced composition
+
+Keep `initialEnd` and `measurementKey` as specialised controls, not requirements for ordinary lists. They solve separate problems and are not row-height hints.
+
+`initialEnd` is useful for a custom log or history view whose containing screen starts at the bottom: it mounts the last rows first. ConversationScreen already coordinates this, so chat apps do not set it.
+
+`measurementKey` invalidates offscreen geometry when rendering changes without changing item data. For example, a custom text-size preference used by every row can be passed as `measurementKey={textSize}`. Normal item updates, width changes and completed image loads do not require it.

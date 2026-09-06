@@ -1,5 +1,13 @@
 # Builds, native requirements and assets
 
+## Product contract
+
+Include native functionality by explicit package entry point, never by inspecting hook arguments or component names. The intended audio entry points are `@ink/audio` for playback and `@ink/audio/capture` for recording and analysis. Camera capture stays at `@ink/camera`; scanning moves to `@ink/camera/scan`. A playback-only app must not require microphone permission, and a capture-only app must not include the barcode scanner.
+
+**Implementation gap:** these entry-point splits are not shipped yet. Existing imports below describe today's bundles; changing the docs does not remove their native dependencies. The split must update package exports, capability metadata, compiler resolution and examples together.
+
+## Current build behaviour
+
 The bundler reads the actual resolved modules, including re-exports, aliases and linked packages, for the UI and worker. It does not inspect component names, hook calls or option expressions. Native requirements are conservative: importing audio includes recording, playback and detached playback; importing camera includes capture and scanning. `ink info` reports the resulting native cost.
 
 Each supported package ships `ink-native.json` beside `package.json`:

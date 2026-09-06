@@ -1,12 +1,12 @@
 ---
 title: "Downloads"
-description: "Durable native transfers for offline content."
+description: "Durable HTTP downloads with native progress and recovery."
 tag: "Planned"
 ---
 
-> **Planned.** This package is not implemented. The APIs below describe the proposed design.
+> **Not implemented yet.** This page defines the intended interface.
 
-`@ink/downloads` owns transfer scheduling, progress, temporary files and completion. Use it for podcast episodes, tickets, documents and supported media-provider content.
+`@ink/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Apps own the downloaded library and retention policy.
 
 ```ts
 import { downloads } from "@ink/downloads";
@@ -20,22 +20,20 @@ const download = await downloads.enqueue({
 await saveEpisodeDownload(episode.id, download.id);
 ```
 
-This fragment assumes the app's episode model and record operation. A stable key deduplicates the same requested asset; it must include a revision when content at an ID changes. Persist the download ID before relying on its presence in the library.
+The example assumes app-owned episode data and persistence. A stable key identifies one asset revision and deduplicates requests. The same key with conflicting source details rejects; use a new key for replacement content.
 
 ## Observe and control
 
-`downloads.observe(id)` is a readable source for `useSnapshot`. States are queued, running, paused, completed, failed or cancelled. Progress includes received bytes and an optional total; unknown content length must not display a fabricated percentage.
+`downloads.observe(id)` supplies Ink's standard `loading`, `ready` or `error` snapshot for `useSnapshot`. Ready data contains the transfer state: `queued`, `running`, `paused`, `completed`, `failed` or `cancelled`. Progress contains received bytes and an optional total. Completion contains a [FileRef](files.md#one-file-representation). Failure to read the job is a snapshot error; a failed transfer is job data with an error explaining the failure.
 
-`pause(id)`, `resume(id)`, `cancel(id)` and `remove(id)` return promises. Cancellation stops pending transfer work and removes partial content. Removal also deletes completed managed content. Releasing an observer does neither.
+`pause(id)`, `resume(id)`, `cancel(id)` and `remove(id)` return promises. Cancel stops unfinished work and deletes partial content. Remove also deletes the completed file. Closing a screen or releasing an observer does neither.
 
-A completed snapshot contains a managed file ID. The library remains responsible for metadata, playback eligibility and storage policy. Missing or removed files require reconciliation on opening the app.
+Native persisted state supports recovery after process restart. Partial resumption depends on server support and content validators; otherwise the transfer restarts safely. Constraints and storage failures appear in state. Apps reconcile missing files when reopening their library.
 
-## Recovery and credentials
+## Provider integrations
 
-Native persisted transfer state supports recovery after process restart. Resuming a partial transfer depends on server range support and validators; changed content restarts safely. Android constraints and storage pressure can delay or fail a transfer.
+The initial interface handles URLs that remain usable for the transfer and recovery. Expired signed URLs surface a failure; the app obtains a replacement and enqueues a new request. Do not place a permanent bearer token into a persisted URL.
 
-Do not persist an expiring bearer token as a permanent URL/header recipe. Provider modules use a registered headless resolver that obtains fresh credentials by account ID when required. If renewal needs user input, expose an account-required state and resume after sign-in.
+There is no generic headless credential-resolver registry in this scope. Echo TV's Spotify downloads require its existing provider engine, authentication and offline-content handling. That integration remains separate; ordinary HTTP downloads do not replace it.
 
-Secrets remain in secure storage; download metadata and diagnostic URLs are redacted where the package knows they contain credentials. Apps must still avoid putting secrets into names and arbitrary metadata.
-
-A normal fetch suits short foreground reads. Use downloads when transfer ownership must survive leaving the screen, and [Files](files.md) for completed content.
+Use `fetch` for short foreground requests and [Files and media](files.md) for attachment uploads. Background jobs can schedule reconciliation, but do not act as a continuous download loop.

@@ -42,6 +42,24 @@ Snapshots include readiness, current item, position, duration, buffering, playin
 
 Native media sessions coordinate hardware keys, lock-screen controls and focus interruptions. State reflects changes made outside the app. Commands issued before readiness reject rather than silently overwriting restored state.
 
+## Recording and analysis
+
+The current `@ink/audio` entry point also exports `microphone`, `useRecorder`, `useLevelMeter` and `usePitchDetector`. Request microphone permission from a user action using `microphone.requestPermission()`; `getPermission()` reads the existing grant. Permission results are `granted`, `denied` or `blocked`.
+
+Each capture hook returns `ready`, `state` and promise-returning commands. Wait for readiness before enabling controls. Hook cleanup releases the native attachment; capture is foreground work, not a background recording service.
+
+| Hook | Commands | State |
+| --- | --- | --- |
+| `useRecorder()` | `start()`, `stop()`, `cancel()`, `delete()` | Status, duration in milliseconds, error and the saved recording when available. |
+| `useLevelMeter()` | `start()`, `stop()` | Status, RMS, peak and error. These are signal levels, not calibrated sound-pressure measurements. |
+| `usePitchDetector({ referenceHz })` | `start()`, `stop()` | Status, frequency in Hz, note, octave, cents, confidence and error. Reference defaults to 440 Hz. |
+
+Recorder status is idle, recording, stopping, ready or error. A completed recording currently contains `id`, `src` and `duration`; its source can be played by `usePlayer`. Read completion from state rather than treating `stop()` as a returned recording. Cancel discards unfinished capture; delete removes the current saved recording.
+
+**Current retention limit:** completing a recording deletes the previous saved recording. It is not yet a library of durable voice attachments. The intended product retains each completed recording as a [FileRef](files.md#one-file-representation) until explicitly deleted.
+
+The intended capture import is `@ink/audio/capture`. That entry point is not shipped yet; use the current root export until the [package split](build-contracts.md#product-contract) is implemented. Level and pitch processing remain optional capture tools and do not belong in playback-only apps.
+
 ## Providers and offline media
 
 A podcast enclosure or owned audio file can use this player directly. A music service may require a provider SDK, remote-control session, DRM or a dedicated native engine. Its package exposes domain commands and snapshots appropriate to that provider; generic audio does not grant catalogue or offline playback rights.

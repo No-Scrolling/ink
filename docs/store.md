@@ -5,10 +5,6 @@ description: "Persist small settings with explicit decoding and migrations."
 
 `@ink/store` stores small JSON values: selected units, saved locations, a sort order or the last selected account. Use [Secure store](secure-store.md) for credentials.
 
-## Planned SQLite access
-
-Direct SQLite access is a planned extension of the storage offering, not an available API or a separate Records package. Buses' bundled stops database is the first concrete use case. The initial scope is opening a bundled database and executing parameterised queries; writes, transactions and schema migrations should follow actual app requirements. The existing JSON store API remains available for settings and small collections.
-
 ## JSON storage
 
 Committed writes notify active observers in other app runtimes through private Android broadcasts. Observers reload the changed key; a newly started process reads SQLite directly.
@@ -61,3 +57,11 @@ Observation activates loading after commit. Snapshots are `loading`, `ready` wit
 Only JSON data is persisted. Decode on reading; changing a TypeScript type does not migrate existing data. When increasing `version`, supply `migrate(oldValue, oldVersion)` returning the new JSON value, then validate it with `decode`. Migration and replacement are atomic for this key.
 
 A corrupt or unsupported newer value produces a recoverable error; it is not silently replaced with defaults. Defaults apply when the key does not exist. `reset()` explicitly restores the initial value. Keys are app-wide names, not access-control boundaries.
+
+## Planned SQLite access
+
+**Not implemented yet.** Direct SQLite access extends `@ink/store`; it is not a separate Records package. The first interface opens an imported bundled database with `openDatabase(asset)`, executes parameterised reads with `db.query(sql, parameters)`, and releases the runtime-local handle with `db.close()`. Database asset imports are part of this implementation work.
+
+Buses' stops database is the initial use case. The bundled database is read-only; an app update replaces its asset rather than migrating a writable copy. Query results are arrays of row values that the app decodes into its own types. SQL values use bound parameters. The app owns search terms and result limits; filtering and ordering stay in SQLite.
+
+No ORM, live-query system, outbox abstraction or general schema-management layer is added. Writable databases and transactions can be considered when a real migration needs them. The existing JSON interface remains the simple choice for settings and small collections.

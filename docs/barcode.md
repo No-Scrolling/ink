@@ -7,6 +7,8 @@ Native generation supports 13 formats; scanning is provided by `@ink/camera`, in
 
 `@ink/barcode` separates generation from scanning so a saved-pass viewer need not include camera code. Generation uses `@ink/barcode/generate`; scanning uses `@ink/camera`.
 
+The intended scanning entry point is `@ink/camera/scan`, so capture-only apps do not include scanner code. That package split is not implemented yet; the imports below reflect the current interface.
+
 QR scanning accepts dark-on-light and inverted light-on-dark codes. Inverted QR detection has been confirmed on the LP3.
 
 ```tsx

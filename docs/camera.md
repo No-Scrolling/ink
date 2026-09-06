@@ -32,3 +32,7 @@ Use `useCamera({ facing: "front" })` to request the front camera. Missing hardwa
 The camera releases when its screen is covered or the app backgrounds, and reacquires on return. Interrupted capture rejects or completes with a result tied to the original request; it cannot update a replacement screen. Handle denial, camera-in-use and unavailable hardware distinctly.
 
 Use [Barcode](barcode.md) for code scanning. Choosing an existing photo is covered by the planned [Files and media](files.md) capability. Apps should not build a JavaScript frame-processing loop merely to decode a code.
+
+## Shared attachments
+
+The intended product returns the shared `FileRef` inside an accepted photo result, usable directly by images, storage and uploads. The current `uri`/`source` result and `camera.removePhoto` remain the available interface until that change is implemented. File retention then belongs to `@ink/files`; camera continues to own capture, review and cleanup of rejected photos.

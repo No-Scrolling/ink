@@ -41,9 +41,9 @@ Use `ink` for components, navigation and async hooks. Device APIs live in `@ink/
 
 The build reads native requirements from packages in the resolved module graph and adds explicit capabilities from `ink.toml`. Local images, audio and icon collections are imported assets. JavaScript packages can be bundled when their required runtime APIs are available.
 
-Read [the Ink documentation](docs/ink.md) and [how Ink works](docs/architecture.md). Package pages distinguish implemented features from planned packages.
+Read [the Ink documentation](docs/ink.md), [product design](docs/product-design.md) and [how Ink works](docs/architecture.md). Product design defines the intended experience; module pages identify interfaces that still need implementation.
 
-The agreed component work includes rows, pagination, reordering examples, code generation, PlayingScreen and ConversationScreen with a scrolling multiline composer. Focused emulator checks are recorded in [verification](docs/verification-2026-09-06.md); real-app integration on the LP3 remains deferred. Proposed packages such as Downloads, Files and Auth are not part of the implemented package set above. See [implementation status](docs/implementation-plan.md) and [app-pattern coverage](docs/example-pattern-coverage.md).
+The agreed component work includes rows, pagination, reordering examples, code generation, PlayingScreen and ConversationScreen with a scrolling multiline composer. Focused emulator checks are recorded in [verification](docs/verification-2026-09-06.md); real-app integration on the LP3 remains deferred. Downloads, Files and Auth are not part of the implemented package set above. See [remaining product work](docs/product-design.md#implementation-gaps), the [historical implementation plan](docs/implementation-plan.md) and [app-pattern coverage](docs/example-pattern-coverage.md).
 
 ## Development
 

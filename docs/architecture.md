@@ -8,6 +8,8 @@ tag: "In development"
 
 Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler type-checks and bundles the app, prepares its assets and selects native integrations.
 
+[Product design](product-design.md) defines the intended authoring experience and module scope. This page explains the current engine; historical measurements below are evidence for that architecture rather than promises for every app.
+
 ```text
 App.tsx + TypeScript + npm dependencies
                     ↓

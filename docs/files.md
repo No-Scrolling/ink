@@ -1,48 +1,62 @@
 ---
 title: "Files and media"
-description: "Pick photos, videos and documents, and manage attachment files."
+description: "Choose attachments and use the same managed file throughout an app."
 tag: "Planned"
 ---
 
-> **Planned.** This package is not implemented. The APIs below describe the proposed design.
+> **Not implemented yet.** This page defines the intended interface. Current camera and recording results retain their documented shapes until shared attachment support is implemented.
 
-The shared files and media proposal covers selecting photos, videos and documents, preparing images, and reading or saving attachment files. Package boundaries and final API names will be decided during implementation; the examples below illustrate the intended file operations.
+`@ink/files` owns the photo/video picker and managed attachments. Developers can choose a photo, preview it, save its reference and upload it without managing Android content URIs or temporary files.
 
-A `FileRef` refers to native content; its `id` can be persisted. Opening that ID later can fail if the file was deleted or its external permission expired.
+## Pick an attachment
 
-```ts
-import { files } from "@ink/files";
+`MediaPicker` supplies the selection interface inside an Ink screen:
 
-const selected = await files.pick({ types: ["application/pdf"] });
-if (selected) {
-  const saved = await files.import(selected, { name: "Ticket.pdf" });
-  await saveTicket({ fileId: saved.id, name: "Ticket" });
+```tsx
+import { Screen } from "ink";
+import { MediaPicker, type FileRef } from "@ink/files";
+
+export function Attachments({ onSelect }: { onSelect: (file: FileRef) => void }) {
+  return (
+    <Screen title="Photos and videos">
+      <MediaPicker onSelect={onSelect} />
+    </Screen>
+  );
 }
 ```
 
-Here `saveTicket` is the app's record operation. Picking grants access to a selection; importing copies it into managed documents for offline use. The picker survives its external activity round trip. User cancellation returns `null`.
+The default shows photos and videos; `kind="image"` or `kind="video"` narrows it. Ink owns permission handling, thumbnails, loading, errors and retry. Choosing an item creates a durable app-owned copy before calling `onSelect`. The app decides whether to return to the conversation, preview or upload it. Back cancels selection and cleans up unfinished copies.
 
-## Ownership
+For documents, `await files.pick({ types: ["application/pdf"] })` opens the platform picker and returns a durable `FileRef`, or `null` on cancellation. It owns the external activity round trip. Both pickers select one file at a time.
 
-The photo/video picker should handle permissions and return a file reference with MIME type, size and available dimensions. Cancellation returns `null`. Apps own preview and upload actions; use [Camera](camera.md) for direct capture.
+## One file representation
 
-Image preparation should apply orientation and resizing natively. Import externally owned selections into managed storage before adding them to a durable outbox. Picking a video does not provide video playback; Ink does not currently provide a video player.
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable app-owned file identity. |
+| `src` | Ink-managed source for supported rendering and networking facilities. |
+| `name` | Display name. |
+| `mimeType` | Content type. |
+| `size` | Byte length. |
+| `width`, `height` | Dimensions when available for images or video. |
+| `duration` | Duration in milliseconds when available for audio or video. |
 
-File sharing should grant temporary access to the receiving app through Android rather than exposing raw file paths.
+Accepted camera photos, completed recordings and downloads use this representation in the intended product. Existing capture interfaces need an implementation update to meet it.
 
-| Storage | Use | Lifetime |
-| --- | --- | --- |
-| Documents | Tickets, attachments, offline books | Explicit deletion or app-data removal. |
-| Cache | Re-creatable artwork and responses | May be evicted. |
-| Temporary | Captures and intermediate exports | Short-lived; promote before persisting a reference. |
-| External selection | A document owned elsewhere | Provider access may be revoked. |
+Persist the file ID alongside app data. `files.open(id)` returns current metadata or `null` if removed; storage failures reject. Accepted files survive screen disposal and app restarts until explicitly removed or app data is cleared. No public temporary-file promotion step is required.
 
-`files.open(id)` resolves a reference. `stat`, `remove`, `copy` and `export` are asynchronous native operations. Names are display names, not arbitrary absolute filesystem paths. Native boundaries validate IDs and access rights; serialising a reference does not extend its lifetime.
+`files.remove(id)` deletes an app-owned file. The app owns retention: deleting one message should not remove a file referenced elsewhere. Failed operations clean up their partial files.
 
-## Read and write
+## Preview, prepare and upload
 
-`readText` is useful for a small configuration file; `readBytes` materialises the full content. Use streams for larger content and native file references for images, playback, document reading and uploads. Streams support cancellation and backpressure; callers release them on completion or abort.
+`Image` and audio playback accept appropriate file `src` values in the intended product. Media bytes stay native during display. Picking a video does not provide video playback.
 
-Writes use temporary content followed by atomic replacement where supported by the destination. A failed export to an external provider may need user intervention; it is not a database transaction. Check available space before large imports, and handle out-of-space failures during the operation too.
+`files.prepareImage(file, { maxWidth, maxHeight })` returns a new managed image with orientation applied and dimensions bounded while retaining aspect ratio. The original remains intact. Prepared output omits location metadata. This is one preparation operation, not a general image editor.
 
-[Downloads](downloads.md) writes into managed storage. Removing a download or record must follow the app's retention policy; merely closing its screen does not delete its content.
+Managed files must work with standard networking: `fetch(file.src)` reads the local file as a native-backed response. Its `blob()` can be used as a request body or appended to `FormData` without copying the complete file into the JavaScript heap. Implementing native-backed Blob support is part of this work; today's in-memory Blob does not provide this contract. Apps supply endpoints, authentication and upload state. No separate Ink HTTP interface is introduced.
+
+`files.save(file)` lets the user save an external copy. `files.share(file)` opens an external share destination with temporary Android access grants. Cancellation leaves the original intact.
+
+## Scope
+
+This module provides selection, image preparation, shared file references and explicit retention. It does not expose arbitrary filesystem paths, a document reader, a general filesystem toolkit or video playback. [Downloads](downloads.md) owns durable incoming transfers; apps own upload queues and provider rules.

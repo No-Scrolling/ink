@@ -1,4 +1,6 @@
-# Completing Ink's developer experience
+# Historical implementation plan
+
+This document preserves the original implementation plan and its delivery record. It is not the final product specification. [Product design](product-design.md) and the module guides define the intended product and identify remaining implementation gaps.
 
 Status: the agreed framework and component implementation is delivered, including PlayingScreen, ConversationScreen and the three-line scrolling composer. Focused emulator verification and historical physical LP3 counter/scroll benchmarks are recorded. Real-app workflows remain deferred for a joint session. The active benchmark now contains aligned counters only; its fresh physical comparison remains pending. The detailed sections below retain the original design problems and acceptance criteria, not a list of outstanding implementation tasks or a claim that every device scenario has been exercised.
 

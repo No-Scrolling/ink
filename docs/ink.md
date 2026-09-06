@@ -5,10 +5,14 @@ description: "Small TypeScript apps with a native Light Phone interface."
 
 Build Light Phone III apps with React and TypeScript. Ink provides native components, navigation, rendering and device APIs.
 
+See [Product design](product-design.md) for the intended scope and remaining implementation gaps. Interfaces marked planned are not available yet.
+
 
 ## Planned external actions
 
-Opening external links and sharing text are planned framework operations; no public API is available yet. They should handle the external activity round trip and distinguish cancellation from failure. File sharing belongs with the planned [Files and media](files.md) capability. Appearance and screen lifecycle continue to use Ink's existing APIs.
+The intended framework commands are `openURL(url)` and `share({ text })`, imported from `ink`. They are not implemented yet. Both return promises and own the external activity round trip; user cancellation resolves normally, while invalid URLs, missing handlers and native failures reject. Apps validate externally supplied links before opening them. File sharing belongs with [Files and media](files.md). Appearance and screen lifecycle use Ink's existing interfaces.
+
+Web links open in a browser-backed in-app window using [Android Custom Tabs](https://developer.android.com/develop/ui/views/layout/webapps/overview-of-android-custom-tabs). Closing it restores the Ink screen and its state. Match Ink's appearance within the browser's supported customisation; retain site identity and browser security controls. Avoid switching to the full browser application. The inspected LP3 Chromium advertises Custom Tabs support; [launch and return behaviour still need verification](verification-custom-tabs.md). An unavailable implementation reports that outcome instead of silently changing the browsing experience. Non-web schemes use their appropriate native handlers.
 
 ## Run the template
 
