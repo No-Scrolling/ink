@@ -54,6 +54,11 @@ pub(crate) struct SystemGlyphAtlas {
 }
 
 impl SystemGlyphAtlas {
+    #[cfg(feature = "perf")]
+    pub fn texture_capacity_bytes(&self) -> usize {
+        self.pages.len() * ATLAS_SIZE as usize * ATLAS_SIZE as usize * 4
+    }
+
     pub fn new(bind_group_layout: wgpu::BindGroupLayout) -> Self {
         Self {
             bind_group_layout,

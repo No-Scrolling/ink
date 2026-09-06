@@ -14,6 +14,7 @@ path = "src/lib.rs"
 audio = ["dep:ink-audio"]
 background = []
 benchmark = ["ink-core/perf", "ink-renderer-wgpu/perf"]
+memory-diagnostics = ["ink-core/perf", "ink-renderer-wgpu/perf"]
 image = ["ink-renderer-wgpu/image"]
 network = []
 camera-photo = ["image"]

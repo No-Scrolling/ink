@@ -12,6 +12,6 @@ mod compact;
 mod system_glyph;
 
 #[cfg(feature = "perf")]
-pub use compact::RenderPerfMetrics;
+pub use compact::{RenderMemoryMetrics, RenderPerfMetrics};
 pub use compact::{RenderOutcome, Renderer};
 pub use system_glyph::SystemGlyphRequest;

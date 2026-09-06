@@ -20,6 +20,11 @@ pub(super) struct ScriptRuntime {
 }
 
 impl ScriptRuntime {
+    #[cfg(feature = "memory-diagnostics")]
+    pub(super) fn memory_diagnostics(&self) -> Value {
+        self.tree.memory_diagnostics()
+    }
+
     #[cfg(feature = "audio")]
     pub(super) fn notify_controller(&self, id: u64, value: StateValue) -> Result<()> {
         self.send(

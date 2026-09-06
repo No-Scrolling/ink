@@ -60,6 +60,7 @@ enum HostKind {
     Toggle,
     Button,
     Field,
+    Row,
 }
 
 enum HostProps {
@@ -181,6 +182,38 @@ impl Default for ReactTree {
 }
 
 impl ReactTree {
+    #[cfg(feature = "perf")]
+    pub fn memory_diagnostics(&self) -> Json {
+        let mut raw_text_nodes = 0;
+        let mut raw_text_bytes = 0;
+        let mut text_nodes = 0;
+        let mut other_property_nodes = 0;
+        let mut child_capacity_bytes = 0;
+        for (id, node) in &self.nodes {
+            if *id == 0 {
+                continue;
+            }
+            child_capacity_bytes += node.children.capacity() * size_of::<usize>();
+            match &node.props {
+                HostProps::RawText(text) => {
+                    raw_text_nodes += 1;
+                    raw_text_bytes += text.len();
+                }
+                HostProps::Text { .. } => text_nodes += 1,
+                HostProps::Other(_) => other_property_nodes += 1,
+            }
+        }
+        json!({
+            "host_nodes": self.nodes.len().saturating_sub(1),
+            "host_node_inline_bytes": self.nodes.len().saturating_sub(1) * size_of::<HostNode>(),
+            "raw_text_nodes": raw_text_nodes,
+            "raw_text_bytes": raw_text_bytes,
+            "text_nodes": text_nodes,
+            "other_property_nodes": other_property_nodes,
+            "child_id_capacity_bytes": child_capacity_bytes,
+        })
+    }
+
     pub fn with_icons(bytes: &[u8]) -> Result<Self> {
         ensure!(bytes.len() <= 16 * 1024 * 1024, "icon assets are too large");
         let icons: Vec<ReactIcon> = serde_json::from_slice(bytes)?;
@@ -541,20 +574,15 @@ impl ReactTree {
                 ensure!(content_versions.len() == count, "List content versions must match keys");
                 let start = props.get("start").and_then(Json::as_u64).context("List requires start")? as usize;
                 let revision = props.get("revision").and_then(Json::as_u64).context("List requires revision")?;
-                let fixed = number(props, "itemHeight")?;
-                let estimate = number(props, "estimatedItemHeight")?;
-                ensure!(fixed.is_some() != estimate.is_some(), "List requires itemHeight or estimatedItemHeight");
-                let row_height = fixed.or(estimate).unwrap();
                 let gap = number(props, "gap")?.unwrap_or(0.0);
-                ensure!(row_height > 0.0 && gap >= 0.0 && ((row_height + gap) * count as f32).is_finite()
+                ensure!(gap >= 0.0 && ((40.0 + gap) * count as f32).is_finite()
                     && count <= 1_000_000 && start <= count && host.children.len() <= count - start,
                     "invalid List dimensions");
                 ensure!(keys.iter().collect::<HashSet<_>>().len() == count, "List keys must be unique");
                 Node {
                     identity: NodeIdentity(id),
                     kind: NodeKind::ReactList {
-                        children: self.children(host, depth)?, start, keys, content_versions, revision, row_height,
-                        estimated: estimate.is_some(), gap,
+                        children: self.children(host, depth)?, start, keys, content_versions, revision, gap,
                         follow_end: props.get("followEnd") == Some(&Json::Bool(true)),
                     },
                 }
@@ -594,7 +622,11 @@ impl ReactTree {
                 let title = string(props, "title").context("Confirmation requires title")?;
                 let label = string(props, "confirmLabel").context("Confirmation requires confirmLabel")?;
                 ensure!(props.get("onConfirm") == Some(&Json::Bool(true)), "Confirmation requires onConfirm");
-                let mut screen = Node::screen(self.children(host, depth)?, Some(title.to_owned()), false);
+                let mut screen = Node::screen(
+                    self.children(host, depth)?,
+                    Some(title.to_owned()),
+                    props.get("centered") == Some(&Json::Bool(true)),
+                );
                 if let NodeKind::Screen { footer, .. } = &mut screen.kind {
                     *footer = Some((label.to_owned(),
                         (props.get("pending") != Some(&Json::Bool(true)))
@@ -602,10 +634,28 @@ impl ReactTree {
                 }
                 screen
             }
+            HostKind::Row => Node {
+                identity: NodeIdentity(id),
+                kind: NodeKind::Row {
+                    children: self.children(host, depth)?,
+                    has_image: props.get("hasImage") == Some(&Json::Bool(true)),
+                    action: (props.get("onPress") == Some(&Json::Bool(true)))
+                        .then(|| event(id, "onPress", vec![])),
+                },
+            },
             HostKind::Screen => {
+                let right_action = string(props, "rightIcon").map(|icon| {
+                    ensure!(props.get("onRightPress") == Some(&Json::Bool(true)), "Screen right action requires onPress");
+                    Ok((self.icon(icon, false)?, event(id, "onRightPress", vec![])))
+                }).transpose()?;
                 let props = props.object().context("invalid Screen properties")?;
                 let props: ScreenProps = serde_json::from_value(Json::Object(props.clone()))?;
-                Node::screen(self.children(host, depth)?, props.title, props.centered)
+                let mut screen = Node::screen(self.children(host, depth)?, props.title, props.centered);
+                if let NodeKind::Screen { pinned_header, right_action: action, .. } = &mut screen.kind {
+                    *pinned_header = props.pinned_header;
+                    *action = right_action;
+                }
+                screen
             }
             HostKind::Stack => {
                 let axis = match string(props, "axis").unwrap_or("vertical") {
@@ -802,6 +852,8 @@ struct ScreenProps {
     title: Option<String>,
     #[serde(default)]
     centered: bool,
+    #[serde(default, rename = "pinnedHeader")]
+    pinned_header: bool,
 }
 
 fn string<'a>(props: &'a HostProps, key: &str) -> Option<&'a str> {
@@ -847,6 +899,7 @@ fn find_node(node: &Node, id: usize) -> Option<&Node> {
     }
     match &node.kind {
         NodeKind::Screen { children, .. }
+        | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {
             children.iter().find_map(|node| find_node(node, id))
@@ -862,6 +915,7 @@ fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
     }
     match &mut node.kind {
         NodeKind::Screen { children, .. }
+        | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {
             children.iter_mut().find_map(|node| find_node_mut(node, id))

@@ -46,27 +46,33 @@ private class InkBarcodeAdapter(private val activity: MainActivity) : BarcodeAda
                     "codabar" -> BarcodeFormat.CODABAR
                     else -> error("Unsupported barcode format")
                 }
-                val matrix = MultiFormatWriter().encode(value, format, 0, 0,
-                    mapOf(EncodeHintType.CHARACTER_SET to "UTF-8"))
+                val hints = mutableMapOf<EncodeHintType, Any>(EncodeHintType.CHARACTER_SET to "UTF-8")
+                if (format == BarcodeFormat.QR_CODE || format == BarcodeFormat.PDF_417) {
+                    hints[EncodeHintType.MARGIN] = 2
+                }
+                val matrix = MultiFormatWriter().encode(value, format, 0, 0, hints)
                 val linear = matrix.height == 1
-                val border = if (linear) 12 else 1
-                val scale = minOf(pixels / (matrix.width + border * 2), pixels / (matrix.height + border * 2))
-                require(scale > 0) { "Barcode does not fit the requested size" }
+                val horizontalBorder = if (format == BarcodeFormat.AZTEC || format == BarcodeFormat.DATA_MATRIX) 2 else 0
+                val verticalBorder = if (linear) 2 else horizontalBorder
+                val scale = pixels / (matrix.width + horizontalBorder * 2)
+                require(scale > 0) { "Barcode does not fit the requested width" }
                 val width = matrix.width * scale
-                val height = if (linear) maxOf(1, pixels / 3) else matrix.height * scale
-                val bitmap = Bitmap.createBitmap(pixels, pixels, Bitmap.Config.ARGB_8888)
+                val height = if (linear) maxOf(1, width / 3) else matrix.height * scale
+                val left = horizontalBorder * scale
+                val top = verticalBorder * scale
+                val bitmapWidth = width + left * 2
+                val bitmapHeight = height + top * 2
+                val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
                 try {
-                    val row = IntArray(pixels)
-                    val left = (pixels - width) / 2
-                    val top = (pixels - height) / 2
-                    for (y in 0 until pixels) {
+                    val row = IntArray(bitmapWidth)
+                    for (y in 0 until bitmapHeight) {
                         if (Thread.currentThread().isInterrupted) throw InterruptedException()
-                        for (x in 0 until pixels) {
+                        for (x in 0 until bitmapWidth) {
                             val inside = x in left until left + width && y in top until top + height
                             val black = inside && matrix[(x - left) / scale, if (linear) 0 else (y - top) / scale]
                             row[x] = if (black) Color.BLACK else Color.WHITE
                         }
-                        bitmap.setPixels(row, 0, pixels, 0, y, pixels, 1)
+                        bitmap.setPixels(row, 0, bitmapWidth, 0, y, bitmapWidth, 1)
                     }
                     val target = File.createTempFile("ink-barcode-", ".png", activity.cacheDir)
                     file = target

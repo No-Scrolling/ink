@@ -23,6 +23,9 @@ val inkCapabilitiesFile = inkCapabilitiesManifest.map(::file)
 val inkBenchmark = providers.environmentVariable("INK_BENCHMARK")
     .map { it == "1" }
     .orElse(false)
+val inkMemoryDiagnostics = providers.environmentVariable("INK_MEMORY_DIAGNOSTICS")
+    .map { it == "1" }
+    .orElse(false)
 val inkBenchmarkRevision = providers.environmentVariable("INK_BENCHMARK_REVISION")
     .orElse("unknown")
 val inkCapabilityCatalogueFile = repositoryRoot.file("crates/ink-compiler/capabilities-v1.json").asFile
@@ -306,6 +309,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
     description = "Builds the Ink runtime for the LP3 arm64 ABI."
     workingDir(repositoryRoot)
     inputs.property("inkBenchmark", inkBenchmark)
+    inputs.property("inkMemoryDiagnostics", inkMemoryDiagnostics)
     inputs.property("inkBenchmarkRevision", inkBenchmarkRevision)
     environment("INK_BENCHMARK_REVISION", inkBenchmarkRevision.get())
     commandLine(buildList {
@@ -322,6 +326,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
             "background" to inkUsesBackground,
             "camera-photo" to inkUsesPhotoCapture,
             "benchmark" to inkBenchmark,
+            "memory-diagnostics" to inkMemoryDiagnostics,
         )) {
             if (enabled.get()) addAll(listOf("--features", feature))
         }

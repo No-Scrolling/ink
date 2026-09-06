@@ -1,29 +1,51 @@
 import { useEffect, useState } from "react";
-import { Button, ErrorState, LoadingState, Screen, Text } from "ink";
-
-type State = { status: "idle" | "error" | "ready" } | { status: "loading"; result: "error" | "ready" };
+import { Button, Confirmation, LoadingState, Screen, Text } from "ink";
 
 export default function ScreenStates() {
-  const [state, setState] = useState<State>({ status: "idle" });
-  useEffect(() => {
-    if (state.status !== "loading") return;
-    const timer = setTimeout(() => setState({ status: state.result }), 1500);
-    return () => clearTimeout(timer);
-  }, [state]);
-  function load(result: "error" | "ready") {
-    setState({ status: "loading", result });
-  }
   return (
     <Screen title="Screen states">
-      <Text size={18}>A local demonstration of loading, errors and retry. No network request is made.</Text>
-      {state.status === "idle" && <Button onPress={() => load("error")}>Start demonstration</Button>}
-      {state.status === "loading" && <LoadingState label="Loading example…" />}
-      {state.status === "error" && <ErrorState message="The example could not load. Try again to complete the demonstration."
-        onRetry={() => load("ready")} />}
-      {state.status === "ready" && <>
-        <Text size={18}>The example loaded successfully.</Text>
-        <Button onPress={() => setState({ status: "idle" })}>Restart demonstration</Button>
-      </>}
+      <Button href="/settings/screen-states/loading">Loading</Button>
+      <Button href="/settings/screen-states/error">Error</Button>
+    </Screen>
+  );
+}
+
+export function ScreenStateExample({ result, loadingMessage = "Loading..." }: {
+  result: "ready" | "error";
+  loadingMessage?: string;
+}) {
+  const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
+  const [retrying, setRetrying] = useState(false);
+  const title = result === "error" ? "Error" : "Loading";
+
+  useEffect(() => {
+    if (status !== "loading") return;
+    const timer = setTimeout(() => setStatus(retrying ? "ready" : result), 1500);
+    return () => clearTimeout(timer);
+  }, [status, result, retrying]);
+
+  if (status === "loading") {
+    return (
+      <Screen title={title} centered>
+        <LoadingState label={loadingMessage} align="center" />
+      </Screen>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <Confirmation title={title} centered confirmLabel="Try again" onConfirm={() => {
+        setRetrying(true);
+        setStatus("loading");
+      }}>
+        The example could not load.
+      </Confirmation>
+    );
+  }
+
+  return (
+    <Screen title={title}>
+      <Text>The example loaded successfully.</Text>
     </Screen>
   );
 }

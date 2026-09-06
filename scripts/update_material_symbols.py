@@ -54,7 +54,7 @@ def main() -> None:
         source = Path(temporary_directory) / "MaterialSymbolsOutlined.ttf"
         source.write_bytes(download("ttf"))
         variants = (
-            (0, 300, "MaterialSymbolsOutlined-300.ttf.zlib"),
+            (0, 400, "MaterialSymbolsOutlined-400.ttf.zlib"),
             (1, 400, "MaterialSymbolsOutlined-Fill1-400.ttf.zlib"),
         )
         for fill, weight, filename in variants:

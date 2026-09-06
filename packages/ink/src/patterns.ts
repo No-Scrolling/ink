@@ -22,8 +22,8 @@ export function SettingsChoices<Value extends string>({ options, value, onChange
   }, option.label)));
 }
 
-export function LoadingState({ label = "Loading…" }: { label?: string }) {
-  return createElement(Text, { size: 18 }, label);
+export function LoadingState({ label = "Loading…", align = "start" }: { label?: string; align?: "start" | "center" | "end" }) {
+  return createElement(Text, { size: 18, align }, label);
 }
 
 type StateAction = { label: string; onPress: () => void; disabled?: boolean };
@@ -59,17 +59,19 @@ export function ErrorState({ message, onRetry, retryLabel = "Try again", disable
 export type ConfirmationProps = {
   title: string;
   children: ReactNode;
+  centered?: boolean;
   confirmLabel: string;
   onConfirm: () => void;
   pending?: boolean;
   pendingLabel?: string;
 };
 
-export function Confirmation({ title, children, confirmLabel, onConfirm, pending = false, pendingLabel = "Working…" }: ConfirmationProps) {
+export function Confirmation({ title, children, centered = false, confirmLabel, onConfirm, pending = false, pendingLabel = "Working…" }: ConfirmationProps) {
   return createElement("Confirmation", {
     title,
+    centered,
     confirmLabel: (pending ? pendingLabel : confirmLabel).toUpperCase(),
     onConfirm,
     pending,
-  }, createElement(Text, { size: 18 }, children));
+  }, createElement(Text, { size: 18, align: centered ? "center" : "start" }, children));
 }

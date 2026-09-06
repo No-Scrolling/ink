@@ -346,6 +346,29 @@ impl AndroidEngine {
                 );
             }
         }
+        #[cfg(feature = "memory-diagnostics")]
+        {
+            let memory = surface.renderer.memory_metrics();
+            android_log(
+                ANDROID_LOG_INFO,
+                &format!(
+                    "InkMemory {}",
+                    serde_json::json!({
+                        "version": 1,
+                        "revision": option_env!("INK_BENCHMARK_REVISION").unwrap_or("unknown"),
+                        "native": self.script.as_ref().map(|script| script.memory_diagnostics()),
+                        "renderer": {
+                            "instance_buffer_capacity_bytes": memory.instance_buffer_capacity_bytes,
+                            "instance_snapshot_capacity_bytes": memory.instance_snapshot_capacity_bytes,
+                            "font_texture_bytes": memory.font_texture_bytes,
+                            "image_texture_bytes": memory.image_texture_bytes,
+                            "system_glyph_texture_bytes": memory.system_glyph_texture_bytes,
+                            "image_pipeline_created": memory.image_pipeline_created,
+                        },
+                    })
+                ),
+            );
+        }
         #[cfg(feature = "benchmark")]
         {
             let core = self.engine.take_perf_metrics();

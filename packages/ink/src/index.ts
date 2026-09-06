@@ -7,8 +7,17 @@ export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
 export { useAction, type Action } from "./action";
 export { Navigator, Route, Tabs, Tab, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
 
-export function Screen(props: { children?: ReactNode; title?: string; centered?: boolean }) {
-  return createElement("Screen", props);
+export function Screen({ header, children, rightAction, ...props }: {
+  children?: ReactNode;
+  header?: ReactNode;
+  title?: string;
+  centered?: boolean;
+  rightAction?: { icon: IconAsset; onPress: () => void };
+}) {
+  return createElement("Screen", { ...props, pinnedHeader: header != null, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
+    header != null && createElement(Stack, { gap: 47 }, header),
+    children,
+  );
 }
 
 export function Stack(props: {
@@ -41,6 +50,23 @@ export function Button(props: {
   const { href, onPress, ...rest } = props;
   if (href !== undefined && onPress) throw new Error("Button accepts either href or onPress");
   return createElement("Button", { ...rest, onPress: href === undefined ? onPress : () => navigate(href) });
+}
+
+export function Row({ image, title, subtitle, href, onPress }: {
+  image?: string;
+  title: string;
+  subtitle?: string;
+  href?: Destination;
+  onPress?: () => void;
+}) {
+  if (href !== undefined && onPress) throw new Error("Row accepts either href or onPress");
+  return createElement("Row", { hasImage: image !== undefined, onPress: href === undefined ? onPress : () => navigate(href) },
+    image !== undefined && createElement(Image, { src: image, width: 50, height: 50, fit: "cover" }),
+    createElement(Stack, { gap: 0 },
+      createElement(Text, { size: 26 }, title),
+      subtitle !== undefined && createElement(Text, { size: 16 }, subtitle),
+    ),
+  );
 }
 
 export function Field(props: {

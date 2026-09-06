@@ -36,6 +36,7 @@
       "dependencies": {
         "@ink/audio": "workspace:*",
         "@ink/background": "workspace:*",
+        "@ink/barcode": "workspace:*",
         "@ink/camera": "workspace:*",
         "@ink/lightos": "workspace:*",
         "@ink/location": "workspace:*",

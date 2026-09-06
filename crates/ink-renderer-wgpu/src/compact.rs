@@ -56,6 +56,11 @@ struct InstanceBuffer<T> {
 }
 
 impl<T: Pod + PartialEq> InstanceBuffer<T> {
+    #[cfg(feature = "perf")]
+    fn capacity_bytes(&self) -> usize {
+        self.capacity * size_of::<T>()
+    }
+
     fn new(device: &wgpu::Device, label: &'static str, capacity: usize) -> Self {
         Self {
             buffer: Some(raw_instance_buffer::<T>(device, label, capacity)),
@@ -681,6 +686,16 @@ pub struct RenderPerfMetrics {
     pub uploaded_bytes: u64,
     pub draw_calls: u64,
     pub cache_misses: u64,
+}
+
+#[cfg(feature = "perf")]
+pub struct RenderMemoryMetrics {
+    pub instance_buffer_capacity_bytes: usize,
+    pub instance_snapshot_capacity_bytes: usize,
+    pub font_texture_bytes: usize,
+    pub image_texture_bytes: usize,
+    pub system_glyph_texture_bytes: usize,
+    pub image_pipeline_created: bool,
 }
 
 pub struct Renderer {
@@ -1313,6 +1328,33 @@ impl Renderer {
     #[cfg(feature = "perf")]
     pub fn take_perf_metrics(&mut self) -> RenderPerfMetrics {
         std::mem::take(&mut self.perf)
+    }
+
+    #[cfg(feature = "perf")]
+    pub fn memory_metrics(&self) -> RenderMemoryMetrics {
+        RenderMemoryMetrics {
+            instance_buffer_capacity_bytes: self.quad_buffer.capacity_bytes()
+                + self.overlay_buffer.capacity_bytes()
+                + self.text_buffer.capacity_bytes()
+                + self.image_buffer.capacity_bytes()
+                + self.system_glyph_buffer.capacity_bytes(),
+            instance_snapshot_capacity_bytes: (self.quad_buffer.instances.capacity()
+                + self.overlay_buffer.instances.capacity())
+                * size_of::<QuadInstance>()
+                + (self.text_buffer.instances.capacity()
+                    + self.image_buffer.instances.capacity()
+                    + self.system_glyph_buffer.instances.capacity())
+                    * size_of::<TextInstance>(),
+            font_texture_bytes: ATLAS_SIZE as usize * ATLAS_SIZE as usize,
+            image_texture_bytes: self
+                .image_cache
+                .images
+                .values()
+                .map(|image| image.bytes)
+                .sum(),
+            system_glyph_texture_bytes: self.system_glyph_atlas.texture_capacity_bytes(),
+            image_pipeline_created: self.image_pipeline.is_some(),
+        }
     }
 
     pub fn install_system_glyph(&mut self, request_id: u64, pixels: Option<&[u8]>) -> Result<()> {

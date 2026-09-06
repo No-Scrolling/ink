@@ -6,6 +6,7 @@ export type BarcodeFormat = typeof supportedFormats[number];
 export function Barcode(props: {
   format: BarcodeFormat;
   value: string;
+  /** Display width in Ink layout units; height follows the generated code. */
   size: number;
 }) {
   if (!supportedFormats.includes(props.format)) throw new Error("Unsupported barcode format");

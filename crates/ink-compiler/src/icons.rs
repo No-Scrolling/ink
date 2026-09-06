@@ -3,7 +3,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use std::sync::OnceLock;
 
 const MATERIAL_SYMBOLS_OUTLINED_FONT: &[u8] =
-    include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-300.ttf.zlib");
+    include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-400.ttf.zlib");
 const MATERIAL_SYMBOLS_FILLED_FONT: &[u8] =
     include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-Fill1-400.ttf.zlib");
 const MATERIAL_SYMBOLS_CODEPOINTS: &str =

@@ -15,7 +15,8 @@
     "ink": "workspace:*",
     "react": "19.2.8",
     "@ink/store": "workspace:*",
-    "@ink/lightos": "workspace:*"
+    "@ink/lightos": "workspace:*",
+    "@ink/barcode": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3",

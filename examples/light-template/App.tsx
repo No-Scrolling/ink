@@ -1,3 +1,9 @@
+import Reordering from "./screens/Reordering";
+import Rows from "./screens/Rows";
+import Actions from "./screens/Actions";
+import ActionResult from "./screens/ActionResult";
+import Pagination from "./screens/Pagination";
+import CodeGeneration, { GeneratedCode } from "./screens/CodeGeneration";
 import icons from "./assets/navigation.ink-icons";
 import { Navigator, Route, Tab, Tabs } from "ink";
 import { AppearanceSettings } from "./data/appearance";
@@ -35,11 +41,11 @@ import Dialler from "./screens/modules/light-sdk/Dialler";
 import Push from "./screens/modules/light-sdk/Push";
 import Ringtone from "./screens/modules/light-sdk/Ringtone";
 import RemoteImage from "./screens/modules/network/RemoteImage";
-import VariableList from "./screens/settings/VariableList";
+import FollowItems from "./screens/settings/FollowItems";
 import VirtualisedList from "./screens/settings/VirtualisedList";
 import DynamicUI from "./screens/settings/DynamicUI";
 import Selection from "./screens/settings/Selection";
-import ScreenStates from "./screens/settings/ScreenStates";
+import ScreenStates, { ScreenStateExample } from "./screens/settings/ScreenStates";
 
 export default function LightTemplate() {
   return (
@@ -65,6 +71,13 @@ export default function LightTemplate() {
             </Tab>
           </Tabs>
         </Route>
+        <Route path="/actions"><Actions /></Route>
+        <Route path="/examples/action"><ActionResult /></Route>
+        <Route path="/examples/reordering"><Reordering /></Route>
+        <Route path="/examples/rows"><Rows /></Route>
+        <Route path="/examples/pagination"><Pagination /></Route>
+        <Route path="/examples/code-generation"><CodeGeneration /></Route>
+        <Route path="/examples/code"><GeneratedCode /></Route>
         <Route path="/search-results">
           <SearchResults />
         </Route>
@@ -74,10 +87,16 @@ export default function LightTemplate() {
         <Route path="/settings/screen-states">
           <ScreenStates />
         </Route>
+        <Route path="/settings/screen-states/loading">
+          <ScreenStateExample result="ready" />
+        </Route>
+        <Route path="/settings/screen-states/error">
+          <ScreenStateExample result="error" />
+        </Route>
         <Route path="/settings/dynamic-ui">
           <DynamicUI />
         </Route>
-        <Route path="/settings/variable-list"><VariableList /></Route>
+        <Route path="/settings/follow-items"><FollowItems /></Route>
         <Route path="/settings/virtualised-list">
           <VirtualisedList />
         </Route>

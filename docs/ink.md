@@ -4,7 +4,7 @@ description: "Small TypeScript apps with a native Light Phone interface."
 tag: "In development"
 ---
 
-> **In development.** React apps, native components, navigation, fixed-height and measured lists, and native subtree updates are implemented.
+> **In development.** React apps, native components, navigation, automatically measured lists, and native subtree updates are implemented.
 
 Build Light Phone III apps with React and TypeScript. Ink provides native components, navigation, rendering and device APIs.
 
@@ -69,7 +69,7 @@ Ink uses Public Sans, strong contrast, clear text and a small set of familiar co
 | `Toggle` | A labelled boolean input. |
 | `TextInput` | Controlled input with Ink's native keyboard. |
 | `Image` | Imported image assets, HTTPS images and camera-managed images, with optional native zooming. |
-| `List` | Virtualised fixed-height or content-measured rows using the screen’s native scrolling. |
+| `List` | Virtualised, automatically content-measured rows using the screen’s native scrolling. |
 | `Screen`, `Stack` | Page structure and layout. |
 
 Keep button labels and important values readable without relying on truncation. `Text`, `Button`, `Field` values and `Confirmation` messages accept text content, including components that produce text. Nested `Text` is flattened: the outer text style applies, so nested size/alignment props do not create styled spans. Layout controls and inputs must be siblings rather than text children.
@@ -83,14 +83,14 @@ Compose these inside a `Screen`; they use the same native text, controls and spa
 | Component | Interface |
 | --- | --- |
 | `SettingsChoices` | `options` with stable `value` and `label`, current `value`, `onChange`, and optional `disabled`. The selected choice is underlined. |
-| `LoadingState` | Optional `label`, defaulting to “Loading…”. |
+| `LoadingState` | Optional `label`, defaulting to “Loading…”, and `align` (`start`, `center` or `end`). |
 | `EmptyState` | `title`, optional `description`, and optional `action` containing a label and press handler. |
 | `ErrorState` | `message`, `onRetry`, optional `retryLabel` and `disabled`. |
-| `Confirmation` | A complete screen: `title`, small text children, `confirmLabel`, `onConfirm`, and optional pending state and label. One uppercase action is anchored at the bottom; Back cancels. |
+| `Confirmation` | A complete screen: `title`, small text children, `confirmLabel`, `onConfirm`, optional `centered` message layout, and optional pending state and label. One uppercase action is anchored at the bottom; Back cancels. |
 
 These compositions do not fetch data, persist choices or navigate automatically. Supply those behaviours through callbacks, using `useAction` to track asynchronous work when useful. Keep a failed action's error visible and allow retry. Use a consequence such as “Clear example list” for confirmation rather than “Yes”.
 
-The template demonstrates each pattern: Search submits from the keyboard to a separate results page, Screen States runs an explicitly local loading/error/retry demonstration, and Confirmation opens the single-action screen directly and returns when confirmed.
+The template demonstrates each pattern: Search submits from the keyboard to a separate results page, Screen States offers separate local Loading and Error examples: centred loading text leads to content or a centred error with a bottom retry action, and Confirmation opens the single-action screen directly and returns when confirmed.
 
 `Confirmation` owns its screen; do not wrap it in another `Screen`. Its message can scroll when necessary while the action stays at the bottom. Pending state disables the action and displays `pendingLabel` (default “Working…”).
 
@@ -125,20 +125,19 @@ Remote images use HTTPS. Images require explicit positive `width` and `height`, 
 
 ## Collections
 
-Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Use `itemHeight` for fixed rows or `estimatedItemHeight` for content-measured rows; `gap` adds spacing and `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor. See [list behaviour and limits](lists.md).
+Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Row heights are measured automatically; `gap` adds spacing and `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor. See [list behaviour and limits](lists.md).
 
-For fixed rows:
+For example:
 
 ```tsx
 <List
   items={songs}
-  itemHeight={64}
   keyExtractor={song => song.id}
   renderItem={song => <Button onPress={() => play(song)}>{song.title}</Button>}
 />
 ```
 
-`itemHeight` is the full height of every row in Ink layout units. Keep fixed-row content within that height; use `estimatedItemHeight` for variable-height content. `List` uses its containing screen’s scroll position and preserves the full collection’s scroll extent. Keys must be stable and unique. Rows outside the window unmount, so keep durable row state in the parent or a store. The initial window contains up to 32 rows until the native viewport arrives.
+`List` uses its containing screen’s scroll position and preserves the full collection’s scroll extent. Keys must be stable and unique. Rows outside the window unmount, so keep durable row state in the parent or a store. The initial window contains up to 32 rows until the native viewport arrives.
 
 ## Navigation
 
@@ -208,3 +207,20 @@ function AppearanceChoice() {
 The palette covers backgrounds, text, icons, controls, navigation and scrollbars. Photos, barcode pixels and camera previews keep their original colours. Ink’s built-in keyboard also follows the chosen palette.
 
 The choice lasts for the JavaScript runtime. Persist it with `@ink/store` if required; the reference template demonstrates loading and applying a saved choice. LightOS does not currently expose its global inversion preference through its SDK, so there is no automatic system mode.
+
+## Rows and title-bar actions
+
+Use `Screen`'s optional `header` for content that stays below the navigation title while the body scrolls, such as actions above a list. Supply normal components; Ink applies the usual content spacing.
+
+`Row` provides a whole-row press target with `title`, optional `subtitle` and optional `image` source. Text wraps, and image rows reserve a 50-unit square before loading. Supply `onPress` or `href` for interaction, as with Button. A row without either is display-only.
+
+```tsx
+<Row image={artwork} title="Album title" subtitle="Artist name" href="/album" />
+<Screen title="Albums" rightAction={{ icon: icons.more_horiz, onPress: openActions }}>
+  {/* content */}
+</Screen>
+```
+
+`rightAction` places one icon/action in the navigation title bar. It is separate from `header`, which pins composed content below the title. The Examples tab demonstrates the more-horizontal icon opening Action Page.
+
+The Code generation page links to all 13 supported formats, each displayed inside a centred Screen. QR Code encodes `Hello World!` at size 240 with a two-module white border. `size` sets the display width; height follows the generated image. QR stays square, PDF417 uses its encoded proportions, and linear codes use a compact bar height with a white border. Other formats use text or valid numeric samples as appropriate. Generation and display are handled by `Barcode` from `@ink/barcode/generate`.

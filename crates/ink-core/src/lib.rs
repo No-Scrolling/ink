@@ -529,14 +529,17 @@ struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
+    Row {
+        children: Vec<Node>,
+        has_image: bool,
+        action: Option<Action>,
+    },
     ReactList {
         children: Vec<Node>,
         start: usize,
         keys: Vec<String>,
         content_versions: Vec<u64>,
         revision: u64,
-        row_height: f32,
-        estimated: bool,
         gap: f32,
         follow_end: bool,
     },
@@ -545,6 +548,8 @@ enum NodeKind {
         title: Option<String>,
         centred: bool,
         footer: Option<(String, Option<Action>)>,
+        pinned_header: bool,
+        right_action: Option<(Mask, Action)>,
     },
     Stack {
         children: Vec<Node>,
@@ -617,6 +622,8 @@ impl Node {
                 title,
                 centred,
                 footer: None,
+                pinned_header: false,
+                right_action: None,
             },
         }
     }
@@ -804,7 +811,7 @@ pub struct Colour {
 impl Colour {
     pub const BLACK: Self = Self::rgb(0.0, 0.0, 0.0);
     pub const WHITE: Self = Self::rgb(1.0, 1.0, 1.0);
-    pub const MUTED: Self = Self::rgb(110.0 / 255.0, 110.0 / 255.0, 110.0 / 255.0);
+    pub const MUTED: Self = Self::rgb(64.0 / 255.0, 64.0 / 255.0, 64.0 / 255.0);
 
     pub const fn rgb(red: f32, green: f32, blue: f32) -> Self {
         Self {
@@ -2296,6 +2303,7 @@ impl Engine {
                 ..
             } => Some((node.identity, *state, *action)),
             NodeKind::Screen { children, .. }
+            | NodeKind::Row { children, .. }
             | NodeKind::Stack { children, .. }
             | NodeKind::ReactList { children, .. } => {
                 children.iter().find_map(|child| self.auto_focus(child))
@@ -2338,7 +2346,7 @@ impl Engine {
 
     fn measure_inner(&mut self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
-            NodeKind::ReactList { children, start, keys, content_versions, revision, row_height, estimated, gap, follow_end } => {
+            NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end } => {
                 let mut metrics = self.list_metrics.remove(&node.identity.0).unwrap_or_default();
                 metrics.prepare_width(available.width);
                 let versions: HashMap<_, _> = keys.iter().zip(content_versions).collect();
@@ -2346,25 +2354,36 @@ impl Engine {
                 metrics.revision = *revision;
                 metrics.follow_end = *follow_end;
                 metrics.keys.clone_from(keys);
-                if *estimated {
-                    for (index, child) in children.iter().enumerate() {
-                        if let Some(key) = keys.get(start + index) {
-                            let size = self.measure(child, Rect { height: f32::INFINITY, ..available });
-                            metrics.heights.insert((key.clone(), available.width.to_bits(), content_versions[start + index]), size.height.max(1.0));
-                        }
+                for (index, child) in children.iter().enumerate() {
+                    if let Some(key) = keys.get(start + index) {
+                        let size = self.measure(child, Rect { height: f32::INFINITY, ..available });
+                        metrics.heights.insert((key.clone(), available.width.to_bits(), content_versions[start + index]), size.height.max(1.0));
                     }
                 }
+                let (total_height, measured_count) = keys.iter().enumerate()
+                    .filter_map(|(index, key)| metrics.heights.get(&(key.clone(), available.width.to_bits(), content_versions[index])))
+                    .fold((0.0, 0), |(total, count), height| (total + height, count + 1));
+                let estimate = if measured_count == 0 {
+                    self.scaled(40.0)
+                } else {
+                    total_height / measured_count as f32
+                };
                 metrics.offsets.clear();
                 metrics.offsets.push(0.0);
                 for (index, key) in keys.iter().enumerate() {
-                    let height = if *estimated { metrics.heights.get(&(key.clone(), available.width.to_bits(), content_versions[index])).copied() } else { None }
-                        .unwrap_or_else(|| self.scaled(*row_height));
+                    let height = metrics.heights.get(&(key.clone(), available.width.to_bits(), content_versions[index])).copied()
+                        .unwrap_or(estimate);
                     let gap = if index + 1 < keys.len() { self.scaled(*gap) } else { 0.0 };
                     metrics.offsets.push(metrics.total() + height + gap);
                 }
                 let height = metrics.total();
                 self.list_metrics.insert(node.identity.0, metrics);
                 MeasuredSize { width: available.width, height }
+            }
+            NodeKind::Row { children, has_image, .. } => {
+                let image_width = if *has_image { self.scaled(65.0).min(available.width) } else { 0.0 };
+                let text = children.last().map(|child| self.measure(child, Rect { width: (available.width - image_width).max(0.0), ..available })).unwrap_or_default();
+                MeasuredSize { width: available.width, height: text.height.max(self.scaled(50.0)).min(available.height) }
             }
             NodeKind::Screen { .. } | NodeKind::Tabs { .. } => MeasuredSize {
                 width: available.width,
@@ -2439,7 +2458,7 @@ impl Engine {
                 let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
                 let icon_width = icon
                     .as_ref()
-                    .map(|_| self.scaled(BUTTON_ICON_SIZE + BUTTON_ICON_GAP))
+                    .map(|_| self.scaled(if label.is_empty() { BUTTON_HEIGHT } else { BUTTON_ICON_SIZE + BUTTON_ICON_GAP }))
                     .unwrap_or_default();
                 MeasuredSize {
                     width: (self.text_width(label, font_size).ceil() + 1.0 + icon_width)
@@ -2469,9 +2488,11 @@ impl Engine {
                 }
             }
             NodeKind::Image {
+                source,
                 bleed,
                 width,
                 height,
+                fit,
                 ..
             } => {
                 let measured_width = if *bleed {
@@ -2479,9 +2500,22 @@ impl Engine {
                 } else {
                     self.scaled(*width).min(available.width)
                 };
+                let code_height = match source {
+                    ImageSource::Native(module, url) if module == "barcode" => {
+                        let pixels = measured_width.ceil().max(1.0) as u32;
+                        let key = RemoteImageKey { module: module.clone(), url: url.clone(), width: pixels, height: pixels, fit: *fit };
+                        match self.remote_images.get(&key) {
+                            Some(RemoteImageState::Ready(image)) => Some(measured_width * image.height as f32 / image.width as f32),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
                 MeasuredSize {
                     width: measured_width,
-                    height: if *bleed {
+                    height: if let Some(height) = code_height {
+                        height.min(available.height)
+                    } else if *bleed {
                         (measured_width * height / width).min(available.height)
                     } else {
                         self.scaled(*height).min(available.height)
@@ -2549,16 +2583,35 @@ impl Engine {
                 }
             }
 
+            NodeKind::Row { children, has_image, action } => {
+                let image_width = if *has_image { self.scaled(65.0).min(rect.width) } else { 0.0 };
+                if *has_image {
+                    if let Some(image) = children.first() {
+                        let size = self.scaled(50.0).min(rect.width);
+                        self.layout(image, Rect { width: size, height: size, y: rect.y + (rect.height - size) / 2.0, ..rect });
+                    }
+                }
+                if let Some(text) = children.last() {
+                    let available = Rect { x: rect.x + image_width, width: (rect.width - image_width).max(0.0), ..rect };
+                    let size = self.measure(text, available);
+                    self.layout(text, Rect { y: rect.y + (rect.height - size.height) / 2.0, height: size.height, ..available });
+                }
+                if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
+            }
             NodeKind::Screen {
                 children,
                 title,
                 centred,
                 footer,
+                pinned_header,
+                right_action,
             } => self.layout_screen(
                 children,
                 title.as_deref(),
                 *centred,
                 footer.as_ref(),
+                *pinned_header,
+                right_action.as_ref(),
                 screen_bottom_inset,
                 rect,
             ),
@@ -2653,10 +2706,12 @@ impl Engine {
         title: Option<&str>,
         centred: bool,
         footer: Option<&(String, Option<Action>)>,
+        pinned_header: bool,
+        right_action: Option<&(Mask, Action)>,
         bottom_inset: bool,
         rect: Rect,
     ) {
-        let has_header = title.is_some() || self.back_icon.is_some();
+        let has_header = title.is_some() || self.back_icon.is_some() || right_action.is_some();
         let header_height = if has_header {
             self.scaled(HEADER_HEIGHT)
         } else {
@@ -2675,9 +2730,26 @@ impl Engine {
                 Action::Back,
             );
         }
+        if let Some((icon, action)) = right_action {
+            let action_rect = Rect {
+                x: rect.x + rect.width - header_inset - header_button_size,
+                y: rect.y + (header_height - header_button_size) / 2.0,
+                width: header_button_size,
+                height: header_button_size,
+            };
+            self.push_hit_region(action_rect, action.clone());
+            let size = self.scaled(HEADER_BACK_ICON_SIZE);
+            self.scene.masks.push(MaskRun {
+                mask: icon.clone(),
+                rect: Rect { x: action_rect.x + (header_button_size - size) / 2.0, y: action_rect.y + (header_button_size - size) / 2.0, width: size, height: size },
+                clip: self.clip,
+                colour: self.scene.colour(Colour::WHITE),
+                scrolling: false,
+            });
+        }
         if let Some(title) = title {
             let title_inset = header_inset
-                + if self.back_icon.is_some() {
+                + if self.back_icon.is_some() || right_action.is_some() {
                     header_button_size
                 } else {
                     0.0
@@ -2744,6 +2816,21 @@ impl Engine {
             Rect { height: rect.height - height, ..rect }
         } else {
             rect
+        };
+
+        let (children, header_height) = if pinned_header && !children.is_empty() {
+            let top = self.scaled(if has_header { HEADER_CONTENT_TOP } else { CONTENT_TOP });
+            let available = Rect {
+                x: rect.x + self.scaled(CONTENT_INSET_START),
+                y: rect.y + header_height + top,
+                width: (rect.width - self.scaled(CONTENT_INSET_START + CONTENT_INSET_END)).max(0.0),
+                height: (rect.height - header_height - top - self.scaled(CONTENT_BOTTOM)).max(0.0),
+            };
+            let size = self.measure(&children[0], available);
+            self.layout(&children[0], Rect { height: size.height, ..available });
+            (&children[1..], header_height + size.height + self.scaled(CONTENT_GAP))
+        } else {
+            (children, header_height)
         };
 
         let fills_remaining = children.len() == 1 && fills_remaining_screen(&children[0]);
@@ -2846,7 +2933,7 @@ impl Engine {
             children,
             sizes,
             gap,
-            Alignment::Stretch,
+            if centred { Alignment::Centre } else { Alignment::Stretch },
             if centred && self.scroll_max == 0.0 {
                 Justification::Centre
             } else {
@@ -3038,9 +3125,10 @@ impl Engine {
         action: &Option<Action>,
         rect: Rect,
     ) {
+        let colour = self.scene.colour(if action.is_some() { Colour::WHITE } else { Colour::MUTED });
         let mut text_x = rect.x;
         if let Some(mask) = icon {
-            let size = self.scaled(BUTTON_ICON_SIZE);
+            let size = self.scaled(if label.is_empty() { BUTTON_HEIGHT } else { BUTTON_ICON_SIZE });
             self.scene.masks.push(MaskRun {
                 mask,
                 rect: Rect {
@@ -3050,10 +3138,10 @@ impl Engine {
                     height: size,
                 },
                 clip: self.clip,
-                colour: self.scene.colour(Colour::WHITE),
+                colour,
                 scrolling: self.scrolling,
             });
-            text_x += size + self.scaled(BUTTON_ICON_GAP);
+            text_x += size + if label.is_empty() { 0.0 } else { self.scaled(BUTTON_ICON_GAP) };
         }
 
         let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
@@ -3070,7 +3158,7 @@ impl Engine {
             rect: text_rect,
             clip: self.clip,
             font_size,
-            colour: self.scene.colour(Colour::WHITE),
+            colour,
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
@@ -3084,7 +3172,7 @@ impl Engine {
                     height: underline_height,
                 },
                 clip: self.clip,
-                colour: self.scene.colour(Colour::WHITE),
+                colour,
                 scrolling: self.scrolling,
             });
         }
@@ -3487,7 +3575,7 @@ impl Engine {
                         module: module.clone(),
                         url: source.clone(),
                         width: rect.width.ceil().max(1.0) as u32,
-                        height: rect.height.ceil().max(1.0) as u32,
+                        height: if module == "barcode" { rect.width.ceil().max(1.0) as u32 } else { rect.height.ceil().max(1.0) as u32 },
                         fit,
                     };
                     self.visible_images.insert(key.clone());
@@ -3839,6 +3927,7 @@ fn stretchable(node: &Node) -> bool {
     matches!(
         &node.kind,
         NodeKind::Stack { .. }
+            | NodeKind::Row { .. }
             | NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
