@@ -37,13 +37,15 @@ JavaScript runs on a dedicated thread. React batches UI changes into Ink's retai
 
 ## Packages
 
-Use `ink` for components, navigation and async hooks. Device APIs live in `@ink/audio`, `@ink/camera`, `@ink/location`, `@ink/nfc`, `@ink/notifications`, `@ink/background`, `@ink/lightos`, `@ink/barcode` and `@ink/clipboard`. Preferences live in `@ink/store`. Networking uses `fetch`, streams and WebSocket.
+Use `ink` for components, navigation, async hooks, external links and text sharing. Device APIs live in `@ink/audio`, `@ink/background`, `@ink/barcode`, `@ink/camera`, `@ink/clipboard`, `@ink/lightos`, `@ink/location`, `@ink/nfc` and `@ink/notifications`. Audio capture and camera scanning have separate optional entry points.
+
+`@ink/auth` owns OAuth sessions backed by `@ink/secure-store`. `@ink/files` manages picked, captured, recorded and downloaded attachments; its optional `@ink/files/media` gallery provides full-library browsing and multi-selection in an Ink screen. `@ink/downloads` persists ordinary HTTP transfers. `@ink/connectivity` observes network state and `@ink/maps` provides an optional MapLibre view. Preferences and bundled read-only SQLite databases live in `@ink/store`. Networking uses `fetch`, streams and WebSocket, including native-backed file uploads.
 
 The build reads native requirements from packages in the resolved module graph and adds explicit capabilities from `ink.toml`. Local images, audio and icon collections are imported assets. JavaScript packages can be bundled when their required runtime APIs are available.
 
-Read [the Ink documentation](docs/ink.md), [product design](docs/product-design.md) and [how Ink works](docs/architecture.md). Product design defines the intended experience; module pages identify interfaces that still need implementation.
+Read [the Ink documentation](docs/ink.md), [product design](docs/product-design.md) and [how Ink works](docs/architecture.md). Module guides describe the implemented interfaces and their limits.
 
-The agreed component work includes rows, pagination, reordering examples, code generation, PlayingScreen and ConversationScreen with a scrolling multiline composer. Focused emulator checks are recorded in [verification](docs/verification-2026-09-06.md); real-app integration on the LP3 remains deferred. Downloads, Files and Auth are not part of the implemented package set above. See [remaining product work](docs/product-design.md#implementation-gaps), the [historical implementation plan](docs/implementation-plan.md) and [app-pattern coverage](docs/example-pattern-coverage.md).
+The component work includes rows, pagination, reordering examples, code generation, PlayingScreen and ConversationScreen with a scrolling multiline composer. The template includes account, secure storage, file, download, database, connectivity and map examples. A [local OAuth and transfer fixture](examples/light-template/scripts/auth-server.md) supports account and transfer development without production credentials. See the [framework](docs/verification-2026-09-06.md) and [module](docs/verification-modules-2026-09-06.md) emulator checks, plus [physical LP3 Custom Tabs verification](docs/verification-custom-tabs.md). Real-app integration on the LP3 remains deferred for a joint walkthrough. See [product design](docs/product-design.md), the [historical implementation plan](docs/implementation-plan.md) and [app-pattern coverage](docs/example-pattern-coverage.md).
 
 ## Development
 

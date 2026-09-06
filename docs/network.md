@@ -29,7 +29,7 @@ This fragment assumes your provider's `decodeDepartures` function. A successful 
 
 Fetch resolves when response headers arrive. Read `response.body` incrementally with a reader, async iterator or stream pipeline. Native transport reads one 32 KiB chunk on demand rather than buffering the whole response. Cancel the reader or abort the request when you no longer need it.
 
-`json()`, `text()`, `blob()`, `formData()` and `arrayBuffer()` materialise the body, with a 16 MiB limit. Stream larger responses instead. A response body can be consumed once; `clone()` creates a second branch. Consuming only one clone can buffer data for the other branch, so avoid cloning large streams.
+For HTTP responses, `json()`, `text()`, `blob()`, `formData()` and `arrayBuffer()` materialise the body, with a 16 MiB limit. Stream larger responses instead. Managed local file responses preserve native storage when `blob()` is called; explicit text and byte reads still materialise their data. A response body can be consumed once; `clone()` creates a second branch. Consuming only one stream clone can buffer data for the other branch, so avoid cloning large streams.
 
 ```ts
 const response = await fetch(url, { signal });
@@ -56,9 +56,9 @@ form.append("photo", photoBlob, "entrance.jpg");
 await fetch(uploadUrl, { method: "POST", body: form, signal });
 ```
 
-Let fetch set the multipart Content-Type, including its boundary. Accepted [camera photos](camera.md) can be read with `fetch(photo.file.uri)` and converted to a Blob. This local-file access is restricted to Ink’s camera directory; it does not grant arbitrary filesystem access.
+Let fetch set the multipart Content-Type, including its boundary. [Managed attachments](files.md), including accepted camera photos, can be read with `fetch(file.src)`. Calling `blob()` preserves native file ranges, including through Blob slicing, File construction and FormData. Native code copies those ranges into the upload spool without bringing attachment bytes into JavaScript; its size is constrained by available storage. The 64 MiB limit applies to bodies streamed from JavaScript. Managed sources do not grant arbitrary filesystem access. The earlier `fetch(photo.file.uri)` camera path remains supported for compatibility.
 
-Each runtime allows 16 open responses and eight staged uploads. An abandoned stream or upload expires after 60 seconds without reads or writes. Large durable transfers remain the responsibility of the planned Downloads package.
+Each runtime allows 16 open responses and eight pending uploads. An abandoned response stream or upload spool expires after 60 seconds without reads or writes. Attachment preparation uses bounded 32 KiB operations and checks cancellation between chunks; file bytes remain native even when mixed with large text fields. Use [Downloads](downloads.md) for durable incoming transfers.
 
 Use HTTPS. Redirect handling strips credentials when crossing origins. There is no browser origin sandbox or ambient browser login session. A provider that needs cookies must use an explicit account-scoped cookie jar supplied by its adapter; ordinary fetch does not borrow browser cookies.
 
@@ -82,7 +82,7 @@ For ordered message streams, track provider cursors or sequence numbers and reco
 
 Retry selected reads with bounded backoff. Writes need an idempotency key or a way to reconcile uncertain outcomes. Going offline can leave a request accepted remotely even if no response arrives locally.
 
-Persist small results explicitly with [Store](store.md); direct SQLite access is planned there for indexed collections. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
+Persist small results explicitly with [Store](store.md); its read-only SQLite interface queries imported database assets. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
 
 Use [Downloads](downloads.md) for durable transfers and [Auth](auth.md) for account flows. An npm HTTP client is welcome if its requirements match the host profile.
 

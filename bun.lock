@@ -28,13 +28,19 @@
       "name": "ink-light-template-example",
       "dependencies": {
         "@ink/audio": "workspace:*",
+        "@ink/auth": "workspace:*",
         "@ink/background": "workspace:*",
         "@ink/barcode": "workspace:*",
         "@ink/camera": "workspace:*",
+        "@ink/connectivity": "workspace:*",
+        "@ink/downloads": "workspace:*",
+        "@ink/files": "workspace:*",
         "@ink/lightos": "workspace:*",
         "@ink/location": "workspace:*",
+        "@ink/maps": "workspace:*",
         "@ink/nfc": "workspace:*",
         "@ink/notifications": "workspace:*",
+        "@ink/secure-store": "workspace:*",
         "@ink/store": "workspace:*",
         "ink": "workspace:*",
         "react": "19.2.8",
@@ -49,8 +55,16 @@
       "name": "@ink/audio",
       "version": "0.1.0",
       "peerDependencies": {
+        "@ink/files": "0.1.0",
         "ink": "0.0.0",
         "react": "19.2.8",
+      },
+    },
+    "packages/auth": {
+      "name": "@ink/auth",
+      "version": "0.0.0",
+      "peerDependencies": {
+        "ink": "0.0.0",
       },
     },
     "packages/background": {
@@ -72,6 +86,7 @@
       "name": "@ink/camera",
       "version": "0.1.0",
       "peerDependencies": {
+        "@ink/files": "0.1.0",
         "ink": "0.0.0",
         "react": "19.2.8",
       },
@@ -81,6 +96,30 @@
       "version": "0.0.0",
       "peerDependencies": {
         "ink": "0.0.0",
+      },
+    },
+    "packages/connectivity": {
+      "name": "@ink/connectivity",
+      "version": "0.0.0",
+      "peerDependencies": {
+        "ink": "0.0.0",
+      },
+    },
+    "packages/downloads": {
+      "name": "@ink/downloads",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "@ink/files": "0.1.0",
+        "ink": "0.0.0",
+        "react": "19.2.8",
+      },
+    },
+    "packages/files": {
+      "name": "@ink/files",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "ink": "0.0.0",
+        "react": "19.2.8",
       },
     },
     "packages/ink": {
@@ -117,6 +156,14 @@
         "ink": "0.0.0",
       },
     },
+    "packages/maps": {
+      "name": "@ink/maps",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "ink": "0.0.0",
+        "react": "19.2.8",
+      },
+    },
     "packages/nfc": {
       "name": "@ink/nfc",
       "version": "0.1.0",
@@ -130,6 +177,13 @@
       "peerDependencies": {
         "ink": "0.0.0",
         "react": "19.2.8",
+      },
+    },
+    "packages/secure-store": {
+      "name": "@ink/secure-store",
+      "version": "0.0.0",
+      "peerDependencies": {
+        "ink": "0.0.0",
       },
     },
     "packages/store": {
@@ -195,6 +249,8 @@
 
     "@ink/audio": ["@ink/audio@workspace:packages/audio"],
 
+    "@ink/auth": ["@ink/auth@workspace:packages/auth"],
+
     "@ink/background": ["@ink/background@workspace:packages/background"],
 
     "@ink/barcode": ["@ink/barcode@workspace:packages/barcode"],
@@ -203,13 +259,23 @@
 
     "@ink/clipboard": ["@ink/clipboard@workspace:packages/clipboard"],
 
+    "@ink/connectivity": ["@ink/connectivity@workspace:packages/connectivity"],
+
+    "@ink/downloads": ["@ink/downloads@workspace:packages/downloads"],
+
+    "@ink/files": ["@ink/files@workspace:packages/files"],
+
     "@ink/lightos": ["@ink/lightos@workspace:packages/lightos"],
 
     "@ink/location": ["@ink/location@workspace:packages/location"],
 
+    "@ink/maps": ["@ink/maps@workspace:packages/maps"],
+
     "@ink/nfc": ["@ink/nfc@workspace:packages/nfc"],
 
     "@ink/notifications": ["@ink/notifications@workspace:packages/notifications"],
+
+    "@ink/secure-store": ["@ink/secure-store@workspace:packages/secure-store"],
 
     "@ink/store": ["@ink/store@workspace:packages/store"],
 

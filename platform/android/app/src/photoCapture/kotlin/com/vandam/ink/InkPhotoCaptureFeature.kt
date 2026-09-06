@@ -132,6 +132,13 @@ private class InkPhotoCaptureFeature(
             return
         }
         staged = null
+        val managed = try {
+            InkManagedFiles(host.activity).adopt(accepted, "image/jpeg", id = captured.id, width = captured.width, height = captured.height)
+        } catch (error: Exception) {
+            accepted.delete()
+            fail("storage", error.message ?: "Captured photo could not be saved", true)
+            return
+        }
         host.finish(
             JSONObject()
                 .put("source", "$PHOTO_PREFIX${captured.id}")
@@ -139,7 +146,7 @@ private class InkPhotoCaptureFeature(
                 .put("height", captured.height)
                 .put("mimeType", "image/jpeg")
                 .put("capturedAtMs", captured.capturedAtMs)
-                .put("file", JSONObject()
+                .put("file", managed
                     .put("uri", android.net.Uri.fromFile(accepted).toString())
                     .put("source", "$PHOTO_PREFIX${captured.id}")
                     .put("name", accepted.name)

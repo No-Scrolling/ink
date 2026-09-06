@@ -1,10 +1,7 @@
 ---
 title: "Downloads"
 description: "Durable HTTP downloads with native progress and recovery."
-tag: "Planned"
 ---
-
-> **Not implemented yet.** This page defines the intended interface.
 
 `@ink/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Apps own the downloaded library and retention policy.
 
@@ -26,9 +23,13 @@ The example assumes app-owned episode data and persistence. A stable key identif
 
 `downloads.observe(id)` supplies Ink's standard `loading`, `ready` or `error` snapshot for `useSnapshot`. Ready data contains the transfer state: `queued`, `running`, `paused`, `completed`, `failed` or `cancelled`. Progress contains received bytes and an optional total. Completion contains a [FileRef](files.md#one-file-representation). Failure to read the job is a snapshot error; a failed transfer is job data with an error explaining the failure.
 
-`pause(id)`, `resume(id)`, `cancel(id)` and `remove(id)` return promises. Cancel stops unfinished work and deletes partial content. Remove also deletes the completed file. Closing a screen or releasing an observer does neither.
+`pause(id)`, `resume(id)`, `cancel(id)` and `remove(id)` return promises. Cancel stops unfinished work and deletes partial content. Remove also deletes the completed file and the saved job; discard its ID afterwards. Closing a screen or releasing an observer does neither.
 
 Native persisted state supports recovery after process restart. Partial resumption depends on server support and content validators; otherwise the transfer restarts safely. Constraints and storage failures appear in state. Apps reconcile missing files when reopening their library.
+
+Android JobScheduler runs transfers independently of the screen and reschedules persisted work after reboot. Android controls when eligible jobs run; force-stopping the app prevents background work until it is opened again. `downloads.get(id)` reads the current state without subscribing. The template saves its last download ID so reopening the example reconnects to that transfer.
+
+Production URLs require HTTPS. Debug builds also accept loopback HTTP for the template's local fixture server. Downloads do not add authentication headers; use an authorised download URL whose lifetime covers recovery.
 
 ## Provider integrations
 

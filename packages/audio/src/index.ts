@@ -109,5 +109,3 @@ export function usePlayer(options: { session?: string; mode?: "attached" | "deta
   }, []);
   return { state, ...commands };
 }
-
-export { microphone, useRecorder, useLevelMeter, usePitchDetector, type MicrophonePermission, type RecorderState, type LevelState, type PitchState } from "./capture";

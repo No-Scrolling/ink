@@ -2,31 +2,40 @@ import { fromByteArray, toByteArray } from "base64-js";
 import { ReadableStream } from "web-streams-polyfill";
 import { callNative, NativeError } from "./native";
 
-interface HttpRequest { url: string; method: string; headers: Readonly<Record<string, string>> }
+interface HttpRequest { url: string; method: string; headers: Readonly<Record<string, string>>; nativeParts?: Iterable<{ bytes: string } | { src: string; offset: number; size: number }> }
 interface HttpResponse { status: number; statusText: string; url: string; headers: [string, string][]; body: ReadableStream<Uint8Array> | null }
 
 export async function requestHttp(request: HttpRequest, body: ReadableStream<Uint8Array> | null, signal: AbortSignal): Promise<HttpResponse> {
   let upload: string | undefined;
   if (body) {
-    upload = await callNative("network", "stream-upload-open", {}, { signal });
-    const reader = body.getReader();
+    upload = await callNative("network", "stream-upload-open", { managed: request.nativeParts !== undefined }, { signal });
+    const reader = request.nativeParts ? undefined : body.getReader();
     try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (!(value instanceof Uint8Array)) throw new TypeError("Upload streams must contain Uint8Array chunks");
-        for (let offset = 0; offset < value.length; offset += 32 * 1024) {
-          await callNative("network", "stream-upload-write", { upload, bytes: fromByteArray(value.subarray(offset, offset + 32 * 1024)) }, { signal });
+      if (request.nativeParts) {
+        for (const part of request.nativeParts) {
+          if ("bytes" in part) await callNative("network", "stream-upload-write", { upload, bytes: part.bytes }, { signal });
+          else for (let offset = 0; offset < part.size; offset += 32768) {
+            await callNative("network", "stream-upload-file", { upload, src: part.src, offset: part.offset + offset, size: Math.min(32768, part.size - offset) }, { signal });
+          }
+        }
+      } else if (reader) {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!(value instanceof Uint8Array)) throw new TypeError("Upload streams must contain Uint8Array chunks");
+          for (let offset = 0; offset < value.length; offset += 32 * 1024) {
+            await callNative("network", "stream-upload-write", { upload, bytes: fromByteArray(value.subarray(offset, offset + 32 * 1024)) }, { signal });
+          }
         }
       }
     } catch (error) {
-      await reader.cancel(error).catch(() => {});
+      await reader?.cancel(error).catch(() => {});
       await callNative("network", "stream-upload-close", { upload }).catch(() => {});
       throw error;
-    } finally { reader.releaseLock(); }
+    } finally { reader?.releaseLock(); }
   }
   let value: unknown;
-  try { value = JSON.parse(await callNative("network", "stream-open", { ...request, upload }, { signal })); }
+  try { value = JSON.parse(await callNative("network", "stream-open", { url: request.url, method: request.method, headers: request.headers, upload }, { signal })); }
   catch (error) {
     if (upload) await callNative("network", "stream-upload-close", { upload }).catch(() => {});
     throw error;

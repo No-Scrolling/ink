@@ -55,6 +55,10 @@ enum HostKind {
     TextInput,
     Barcode,
     CameraPreview,
+    MapView,
+    MediaPickerScreen,
+    MediaGridRow,
+    MediaCell,
     Image,
     Icon,
     Toggle,
@@ -725,7 +729,23 @@ impl ReactTree {
                         .then(|| event(id, "onPress", vec![])),
                 },
             },
-            HostKind::Screen => {
+            HostKind::MediaGridRow => {
+                ensure!(host.children.len() <= 3, "Media grid rows have at most three cells");
+                Node { identity: NodeIdentity(id), kind: NodeKind::MediaGridRow { children: self.children(host, depth)? } }
+            }
+            HostKind::MediaCell => {
+                let src = string(props, "src").context("Media cell requires a source")?;
+                ensure!(src.starts_with("ink-media://") || src.starts_with("ink-file://"), "Media cells require a media or managed file source");
+                Node { identity: NodeIdentity(id), kind: NodeKind::MediaCell {
+                    source: ImageSource::Native("files".into(), src.to_owned()),
+                    selected: props.get("selected") == Some(&Json::Bool(true)),
+                    video: props.get("video") == Some(&Json::Bool(true)),
+                    check: self.icon(string(props, "checkIcon").context("Media cell requires a check icon")?, true)?,
+                    play: self.icon(string(props, "videoIcon").context("Media cell requires a video icon")?, true)?,
+                    action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
+                } }
+            }
+            HostKind::Screen | HostKind::MediaPickerScreen => {
                 let right_action = string(props, "rightIcon").map(|icon| {
                     ensure!(props.get("onRightPress") == Some(&Json::Bool(true)), "Screen right action requires onPress");
                     Ok((self.icon(icon, false)?, event(id, "onRightPress", vec![])))
@@ -733,10 +753,11 @@ impl ReactTree {
                 let props = props.object().context("invalid Screen properties")?;
                 let props: ScreenProps = serde_json::from_value(Json::Object(props.clone()))?;
                 let mut screen = Node::screen(self.children(host, depth)?, props.title, props.centered);
-                if let NodeKind::Screen { pinned_header, pinned_footer, right_action: action, .. } = &mut screen.kind {
+                if let NodeKind::Screen { pinned_header, pinned_footer, right_action: action, media_picker, .. } = &mut screen.kind {
                     *pinned_header = props.pinned_header;
                     *pinned_footer = props.pinned_footer;
                     *action = right_action;
+                    *media_picker = host.kind == HostKind::MediaPickerScreen;
                 }
                 screen
             }
@@ -803,6 +824,12 @@ impl ReactTree {
                     ImageFit::Contain,
                 )
             }
+            HostKind::MapView => {
+                let id = props.get("controller").and_then(Json::as_i64)
+                    .context("Map requires a controller")?;
+                ensure!((1..=9_007_199_254_740_991).contains(&id), "Invalid map controller");
+                Node::map_view(ControllerId::new((-id) as usize))
+            }
             HostKind::CameraPreview => {
                 let id = props
                     .get("controller")
@@ -825,12 +852,14 @@ impl ReactTree {
                     ImageSource::Native("assets".into(), path.to_owned())
                 } else if src.starts_with("https://") {
                     ImageSource::Native("network".into(), src.to_owned())
+                } else if src.starts_with("ink-file://") || src.starts_with("ink-media://") {
+                    ImageSource::Native("files".into(), src.to_owned())
                 } else if src.starts_with("ink-camera://")
                     || src.starts_with("ink-camera-review://")
                 {
                     ImageSource::Native("camera".into(), src.to_owned())
                 } else {
-                    bail!("Image sources must be bundled assets or HTTPS URLs");
+                    bail!("Image sources must be bundled assets, managed files or HTTPS URLs");
                 };
                 let width = number(props, "width")?.context("Image requires a width")?;
                 let height = number(props, "height")?.context("Image requires a height")?;
@@ -993,6 +1022,7 @@ fn find_node(node: &Node, id: usize) -> Option<&Node> {
         | NodeKind::PlayingLayout { children, .. }
         | NodeKind::PlayingPressable { children, .. }
         | NodeKind::Screen { children, .. }
+        | NodeKind::MediaGridRow { children }
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {
@@ -1015,6 +1045,7 @@ fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
         | NodeKind::PlayingLayout { children, .. }
         | NodeKind::PlayingPressable { children, .. }
         | NodeKind::Screen { children, .. }
+        | NodeKind::MediaGridRow { children }
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {

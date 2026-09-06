@@ -15,6 +15,7 @@ struct AppConfig {
     signing: Option<SigningConfig>,
     lightos: Option<LightOsConfig>,
     background: Option<BackgroundConfig>,
+    auth: Option<AuthConfig>,
     #[serde(default)]
     capabilities: Vec<crate::Capability>,
 }
@@ -40,6 +41,12 @@ struct BackgroundConfig {
     entry: PathBuf,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthConfig {
+    redirect_uri: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct ReleaseSigning {
     pub keystore: PathBuf,
@@ -58,6 +65,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) light_server: String,
     pub(crate) capabilities: Vec<crate::Capability>,
     pub(crate) worker_entry: Option<PathBuf>,
+    pub(crate) auth_redirect_uri: Option<String>,
 }
 
 impl ResolvedConfig {
@@ -83,6 +91,7 @@ impl ResolvedConfig {
             version: config.version,
             version_code: config.version_code,
             capabilities,
+            auth_redirect_uri: config.auth.map(|auth| auth.redirect_uri),
             worker_entry: config
                 .background
                 .map(|background| directory.join(background.entry)),
@@ -100,6 +109,15 @@ impl ResolvedConfig {
 }
 
 fn validate(config: &AppConfig) -> Result<()> {
+    if let Some(auth) = &config.auth {
+        let scheme = auth.redirect_uri.split_once(':').map(|(scheme, _)| scheme).unwrap_or("");
+        if scheme.is_empty() || scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+            || !scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+            || !scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-'))
+        {
+            anyhow::bail!("auth.redirect_uri must use an app-specific URI scheme");
+        }
+    }
     if let Some(lightos) = &config.lightos
         && (!lightos.server.split('.').all(valid_package_segment) || !lightos.server.contains('.'))
     {

@@ -181,6 +181,7 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
             project.capability_manifest_path().display()
         ))
         .arg(format!("-PinkLightServerPackage={light_server}"))
+        .arg(format!("-PinkAuthRedirectUri={}", project.auth_redirect_uri().unwrap_or("")))
         .arg(format!(
             "-PinkAndroidResources={}",
             project.android_resources_path().display()

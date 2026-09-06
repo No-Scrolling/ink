@@ -531,6 +531,8 @@ struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
+    MediaGridRow { children: Vec<Node> },
+    MediaCell { source: ImageSource, selected: bool, video: bool, check: Mask, play: Mask, action: Option<Action> },
     Message { children: Vec<Node>, outgoing: bool },
     MessageQuote { children: Vec<Node> },
     ConversationComposer { children: Vec<Node> },
@@ -560,6 +562,7 @@ enum NodeKind {
         pinned_header: bool,
         pinned_footer: bool,
         right_action: Option<(Mask, Action)>,
+        media_picker: bool,
     },
     Stack {
         children: Vec<Node>,
@@ -611,6 +614,9 @@ enum NodeKind {
         controller: ControllerId,
         kind: CameraPreviewKind,
     },
+    MapView {
+        controller: ControllerId,
+    },
     Toggle {
         label: String,
         value: bool,
@@ -636,6 +642,7 @@ impl Node {
                 pinned_header: false,
                 pinned_footer: false,
                 right_action: None,
+                media_picker: false,
             },
         }
     }
@@ -757,6 +764,13 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::CameraPreview { controller, kind },
+        }
+    }
+
+    pub const fn map_view(controller: ControllerId) -> Self {
+        Self {
+            identity: NodeIdentity(0),
+            kind: NodeKind::MapView { controller },
         }
     }
 
@@ -943,6 +957,12 @@ pub struct CameraPortal {
     pub rect: Rect,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MapPortal {
+    pub controller: ControllerId,
+    pub rect: Rect,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     pub light: bool,
@@ -955,6 +975,7 @@ pub struct Scene {
     pub masks: Vec<MaskRun>,
     pub images: Vec<ImageRun>,
     pub camera_portal: Option<CameraPortal>,
+    pub map_portal: Option<MapPortal>,
     pub scroll_origin: f32,
     pub scroll_offset: f32,
     pub scroll_max: f32,
@@ -2335,6 +2356,7 @@ impl Engine {
         self.scene.masks.clear();
         self.scene.images.clear();
         self.scene.camera_portal = None;
+        self.scene.map_portal = None;
         self.scroll_origin = self.scroll_offset;
         self.scene.scroll_origin = self.scroll_origin;
         self.scene.scroll_offset = self.scroll_offset;
@@ -2405,6 +2427,7 @@ impl Engine {
             | NodeKind::PlayingLayout { children, .. }
             | NodeKind::PlayingPressable { children, .. }
             | NodeKind::Screen { children, .. }
+            | NodeKind::MediaGridRow { children }
             | NodeKind::Row { children, .. }
             | NodeKind::Stack { children, .. }
             | NodeKind::ReactList { children, .. } => {
@@ -2420,6 +2443,8 @@ impl Engine {
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
             | NodeKind::CameraPreview { .. }
+            | NodeKind::MapView { .. }
+            | NodeKind::MediaCell { .. }
             | NodeKind::PlayingProgress { .. }
             | NodeKind::Toggle { .. } => None,
         }
@@ -2449,6 +2474,8 @@ impl Engine {
 
     fn measure_inner(&mut self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
+            NodeKind::MediaGridRow { .. } => MeasuredSize { width: available.width, height: available.width / 3.0 },
+            NodeKind::MediaCell { .. } => MeasuredSize { width: available.width, height: available.width },
             NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end } => {
                 let mut metrics = self.list_metrics.remove(&node.identity.0).unwrap_or_default();
                 metrics.prepare(keys, content_versions, *revision, available.width, self.scaled(*gap), self.scaled(40.0));
@@ -2631,7 +2658,7 @@ impl Engine {
                     },
                 }
             }
-            NodeKind::CameraPreview { .. } => MeasuredSize {
+            NodeKind::CameraPreview { .. } | NodeKind::MapView { .. } => MeasuredSize {
                 width: available.width,
                 height: if available.height.is_finite() {
                     available.height
@@ -2668,6 +2695,7 @@ impl Engine {
                 &node.kind,
                 NodeKind::Screen { .. }
                     | NodeKind::Stack { .. }
+                    | NodeKind::MediaGridRow { .. }
                     | NodeKind::Tabs { .. }
                     | NodeKind::ReactList { .. }
             )
@@ -2676,6 +2704,31 @@ impl Engine {
             return;
         }
         match &node.kind {
+            NodeKind::MediaGridRow { children } => {
+                let size = rect.width / 3.0;
+                for (column, child) in children.iter().enumerate() {
+                    self.layout(child, Rect { x: rect.x + column as f32 * size, y: rect.y, width: size, height: size });
+                }
+            }
+            NodeKind::MediaCell { source, selected, video, check, play, action } => {
+                self.layout_image(node.identity, source, None, ImageFit::Cover, false, rect);
+                if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
+                let size = self.scaled(24.0).min(rect.width / 3.0);
+                let inset = self.scaled(6.0);
+                for (show, mask, x, y) in [
+                    (*selected, check, rect.x + rect.width - size - inset, rect.y + inset),
+                    (*video, play, rect.x + inset, rect.y + rect.height - size - inset),
+                ] {
+                    if show {
+                        self.scene.masks.push(MaskRun { mask: Mask::toggle_circle(true), rect: Rect { x, y, width: size, height: size },
+                            clip: self.clip, colour: Colour::BLACK, scrolling: self.scrolling });
+                        let padding = size / 6.0;
+                        self.scene.masks.push(MaskRun { mask: mask.clone(), rect: Rect {
+                            x: x + padding, y: y + padding, width: size - padding * 2.0, height: size - padding * 2.0 },
+                            clip: self.clip, colour: Colour::WHITE, scrolling: self.scrolling });
+                    }
+                }
+            }
             NodeKind::ReactList { children, start, gap, .. } => {
                 self.react_list_positions.insert(node.identity.0, rect.y + self.scroll_origin);
                 let Some(metrics) = self.list_metrics.get(&node.identity.0) else { return; };
@@ -2804,6 +2857,7 @@ impl Engine {
                 pinned_header,
                 pinned_footer,
                 right_action,
+                media_picker,
             } => self.layout_screen(
                 children,
                 title.as_deref(),
@@ -2812,6 +2866,7 @@ impl Engine {
                 *pinned_header,
                 *pinned_footer,
                 right_action.as_ref(),
+                *media_picker,
                 screen_bottom_inset,
                 rect,
             ),
@@ -2883,6 +2938,9 @@ impl Engine {
             NodeKind::CameraPreview { controller, kind } => {
                 self.layout_camera_preview(*controller, *kind, rect)
             }
+            NodeKind::MapView { controller } => {
+                self.scene.map_portal = Some(MapPortal { controller: *controller, rect });
+            }
             NodeKind::Toggle {
                 label,
                 value,
@@ -2913,6 +2971,7 @@ impl Engine {
         pinned_header: bool,
         pinned_footer: bool,
         right_action: Option<&(Mask, Action)>,
+        media_picker: bool,
         bottom_inset: bool,
         rect: Rect,
     ) {
@@ -2978,8 +3037,8 @@ impl Engine {
             });
         }
 
-        let content_inset = if pinned_footer { 16.0 } else { CONTENT_INSET_START };
-        let scroll_track_end = SCROLL_TRACK_END + content_inset - CONTENT_INSET_START;
+        let content_inset = if media_picker { 0.0 } else if pinned_footer { 16.0 } else { CONTENT_INSET_START };
+        let scroll_track_end = if media_picker { SCROLL_TRACK_END } else { SCROLL_TRACK_END + content_inset - CONTENT_INSET_START };
         let scroll_content_inset_end = scroll_track_end * 2.0 - SCROLL_TRACK_WIDTH;
 
         let (children, rect) = if pinned_footer {
@@ -3065,14 +3124,14 @@ impl Engine {
             self.scaled(content_inset)
         };
         let first_child_is_full_bleed = children.first().is_some_and(full_bleed_image);
-        let inset_top = if fills_remaining || first_child_is_full_bleed {
+        let inset_top = if media_picker || fills_remaining || first_child_is_full_bleed {
             0.0
         } else if has_header {
             self.scaled(HEADER_CONTENT_TOP)
         } else {
             self.scaled(CONTENT_TOP)
         };
-        let requested_bottom_inset = if bottom_inset && !fills_remaining && !pinned_footer {
+        let requested_bottom_inset = if bottom_inset && !media_picker && !fills_remaining && !pinned_footer {
             self.scaled(CONTENT_BOTTOM)
         } else {
             0.0
@@ -3087,7 +3146,7 @@ impl Engine {
                 f32::INFINITY
             },
         };
-        let gap = if fills_remaining {
+        let gap = if media_picker || fills_remaining {
             0.0
         } else {
             self.scaled(CONTENT_GAP)
@@ -3113,7 +3172,7 @@ impl Engine {
             height: (rect.height - header_height - inset_top - inset_bottom).max(0.0),
             ..unbounded_content
         };
-        if content_height > content.height && !fills_remaining {
+        if content_height > content.height && !fills_remaining && !media_picker {
             unbounded_content.width =
                 (rect.width - inset_start - self.scaled(scroll_content_inset_end)).max(0.0);
             (sizes, content_height) = self.measure_screen_content(children, unbounded_content, gap);
@@ -3172,12 +3231,13 @@ impl Engine {
             let track_width = self.scaled(SCROLL_TRACK_WIDTH);
             let thumb_width = self.scaled(SCROLL_THUMB_WIDTH);
             let track_x = rect.x + rect.width - self.scaled(scroll_track_end);
+            let track_inset = if media_picker { self.scaled(16.0).min(content.height / 2.0) } else { 0.0 };
             self.scene.scroll_bar = Some(ScrollBar {
                 track: Rect {
                     x: track_x,
-                    y: content.y,
+                    y: content.y + track_inset,
                     width: track_width,
-                    height: content.height,
+                    height: content.height - track_inset * 2.0,
                 },
                 thumb_width,
             });
@@ -4236,6 +4296,9 @@ fn stretchable(node: &Node) -> bool {
             | NodeKind::Button { .. }
             | NodeKind::Field { .. }
             | NodeKind::CameraPreview { .. }
+            | NodeKind::MapView { .. }
+            | NodeKind::MediaGridRow { .. }
+            | NodeKind::MediaCell { .. }
             | NodeKind::Toggle { .. }
     )
 }
@@ -4288,7 +4351,7 @@ fn constrained_axis(content_start: f32, content_size: f32, view_start: f32, view
 fn fills_remaining_screen(node: &Node) -> bool {
     matches!(
         &node.kind,
-        NodeKind::PlayingLayout { .. } | NodeKind::CameraPreview { .. }
+        NodeKind::PlayingLayout { .. } | NodeKind::CameraPreview { .. } | NodeKind::MapView { .. }
             | NodeKind::Image {
                 bleed: true,
                 zoomable: true,

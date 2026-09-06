@@ -1,10 +1,7 @@
 ---
 title: "Connectivity"
 description: "Observe network availability without treating it as request success."
-tag: "Planned"
 ---
-
-> **Not implemented yet.** This page defines the intended interface.
 
 `@ink/connectivity` exposes an immutable snapshot of the current network state.
 
@@ -21,6 +18,8 @@ export function ConnectionNotice() {
 ```
 
 The snapshot uses Ink's standard loading/ready/error shape. Ready data distinguishes unknown, offline and connected, with transport and metered state when known. Observation uses native connectivity events while subscribed and reads fresh state when an observer reconnects. Ink's screen lifecycle disconnects hidden screen subscriptions; a background worker reads its own current snapshot rather than borrowing a screen's observer.
+
+Use `await connectivity.get()` for a fresh one-off reading in workers or commands.
 
 Being connected does not prove that a provider is reachable or authenticated. Always handle request errors. A captive portal, DNS failure or expired account can coexist with a connected network.
 

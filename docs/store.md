@@ -58,9 +58,27 @@ Only JSON data is persisted. Decode on reading; changing a TypeScript type does 
 
 A corrupt or unsupported newer value produces a recoverable error; it is not silently replaced with defaults. Defaults apply when the key does not exist. `reset()` explicitly restores the initial value. Keys are app-wide names, not access-control boundaries.
 
-## Planned SQLite access
+## Read-only SQLite access
 
-**Not implemented yet.** Direct SQLite access extends `@ink/store`; it is not a separate Records package. The first interface opens an imported bundled database with `openDatabase(asset)`, executes parameterised reads with `db.query(sql, parameters)`, and releases the runtime-local handle with `db.close()`. Database asset imports are part of this implementation work.
+Import a bundled `.db` asset and open it with `openDatabase(asset)`. Query it with `db.query(sql, parameters, { signal })` and release the runtime-local handle with `db.close()`.
+
+```ts
+import { openDatabase } from "@ink/store";
+import stops from "./stops.db";
+
+const database = await openDatabase(stops);
+try {
+  const rows = await database.query(
+    "SELECT id, name FROM stops WHERE name LIKE ? ORDER BY name LIMIT ?",
+    ["Central%", 20],
+  );
+  // Decode rows into the app's stop type.
+} finally {
+  await database.close();
+}
+```
+
+Queries start with `SELECT`, `WITH` or `EXPLAIN`; the database also enforces read-only access. Parameters bind strings, finite numbers or null without SQL interpolation. Rows contain strings, numbers or null; binary columns and integers outside JavaScript's safe range reject. Cast large integers to text when necessary. A runtime can open eight handles. Results are limited to 10,000 rows and approximately 400 kB of encoded row data; use SQL limits and pagination for larger collections. An abort signal cancels a running query.
 
 Buses' stops database is the initial use case. The bundled database is read-only; an app update replaces its asset rather than migrating a writable copy. Query results are arrays of row values that the app decodes into its own types. SQL values use bound parameters. The app owns search terms and result limits; filtering and ordering stay in SQLite.
 

@@ -80,6 +80,7 @@ private class InkAudioAdapter(
                         }
                     }.getOrDefault(0)
                     lastRecording = Recording(id, duration)
+                    InkManagedFiles(activity).adopt(file, "audio/mp4", id = id, duration = duration)
                 }
             }
     }
@@ -409,8 +410,12 @@ private class InkAudioAdapter(
                 true,
             )
         }
-        lastRecording?.takeIf { it.id != id }?.let { previous ->
-            File(recordingsDirectory(), "${previous.id}.m4a").delete()
+        try {
+            InkManagedFiles(activity).adopt(output, "audio/mp4", id = id, duration = duration)
+        } catch (error: Exception) {
+            output.delete()
+            publishRecorderError("output", error.message ?: "Recording could not be saved", true)
+            return NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Recording could not be saved", true)
         }
         lastRecording = Recording(id, duration)
         publishRecorder("ready")
@@ -444,6 +449,7 @@ private class InkAudioAdapter(
             )
         }
         lastRecording = null
+        InkManagedFiles(activity).remove(recording.id)
         publishRecorder("idle")
         return NativeResult.Success("")
     }
@@ -480,6 +486,9 @@ private class InkAudioAdapter(
             .put("id", recording?.id.orEmpty())
             .put("src", recording?.let { "$RECORDING_PREFIX${it.id}" }.orEmpty())
             .put("recordingDurationMs", recording?.durationMs ?: 0)
+            .put("name", recording?.let { "${it.id}.m4a" }.orEmpty())
+            .put("mimeType", "audio/mp4")
+            .put("size", recording?.let { File(recordingsDirectory(), "${it.id}.m4a").length() } ?: 0)
             .put("error", error)
             .toString()
     }

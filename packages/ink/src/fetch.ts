@@ -2,6 +2,7 @@ import { ReadableStream, type ReadableStreamDefaultReader } from "web-streams-po
 import { Blob, FormData, multipart, parseFormData } from "./blob";
 import { URL, URLSearchParams } from "whatwg-url";
 import { requestHttp } from "./http";
+import { callNative } from "./native";
 
 const immutableHeaders = new WeakSet<Headers>();
 const token = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
@@ -66,9 +67,10 @@ function bodyStream(input: BodyInput | null | undefined): ReadableStream<Uint8Ar
 class Body {
   protected data: ReadableStream<Uint8Array> | null;
   protected bodySignal?: AbortSignal;
+  protected nativeBlob?: Blob;
   #disturbed = new WeakSet<ReadableStream<Uint8Array>>();
   protected get contentType(): string { return ""; }
-  constructor(input?: BodyInput | null, signal?: AbortSignal) { this.data = this.track(bodyStream(input)); this.bodySignal = signal; }
+  constructor(input?: BodyInput | null, signal?: AbortSignal) { this.data = this.track(bodyStream(input)); this.bodySignal = signal; this.nativeBlob = input instanceof Blob ? input : undefined; }
   protected track(source: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
     if (!source) return null;
     const disturbed = this.#disturbed;
@@ -141,7 +143,10 @@ class Body {
   async arrayBuffer(): Promise<ArrayBuffer> { return new Uint8Array(await this.bytes()).buffer; }
   async text(): Promise<string> { return new TextDecoder().decode(await this.bytes()); }
   async json(): Promise<unknown> { return JSON.parse(await this.text()); }
-  async blob() { return new Blob([await this.bytes()], { type: this.contentType }); }
+  async blob() {
+    if (this.nativeBlob) { this.bodySignal?.throwIfAborted(); this.transferBody(); return this.nativeBlob; }
+    return new Blob([await this.bytes()], { type: this.contentType });
+  }
   async formData() { return parseFormData(await this.bytes(), this.contentType); }
 }
 function setContentType(headers: Headers, body: BodyInput | null | undefined) {
@@ -195,6 +200,7 @@ export class Request extends Body {
     return copy;
   }
   replayBody() { return this.#replay?.stream() ?? null; }
+  nativeParts() { return this.#replay?.nativeParts(); }
 }
 type ResponseOptions = { status?: number; statusText?: string; headers?: HeaderInput; url?: string; redirected?: boolean; signal?: AbortSignal };
 export class Response extends Body {
@@ -222,6 +228,7 @@ export class Response extends Body {
   clone() {
     const result = new Response(this.copyBody(), { status: this.status, statusText: this.statusText, headers: this.headers, url: this.url, redirected: this.redirected, signal: this.bodySignal });
     Object.defineProperty(result, "type", { value: this.type });
+    result.nativeBlob = this.nativeBlob;
     if (immutableHeaders.has(this.headers)) immutableHeaders.add(result.headers);
     return result;
   }
@@ -242,16 +249,25 @@ export class Response extends Body {
 
 export async function fetch(input: string | URL | Request, init?: Init): Promise<Response> {
   const request = new Request(input, init);
+  if (request.url.startsWith("ink-file://")) {
+    request.signal.throwIfAborted();
+    if (request.method !== "GET" && request.method !== "HEAD") throw new TypeError("Managed files are read-only");
+    const file = JSON.parse(await callNative("files", "open", { id: request.url.slice("ink-file://".length) }, { signal: request.signal }));
+    if (!file) throw new TypeError("Managed file has been removed");
+    return new Response(request.method === "HEAD" ? null : Blob.fromNative(file.src, file.size, file.mimeType), {
+      url: request.url, headers: { "content-type": file.mimeType, "content-length": String(file.size) }, signal: request.signal,
+    });
+  }
   let url = new URL(request.url);
   let method = request.method;
   const headers = new Headers(request.headers);
   let body = request.body;
   for (let redirects = 0; ; redirects++) {
     request.signal.throwIfAborted();
-    if (url.protocol !== "https:" && url.protocol !== "file:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) throw new TypeError("Network requests require HTTPS");
+    if (url.protocol !== "https:" && url.protocol !== "file:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(url.hostname))) throw new TypeError("Network requests require HTTPS");
     let result;
     try {
-      result = await requestHttp({ url: url.href, method, headers: Object.fromEntries(headers) }, body, request.signal);
+      result = await requestHttp({ url: url.href, method, headers: Object.fromEntries(headers), nativeParts: body ? request.nativeParts() : undefined }, body, request.signal);
     } catch (error) {
       request.signal.throwIfAborted();
       throw new TypeError("Network request failed", { cause: error });

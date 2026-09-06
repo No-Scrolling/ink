@@ -1,9 +1,7 @@
 {
   "version": 1,
   "modules": {
-    "*": [
-      "audio-detached",
-      "microphone-permission"
-    ]
+    "src/index.ts": ["audio-detached"],
+    "src/capture.ts": ["audio-capture"]
   }
 }

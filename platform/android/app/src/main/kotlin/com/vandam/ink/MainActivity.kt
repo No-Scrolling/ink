@@ -57,6 +57,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var nfcAdapter: NfcAdapter
     private lateinit var backgroundAdapter: BackgroundAdapter
     private lateinit var cameraAdapter: CameraAdapter
+    private lateinit var mapsAdapter: MapsAdapter
+    private val filesAdapter by lazy { createFilesAdapter(this) }
+    private val sqliteAdapter by lazy { SqliteAdapter(this) }
+    private val secureStoreAdapter by lazy { SecureStoreAdapter(this) }
+    private val authAdapter by lazy { AuthAdapter(this) { message ->
+        runOnUiThread { if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, message) }
+    } }
+    private val externalAdapter by lazy { ExternalAdapter(this) }
+    private val downloadsAdapter by lazy { createDownloadsAdapter(this, ::updateController) }
+    private val connectivityAdapter by lazy { ConnectivityAdapter(this) { message ->
+        runOnUiThread { if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, message) }
+    } }
     private lateinit var textInputAdapter: TextInputAdapter
     private lateinit var notificationsAdapter: NotificationsAdapter
     private val systemGlyphRasterizer by lazy { SystemGlyphRasterizer() }
@@ -131,6 +143,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             updateController(controller, value)
         }
         networkAdapter = createNetworkAdapter(this)
+        mapsAdapter = createMapsAdapter(this, root, ::updateController)
         locationAdapter = createLocationAdapter(this)
         nfcAdapter = createNfcAdapter(this)
         backgroundAdapter = createBackgroundAdapter(this)
@@ -324,6 +337,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             }
             val light = nativeIsLightAppearance(engineHandle)
             textInputAdapter.setLightAppearance(light)
+            externalAdapter.setLightAppearance(light)
             window.statusBarColor = if (light) Color.WHITE else Color.BLACK
             window.navigationBarColor = if (light) Color.WHITE else Color.BLACK
             syncTextInput()
@@ -358,9 +372,12 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                 AUDIO_MODULE -> audioAdapter.executeController(-controller, "deactivate", "{}", complete)
                 NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, "deactivate", "{}", complete)
                 CAMERA_MODULE -> cameraAdapter.executeController(0, -controller, "deactivate", "{}", complete)
+                "maps" -> mapsAdapter.executeController(0, -controller, "deactivate", "{}", complete)
+                "downloads" -> downloadsAdapter.executeController(-controller, "deactivate", "{}", complete)
             }
         }
         javascriptControllers.clear()
+        connectivityAdapter.reset()
         javascriptRequests = newJavaScriptRequests()
     }
 
@@ -375,6 +392,14 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             "permissions" -> { usesPermissions = true; permissionsAdapter }
             "store" -> { usesStore = true; storeAdapter }
             "clipboard" -> clipboardAdapter
+            "sqlite" -> sqliteAdapter
+            "connectivity" -> connectivityAdapter
+            "files" -> filesAdapter
+            "secure-store" -> secureStoreAdapter
+            "auth" -> authAdapter
+            "external" -> externalAdapter
+            "downloads" -> downloadsAdapter
+            "maps" -> mapsAdapter
             NETWORK_MODULE -> networkAdapter
             LIGHT_SDK_MODULE -> lightSdkAdapter
             AUDIO_MODULE -> audioAdapter
@@ -406,6 +431,8 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                 when (module) {
                     AUDIO_MODULE -> audioAdapter.executeController(-controller, operation, payload, finish)
                     NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, operation, payload, finish)
+                    "maps" -> mapsAdapter.executeController(-id, -controller, operation, payload, finish)
+                    "downloads" -> downloadsAdapter.executeController(-controller, operation, payload, finish)
                     CAMERA_MODULE -> {
                         if (operation == OPEN_OPERATION) openCameraController(-id, -controller, payload, finish)
                         else cameraAdapter.executeController(-id, -controller, operation, payload, finish)
@@ -448,6 +475,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        externalAdapter.handleIntent(intent)
         setIntent(intent)
         if (BuildConfig.DEBUG) intent.getStringExtra("ink.dev.generation")?.let(::activateDevelopmentBundle)
         handleNotificationIntent(intent)
@@ -462,6 +490,9 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
 
     override fun onResume() {
         super.onResume()
+        externalAdapter.onResume()
+        connectivityAdapter.start()
+        mapsAdapter.resume()
         locationAdapter.resume()
         lightSdkAdapter.refresh()
 
@@ -475,6 +506,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
     @Deprecated("Android activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        filesAdapter.onActivityResult(requestCode, resultCode, data)
         if (usesPermissions) permissionsAdapter.result(requestCode)
     }
 
@@ -484,6 +516,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        filesAdapter.onRequestPermissionsResult(requestCode)
         if (usesPermissions) permissionsAdapter.result(requestCode)
 
     }
@@ -535,6 +568,13 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
         nfcAdapter.stop()
         backgroundAdapter.stop()
         cameraAdapter.stop()
+        mapsAdapter.stop()
+        filesAdapter.stop()
+        sqliteAdapter.stop()
+        externalAdapter.close()
+        authAdapter.close()
+        connectivityAdapter.close()
+        downloadsAdapter.stop()
         if (usesStore) storeAdapter.stop()
         imageExecutor.shutdown()
         imageExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
@@ -552,6 +592,9 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
     }
 
     override fun onPause() {
+        externalAdapter.onPause()
+        connectivityAdapter.stop()
+        mapsAdapter.pause()
         inkView.setTextCursorActive(false)
         audioAdapter.pause()
         nfcAdapter.pause()
@@ -627,6 +670,11 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             }.getOrNull()
         }
         cameraAdapter.syncPortal(portal)
+        val map = nativeMapPortal(engineHandle)
+        mapsAdapter.syncPortal(if (map.isEmpty()) null else {
+            val value = JSONObject(map)
+            MapPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
+        })
     }
 
     private fun openCameraController(
@@ -698,6 +746,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                 backgroundAdapter.cancel(requestId)
                 notificationsAdapter.cancel(requestId)
                 cameraAdapter.cancel(requestId)
+                filesAdapter.cancel(requestId)
                 continue
             }
             val module = nativeRequestModule(engineHandle, requestId)
@@ -717,6 +766,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                 (operation == PERMISSION_STATUS_OPERATION ||
                     operation == REQUEST_PERMISSION_OPERATION)
             val adapter = when (module) {
+                "files" -> filesAdapter
                 LIGHT_SDK_MODULE -> lightSdkAdapter
                 "assets" -> { usesAssets = true; assetsAdapter }
                 "barcode" -> { usesBarcode = true; barcodeAdapter }
@@ -1450,6 +1500,8 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
 
         @JvmStatic
         private external fun nativeCameraPortal(handle: Long): String
+        @JvmStatic
+        private external fun nativeMapPortal(handle: Long): String
 
         @JvmStatic
         private external fun nativeTextInputActive(handle: Long): Boolean

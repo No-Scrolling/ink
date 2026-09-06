@@ -30,9 +30,10 @@ Hooks release their own handles through effect cleanup. These rules do not chang
 | Package or facility | Owner and lifetime |
 | --- | --- |
 | `ink` renderer, navigation and controller observers | Foreground runtime; mounted hooks dispose their attached handles. Navigation hides retained screens with React Activity: state remains, while effects disconnect and Ink hooks release attached handles; revealing the screen reconnects effects and recreates those handles. |
-| `@ink/audio` attached playback, recorder and processors | Controller owner; pause follows the native adapter's app lifecycle. Disposal releases attached resources. |
+| `@ink/audio` attached playback and `@ink/audio/capture` recorder and processors | Controller owner; pause follows the native adapter's app lifecycle. Disposal releases attached resources. |
 | `@ink/audio` detached playback | Native media service; disposing a UI controller releases its connection and observer. Service playback survives UI disposal and can be reattached by session name. |
-| `@ink/camera` | Mounted controller; camera presentation follows the visible portal and app pause/resume. Disposal closes its camera session. |
+| `@ink/camera`, `@ink/camera/scan` | Mounted controller; camera presentation follows the visible portal and app pause/resume. Disposal closes its camera session. |
+| `@ink/maps` | Mounted map; native rendering pauses when hidden or backgrounded. Disposal releases its view. Retained screens restore their last settled camera when effects reconnect. |
 | `@ink/notifications` | Mounted subscription/controller; scheduled notifications have native lifetime after scheduling. |
 | `@ink/location`, `@ink/nfc`, `@ink/lightos` | Native request or explicit subscription owner; request cancellation and host shutdown stop attached work. |
 | `@ink/store`, `@ink/clipboard` | Individual calls; stored values outlive the call. Store change delivery belongs to the active UI context. |

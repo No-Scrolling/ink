@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { callNative, NativeError } from "ink/native";
 import { attachNativeController } from "ink/native/controller";
+import type { FileRef } from "@ink/files";
 
 export type MicrophonePermission = "granted" | "denied" | "blocked";
 async function permission(operation: string): Promise<MicrophonePermission> {
@@ -81,7 +82,7 @@ function useCapture<State extends { status: string; error: Error | null }>(
 export interface RecorderState {
   status: "idle" | "recording" | "stopping" | "ready" | "error";
   duration: number;
-  recording: { id: string; src: string; duration: number } | null;
+  recording: (FileRef & { duration: number }) | null;
   error: Error | null;
 }
 const recorderInitial: RecorderState = { status: "idle", duration: 0, recording: null, error: null };
@@ -93,7 +94,7 @@ function decodeRecorder(value: unknown): RecorderState {
   }
   const id = field.text("id");
   return { status, duration: field.number("durationMs"), error: field.error(),
-    recording: id ? { id, src: field.text("src"), duration: field.number("recordingDurationMs") } : null };
+    recording: id ? { id, src: `ink-file://${id}`, name: field.text("name"), mimeType: field.text("mimeType"), size: field.number("size"), duration: field.number("recordingDurationMs") } : null };
 }
 export function useRecorder() {
   const { state, ready, call } = useCapture("recorder", recorderInitial, decodeRecorder);

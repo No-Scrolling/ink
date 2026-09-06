@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./capture": "./src/capture.ts"
   },
   "peerDependencies": {
+    "@ink/files": "0.1.0",
     "ink": "0.0.0",
     "react": "19.2.8"
   }

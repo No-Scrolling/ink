@@ -9,3 +9,5 @@ enabled = true
 
 [background]
 entry = "./workers.ts"
+[auth]
+redirect_uri = "ink-template://oauth/callback"

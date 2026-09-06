@@ -16,7 +16,13 @@
     "react": "19.2.8",
     "@ink/store": "workspace:*",
     "@ink/lightos": "workspace:*",
-    "@ink/barcode": "workspace:*"
+    "@ink/barcode": "workspace:*",
+    "@ink/auth": "workspace:*",
+    "@ink/secure-store": "workspace:*",
+    "@ink/connectivity": "workspace:*",
+    "@ink/files": "workspace:*",
+    "@ink/maps": "workspace:*",
+    "@ink/downloads": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.9.3",

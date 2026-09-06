@@ -26,7 +26,8 @@ internal class InkFetchStreams(
     private val handler: Handler,
 ) {
     private val streams = mutableMapOf<String, Stream>()
-    private val uploads = mutableMapOf<String, File>()
+    private data class Upload(val file: File, val managed: Boolean)
+    private val uploads = mutableMapOf<String, Upload>()
     private val pending = mutableMapOf<Long, Stream>()
     private val expiry = Runnable { expire() }
 
@@ -34,23 +35,46 @@ internal class InkFetchStreams(
         try {
             val data = JSONObject(payload)
             when (operation) {
+                "stream-file-read" -> {
+                    val source = InkManagedFiles(context).resolve(data.getString("src"))
+                    val offset = data.getLong("offset")
+                    val size = data.getInt("size")
+                    require(offset >= 0 && size in 0..32768 && offset <= source.length() - size) { "Invalid attachment range" }
+                    val bytes = ByteArray(size)
+                    RandomAccessFile(source, "r").use { it.seek(offset); it.readFully(bytes) }
+                    complete(NativeResult.Success(Base64.encodeToString(bytes, Base64.NO_WRAP)))
+                }
                 "stream-upload-open" -> {
                     require(uploads.size < 8) { "Too many pending uploads" }
                     val key = UUID.randomUUID().toString()
-                    uploads[key] = File.createTempFile("ink-upload-", ".body", context.cacheDir)
+                    uploads[key] = Upload(File.createTempFile("ink-upload-", ".body", context.cacheDir), data.optBoolean("managed"))
                     complete(NativeResult.Success(key))
                     scheduleExpiry()
                 }
                 "stream-upload-write" -> {
-                    val file = requireNotNull(uploads[data.getString("upload")]) { "Upload is closed" }
+                    val upload = requireNotNull(uploads[data.getString("upload")]) { "Upload is closed" }
+                    val file = upload.file
                     val bytes = Base64.decode(data.getString("bytes"), Base64.DEFAULT)
-                    require(bytes.size <= 32768 && file.length() + bytes.size <= 64L * 1024 * 1024) { "Upload exceeds 64 MiB" }
+                    require(bytes.size <= 32768 && (upload.managed || file.length() + bytes.size <= 64L * 1024 * 1024)) { "Upload exceeds 64 MiB" }
                     file.appendBytes(bytes)
                     file.setLastModified(System.currentTimeMillis())
                     complete(NativeResult.Success("null"))
                 }
+                "stream-upload-file" -> {
+                    val upload = requireNotNull(uploads[data.getString("upload")]) { "Upload is closed" }
+                    require(upload.managed) { "Upload does not accept managed files" }
+                    val source = InkManagedFiles(context).resolve(data.getString("src"))
+                    val offset = data.getLong("offset")
+                    val size = data.getInt("size")
+                    require(offset >= 0 && size in 0..32768 && offset <= source.length() - size) { "Invalid attachment range" }
+                    val bytes = ByteArray(size)
+                    RandomAccessFile(source, "r").use { it.seek(offset); it.readFully(bytes) }
+                    upload.file.appendBytes(bytes)
+                    upload.file.setLastModified(System.currentTimeMillis())
+                    complete(NativeResult.Success("null"))
+                }
                 "stream-upload-close" -> {
-                    uploads.remove(data.getString("upload"))?.delete()
+                    uploads.remove(data.getString("upload"))?.file?.delete()
                     complete(NativeResult.Success("null"))
                 }
                 "stream-open" -> open(id, data, complete)
@@ -68,7 +92,7 @@ internal class InkFetchStreams(
         require(streams.size < 16) { "Too many open response streams" }
         val url = data.getString("url")
         val upload = data.optString("upload").takeIf { it.isNotEmpty() }?.let {
-            requireNotNull(uploads.remove(it)) { "Upload is closed" }
+            requireNotNull(uploads.remove(it)) { "Upload is closed" }.file
         }
         val stream = Stream(UUID.randomUUID().toString(), upload)
         streams[stream.key] = stream
@@ -86,7 +110,7 @@ internal class InkFetchStreams(
                     .put("url", url).put("headers", JSONArray().put(JSONArray().put("content-type").put("image/jpeg")))
                     .put("stream", stream.key).toString()))
             } else {
-                require(url.startsWith("https://") || BuildConfig.DEBUG && url.startsWith("http://") && Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1")) { "Network requests require HTTPS" }
+                require(url.startsWith("https://") || BuildConfig.DEBUG && url.startsWith("http://") && Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2")) { "Network requests require HTTPS" }
                 val method = data.optString("method", "GET")
                 require(Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+").matches(method) && method.uppercase() !in setOf("CONNECT", "TRACE", "TRACK"))
                 val builder = engine.newUrlRequestBuilder(url, executor, stream).setHttpMethod(method)
@@ -117,7 +141,7 @@ internal class InkFetchStreams(
     @Synchronized fun stop() {
         streams.values.toList().forEach { it.close() }
         streams.clear()
-        uploads.values.forEach(File::delete)
+        uploads.values.forEach { it.file.delete() }
         uploads.clear()
         handler.removeCallbacks(expiry)
     }
@@ -129,7 +153,7 @@ internal class InkFetchStreams(
             it.deliver(failure("Response stream was idle for 60 seconds"))
             it.close()
         }
-        uploads.entries.removeAll { (_, file) -> if (file.lastModified() < before) { file.delete(); true } else false }
+        uploads.entries.removeAll { (_, upload) -> if (upload.file.lastModified() < before) { upload.file.delete(); true } else false }
         if (streams.isNotEmpty() || uploads.isNotEmpty()) scheduleExpiry()
     }
 

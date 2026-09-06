@@ -71,7 +71,7 @@ A visually idle app requests no rendering frames. This is not a promise of zero 
 
 JavaScript garbage collection is not a lifecycle mechanism for a camera, socket or player. UI hooks and explicit `close()`/unsubscribe operations release native work. Reactivation obtains fresh handles; stale results cannot update a replacement owner. Native handles may be held in memory but are not serialisable. Durable IDs reconnect to stored state instead of reviving an old pointer.
 
-Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio does not need a continuously running JavaScript loop. A Downloads package is planned. Android can stop work; storage and domain reconciliation provide recovery.
+Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio does not need a continuously running JavaScript loop. [Downloads](downloads.md) uses persisted native jobs for HTTP file transfers. Android can stop work; storage and domain reconciliation provide recovery.
 
 ## Package execution and trust
 

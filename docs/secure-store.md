@@ -1,12 +1,11 @@
 ---
 title: "Secure store"
 description: "Persist credentials using Android-backed protection."
-tag: "Planned"
 ---
 
-> **Not implemented yet.** This page defines the intended interface.
-
 `@ink/secure-store` persists small secret strings with native encryption and Android Keystore-backed key protection. Use it for refresh tokens, provider credentials and account secrets.
+
+Save, restart recovery and deletion were exercised in the emulator; see the [verification record](verification-auth-secure-store-2026-09-06.md).
 
 ```ts
 import { secureStore } from "@ink/secure-store";

@@ -1,12 +1,11 @@
 ---
 title: "Accounts and sign-in"
 description: "Sign in and keep a session without managing token refresh in screens."
-tag: "Planned"
 ---
 
-> **Not implemented yet.** This page defines the intended interface.
-
 `@ink/auth` owns OAuth sign-in, secure token persistence, refresh and sign-out. Apps configure their provider; screens do not store tokens or implement refresh loops.
+
+The [account verification record](verification-auth-secure-store-2026-09-06.md) covers emulator device-code sign-in and storage checks, plus physical LP3 browser sign-in. Production providers and broader lifecycle scenarios remain integration work.
 
 ```ts
 import { createOAuthClient } from "@ink/auth";
@@ -32,9 +31,18 @@ This supports the flow used by Index and Echo TV without requiring a browser on 
 
 Configure `authorizationEndpoint` and `redirectUri` alongside the token endpoint. `account.signIn({ signal })` presents a browser-backed in-app window using Android Custom Tabs and completes the session. Closing it returns to the same Ink screen. Ink owns PKCE, state validation, redirect handling and the activity round trip. Register the redirect with the provider and Android app.
 
+Set the same custom redirect in `ink.toml`:
+
+```toml
+[auth]
+redirect_uri = "ink-template://oauth/callback"
+```
+
+Endpoints must use HTTPS. Debug builds also permit HTTP on `localhost`, `127.0.0.1` and the Android emulator host `10.0.2.2` for local OAuth fixtures. Release builds reject these HTTP endpoints.
+
 Keep the flow visually close to LightOS using the browser's supported colour and toolbar customisation, while retaining its site identity and security UI. This is not an embedded WebView: OAuth uses an isolated browser context, as described in [OAuth for native apps](https://www.rfc-editor.org/rfc/rfc8252.html).
 
-Read-only ADB inspection on 6 September 2026 found that the connected LP3's Chromium 133.0.6888.0 advertises Custom Tabs and colour customisation; see [device evidence](verification-custom-tabs.md). An actual browser sign-in and return flow still needs implementation and verification. Feature-detect support on each installation. If unavailable, report that browser sign-in is unavailable and offer device-code sign-in when configured. Do not silently launch the full browser or substitute a WebView.
+On 6 September 2026, physical LP3 checks with Chromium 133.0.6888.0 passed Custom Tab launch, dark toolbar appearance, PKCE redirect return, token access and browser cancellation using the local fixture; see [device evidence](verification-custom-tabs.md). The implementation discovers a compatible Custom Tabs service on each installation. If none is available, browser sign-in rejects as unavailable, allowing the app to offer device-code sign-in when configured. It never silently launches the full browser or substitutes a WebView. Provider sign-in still requires verification with the app's registered redirect and provider credentials.
 
 A device-only configuration does not require browser settings. Calling a flow without its required configuration rejects clearly. A mobile app cannot keep a client secret private; any secret-based exchange belongs in a provider backend.
 
@@ -45,6 +53,8 @@ A device-only configuration does not require browser settings. Calling a flow wi
 `useSnapshot(account)` uses Ink's standard `loading`, `ready` and `error` snapshot. Ready data contains a `status` of `signed-out` or `signed-in`, without tokens. Provider profile data belongs to the app. A provider request function obtains a token and uses ordinary `fetch` or a compatible JavaScript client.
 
 A worker imports the same configuration and opens its session from [Secure store](secure-store.md). If interactive sign-in is required, it reports that outcome rather than opening UI.
+
+Android coordinates session access within the app process, including worker runtimes. Separate Android processes are not supported for Auth. Refresh completes before a waiting sign-out removes the credentials, and pending sign-in exchanges carry a generation that prevents them restoring a signed-out session.
 
 ## Sign out
 

@@ -426,6 +426,7 @@ private class AudioSessionPlayback(
             val uri = when {
                 src.startsWith("https://") -> Uri.parse(src)
                 src.startsWith("asset:///") -> activity.bundledAudioUri(src)
+                src.startsWith("ink-file://") -> Uri.fromFile(InkManagedFiles(activity).resolve(src))
                 src.startsWith(RECORDING_PREFIX) -> {
                     val recordingId = src.removePrefix(RECORDING_PREFIX)
                     require(RECORDING_ID.matches(recordingId)) { "Invalid Ink recording source" }

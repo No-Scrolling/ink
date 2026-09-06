@@ -359,7 +359,9 @@ private class InkCameraAdapter(
         if (file.exists() && !file.delete()) {
             complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Photo could not be removed", true))
         } else {
-            complete(NativeResult.Success(""))
+            runCatching { InkManagedFiles(activity).remove(id) }
+                .onSuccess { complete(NativeResult.Success("")) }
+                .onFailure { complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, it.message ?: "Photo metadata could not be removed", true)) }
         }
     }
 
@@ -709,7 +711,7 @@ private class InkCameraAdapter(
 private class CameraLifecycleOwner : LifecycleOwner {
     private val registry = LifecycleRegistry(this)
 
-    override fun getLifecycle(): Lifecycle = registry
+    override val lifecycle: Lifecycle get() = registry
 
     fun start() {
         registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)

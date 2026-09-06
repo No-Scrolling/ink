@@ -1,11 +1,16 @@
 import { URLSearchParams } from "whatwg-url";
 import { ReadableStream } from "web-streams-polyfill";
+import { callNative } from "./native";
+import { fromByteArray, toByteArray } from "base64-js";
 
 type BlobPart = string | ArrayBuffer | ArrayBufferView | Blob;
+type NativePart = { src: string; offset: number; size: number };
+type Part = Uint8Array | NativePart;
+const partSize = (part: Part) => part instanceof Uint8Array ? part.length : part.size;
 export class Blob {
   readonly size: number;
   readonly type: string;
-  #parts: Uint8Array[];
+  #parts: Part[];
   constructor(parts: Iterable<BlobPart> = [], options: { type?: string; endings?: "transparent" | "native" } = {}) {
     this.#parts = [];
     for (const part of parts) {
@@ -14,26 +19,49 @@ export class Blob {
       else if (ArrayBuffer.isView(part)) this.#parts.push(new Uint8Array(part.buffer, part.byteOffset, part.byteLength).slice());
       else this.#parts.push(new TextEncoder().encode(options.endings === "native" ? String(part).replace(/\r\n|\r/g, "\n") : String(part)));
     }
-    this.size = this.#parts.reduce((size, part) => size + part.byteLength, 0);
+    this.size = this.#parts.reduce((size, part) => size + partSize(part), 0);
     const type = String(options.type ?? "");
     this.type = /[^\x20-\x7e]/.test(type) ? "" : type.toLowerCase();
+  }
+  static fromNative(src: string, size: number, type: string): Blob {
+    const blob = new Blob([], { type });
+    blob.#parts = [{ src, offset: 0, size }];
+    Object.defineProperty(blob, "size", { value: size });
+    return blob;
+  }
+  nativeParts(): Iterable<{ bytes: string } | NativePart> | undefined {
+    if (!this.#parts.some(part => !(part instanceof Uint8Array))) return undefined;
+    const parts = this.#parts;
+    return (function* () {
+      for (const part of parts) {
+        if (part instanceof Uint8Array) {
+          for (let offset = 0; offset < part.length; offset += 32768) yield { bytes: fromByteArray(part.subarray(offset, offset + 32768)) };
+        } else yield part;
+      }
+    })();
   }
   slice(start = 0, end = this.size, type = "") {
     const normalise = (value: number) => value < 0 ? Math.max(this.size + Math.trunc(value), 0) : Math.min(Math.trunc(value) || 0, this.size);
     let offset = 0;
-    const parts: Uint8Array[] = [];
+    const result = new Blob([], { type });
     const from = normalise(start), to = normalise(end);
     for (const part of this.#parts) {
-      const left = Math.max(0, from - offset), right = Math.min(part.length, to - offset);
-      if (right > left) parts.push(part.subarray(left, right));
-      offset += part.length;
+      const left = Math.max(0, from - offset), right = Math.min(partSize(part), to - offset);
+      if (right > left) {
+        result.#parts.push(part instanceof Uint8Array ? part.subarray(left, right) : { ...part, offset: part.offset + left, size: right - left });
+      }
+      offset += partSize(part);
     }
-    return new Blob(parts, { type });
+    Object.defineProperty(result, "size", { value: Math.max(to - from, 0) });
+    return result;
   }
   async bytes() {
     const bytes = new Uint8Array(this.size);
     let offset = 0;
-    for (const part of this.#parts) { bytes.set(part, offset); offset += part.length; }
+    const reader = this.stream().getReader();
+    try {
+      for (;;) { const chunk = await reader.read(); if (chunk.done) break; bytes.set(chunk.value, offset); offset += chunk.value.length; }
+    } finally { reader.releaseLock(); }
     return bytes;
   }
   async arrayBuffer() { return (await this.bytes()).buffer; }
@@ -42,12 +70,15 @@ export class Blob {
     let index = 0, offset = 0;
     const parts = this.#parts;
     return new ReadableStream({
-      pull(controller) {
-        while (index < parts.length && offset === parts[index].length) { index++; offset = 0; }
+      async pull(controller) {
+        while (index < parts.length && offset === partSize(parts[index])) { index++; offset = 0; }
         if (index === parts.length) { controller.close(); return; }
         const part = parts[index];
-        const end = Math.min(offset + 32 * 1024, part.length);
-        controller.enqueue(part.slice(offset, end));
+        const end = Math.min(offset + 32 * 1024, partSize(part));
+        const bytes = part instanceof Uint8Array ? part.slice(offset, end)
+          : toByteArray(await callNative("network", "stream-file-read", { src: part.src, offset: part.offset + offset, size: end - offset }));
+        if (bytes.length !== end - offset) throw new TypeError("Managed file changed while reading");
+        controller.enqueue(bytes);
         offset = end;
       },
     }, { highWaterMark: 0 });

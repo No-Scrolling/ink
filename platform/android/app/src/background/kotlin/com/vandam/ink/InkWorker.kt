@@ -25,6 +25,11 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
             "Worker is already running or closed"
         }
         var store: StoreAdapter? = null
+        var sqlite: SqliteAdapter? = null
+        val secureStore by lazy { SecureStoreAdapter(context) }
+        val auth by lazy { AuthAdapter(context) }
+        val connectivity by lazy { ConnectivityAdapter(context) {} }
+        var downloads: DownloadsAdapter? = null
         var network: NetworkAdapter? = null
         var background: BackgroundAdapter? = null
         var notifications: NativeAdapter? = null
@@ -60,6 +65,11 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
                             "notifications" -> notifications ?: createWorkerNotificationsAdapter(context).also { notifications = it }
                             "location" -> if (operation == "current") location ?: createWorkerLocationAdapter(context).also { location = it } else null
                             "store" -> store ?: StoreAdapter(context).also { store = it }
+                            "sqlite" -> sqlite ?: SqliteAdapter(context).also { sqlite = it }
+                            "secure-store" -> secureStore
+                            "auth" -> auth
+                            "connectivity" -> if (operation == "snapshot") connectivity else null
+                            "downloads" -> downloads ?: createDownloadsAdapter(context) { _, _ -> }.also { downloads = it }
                             "network" -> network ?: createNetworkAdapter(context, null).also { network = it }
                             else -> null
                         }
@@ -83,6 +93,9 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
             location?.stop()
             network?.stop()
             store?.stop()
+            sqlite?.stop()
+            auth.close()
+            downloads?.stop()
         }
     }
 

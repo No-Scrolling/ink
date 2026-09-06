@@ -28,7 +28,7 @@ The standard ECMAScript declarations are a language baseline, not a promise that
 | `Event`, `CustomEvent`, `EventTarget`, `DOMException` | Standalone events; no DOM tree, bubbling path through elements or browser event sources. |
 | `AbortController`, `AbortSignal` | Reasons, abort events, `throwIfAborted`, `abort`, `timeout`, `any`. |
 | `URL`, `URLSearchParams` | Bundled `whatwg-url`; no object URL registry. |
-| `Blob`, `File`, `FormData` | In-memory bytes, streams and multipart data. These do not expose arbitrary filesystem access. |
+| `Blob`, `File`, `FormData` | In-memory bytes and native-backed managed file ranges, streams and multipart data. `fetch(file.src).blob()` preserves native storage through slicing and multipart upload; explicit text and byte reads materialise content. These do not expose arbitrary filesystem access. |
 | Readable, writable and transform streams; queuing strategies | Bundled `web-streams-polyfill`, including backpressure, readers, writers and cancellation. No browser-specific streams such as compression or text-encoder streams. |
 | `fetch`, `Headers`, `Request`, `Response` | Ink's native HTTP adapter. HTTPS, managed file reads and development localhost HTTP. Response streaming, abort and redirect handling are implemented. Upload input is consumed into native temporary storage before the HTTP request opens; live producer-to-network upload streaming is not implemented. `credentials` is retained on Request but does not supply a browser cookie jar. |
 | `WebSocket`, `MessageEvent`, `CloseEvent` | Native socket transport with text/binary messages, explicit close and buffering limits. No browser origin/document integration. |

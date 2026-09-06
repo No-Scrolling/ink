@@ -4,11 +4,16 @@
     "audio": {
       "cost": "audio adapter",
       "dependencies": [],
-      "permissions": [],
-      "androidSourceGroup": {
-        "enabled": "audio",
-        "disabled": "noAudio"
-      }
+      "permissions": []
+    },
+    "audio-capture": {
+      "cost": "microphone recording and analysis",
+      "dependencies": [
+        "audio",
+        "microphone-permission",
+        "files"
+      ],
+      "permissions": []
     },
     "audio-detached": {
       "cost": "foreground playback service",
@@ -72,6 +77,43 @@
       ],
       "permissions": []
     },
+    "connectivity": {
+      "cost": "network state observer",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
+    },
+    "downloads": {
+      "cost": "durable HTTP download jobs",
+      "dependencies": [
+        "files",
+        "network"
+      ],
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ],
+      "androidSourceGroup": {
+        "enabled": "downloads",
+        "disabled": "noDownloads"
+      }
+    },
+    "files": {
+      "cost": "managed files and attachment picker",
+      "dependencies": [
+        "image"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "files",
+        "disabled": "noFiles"
+      }
+    },
+    "media-library": {
+      "cost": "native media library browsing and thumbnails",
+      "dependencies": ["files"],
+      "permissions": ["android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO"]
+    },
     "image": {
       "cost": "image decoder",
       "dependencies": [],
@@ -125,6 +167,18 @@
       "androidSourceGroup": {
         "enabled": "location",
         "disabled": "noLocation"
+      }
+    },
+    "maps": {
+      "cost": "MapLibre native map",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ],
+      "androidSourceGroup": {
+        "enabled": "maps",
+        "disabled": "noMaps"
       }
     },
     "microphone-permission": {
@@ -182,7 +236,8 @@
       "cost": "camera session and photo capture",
       "dependencies": [
         "camera-permission",
-        "image"
+        "image",
+        "files"
       ],
       "permissions": []
     },

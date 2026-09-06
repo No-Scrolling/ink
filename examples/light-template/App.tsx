@@ -23,6 +23,15 @@ import Typography from "./screens/display/Typography";
 import Wallsocket from "./screens/display/Wallsocket";
 import Wills from "./screens/display/Wills";
 import Audio from "./screens/modules/Audio";
+import Accounts from "./screens/modules/Accounts";
+import Maps from "./screens/modules/Maps";
+import Downloads from "./screens/modules/Downloads";
+import Database from "./screens/modules/Database";
+import Files from "./screens/modules/Files";
+import MediaLibrary from "./screens/modules/MediaLibrary";
+import SecureStore from "./screens/modules/SecureStore";
+import Connectivity from "./screens/modules/Connectivity";
+import External from "./screens/modules/External";
 import Background from "./screens/modules/Background";
 import Camera from "./screens/modules/Camera";
 import LightSdk from "./screens/modules/LightSdk";
@@ -54,6 +63,15 @@ export default function LightTemplate() {
     <>
       <AppearanceSettings />
       <Navigator>
+        <Route path="/modules/accounts"><Accounts /></Route>
+        <Route path="/modules/maps"><Maps /></Route>
+        <Route path="/modules/downloads"><Downloads /></Route>
+        <Route path="/modules/database"><Database /></Route>
+        <Route path="/modules/files"><Files /></Route>
+        <Route path="/modules/files/media"><MediaLibrary /></Route>
+        <Route path="/modules/secure-store"><SecureStore /></Route>
+        <Route path="/modules/connectivity"><Connectivity /></Route>
+        <Route path="/modules/external"><External /></Route>
         <Route path="/examples/conversation"><Conversation /></Route>
         <Route path="/examples/conversation/single"><ConversationExample /></Route>
         <Route path="/examples/conversation/group"><ConversationExample group /></Route>

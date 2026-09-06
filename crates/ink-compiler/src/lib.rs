@@ -67,6 +67,10 @@ impl Project {
         &self.config.light_server
     }
 
+    pub fn auth_redirect_uri(&self) -> Option<&str> {
+        self.config.auth_redirect_uri.as_deref()
+    }
+
     pub fn root(&self) -> &Path {
         self.config_path
             .parent()

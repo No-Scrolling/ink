@@ -139,3 +139,4 @@ export {
 export { findIcon, type IconAsset } from "./assets";
 export { PlayingScreen, type PlayingScreenProps } from "./playing";
 export { ConversationScreen, Message, type ConversationScreenProps, type ConversationMessage, type MessageProps, type MessageAction, type ReplyPreview } from "./conversation";
+export { openURL, share } from "./external";

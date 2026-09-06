@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { microphone, useLevelMeter, usePitchDetector } from "@ink/audio";
+import { microphone, useLevelMeter, usePitchDetector } from "@ink/audio/capture";
 import { Button, Field, Screen, useAction } from "ink";
 
 export default function Microphone() {

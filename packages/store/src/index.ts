@@ -1,4 +1,5 @@
 import type { Snapshot, SnapshotSource } from "ink";
+export { openDatabase, type SqlRow, type SqlValue } from "./database";
 import { callNative, onNativeMessage } from "ink/native";
 
 export interface Store<T> extends SnapshotSource<T> {

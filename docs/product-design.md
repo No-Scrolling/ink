@@ -1,11 +1,11 @@
 ---
 title: "Product design"
-description: "The intended Ink experience and the work needed to reach it."
+description: "Ink's authoring model, implemented scope and remaining integration work."
 ---
 
 Ink is a React and TypeScript framework for Light Phone III apps. Developers supply app data and behaviour; Ink supplies the phone's visual language, native interaction and device integration.
 
-This is the product design reference. Module guides describe current interfaces and explicitly mark intended interfaces that are not implemented yet. Historical plans and verification records describe work at the time, not additional product requirements.
+This is the product design reference. Module guides describe the current interfaces and their limits. Historical plans and verification records describe work at the time, not additional product requirements. Implemented interfaces and verified provider integrations are separate claims.
 
 ## Authoring
 
@@ -15,7 +15,7 @@ Ink does not promise React Native native-module, DOM or Node compatibility. Its 
 
 ## Screens and behaviour
 
-Screen owns navigation chrome, spacing, scrolling and keyboard accommodation. Row, PlayingScreen and ConversationScreen hide shared layout and interaction behind data and callbacks. Apps own provider requests, playback engines, message delivery and persistence.
+Screen owns navigation chrome, spacing, scrolling and keyboard accommodation. Row, PlayingScreen and ConversationScreen hide shared layout and interaction behind data and callbacks. Apps own provider requests, provider-specific playback engines, message delivery and persistence policies.
 
 Keep ordinary composition available through Text, Image, Button, Stack and List. Every List is virtualised and measures its content automatically. Ink triggers pagination; the app fetches and appends or prepends data. ConversationScreen additionally owns message actions, reply selection and keyboard/scroll coordination.
 
@@ -29,29 +29,31 @@ Keep the simple operation simple. Clipboard and Secure Store expose a few comman
 
 Include capabilities through explicit module imports. Optional engines and capture features must not increase every app's native footprint. Reuse native engines behind Ink interfaces; provider-specific behaviour stays in provider integrations.
 
-## Remaining product scope
+## Implemented module scope
 
-| Capability | Intended scope |
+| Capability | Current scope |
 | --- | --- |
 | [Auth](auth.md) | Browser and device-code sign-in, session observation, coordinated refresh and local sign-out. |
-| [Secure Store](secure-store.md) | Small encrypted string values, shared by Auth and app code. |
-| [Files and media](files.md) | One photo/video picker, document selection, shared durable file references, image preparation, saving and sharing. |
-| [Maps](maps.md) | Optional MapLibre view, markers, native gestures and explicit camera movement. |
-| [Store](store.md) | Keep JSON storage; add direct read-only SQLite access for bundled databases first. |
 | [Connectivity](connectivity.md) | Observe network state; request success remains an HTTP concern. |
 | [Downloads](downloads.md) | Durable ordinary HTTP files; provider download engines remain separate. |
-| External actions | Web links and browser sign-in use a browser-backed in-app window, keeping a direct return to LightOS. Text sharing uses a small framework command; file sharing belongs with files and media. |
+| External actions | Web links and browser sign-in use Android Custom Tabs with explicit unavailable errors when unsupported. Phone, mail and other supported external URLs dispatch to installed handlers. Text sharing uses a framework command; file sharing belongs with files and media. |
+| [Files and media](files.md) | An Ink photo/video gallery with multi-selection, document picker actions, shared durable file references, image preparation, saving and sharing. |
+| [Maps](maps.md) | An optional MapLibre view filling the screen's content area, with markers, native gestures and explicit camera movement. |
+| [Secure Store](secure-store.md) | Small encrypted string values, shared by Auth and app code. |
+| [Store](store.md) | JSON storage and direct read-only SQLite queries over imported bundled databases. |
 
 Reader, Bluetooth and Sensors are outside scope. There is no separate Records or System module. Map clustering, offline map regions, general image editing and video playback are not part of this scope.
 
-## Implementation gaps
+## Shared files and optional engines
 
-The existing screen components remain the intended design. The following changes still require implementation:
+The existing screen components remain the intended design. Capture, picking, recording and downloads now produce the same managed `FileRef`, used by rendering and standard networking. `fetch(file.src).blob()` retains native file ranges through slicing and multipart construction. Native upload preparation copies those ranges into a native spool without copying the complete attachment into JavaScript. Explicit byte and text reads materialise content.
 
-- Implement the capabilities above that are marked planned.
-- Use one managed FileRef across capture, picking, recording, download, rendering and upload. Native-backed file bodies must avoid whole-file JavaScript copies.
-- Retain completed recordings independently. The current recorder replaces its previous recording.
-- Split audio capture and camera scanning into optional entry points. Current imports still include broader native groups.
-- Implement and verify Custom Tabs launch, appearance and return behaviour. The inspected LP3 Chromium [advertises support](verification-custom-tabs.md). Preserve browser security UI; do not silently fall back to the full browser or embedded OAuth.
+Completed recordings are retained independently until explicitly deleted. Apps persist file IDs and own reference counting and retention; disposing a screen does not delete accepted attachments.
 
-These are design decisions, not claims that the corresponding code has shipped. Validate the integrations against Weather, Passes, Index, Buses, Beeper, Spotify and Echo TV. Provider playback, background messaging and offline engines need their own integrations; component coverage alone does not replace them.
+Audio capture is imported from `@ink/audio/capture`; camera scanning is imported from `@ink/camera/scan`. Playback and still-photo imports exclude those optional native engines. MapLibre and other optional engines follow their module capability graph.
+
+## Integration and verification
+
+Custom Tabs launch, theme parameters and return handling are implemented. [Physical LP3 checks](verification-custom-tabs.md) passed website open/close, dark toolbar appearance and local OAuth sign-in/cancellation. Production providers still need checks with their registered redirects. Preserve browser security UI, and do not silently substitute the full browser or embedded OAuth when Custom Tabs is unavailable.
+
+Validate the integrations against Weather, Passes, Index, Buses, Beeper, Spotify and Echo TV. Provider playback, background messaging and offline engines need their own integrations; component coverage alone does not replace them. Keep physical-device behaviour, emulator checks and provider-specific verification explicit in the corresponding evidence records.

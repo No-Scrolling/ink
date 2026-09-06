@@ -95,7 +95,7 @@ function buildOptions(bootstrap = false) { return {
       }
       return { contents: `export default /* @__PURE__ */ Object.freeze(${JSON.stringify(references)});`, loader: "js" };
     });
-    build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
+    build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3|db)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
     build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
       const resolved = await realpath(Bun.resolveSync(path, /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
       const name = await inspect(resolved);

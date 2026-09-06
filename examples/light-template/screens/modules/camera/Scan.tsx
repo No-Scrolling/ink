@@ -1,4 +1,4 @@
-import { CameraPreview, useCodeScanner } from "@ink/camera";
+import { CameraPreview, useCodeScanner } from "@ink/camera/scan";
 import { Field, Screen, useRouteParams } from "ink";
 
 export default function Scan() {

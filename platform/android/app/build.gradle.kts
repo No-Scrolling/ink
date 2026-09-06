@@ -82,6 +82,10 @@ val inkUsesNotifications = inkUses("notifications")
 val inkUsesNotificationPermission = inkUses("notification-permission")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = inkUses("text-input")
+val inkUsesDownloads = inkUses("downloads")
+val inkUsesMaps = inkUses("maps")
+val inkUsesFiles = inkUses("files")
+val inkAuthRedirectUri = providers.gradleProperty("inkAuthRedirectUri").orElse("")
 val inkLightSdkVersion = "0.1.1"
 val inkCapabilityFingerprint = inkCapabilities.map { it.sorted().joinToString(",") }
 val inkPermissions = inkCapabilities.get().flatMap { name ->
@@ -110,6 +114,7 @@ val generateInkPermissionManifest by tasks.registering {
         ).joinToString(","),
     )
     outputs.file(inkPermissionManifest)
+    inputs.property("authRedirectUri", inkAuthRedirectUri)
     doLast {
         val output = inkPermissionManifest.get().asFile
         output.parentFile.mkdirs()
@@ -130,7 +135,8 @@ val generateInkPermissionManifest by tasks.registering {
             val hasInkComponents = inkUsesBackground.get() ||
                 inkUsesNotifications.get() ||
                 inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get() ||
-                inkUsesLocation.get() || inkUsesNfc.get() || inkUsesNetwork.get()
+                inkUsesLocation.get() || inkUsesNfc.get() || inkUsesNetwork.get() ||
+                inkUsesDownloads.get() || inkUsesFiles.get() || inkAuthRedirectUri.get().isNotEmpty()
             if (hasInkComponents) {
                 val networkSecurity = if (inkUsesLightSdkPush.get() || inkUsesNetwork.get()) {
                     " android:networkSecurityConfig=\"@xml/ink_network_security\""
@@ -141,6 +147,24 @@ val generateInkPermissionManifest by tasks.registering {
             }
             if (inkUsesBackground.get()) {
                 appendLine("        <service android:name=\".InkWorkerJobService\" android:exported=\"true\" android:permission=\"android.permission.BIND_JOB_SERVICE\" />")
+            }
+            if (inkUsesDownloads.get()) {
+                appendLine("        <service android:name=\".InkDownloadJobService\" android:exported=\"true\" android:permission=\"android.permission.BIND_JOB_SERVICE\" />")
+            }
+            if (inkUsesFiles.get()) {
+                appendLine("        <provider android:name=\"androidx.core.content.FileProvider\" android:authorities=\"${inkApplicationId.get()}.ink.files\" android:exported=\"false\" android:grantUriPermissions=\"true\">")
+                appendLine("            <meta-data android:name=\"android.support.FILE_PROVIDER_PATHS\" android:resource=\"@xml/ink_file_paths\" />")
+                appendLine("        </provider>")
+            }
+            if (inkAuthRedirectUri.get().isNotEmpty()) {
+                val scheme = inkAuthRedirectUri.get().substringBefore(':')
+                require(scheme.matches(Regex("[A-Za-z][A-Za-z0-9+.-]*")) && scheme !in listOf("http", "https"))
+                appendLine("        <activity android:name=\".MainActivity\"><intent-filter>")
+                appendLine("            <action android:name=\"android.intent.action.VIEW\" />")
+                appendLine("            <category android:name=\"android.intent.category.DEFAULT\" />")
+                appendLine("            <category android:name=\"android.intent.category.BROWSABLE\" />")
+                appendLine("            <data android:scheme=\"$scheme\" />")
+                appendLine("        </intent-filter></activity>")
             }
             if (inkUsesLocation.get()) {
                 appendLine("        <service android:name=\"com.vandam.ink.InkLocationService\" android:exported=\"false\" android:foregroundServiceType=\"location\" />")
@@ -195,6 +219,7 @@ android {
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
+        buildConfigField("boolean", "INK_MEDIA_LIBRARY_ENABLED", inkUses("media-library").get().toString())
         applicationId = inkApplicationId.get()
         minSdk = 34
         ndk { abiFilters += "arm64-v8a" }
@@ -203,6 +228,7 @@ android {
         versionName = inkVersionName.get()
         resValue("string", "app_name", inkAppName.get())
         manifestPlaceholders["inkLightSdkEnabled"] = inkUsesLightSdk.get()
+        manifestPlaceholders["inkMapsHardwareAcceleration"] = inkUsesMaps.get()
         manifestPlaceholders["inkLightSdkMarkerAction"] = inkLightSdkMarkerAction
         manifestPlaceholders["inkLightSdkVersion"] = inkLightSdkVersion
         manifestPlaceholders["inkLightServerPackage"] = inkLightServerPackage.get()
@@ -234,8 +260,11 @@ android {
     }
 
     sourceSets {
+        val audioSource = if (inkUses("audio-capture").get()) "audioCapture" else if (inkUsesAudio.get()) "audioPlaybackAdapter" else "noAudio"
+        getByName("main").java.srcDir("src/$audioSource/kotlin")
         getByName("main").res.srcDir(inkAndroidResources)
         if (inkUsesNfc.get()) getByName("main").res.srcDir("src/nfc/res")
+        if (inkUsesFiles.get()) getByName("main").res.srcDir("src/files/res")
         getByName("main").assets.srcDir(inkAndroidAssets)
         getByName("debug").manifest.srcFile(inkPermissionManifest)
         getByName("release").manifest.srcFile(inkPermissionManifest)
@@ -322,7 +351,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
         for ((feature, enabled) in listOf(
             "network" to inkUsesNetwork,
             "image" to inkUsesImage,
-            "audio" to inkUsesAudio,
+            "audio" to inkUses("audio-capture"),
             "background" to inkUsesBackground,
             "camera-photo" to inkUsesPhotoCapture,
             "benchmark" to inkBenchmark,
@@ -356,6 +385,12 @@ tasks.configureEach {
 }
 
 dependencies {
+    if (inkUsesFiles.get()) {
+        implementation("androidx.core:core:1.13.1")
+    }
+    if (inkUsesMaps.get()) {
+        implementation("org.maplibre.gl:android-sdk:11.11.0")
+    }
     if (inkUsesNetwork.get()) {
         implementation("com.squareup.okhttp3:okhttp:5.4.0")
     }
@@ -368,6 +403,7 @@ dependencies {
         implementation("androidx.media3:media3-session:1.10.1")
     }
     if (inkUsesPhotoCapture.get() || inkUsesCodeScanner.get()) {
+        implementation("androidx.lifecycle:lifecycle-runtime:2.6.2")
         implementation("androidx.camera:camera-core:1.5.0")
         implementation("androidx.camera:camera-camera2:1.5.0")
         implementation("androidx.camera:camera-lifecycle:1.5.0")
