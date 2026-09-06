@@ -3,9 +3,7 @@ title: "Camera"
 description: "Native preview and capture owned by the visible screen."
 ---
 
-Front/rear preview, capture, review and durable photo files are supported. Camera availability and quality depend on the device.
-
-`@ink/camera` provides a native preview and still capture. Use it for a chat photo, a document image or an app-specific capture flow.
+Use `@ink/camera` to preview, capture and review photos. It supports front and rear cameras when the device provides them.
 
 ```tsx
 import { Screen } from "ink";
@@ -32,7 +30,3 @@ Use `useCamera({ facing: "front" })` to request the front camera. Missing hardwa
 The camera releases when its screen is covered or the app backgrounds, and reacquires on return. Interrupted capture rejects or completes with a result tied to the original request; it cannot update a replacement screen. Handle denial, camera-in-use and unavailable hardware distinctly.
 
 Use `@ink/camera/scan` for [code scanning](barcode.md); still-capture imports do not include the scanner. Choose an existing photo with [Files and media](files.md). Apps should not build a JavaScript frame-processing loop merely to decode a code.
-
-## Shared attachments
-
-Accepted photos contain a shared `FileRef` in `photo.file`, usable by images, storage and uploads through its `src`. Persist `file.id` and reopen with `files.open(id)`; use `files.remove(id)` for retention. The earlier `uri` and `source` aliases remain available. Camera owns capture, review and cleanup of rejected photos.

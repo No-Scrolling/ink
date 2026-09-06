@@ -7,7 +7,7 @@ description: "Persist small settings with explicit decoding and migrations."
 
 ## JSON storage
 
-Committed writes notify active observers in other app runtimes through private Android broadcasts. Observers reload the changed key; a newly started process reads SQLite directly.
+Create a store with a key, an initial value and a decoder:
 
 ```ts
 import { createStore } from "@ink/store";
@@ -80,6 +80,6 @@ try {
 
 Queries start with `SELECT`, `WITH` or `EXPLAIN`; the database also enforces read-only access. Parameters bind strings, finite numbers or null without SQL interpolation. Rows contain strings, numbers or null; binary columns and integers outside JavaScript's safe range reject. Cast large integers to text when necessary. A runtime can open eight handles. Results are limited to 10,000 rows and approximately 400 kB of encoded row data; use SQL limits and pagination for larger collections. An abort signal cancels a running query.
 
-Buses' stops database is the initial use case. The bundled database is read-only; an app update replaces its asset rather than migrating a writable copy. Query results are arrays of row values that the app decodes into its own types. SQL values use bound parameters. The app owns search terms and result limits; filtering and ordering stay in SQLite.
+Use bundled databases for data such as bus stops. An app update replaces the database asset; the app cannot write to it. Decode query results into your own types.
 
-No ORM, live-query system, outbox abstraction or general schema-management layer is added. Writable databases and transactions can be considered when a real migration needs them. The existing JSON interface remains the simple choice for settings and small collections.
+Use the JSON store for settings and small collections. Writable SQL databases, transactions and live queries are not supported.

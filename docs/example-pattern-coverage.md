@@ -1,6 +1,6 @@
 # Example pattern coverage — 6 September 2026
 
-The source comparison covered representative routes and shared components in `~/Developer/buses`, `index`, `spotify`, `beeper`, `reverb`, `weather` and `passes`. This record reflects the subsequent Ink implementation. No app has been ported; local examples establish UI behaviour, not backend or native dependency compatibility.
+Compared routes and shared components in Buses, Index, Spotify, Beeper, Reverb, Weather and Passes on 6 September 2026. The table records Ink’s examples, not completed app ports. Provider and native integrations still need real-app checks.
 
 | App | Implemented examples and shared behaviour | Remaining real-app validation |
 | --- | --- | --- |

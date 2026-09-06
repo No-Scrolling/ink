@@ -1,6 +1,6 @@
 # Matching counters on Light Phone III
 
-Measured 2026-09-06T18:06:39.199Z. Ink, Expo and Light SDK ARM64 release counters were measured in one interleaved physical LP3 run after their visible components were aligned. Scrolling fixtures are no longer part of the comparison.
+Measured at 2026-09-06T18:06:39.199Z on the physical LP3. The run alternated Ink, Expo and Light SDK ARM64 release counters with matching visible components. Scrolling is not part of this comparison.
 
 | Counter | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |

@@ -3,9 +3,7 @@ title: "NFC"
 description: "Read supported tags through native sessions."
 ---
 
-NDEF reading, raw ISO-DEP/NfcA connections and host card emulation are supported. Tag writing is not supported.
-
-`@ink/nfc` provides foreground tag sessions for shortcuts, identifiers and supported NDEF content.
+Use `@ink/nfc` to read NDEF tags, exchange raw ISO-DEP or NfcA commands, or emulate an app-defined card. Tag writing is not supported.
 
 ```ts
 import { nfc } from "@ink/nfc";
@@ -18,8 +16,6 @@ await openShortcut(shortcut);
 This fragment assumes a cancellation signal and app-specific validation/navigation functions. Reading waits for a tag while the app is foregrounded. Cancellation, timeout, disabled NFC and unsupported tags are distinct outcomes.
 
 Inspect record types and validate payloads before acting. A tag URL does not authorise opening an arbitrary destination automatically. Tag identifiers are useful lookup hints, not proof of identity.
-
-NFC tag writing is not supported.
 
 Sessions release on leaving the screen or backgrounding. Reading NDEF does not require a raw connection or card emulation.
 
@@ -37,7 +33,7 @@ try {
 
 `iso-dep` and `nfc-a` expose native exchanges as `Uint8Array` values. The result identifies the technology, serial number and maximum command length. Only one raw connection or NDEF reader can own the radio at a time. Exchanges are serial, with a timeout of up to ten seconds and a 64 KiB response limit. Cancelling a pending operation or backgrounding the app closes its connection. The connection signal covers discovery; close the returned connection in your screen's cleanup as well.
 
-There are no tag-writing APIs. Raw exchanges are protocol-specific; support for a tag technology does not imply support for every tag or application using it.
+Decode raw responses using the tag’s protocol. Support for a technology does not cover every application that uses it.
 
 ## Card emulation
 

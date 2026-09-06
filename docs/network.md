@@ -1,10 +1,9 @@
 ---
 title: "Network"
 description: "Use fetch with native HTTP transport."
-tag: "In development"
 ---
 
-> **In development.** Fetch, response streams, Blob, File, FormData, multipart uploads and WebSocket are implemented. Public WSS and transport limits need further verification.
+Ink supports fetch, response streams, Blob, File, FormData, multipart uploads and WebSocket. Public WSS and transport limits still need broader verification.
 
 Use standard `fetch` for HTTP. Enable the `network` capability in `ink.toml`. Ink runs transport natively and delivers completions to JavaScript.
 
@@ -23,13 +22,13 @@ export async function getDepartureBoard(stopId: string, signal?: AbortSignal) {
 }
 ```
 
-This fragment assumes your provider's `decodeDepartures` function. A successful HTTP response still needs decoding. `fetch` rejects transport failures and cancellation; HTTP error statuses remain responses. Apply timeouts with `AbortSignal.timeout()` and propagate caller cancellation with `AbortSignal.any()`.
+`decodeDepartures` validates the response for your app. A successful HTTP response still needs decoding. `fetch` rejects transport failures and cancellation; HTTP error statuses remain responses. Apply timeouts with `AbortSignal.timeout()` and propagate caller cancellation with `AbortSignal.any()`.
 
 ## Requests
 
 Fetch resolves when response headers arrive. Read `response.body` incrementally with a reader, async iterator or stream pipeline. Native transport reads one 32 KiB chunk on demand rather than buffering the whole response. Cancel the reader or abort the request when you no longer need it.
 
-For HTTP responses, `json()`, `text()`, `blob()`, `formData()` and `arrayBuffer()` materialise the body, with a 16 MiB limit. Stream larger responses instead. Managed local file responses preserve native storage when `blob()` is called; explicit text and byte reads still materialise their data. A response body can be consumed once; `clone()` creates a second branch. Consuming only one stream clone can buffer data for the other branch, so avoid cloning large streams.
+For HTTP responses, `json()`, `text()`, `blob()`, `formData()` and `arrayBuffer()` read the whole body into memory, with a 16 MiB limit. Stream larger responses instead. Managed local file responses preserve native storage when `blob()` is called; explicit text and byte reads still read their data into memory. A response body can be consumed once; `clone()` creates a second branch. Consuming only one stream clone can buffer data for the other branch, so avoid cloning large streams.
 
 ```ts
 const response = await fetch(url, { signal });
@@ -74,7 +73,7 @@ socket.addEventListener("message", event => handleMessage(event.data));
 socket.close(1000, "Finished");
 ```
 
-There are at most eight sockets per runtime. Messages are limited to 256 KiB and incoming/outgoing queues to 512 KiB; overflowing an incoming queue closes the connection. `bufferedAmount` includes JavaScript sends and the latest native queue snapshot. A domain module owns authentication, reconnection and reconciliation; rendering must not open sockets.
+There are at most eight sockets per runtime. Messages are limited to 256 KiB and incoming/outgoing queues to 512 KiB; overflowing an incoming queue closes the connection. `bufferedAmount` includes JavaScript sends and the latest native queue snapshot. Manage authentication and reconnection in a shared module. Do not open sockets during rendering.
 
 For ordered message streams, track provider cursors or sequence numbers and recover after gaps. Bound pending sends and incoming queues. A socket surviving briefly after backgrounding is not a delivery guarantee; use [background work](background.md) and push where available.
 
@@ -84,7 +83,7 @@ Retry selected reads with bounded backoff. Writes need an idempotency key or a w
 
 Persist small results explicitly with [Store](store.md); its read-only SQLite interface queries imported database assets. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
 
-Use [Downloads](downloads.md) for durable transfers and [Auth](auth.md) for account flows. An npm HTTP client is welcome if its requirements match the host profile.
+Use [Downloads](downloads.md) for durable transfers and [Auth](auth.md) for account flows. You can use an npm HTTP client if it supports [Ink’s runtime](runtime-compatibility.md).
 
 ## Template server
 

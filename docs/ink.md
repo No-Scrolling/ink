@@ -5,14 +5,7 @@ description: "Small TypeScript apps with a native Light Phone interface."
 
 Build Light Phone III apps with React and TypeScript. Ink provides native components, navigation, rendering and device APIs.
 
-See [Product design](product-design.md) for the module scope and integration boundaries. Module guides describe supported interfaces and verification limits.
-
-
-## External actions
-
-The framework commands `openURL(url)` and `share({ text })` are imported from `ink`. Both return promises and own the external activity round trip; user cancellation resolves normally, while invalid URLs, missing handlers and native failures reject. Apps validate externally supplied links before opening them. File sharing belongs with [Files and media](files.md). Appearance and screen lifecycle use Ink's existing interfaces.
-
-Web links open in a browser-backed in-app window using Android Custom Tabs. Closing it restores the Ink screen and its state. Browser colours follow Ink's appearance within the browser's supported customisation, retaining site identity and browser security controls. [Physical LP3 checks](verification-custom-tabs.md) passed website launch and close, dark toolbar appearance, browser sign-in and cancellation using the local OAuth fixture. Missing Custom Tabs support reports an unavailable error instead of silently switching to the full browser. Telephone links open the dialler, message links open a composer, and other app schemes use their registered native handlers. Local file, content, script and intent URLs are rejected; use managed file sharing for attachments.
+Start with [Create an app](standalone.md), or run the template below.
 
 ## Run the template
 
@@ -62,7 +55,7 @@ export default function Settings() {
 }
 ```
 
-`Screen` owns the header, back affordance, content insets and safe space above tabs. It scrolls ordinary content when needed. `Stack` arranges children vertically; `axis="horizontal"` creates a row. Use `gap`, `align` and `justify` rather than repeated spacer elements.
+`Screen` provides the title bar, back button, content padding and space above tabs. It scrolls when content overflows. `Stack` arranges children vertically; use `axis="horizontal"` for a row. Set `gap`, `align` and `justify` to control the layout.
 
 Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. General icons are imported Material Symbol collections. `Icon.name`, `Button.icon` and `Tab.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](build-contracts.md) for formats and migration.
 
@@ -96,9 +89,9 @@ Compose the state and settings patterns inside a `Screen`; `Confirmation` owns i
 | `ErrorState` | `message`, `onRetry`, optional `retryLabel` and `disabled`. |
 | `Confirmation` | A complete screen: `title`, small text children, `confirmLabel`, `onConfirm`, optional `centered` message layout, and optional pending state and label. One uppercase action is anchored at the bottom; Back cancels. |
 
-These compositions do not fetch data, persist choices or navigate automatically. Supply those behaviours through callbacks, using `useAction` to track asynchronous work when useful. Keep a failed action's error visible and allow retry. Use a consequence such as “Clear example list” for confirmation rather than “Yes”.
+Supply callbacks to fetch data, save choices or navigate. Use `useAction` to track asynchronous work and show errors. Confirmation labels should name the action, such as “Delete list”.
 
-The template demonstrates each pattern: Search submits from the keyboard to a separate results page, Screen States offers separate local Loading and Error examples: centred loading text leads to content or a centred error with a bottom retry action, and Confirmation opens the single-action screen directly and returns when confirmed.
+The template includes separate loading, error and confirmation examples.
 
 `Confirmation` owns its screen; do not wrap it in another `Screen`. Its message can scroll when necessary while the action stays at the bottom. Pending state disables the action and displays `pendingLabel` (default “Working…”).
 
@@ -123,13 +116,15 @@ export function Search() {
 }
 ```
 
-The `search` and `done` actions submit to `onSubmit`; navigating away closes the keyboard with the page change. Without a handler, submission dismisses the keyboard. `action="return"` enables multiline input: Return inserts a newline and the input grows to three visible lines. Drag vertically inside it to scroll longer drafts; typing reveals the cursor again. It does not call `onSubmit`. ConversationScreen uses Return and its separate send button. `autoFocus` focuses once per screen visit. The keyboard and cursor interaction stay native. The keyboard reserves space below the screen, and viewport changes reveal the focused input. LightOS preferences inform haptics and keyboard behaviour where the host exposes them. Use a dedicated search screen with its action in the keyboard, and show results on a separate page. `Field` displays a text value and cannot contain an input.
+`action="search"` and `action="done"` call `onSubmit`. Navigating closes the keyboard with the page; without a handler, submission dismisses it. Use a dedicated search page and show results on a separate page.
 
-Update the controlled `value` synchronously in `onChange`, as above; debounce network requests or other effects instead. Native event counters protect against older commits while JavaScript is busy. They do not infer which later asynchronous value updates an application intended to keep.
+`action="return"` inserts newlines instead of submitting. The input grows to three lines, then scrolls vertically. ConversationScreen uses this mode with a separate send button. `autoFocus` focuses once per screen visit. Ink adjusts the viewport to keep the focused input visible. `Field` displays a value and cannot contain an input.
+
+Update `value` synchronously in `onChange`. Debounce network requests rather than input updates. Ink rejects stale native edits, but cannot decide which delayed app updates you intended to keep.
 
 Centred images in a full-width vertical stack stay centred on the page when it scrolls; text and controls retain space for the scrollbar.
 
-Placeholders use the theme's muted grey. The keyboard has no bottom dismiss row; it ends with Ink's standard 20-unit bottom inset. Back dismisses it. Multiline edits retain the input's scroll position while the cursor remains visible, and only adjust it when necessary to reveal the cursor.
+Placeholders use muted grey. Back dismisses the keyboard, which has a 20-unit bottom inset. Multiline editing keeps the current scroll position unless it needs to reveal the cursor.
 
 Remote images use HTTPS. Images require explicit positive `width` and `height`, can use `fit="contain"` or `"cover"`, and currently have no fallback prop. `bleed` extends an image to the viewport width while preserving the declared aspect ratio. `zoomable` enables gestures; it defaults to false. Arbitrary `file://` images are not accepted by `Image`. Decoding, downsampling, texture caching, pinch zoom and panning stay native. Large media bytes need not pass through JavaScript. For a zoomable image, double-tap cycles through 2×, 3× and 4× magnification, then resets to the fitted image; drag to pan while zoomed. Pinch interaction still needs device verification.
 
@@ -173,11 +168,17 @@ export default function App() {
 }
 ```
 
-`navigate({ path: "/forecast", params: { placeId } })` and an equivalent `href` push a destination. `back()` returns; `replace()` replaces the current entry. Headers, edge-back gestures and hardware Back use the same navigation stack. Those native back affordances dismiss a focused keyboard first; a subsequent back returns to the previous screen. Pass IDs and small JSON values, not an entire message history or a live player.
+`navigate({ path: "/forecast", params: { placeId } })` or an equivalent `href` opens a screen. Use `back()` to return and `replace()` to replace the current screen. The title-bar button, edge gesture and hardware Back first dismiss the keyboard, then navigate back. Pass IDs and small JSON values as route parameters.
 
-`useRouteParams<T>()` gives an internal route its declared TypeScript shape. A generic alone cannot validate a deep link: pass a `decode(unknown)` function when data can arrive externally. An unknown notification route opens “Page unavailable” with a back action, preserving the previous screen. Registered route components are responsible for handling invalid parameter values. Parameter values are dynamic.
+`useRouteParams<T>()` reads route parameters. For external links, supply a `decode(unknown)` function to validate them; a TypeScript generic does not validate runtime data. Unknown notification routes open “Page unavailable” with a back action.
 
-A pushed screen retains its local state while covered. Tabs retain independent state and scroll positions. Visibility-scoped work pauses when a screen is covered or its tab is inactive. Popping a screen disposes it. None of that makes local state durable across process death.
+Covered screens keep their React state. Tabs also keep separate scroll positions. Ink pauses screen-owned work while hidden and disposes popped screens. Save data in Store if it must survive an app restart.
+
+## External actions
+
+Import `openURL(url)` and `share({ text })` from `ink`. Both return promises and restore the app when the external window closes. Cancellation resolves normally; invalid URLs, missing handlers and native failures reject. Use [Files and media](files.md) to share attachments.
+
+Web links open in Android Custom Tabs. The toolbar follows Ink’s appearance while keeping the site identity and browser security controls visible. If Custom Tabs is unavailable, the command rejects. Telephone links open the dialler; message links open a composer. Other app schemes use their installed handlers. File, content, script and intent URLs are rejected. See [LP3 verification](verification-custom-tabs.md).
 
 ## Build and inspect
 
@@ -188,7 +189,7 @@ ink build
 ink logs
 ```
 
-`ink check` validates the project and type-checks JavaScript apps. It does not establish compatibility for every npm dependency or dynamic path. `ink info` shows resolved project/build information; a detailed bundle-size report is planned. `ink build` produces a release APK using the signing configuration in `ink.toml`; use `ink dev --once` to install and launch a development build.
+`ink check` validates the project and checks types. `ink info` shows the resolved build configuration. `ink build` creates a signed release APK; `ink dev --once` installs a development build. Check third-party libraries against [runtime compatibility](runtime-compatibility.md).
 
 Configure your release key in `ink.toml`, with the keystore path relative to that file:
 
@@ -233,17 +234,26 @@ Use `Screen`'s optional `header` for content that stays below the navigation tit
 
 `rightAction` places one icon/action in the navigation title bar. It is separate from `header`, which pins composed content below the title. The Examples tab demonstrates the more-horizontal icon opening Action Page.
 
-The Code generation page links to all 13 supported formats, each displayed inside a centred Screen. QR Code encodes `Hello World!` at size 240 with a two-module white border. `size` sets the display width; height follows the generated image. QR stays square, PDF417 uses its encoded proportions, and linear codes use a compact bar height with a white border. Other formats use text or valid numeric samples as appropriate. Generation and display are handled by `Barcode` from `@ink/barcode/generate`.
+Use `Barcode` from `@ink/barcode/generate` for codes. See [Barcodes and passes](barcode.md).
 
 ## Playing screen
 
 `PlayingScreen` groups optional artwork, title/artists, progress and transport controls at the top of the content area below the header. Its `actions` stay at the bottom and are distributed evenly. Omitting `image` centres the main group vertically between the header and bottom actions; a loading image reserves its space.
 
-Supply `playing`, `onPlayPause`, `position` and `duration` (milliseconds), and optional `onSeek` for tap-to-seek. `title` has optional `onTitlePress`; each entry in `artists` has a `name` and optional `onPress`. Required `previous` and `next` actions accept `onPress`, optional `onLongPress`, optional `disabled` and optional `seconds: 5 | 10 | 30` to show seek icons instead of track controls. Each bottom action accepts `icon`, `onPress`, optional `selected` and `disabled`.
+Pass playback state and callbacks:
 
-The screen owns presentation; the app owns playback and queue behaviour. The template's Image and No Image examples simulate progress without playing audio. Image uses Wallsocket artwork and track controls; No Image demonstrates backward 10-second and forward 30-second controls.
+| Props | Purpose |
+| --- | --- |
+| `playing`, `onPlayPause` | Control playback. |
+| `position`, `duration`, optional `onSeek` | Show progress in milliseconds and handle seeking. |
+| `title`, optional `onTitlePress` | Display an actionable title. |
+| `artists` | Names with optional `onPress` callbacks. |
+| `previous`, `next` | Required actions with `onPress`, optional `onLongPress` and `disabled`. Set `seconds` to 5, 10 or 30 for seek icons. |
+| `actions` | Bottom controls with `icon`, `onPress`, optional `selected` and `disabled`. |
 
-A long press invokes `onLongPress` once and suppresses the normal tap on release. Moving away cancels it. The template seeks backward/forward by 15 seconds on a hold, matching Reverb; the callback determines the amount. Bottom actions can change their `icon` independently of `selected`, which adds an underline.
+Your app controls playback and queues. The template’s **Image** and **No Image** examples simulate progress without playing audio.
+
+A long press calls `onLongPress` once and suppresses the tap on release. Moving away cancels it. Bottom actions can change icons and use `selected` for an underline.
 
 ## Conversations
 
@@ -263,11 +273,19 @@ A long press invokes `onLongPress` once and suppresses the normal tap on release
 />
 ```
 
-Long-pressing a message or its image opens its preview and the built-in Reply action. Reply returns to the chat, selects the reply target and scrolls to the bottom. Ink builds the preview from the message's author and text (or “Photo” for an image). Outgoing replies use “You”; an omitted incoming author falls back to the screen title. The composer owns the reply banner and its close button. `onSend` receives `{ text, replyTo }`: trimmed text and the original reply target, if selected. After the callback returns, Ink clears the selected reply. The app handles sending, stores any reply snapshot on the sent message and clears its controlled draft when appropriate.
+### Reply and send
+
+Long-press a message or image to open its preview and **Reply** action. Reply returns to the chat and scrolls to the bottom. The banner shows the author and text, or “Photo” for an image. Outgoing replies use “You”; incoming replies without an author use the screen title.
+
+`onSend` receives `{ text, replyTo }`, with trimmed text and the selected message. Ink clears the reply after the callback returns. Your app sends the message, saves any reply snapshot and clears its controlled draft.
 
 `actions` supplies additional labels and callbacks. Ink returns to the chat before invoking a callback, so it can update data or navigate elsewhere. Back dismisses the actions page without changing the selected reply or chat scroll position. Optional `onRetry`, `onImagePress` and `onDoubleTap` callbacks receive the message. `Message` remains available independently for custom screens.
 
-`timestamp` is milliseconds since the Unix epoch. Ink displays local time for today and adds the month and day for older messages. Set `group` for group chats to show incoming authors; single chats hide authors and outgoing messages never show “You” in their subtitle. Reactions share the subtitle. Optional statuses are `sending`, `sent`, `delivered`, `read` and `failed`; the app supplies them from its messaging service. A failed message offers “Tap to try again” when `onRetry` is supplied. An image supplies `src`, `width` and `height`; a stored `reply` supplies `author` and `text`.
+### Message details
+
+`timestamp` is milliseconds since the Unix epoch. Ink shows local time for today and adds the month and day for older messages. Set `group` to show incoming authors in a group chat. Outgoing messages omit the author. Reactions appear on the same line.
+
+Set `status` to `sending`, `sent`, `delivered`, `read` or `failed` using your service’s state. Failed messages offer “Tap to try again” when you supply `onRetry`. Images need `src`, `width` and `height`; saved replies need `author` and `text`.
 
 Use `onLoadOlder` and `hasOlder` to prepend history. `onAttach` supplies the composer's plus action. The Single chat and Group chat examples use local data and demonstrate text, image-only messages, replies, reactions and delivery states.
 

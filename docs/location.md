@@ -3,9 +3,9 @@ title: "Location"
 description: "One-off fixes and visibility-scoped location updates."
 ---
 
-One-off fixes, watches and foreground-service tracking are supported. Location permission remains subject to host policy.
+Use `@ink/location` for a single position, live updates or background tracking. It does not require Google Play Services.
 
-`@ink/location` provides native location without requiring a Google Play Services provider. Use a one-off fix for weather or nearby departures, and a visible watch when movement matters.
+Request a single position for weather or nearby departures:
 
 ```ts
 import { location } from "@ink/location";
@@ -21,7 +21,7 @@ if (permission === "granted") {
 }
 ```
 
-The final operation belongs to the app. A fix includes timestamp, accuracy in metres and coordinates. Check age and accuracy before using it; a cached coarse fix may be sufficient for a forecast but unsuitable for turn guidance.
+`selectNearbyPlace` is your app’s function. A fix includes timestamp, accuracy in metres and coordinates. Check age and accuracy before using it; a cached coarse fix may be sufficient for a forecast but unsuitable for turn guidance.
 
 `location.current({ signal })` accepts cancellation. A watch uses a native listener and yields fresh fixes:
 

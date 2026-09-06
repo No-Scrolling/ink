@@ -1,6 +1,6 @@
 # Optimised Ink, Expo and Light SDK on LP3
 
-Fresh measurements of all three frameworks after Ink's startup memory changes. The six release apps are rebuilt from the existing counter and non-virtualised 1,000-row fixtures. Framework order alternates within one runtime run.
+This historical run compared Ink, Expo and Light SDK after Ink’s startup memory changes. It used six release apps: a counter and a non-virtualised 1,000-row list for each framework, alternating framework order.
 
 ## Results
 

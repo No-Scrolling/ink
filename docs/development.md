@@ -1,19 +1,36 @@
-# Developing an Ink application
+# Develop an app
 
-Run `ink dev --device <serial>` inside the app, or use `ink -C <app> dev`. The first successful build installs the development APK. Keep the command running: subsequent application edits compile JavaScript and assets, transfer a complete generation through ADB into app-private storage, then activate it without Gradle or an APK installation. `--once` builds and launches once. `--logs` streams application errors and logs.
+Run the development command from your app directory:
 
-Development builds use development React, readable JavaScript and source maps. Compatible component edits use React Refresh and preserve mounted component state. Changed hook signatures remount the affected component. Changing the persistent framework bootstrap, capabilities, Android resources, app configuration or native sources rebuilds the development host. Changing icon masks restarts the UI runtime. A runtime restart resets React state; persisted application data remains available.
+```sh
+ink dev --device <serial>
+```
 
-The watcher follows the compiler manifest's resolved inputs, including linked modules outside the application directory. It also watches app files and framework native/compiler sources so new imports and configuration changes invalidate the graph. It excludes `.git`, `node_modules`, `.ink`, `target`, `build`, `.gradle` and `dist` from recursive scans; resolved dependency files are watched individually. Polling is debounced before compilation.
+Use `ink devices` to find your phone or emulator. To run from another directory, use `ink -C <app> dev`.
 
-A failed compilation leaves the running application alone. Runtime errors appear in a development dialog with a Reload action and are written to Logcat; source-map locations are resolved to their original source when a mapping is available. Correct the source and save to recover through the same CLI session. A failed native build can also be corrected without restarting the CLI.
+The first build installs and opens a development APK. Keep the command running while you edit. Ink sends JavaScript and asset updates through ADB without reinstalling the APK.
 
-Background jobs copy the selected worker bundle into immutable, content-addressed app-private storage when they are scheduled. Retries keep that bundle, so activating a UI generation does not change code underneath an existing job. The newest three development generations are retained. Worker bundles and audio used by detached playback are pinned separately by content hash; uninstalling clears these caches.
+- Add `--once` to build and launch once.
+- Add `--logs` to stream app logs and errors.
 
-Release builds retain minification and omit the native development evaluation command. Development activation is gated by Android's debug build constant and requires the debug APK's `run-as` access through ADB.
+## Save and refresh
 
-Validation of a development-loop change should include a stateful component edit, a hook-signature edit, a syntax error followed by correction, a runtime error followed by Reload, a linked-package edit, an asset edit and a native-requirement change. Full application workflows and physical-device measurements are separate checks.
+Compatible component edits preserve React state. Changing a component’s hooks remounts it. Changes to icon masks restart the UI runtime. Native code, capabilities, Android resources and app configuration rebuild the APK.
 
-## Verification recorded on 6 September 2026
+A runtime restart clears React state but keeps saved app data. The watcher includes imported files in linked packages outside your app directory.
 
-A standalone counter on the Android emulator retained its count across a compatible label edit, reset component state after a hook-signature change, and updated an imported module outside the app directory. These edits kept the Android process running and used bundle transfer without Gradle or installation. An injected component error mapped to its exact original TSX line and column; correcting the source dismissed the error dialog and recovered in the same process. A fresh watcher installed once before waiting for edits. These are bounded development-loop checks, not physical-device or complete application workflow verification.
+## Fix errors
+
+A build error leaves the current app running. Fix the source and save to try again.
+
+Runtime errors appear in a development dialog with a **Reload** action and in Logcat. Source maps point to your original code when a mapping is available. You can fix JavaScript and native build errors without restarting the command.
+
+## Background work
+
+Each scheduled job keeps a copy of its worker bundle, so an app refresh does not change a running job’s code. Ink keeps the newest three development bundles. Worker bundles and detached audio assets have separate caches; uninstalling the app clears them.
+
+Release builds use minified code and exclude the development reload command.
+
+## Verification
+
+[Emulator checks](verification-2026-09-06.md) cover state-preserving edits, hook changes, linked packages and recovery from errors. Real-app workflows and physical-device performance need separate checks.

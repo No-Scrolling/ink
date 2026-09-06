@@ -1,6 +1,6 @@
 # Material Symbols
 
-Ink uses the official Material Symbols Outlined set at grade 0 and optical size 24. General interface icons, including the header, use fill 0 at weight 400. Bottom navigation icons use fill 1 at weight 400. Keyboard icons use separate Android vectors at weight 300. The compiler rasterises only the symbols referenced by an application; neither font snapshot nor unused symbols enter its APK.
+Ink uses Material Symbols Outlined at grade 0 and optical size 24. Header and general icons use weight 400, fill 0. Bottom navigation uses weight 400, fill 1. Keyboard vectors use weight 300. Only referenced symbols enter the APK; the font and unused symbols are excluded.
 
 The current snapshot is from Google `material-design-icons` commit `84ccef280841abfac506afc4ad4a2782f6d0a1d0`. Refresh the compiler font, codepoint map and keyboard vectors with:
 

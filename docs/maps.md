@@ -51,8 +51,8 @@ Markers have stable `id`, `latitude`, `longitude` and an optional `label`. `onMa
 
 ## Scope
 
-The initial scope is Buses' needs: one map, moving markers and explicit centring. Clustering, offline-region downloads, routing, geocoding, traffic and arbitrary React content inside markers are outside this scope.
+The map supports markers, gestures and camera movement. Clustering, offline regions, routing, geocoding, traffic and React content inside markers are not supported.
 
-Apps configure the style and required credentials. Attribution stays visible; tile access and caching follow the source's terms. A tile cache is not an offline guarantee.
+The default style needs no credentials. If you choose another source, supply its style URL and any required credentials. Attribution stays visible. Cached tiles do not guarantee offline access.
 
 Use [Location](location.md) for the phone's position. Location permission is not required merely to display supplied coordinates.

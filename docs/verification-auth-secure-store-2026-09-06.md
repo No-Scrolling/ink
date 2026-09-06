@@ -1,6 +1,6 @@
 # Account and secure storage verification — 6 September 2026
 
-Verified the debug Ink Template on the reserved `emulator-5554`, using the local OAuth fixture on port 8788. No physical LP3 operations or new automated tests were performed.
+The checks below used the debug template on reserved `emulator-5554` and the local OAuth fixture on port 8788. No automated tests were added. The later LP3 browser check is linked below.
 
 | Scenario | Observed result | Agent-tools image evidence |
 | --- | --- | --- |

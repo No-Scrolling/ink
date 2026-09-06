@@ -1,17 +1,46 @@
-# Local account and transfer fixture
+# Run the local account and transfer server
 
-Run `node examples/light-template/scripts/auth-server.mjs` from the repository root. The server listens on port 8788; set `PORT` to override it. Stop it with Ctrl+C. All credentials are disposable and stored in memory.
+Use this server to try sign-in, downloads and uploads without production credentials. Accounts and tokens are temporary and stay in memory.
 
-Use a debug template build on the emulator or a connected phone. Run `adb -s SERIAL reverse tcp:8788 tcp:8788` for that device. Accounts defaults to `http://127.0.0.1:8788`, client `ink-template` and redirect `ink-template://oauth/callback`. Remove the forwarding afterwards with `adb -s SERIAL reverse --remove tcp:8788`.
+## Start the server
 
-For device sign-in, select **Device sign-in**, open `http://localhost:8788/verify` on the host, enter the displayed code and authorise it. Ink polls automatically until authorisation completes. Access tokens last 45 seconds; **Get token** exercises refresh, rotating the refresh token each time.
+From the repository root, run:
 
-Browser sign-in uses the same fixture and requires a Custom Tabs browser on the device. Select **Browser sign-in**, authorise Ink and return via the registered custom redirect. Closing the browser without authorising cancels sign-in. HTTP is permitted only for the named local hosts in debug builds; release OAuth requires HTTPS.
+```sh
+node examples/light-template/scripts/auth-server.mjs
+```
 
-To use another provider, edit the account configuration in `screens/modules/Accounts.tsx`, and register its redirect in `ink.toml` and with the provider. The example keeps provider settings in source so the screen stays focused on account actions.
+The server uses port 8788. Set `PORT` to change it, and press Ctrl+C to stop it. It listens on all local interfaces for emulator access; do not expose it publicly.
 
-`GET /download` streams a repeatable 4 MiB file in 64 KiB chunks every 100 ms. It supports `Range: bytes=N-`, `If-Range` and a stable ETag, making pause/resume observable. `POST /upload` consumes a request body and reports the received byte count. Use the emulator host address for these URLs too.
+## Connect an account example
 
-This server is a development fixture, with no production account system. It binds all local interfaces so emulator requests can reach it; do not expose its port publicly.
+Use a debug template build and forward the device’s port to your computer:
 
-The [6 September verification record](../../../docs/verification-auth-secure-store-2026-09-06.md) records successful emulator device sign-in, token access and account persistence. That emulator had no Custom Tabs browser; the unavailable path passed. A subsequent [physical LP3 check](../../../docs/verification-custom-tabs.md) passed browser authorisation, redirect return, token access and cancellation.
+```sh
+adb -s SERIAL reverse tcp:8788 tcp:8788
+```
+
+Replace `SERIAL` with your emulator or phone serial. Accounts uses `http://127.0.0.1:8788`, client `ink-template` and redirect `ink-template://oauth/callback`.
+
+- **Device sign-in:** open `http://localhost:8788/verify` on your computer, enter the displayed code and authorise it. Ink polls until approval.
+- **Browser sign-in:** select the action and authorise Ink in the Custom Tab. The redirect returns to Ink. Closing the tab cancels sign-in. This needs a Custom Tabs browser on the device.
+- **Get token:** request the current token. Tokens expire after 45 seconds; later requests exercise refresh-token rotation.
+
+When finished, remove the forwarding:
+
+```sh
+adb -s SERIAL reverse --remove tcp:8788
+```
+
+Debug OAuth permits local HTTP endpoints. Release OAuth requires HTTPS. To use a real provider, update `screens/modules/Accounts.tsx` and register the same redirect in `ink.toml` and with the provider.
+
+## Try transfers
+
+The Files and Downloads examples use the emulator’s host address, `http://10.0.2.2:8788`.
+
+| Endpoint | Behaviour |
+| --- | --- |
+| `GET /download` | Sends a 4 MiB file in 64 KiB chunks every 100 ms. Supports `Range`, `If-Range` and a stable ETag for pause and resume. |
+| `POST /upload` | Reads the request body and returns the received byte count. |
+
+See the [account verification record](../../../docs/verification-auth-secure-store-2026-09-06.md) and [LP3 browser checks](../../../docs/verification-custom-tabs.md) for results.

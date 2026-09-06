@@ -2713,20 +2713,30 @@ impl Engine {
             NodeKind::MediaCell { source, selected, video, check, play, action } => {
                 self.layout_image(node.identity, source, None, ImageFit::Cover, false, rect);
                 if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
-                let size = self.scaled(24.0).min(rect.width / 3.0);
-                let inset = self.scaled(6.0);
-                for (show, mask, x, y) in [
-                    (*selected, check, rect.x + rect.width - size - inset, rect.y + inset),
-                    (*video, play, rect.x + inset, rect.y + rect.height - size - inset),
-                ] {
-                    if show {
-                        self.scene.masks.push(MaskRun { mask: Mask::toggle_circle(true), rect: Rect { x, y, width: size, height: size },
-                            clip: self.clip, colour: Colour::BLACK, scrolling: self.scrolling });
-                        let padding = size / 6.0;
-                        self.scene.masks.push(MaskRun { mask: mask.clone(), rect: Rect {
-                            x: x + padding, y: y + padding, width: size - padding * 2.0, height: size - padding * 2.0 },
-                            clip: self.clip, colour: Colour::WHITE, scrolling: self.scrolling });
-                    }
+                if *selected {
+                    self.scene.masks.push(MaskRun {
+                        mask: Mask::solid(), rect, clip: self.clip,
+                        colour: Colour { alpha: 0.5, ..Colour::BLACK }, scrolling: self.scrolling,
+                    });
+                    let size = self.scaled(36.0).min(rect.width / 2.0);
+                    self.scene.masks.push(MaskRun {
+                        mask: check.clone(), rect: Rect {
+                            x: rect.x + (rect.width - size) / 2.0, y: rect.y + (rect.height - size) / 2.0,
+                            width: size, height: size,
+                        }, clip: self.clip, colour: Colour::WHITE, scrolling: self.scrolling,
+                    });
+                }
+                if *video {
+                    let size = self.scaled(24.0).min(rect.width / 3.0);
+                    let inset = self.scaled(6.0);
+                    let x = rect.x + inset;
+                    let y = rect.y + rect.height - size - inset;
+                    self.scene.masks.push(MaskRun { mask: Mask::toggle_circle(true), rect: Rect { x, y, width: size, height: size },
+                        clip: self.clip, colour: Colour::BLACK, scrolling: self.scrolling });
+                    let padding = size / 6.0;
+                    self.scene.masks.push(MaskRun { mask: play.clone(), rect: Rect {
+                        x: x + padding, y: y + padding, width: size - padding * 2.0, height: size - padding * 2.0 },
+                        clip: self.clip, colour: Colour::WHITE, scrolling: self.scrolling });
                 }
             }
             NodeKind::ReactList { children, start, gap, .. } => {

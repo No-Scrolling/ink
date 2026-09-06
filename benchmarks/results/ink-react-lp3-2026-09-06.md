@@ -1,6 +1,6 @@
 # Ink React benchmarks on Light Phone III
 
-Measured on 6 September 2026 using the current React/QuickJS-ng engine and optimised arm64 release APKs. This run covers Ink only; older Expo, Light SDK and declarative-engine results are not mixed into this comparison.
+Measured Ink’s React/QuickJS-ng counter and scrolling apps on 6 September 2026 using ARM64 release builds. This historical run covers Ink only. See [matching counters](matching-counter-lp3-2026-09-06.md) for the current three-framework comparison.
 
 ## Results
 

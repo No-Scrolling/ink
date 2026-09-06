@@ -24,8 +24,8 @@ This source audit compares the public exports in `packages/ink/src/index.ts`, `n
 | `LoadingState`, `EmptyState`, `ErrorState` | Text/Stack/Button composition; labels, descriptions, actions, retry and disabled states are forwarded. |
 | `Confirmation` | Native screen and fixed footer action; wrapper selects and uppercases the pending/normal label. Pending removes the footer action. Children are message text. |
 
-The audit corrected stale documentation that claimed arbitrary managed-file images, parent-only image sizing and fixed-height-only lists. It also records the nested-text and image-stretch limitations instead of implying CSS-like layout or inline styling.
+This audit corrected the earlier claims about image sources, sizing and fixed-height lists. It also recorded nested-text and image-stretch limits. Managed file support was added later; see [Files](files.md) for the current API.
 
-A second review of list bookkeeping corrected three code issues: full-width/scrollbar-width passes evicted each other's measurements; prepending invalidated unchanged rows' cached heights; and retaining a numeric JavaScript window could unmount visible row identities during prepends. The implementation now retains two width variants, versions content per key, and maps the existing window's first key before rendering changed data. Native anchors are chosen deterministically when more than one list is visible.
+The list review fixed measurement-cache eviction, unnecessary invalidation after prepends and loss of visible row identity. Ink now keeps both scrollbar widths, versions content per key and follows the existing first key when data changes.
 
-Rust and TypeScript compilation are the bounded checks for these edits. No automated tests or device operations were added for this audit. Source coverage is not a claim that every combination of props, layout nesting or lifecycle timing has been exercised.
+Rust and TypeScript compilation passed. No tests or device checks were added in this audit; it does not verify every combination of props or lifecycle timing.

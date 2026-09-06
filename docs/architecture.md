@@ -1,14 +1,13 @@
 ---
 title: "How Ink works"
 description: "TypeScript app behaviour, QuickJS-ng execution and retained native rendering."
-tag: "In development"
 ---
 
-> **In development.** React, QuickJS-ng, retained rendering, background runtimes, automatically measured lists and native subtree updates are implemented. Focused emulator checks and physical LP3 benchmarks are recorded; real-app workflow validation remains deferred. See [verification](verification-2026-09-06.md).
+Ink runs React and TypeScript through QuickJS-ng, with native layout and Vulkan rendering. This page explains the engine; use [Build with Ink](ink.md) for app development.
 
 Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler type-checks and bundles the app, prepares its assets and selects native integrations.
 
-[Product design](product-design.md) defines the intended authoring experience and module scope. This page explains the current engine; historical measurements below are evidence for that architecture rather than promises for every app.
+See [product design](product-design.md) for scope and [verification](verification-2026-09-06.md) for recorded checks.
 
 ```text
 App.tsx + TypeScript + npm dependencies
@@ -69,7 +68,7 @@ A visually idle app requests no rendering frames. This is not a promise of zero 
 | Native service | Detached audio | Explicit stop or Android termination |
 | Durable storage | Store preferences, queued jobs | Explicit deletion or app-data removal |
 
-JavaScript garbage collection is not a lifecycle mechanism for a camera, socket or player. UI hooks and explicit `close()`/unsubscribe operations release native work. Reactivation obtains fresh handles; stale results cannot update a replacement owner. Native handles may be held in memory but are not serialisable. Durable IDs reconnect to stored state instead of reviving an old pointer.
+Hooks release native resources when their effects end. For explicit handles, call `close()` or unsubscribe. Garbage collection does not close a camera, socket or player. Reconnecting creates fresh handles; use saved IDs, not handles, to reopen durable resources.
 
 Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio does not need a continuously running JavaScript loop. [Downloads](downloads.md) uses persisted native jobs for HTTP file transfers. Android can stop work; storage and domain reconciliation provide recovery.
 
@@ -85,21 +84,10 @@ Ink adapts to available LightOS services, preferences and Android lifecycle. Hos
 
 ## Performance
 
-Keep gestures and bulk media processing native. Cache native resources, batch updates, page large collections and publish progress at useful rates. A faster JavaScript engine cannot compensate for decoding full-resolution images in JS, repeatedly copying message histories or running unnecessary polling loops.
+Keep gestures and large media operations native. Batch updates, page large collections and avoid unnecessary polling.
 
 ### LP3 runtime benchmark
 
-Measured on a physical Light Phone III running Android 14 on 4 September 2026. All variants use Ink's native renderer; the JavaScript variants replace the counter's increment arithmetic with a synchronous engine call.
+The [QuickJS-ng and Hermes comparison](../benchmarks/results/runtime-engines-lp3.md) records physical LP3 measurements from 4 September 2026. QuickJS-ng used less APK space and idle memory in that counter experiment. It measured synchronous engine calls, not the current React runtime, display latency or battery life.
 
-| Metric | Native Ink | QuickJS-ng | Hermes source | Hermes bytecode |
-| --- | ---: | ---: | ---: | ---: |
-| APK size | 3.01 MB | 3.70 MB | 7.19 MB | 7.19 MB |
-| Idle memory, median PSS | 23.88 MiB | 24.54 MiB | 27.12 MiB | 26.24 MiB |
-| Cold start, median | 316 ms | 313 ms | 323 ms | 327 ms |
-| State/UI update, median | 0.274 ms | 0.301 ms | 0.302 ms | 0.301 ms |
-
-QuickJS-ng added 0.69 MB to the native APK and 0.66 MiB of idle PSS in this run, with a similar state/UI update time to both Hermes variants. This supports its use for a small native app with lightweight JavaScript actions.
-
-The harness interleaved variants across 15 cold starts, five idle-memory samples and five sets of 100 taps per variant. All 2,000 counter updates were validated. QuickJS-ng was version 0.15.1 through rquickjs 0.12.2; Hermes used the stock Android 250829098.0.17 release with its required support libraries. A different Hermes build could change its footprint.
-
-These measurements cover the synchronous counter embedding, which calls JavaScript on the UI thread. They do not measure the React authoring layer, the dedicated JavaScript thread described above, asynchronous host APIs or battery life. Startup distributions overlap; the small median differences do not establish a speed advantage. State/UI update time excludes display latency and is not an input-to-photon measurement.
+Use the [benchmark index](../benchmarks/README.md) for current app comparisons and the measurement limits.

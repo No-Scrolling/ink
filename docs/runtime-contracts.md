@@ -23,7 +23,7 @@ Request and controller identifiers come from one process-wide atomic allocator e
 
 Attaching registers the observer and starts activation. Commands wait for successful activation. Failed activation removes the JavaScript observer and the host's controller registration. Disposal removes the observer immediately, waits for pending activation to settle, and deactivates only after successful activation. Repeated disposal has no effect; commands after disposal reject. Session shutdown deactivates all controllers still registered in that session, without waiting for JavaScript effects to run. The current native activation implementations register their recipes synchronously; asynchronous commands remain cancellable requests.
 
-Hooks release their own handles through effect cleanup. These rules do not change ordinary React effects or silently cancel arbitrary application promises. An explicit controller's owner must call `dispose`; stream/socket owners must close or cancel their handles.
+Hooks release handles in effect cleanup. If you create an explicit controller, call `dispose()`. Close or cancel streams and sockets when finished. Ink does not cancel unrelated app promises.
 
 ## Ownership by package
 
@@ -40,11 +40,11 @@ Hooks release their own handles through effect cleanup. These rules do not chang
 | `ink` HTTP, streams and WebSocket facilities | Explicit request/reader/socket owner; native host shutdown stops foreground networking. |
 | `@ink/background` | Durable scheduled job; each execution owns a separate runtime and supported non-UI adapters. UI disposal does not cancel scheduled jobs. |
 
-## Backpressure and scheduling
+## Queue limits and scheduling
 
 A full JavaScript-to-native call queue rejects with retryable `NativeError("busy", …)`. The caller chooses whether to retry. Cancellation that cannot enter the queue still removes the JavaScript promise; the host's timeout remains the fallback for the outstanding native request.
 
-A lost commit cannot be retried safely after the reconciler has advanced. Commit enqueue failure therefore marks the runtime as failed even if JavaScript catches the thrown transport exception. A terminal error is retried until the foreground host can receive it or shutdown interrupts delivery. Recovery replaces the UI runtime and tree. Native-to-JavaScript delivery failure must likewise be treated as runtime failure by the host, rather than pretending a result was delivered.
+A lost commit cannot be retried safely after the reconciler has advanced. Commit enqueue failure therefore marks the runtime as failed even if JavaScript catches the thrown transport exception. A terminal error is retried until the foreground host can receive it or shutdown interrupts delivery. Recovery replaces the UI runtime and tree. Native-to-JavaScript delivery failure must likewise be treated as runtime failure by the host, to avoid losing a result silently.
 
 The runtime gives up to 256 promise jobs one turn, receives one native message, and services a due timer independently of whether reception timed out. Timers are ordered by deadline and identifier. Repeated promise chains, incoming messages and due timers therefore share turns; the interrupt flag and bounded job drain keep shutdown interruptible. This does not pre-empt a long synchronous native adapter call.
 

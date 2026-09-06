@@ -1,6 +1,6 @@
 # Framework verification — 6 September 2026
 
-This records focused checks for the implementation plan. Real-app workflows remain deferred at the user's request. No automated tests were added. The initial emulator checks below were followed by physical LP3 release benchmarks; their results and cleanup are recorded separately.
+This record covers framework checks on 6 September 2026. No automated tests were added. Real-app walkthroughs remain deferred; later LP3 benchmarks are linked below.
 
 ## Build and interface checks
 
@@ -30,7 +30,7 @@ Compilation does not establish cancellation/pause/restart stress behaviour, deta
 
 ## Subsequent physical LP3 benchmarks
 
-This section records the fixtures measured at the time. The active harness is now counter-only; the [matching-counter emulator record](../benchmarks/results/matching-counter-emulator-2026-09-06/README.md) covers their later alignment. Previous physical timings do not measure those updated fixtures.
+The original run used counters and scrolling fixtures. The harness is now counter-only. See the later [matching-counter LP3 comparison](../benchmarks/results/matching-counter-lp3-2026-09-06.md) for the aligned fixtures.
 
 Release counter and non-virtualised 1,000-row scroll benchmarks completed on the physical LP3 for Ink, Expo and Light SDK. The Ink release check exposed an R8-stripped JNI callback; its keep rule was corrected before measurements. Separate counter checks reached 100, and scroll fixtures rendered and responded to swipes. See the [Ink results](../benchmarks/results/ink-react-lp3-2026-09-06.md) and [Expo/Light SDK results](../benchmarks/results/expo-light-sdk-lp3-2026-09-06.md). Device settings were restored and benchmark apps/APKs removed. These measurements do not cover the deferred real-app workflows or variable-height list stress scenarios.
 

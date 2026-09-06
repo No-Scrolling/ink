@@ -24,7 +24,7 @@ adb -s LP3LHMA531900140 shell getprop ro.build.version.release
 
 ## What this establishes
 
-The installed browser advertises the native service needed for Custom Tabs, with appearance customisation. This supports using a browser-backed in-app window for links and sign-in.
+The browser exposes Custom Tabs and colour customisation. The launch checks below verify Ink’s use of it.
 
 ## Ink integration verification
 

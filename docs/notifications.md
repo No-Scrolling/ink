@@ -3,7 +3,7 @@ title: "Notifications"
 description: "Local reminders and routes back into the app."
 ---
 
-`@ink/notifications` creates native notifications and schedules supported local reminders. Use them for an actionable event, such as a download finishing or a saved departure approaching.
+Use `@ink/notifications` to show a notification or schedule a local reminder. Tapping it can open a screen in your app.
 
 ```ts
 import { notifications } from "@ink/notifications";
@@ -29,6 +29,6 @@ Define whether a reminder follows an absolute instant or local wall time. Reconc
 
 ## Push and privacy
 
-Push transport is a provider/host integration, described under [LightOS](light-sdk.md). Receiving a payload, reconciling domain data and deciding to display a notification are separate operations. Validate account and record IDs; never execute commands just because a payload names them.
+Use [LightOS](light-sdk.md) for host push integration. Validate incoming account and record IDs, update your app’s data, then decide whether to show a notification.
 
 Notification content may be visible outside the app. Messaging apps can offer sender-only or generic previews. Native host policy may restrict presentation or actions, so exposed capabilities determine what the app can request.

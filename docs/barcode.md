@@ -3,11 +3,9 @@ title: "Barcodes and passes"
 description: "Display codes and scan them natively."
 ---
 
-Native generation supports 13 formats; scanning is provided by `@ink/camera/scan`, including continuous scanning and raw-byte results.
+Use `Barcode` from `@ink/barcode/generate` to display a code. It supports 13 formats and does not include camera code.
 
-`@ink/barcode` separates generation from scanning so a saved-pass viewer need not include camera code. Generation uses `@ink/barcode/generate`; scanning uses `@ink/camera/scan`.
-
-The separate scanning entry point means capture-only apps do not include scanner code.
+To scan codes, use `@ink/camera/scan`.
 
 QR scanning accepts dark-on-light and inverted light-on-dark codes. Inverted QR detection has been confirmed on the LP3.
 
@@ -26,6 +24,10 @@ export function Pass({ title, value }: { title: string; value: string }) {
 ```
 
 Generation happens natively with sharp modules, appropriate contrast and quiet zones. Preserve the source payload exactly; trimming, normalising case or converting a numeric-looking string can invalidate it. The package exposes supported formats and rejects invalid payloads rather than rendering a misleading code.
+
+## Size a code
+
+`size` sets the width. QR codes stay square; PDF417 follows its encoded proportions; linear codes use a compact height. QR codes have a two-module white border. The template’s Code generation page shows all 13 formats, including `Hello World!` as a QR code at size 240.
 
 ## Scan a pass
 

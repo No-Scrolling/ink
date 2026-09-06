@@ -1,33 +1,53 @@
 # Benchmarks
 
-The active comparison contains three counter apps: Ink, Expo (light-template) and Light SDK. Each has a standard header, a centred count starting at zero and an Increase button. Scrolling fixtures have been removed; older list measurements below are historical.
+The current comparison uses three counter apps: Ink, Expo (light-template) and Light SDK. Each has a standard header, a centred count starting at zero and an **Increase** button.
 
 ## Recorded results
 
-The [matching-counter LP3 comparison](results/matching-counter-lp3-2026-09-06.md) supplies the current README figures and includes raw runtime/build samples, workload screenshots and verified device cleanup. Earlier comparisons below are historical and used different fixtures.
+The [matching-counter LP3 comparison](results/matching-counter-lp3-2026-09-06.md) supplies the README figures. It includes build and runtime samples, screenshots and device cleanup checks.
 
-The earlier [React counter and scrolling results](results/ink-react-lp3-2026-09-06.md) and [Expo and Light SDK results](results/expo-light-sdk-lp3-2026-09-06.md) are retained as historical measurements from before this combined rerun.
+Earlier runs used different fixtures. Keep their results separate:
 
-A later [lazy image resources and compact native nodes comparison](results/renderer-nodes-lp3-2026-09-06.md) measures **17.84 MiB for the counter and 22.59 MiB for the non-virtualised list**. Compact nodes save approximately 3 MiB on the list; the counter difference is within measurement variation. This targeted Ink follow-up does not replace the full-framework comparison.
+| Report | What it measured |
+| --- | --- |
+| [Ink React](results/ink-react-lp3-2026-09-06.md) | Earlier counter and scrolling fixtures. |
+| [Expo and Light SDK](results/expo-light-sdk-lp3-2026-09-06.md) | Separate runs of the earlier comparison fixtures. |
+| [Optimised comparison](results/optimised-comparison-lp3-2026-09-06.md) | All three frameworks after Ink’s startup changes. |
+| [Memory investigation](results/memory-lp3-2026-09-06.md) | Web initialisation, garbage collection, allocator purging and virtualisation. |
+| [Web-code split](results/split-web-lp3-2026-09-06.md) | Loading web code on first use. Release builds use this; `INK_SPLIT_WEB=0` disables it for comparison. |
+| [Native startup](results/native-memory-lp3-2026-09-06.md) | Deferred native setup and startup memory reductions. |
+| [Renderer resources](results/renderer-nodes-lp3-2026-09-06.md) | Lazy image resources and smaller native nodes. |
+| [Runtime prototype](results/runtime-lp3.md) | Early JavaScript and Effect experiments. |
+| [QuickJS-ng and Hermes](results/runtime-engines-lp3.md) | Synchronous counter calls through different engines. |
 
-The [memory investigation](results/memory-lp3-2026-09-06.md) profiles eager web polyfills, garbage collection, allocator purging and list virtualisation on LP3. These exploratory variants are separate from the published comparison benchmarks.
+Other files in `results/`, the `baselines/` directory and budget files contain historical declarative-engine measurements. They do not describe current React performance. Use the recorded source revisions to reproduce them.
 
-The [optional web-code split](results/split-web-lp3-2026-09-06.md) saves another 5.16 MiB in the counter and 4.91 MiB in the unchanged non-virtualised list in the LP3 experiment. Release apps now package web code separately and load it automatically on first use. `INK_SPLIT_WEB=0` retains the previous packaging for comparison.
+## Run the Ink counter
 
-The subsequent [native startup memory reductions](results/native-memory-lp3-2026-09-06.md) bring median idle PSS to **18.07 MiB for the counter and 25.80 MiB for the non-virtualised list**, through deferred native initialisation, fuller startup purging and software rendering of the surrounding Android views. Ink's scene still uses Vulkan. The report includes paired measurements and remaining verification limits.
+```sh
+BENCHMARK_DEVICE=<serial> ./benchmarks/measure-ink.sh
+```
 
-The [runtime comparison](results/runtime-lp3.md) and [QuickJS-ng / Hermes comparison](results/runtime-engines-lp3.md) record the JavaScript runtime experiments on a physical Light Phone III. Their reports describe the measured builds and limitations.
+Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to new paths to keep earlier results.
 
-Apart from the current results and runtime experiments above, files in `results/`, along with `baselines/`, `budgets.json` and `budgets-lp3.json`, are historical measurements or budgets from the removed declarative engine. They do not describe current React app performance. The `ink-updates` results measured that engine's state-to-scene path; its fixture and instrumentation harness have been removed. Check out the recorded source revisions to reproduce those measurements.
+## Compare all three counters
 
-## Run current benchmarks
+1. Overlay `apps/expo-counter` on a copy of light-template. Keep its components, hooks, utilities and locked dependencies, then build its ARM64 release APK.
+2. Add `apps/light-sdk-counter` as `benchmark-counter` in a temporary Light SDK checkout.
+3. Set `EXPO_COUNTER_DIR` and `LIGHT_SDK_DIR`, then run `./benchmarks/measure-builds.sh` for clean and unchanged builds.
+4. Create a JSON file mapping `ink`, `expo` and `light-sdk` to their absolute release APK paths.
+5. Run the comparison:
 
-Build and measure the Ink counter with `BENCHMARK_DEVICE=<serial> ./benchmarks/measure-ink.sh`. Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to new paths to preserve earlier results.
+```sh
+scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SERIAL --background
+```
 
-For all three counters, overlay `apps/expo-counter` on a copy of light-template, preserving its components, hooks, utilities and frozen dependencies. Prepare its ARM64 release APK. Include `apps/light-sdk-counter` as `benchmark-counter` in a temporary Light SDK checkout.
+The tool reserves the device, saves results and screenshots, removes its benchmark apps and restores settings. It refuses to replace existing benchmark installations. See [agent tools](../docs/agent-tools.md) to read progress and results.
 
-Set `EXPO_COUNTER_DIR` and `LIGHT_SDK_DIR`, then run `./benchmarks/measure-builds.sh`. Clean and no-change builds now measure Counter only. Set `EXPO_COUNTER_APK` and `BENCHMARK_DEVICE` before running `bun benchmarks/measure.ts`. `INK_COUNTER_APK` can select an isolated experiment artifact. No scrolling project or APK is required.
+To run the harness directly, set `EXPO_COUNTER_APK` and `BENCHMARK_DEVICE`, then run `bun benchmarks/measure.ts`. Set `INK_COUNTER_APK` to use an isolated build. Direct runs require a manual reservation and cleanup. No scrolling APK is needed.
 
-For automatic reservation and cleanup, create a JSON object mapping `ink`, `expo` and `light-sdk` to their absolute APK paths, then run `scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SERIAL --background`. The tool saves raw results and screenshots, removes its installed apps and restores settings. Use a device without existing benchmark installations. Direct harness runs require a manual device reservation and cleanup.
+## What the measurements mean
 
-The harness alternates frameworks across 15 cold process launches, five idle-memory samples and five 100-tap workloads. Activity launch is measured with Android `am start -W`; memory uses `dumpsys meminfo`, CPU uses process ticks and frame intervals use SurfaceFlinger. These do not measure time to interactive, peak memory, battery drain or GPU usage. Emulator checks establish appearance and behaviour; published performance measurements use the physical LP3.
+The harness alternates frameworks across 15 cold launches, five idle-memory samples and five 100-tap workloads. It uses Android activity launch timings, PSS memory, process CPU ticks and SurfaceFlinger frame intervals.
+
+These are not measurements of time to interactive, peak memory, battery drain or GPU usage. Use the emulator to check appearance and behaviour; publish performance results from the physical LP3.

@@ -1,6 +1,6 @@
 # LP3: QuickJS-ng versus Hermes
 
-Measured 2026-09-04T20:33:52.749Z on the same physical Light Phone III (TLP301), Android 14 / API 34, arm64-v8a, 60 Hz. All four variants were interleaved in this run and contain no Effect.
+Measured at 2026-09-04T20:33:52.749Z on one physical Light Phone III (TLP301), running Android 14 / API 34 at 60 Hz. The run alternated all four ARM64 variants. None included Effect.
 
 QuickJS-ng remains the stronger choice for this counter workload's footprint. Hermes bytecode saves 4.2 µs on the median JavaScript round trip, while the median complete state/UI update is effectively identical at 0.301 ms. This Hermes embedding adds 3.49 MB of APK size and 1.70 MiB of idle PSS relative to QuickJS-ng. This is evidence about a tiny synchronous interaction, not a general ranking of JavaScript engines.
 

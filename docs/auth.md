@@ -40,9 +40,9 @@ redirect_uri = "ink-template://oauth/callback"
 
 Endpoints must use HTTPS. Debug builds also permit HTTP on `localhost`, `127.0.0.1` and the Android emulator host `10.0.2.2` for local OAuth fixtures. Release builds reject these HTTP endpoints.
 
-Keep the flow visually close to LightOS using the browser's supported colour and toolbar customisation, while retaining its site identity and security UI. This is not an embedded WebView: OAuth uses an isolated browser context, as described in [OAuth for native apps](https://www.rfc-editor.org/rfc/rfc8252.html).
+Custom Tabs uses a separate browser context and keeps the site identity and security controls visible. See [OAuth for native apps](https://www.rfc-editor.org/rfc/rfc8252.html).
 
-On 6 September 2026, physical LP3 checks with Chromium 133.0.6888.0 passed Custom Tab launch, dark toolbar appearance, PKCE redirect return, token access and browser cancellation using the local fixture; see [device evidence](verification-custom-tabs.md). The implementation discovers a compatible Custom Tabs service on each installation. If none is available, browser sign-in rejects as unavailable, allowing the app to offer device-code sign-in when configured. It never silently launches the full browser or substitutes a WebView. Provider sign-in still requires verification with the app's registered redirect and provider credentials.
+Ink finds a compatible Custom Tabs browser on the device. If none is available, sign-in reports an unavailable error. You can offer device-code sign-in if your provider supports it. Ink does not fall back to a full browser or WebView.
 
 A device-only configuration does not require browser settings. Calling a flow without its required configuration rejects clearly. A mobile app cannot keep a client secret private; any secret-based exchange belongs in a provider backend.
 
@@ -60,4 +60,4 @@ Android coordinates session access within the app process, including worker runt
 
 `account.signOut()` cancels session-owned work and removes local credentials. It does not depend on remote revocation succeeding. Apps separately clear personalised caches, queued changes and downloads.
 
-Unusual exchanges, remote revocation and service-specific behaviour belong in provider integrations. Ink does not introduce a provider-plugin registry or generic HTTP retry layer.
+Handle provider-specific exchanges and remote token revocation in your app’s provider integration.

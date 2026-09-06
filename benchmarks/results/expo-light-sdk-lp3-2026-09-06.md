@@ -1,6 +1,6 @@
 # Expo and Light SDK benchmarks on Light Phone III
 
-Fresh comparison measurements for the existing counter and 1,000-row scrolling fixtures. Ink was measured earlier in the same session; Expo and Light SDK alternate within this separate run. The README combines these current results rather than reusing the September 1 figures.
+This historical run compared Expo and Light SDK counters and 1,000-row scrolling apps. Ink was measured earlier in the same session. For the current README comparison, see [matching counters](matching-counter-lp3-2026-09-06.md).
 
 ## Results
 

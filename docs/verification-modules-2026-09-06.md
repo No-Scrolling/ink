@@ -1,6 +1,6 @@
 # Module verification — 6 September 2026
 
-Manual checks used the template installed with `ink dev --device emulator-5554 --once` and the local transfer fixture. The physical LP3 was not changed. No automated tests were added.
+Installed the template with `ink dev --device emulator-5554 --once` and used the local transfer fixture. These checks used the emulator; later LP3 confirmations are noted below. No automated tests were added.
 
 | Scenario | Observed result | Agent-tools evidence |
 | --- | --- | --- |
@@ -18,6 +18,8 @@ Manual checks used the template installed with `ink dev --device emulator-5554 -
 | Map loading cover | Frame captures showed a uniformly white content area in light mode and uniformly black in dark mode before the map appeared. Ink owns this cover independently of MapLibre's initial overlay. | `image-20260906-210812-6b9ee2b0`, `image-20260906-210831-89c844a2` |
 
 Auth and encrypted storage checks are recorded [separately](verification-auth-secure-store-2026-09-06.md).
+
+The user also verified that telephone links present the LightOS dialler on their physical LP3. This confirms dialler presentation; it does not claim that a call was placed.
 
 After these emulator checks, the user confirmed the map's loading transition on their physical LP3, including removal of the brief “Connecting…” label. This was user verification, not an additional agent capture.
 

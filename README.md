@@ -37,15 +37,15 @@ JavaScript runs on a dedicated thread. React batches UI changes into Ink's retai
 
 ## Packages
 
-Use `ink` for components, navigation, async hooks, external links and text sharing. Device APIs live in `@ink/audio`, `@ink/background`, `@ink/barcode`, `@ink/camera`, `@ink/clipboard`, `@ink/lightos`, `@ink/location`, `@ink/nfc` and `@ink/notifications`. Audio capture and camera scanning have separate optional entry points.
+Use `ink` for components, navigation, async hooks, links and text sharing. Add device features through `@ink/*` packages. Native engines follow your imports, so playback-only apps do not include recording or scanning code.
 
-`@ink/auth` owns OAuth sessions backed by `@ink/secure-store`. `@ink/files` manages picked, captured, recorded and downloaded attachments; its optional `@ink/files/media` gallery provides full-library browsing and multi-selection in an Ink screen. `@ink/downloads` persists ordinary HTTP transfers. `@ink/connectivity` observes network state and `@ink/maps` provides an optional MapLibre view. Preferences and bundled read-only SQLite databases live in `@ink/store`. Networking uses `fetch`, streams and WebSocket, including native-backed file uploads.
+Packages cover audio, auth, background work, barcodes, camera, clipboard, connectivity, downloads, files, LightOS, location, maps, NFC, notifications, secure storage and Store. Networking uses `fetch`, streams and WebSocket. See [Build with Ink](docs/ink.md) for components and package guides.
 
-The build reads native requirements from packages in the resolved module graph and adds explicit capabilities from `ink.toml`. Local images, audio and icon collections are imported assets. JavaScript packages can be bundled when their required runtime APIs are available.
+Import local images, audio and icon collections. You can use JavaScript libraries that support [Ink’s runtime APIs](docs/runtime-compatibility.md).
 
-Read [the Ink documentation](docs/ink.md), [product design](docs/product-design.md) and [how Ink works](docs/architecture.md). Module guides describe the implemented interfaces and their limits.
+See [how Ink works](docs/architecture.md) for the engine and [product design](docs/product-design.md) for scope.
 
-The component work includes rows, pagination, reordering examples, code generation, PlayingScreen and ConversationScreen with a scrolling multiline composer. The template includes account, secure storage, file, download, database, connectivity and map examples. A [local OAuth and transfer fixture](examples/light-template/scripts/auth-server.md) supports account and transfer development without production credentials. See the [framework](docs/verification-2026-09-06.md) and [module](docs/verification-modules-2026-09-06.md) emulator checks, plus [physical LP3 Custom Tabs verification](docs/verification-custom-tabs.md). Real-app integration on the LP3 remains deferred for a joint walkthrough. See [product design](docs/product-design.md), the [historical implementation plan](docs/implementation-plan.md) and [app-pattern coverage](docs/example-pattern-coverage.md).
+The template demonstrates the components and device packages. A [local fixture](examples/light-template/scripts/auth-server.md) supports account and transfer development. [Verification records](docs/implementation-plan.md#verification) cover emulator and LP3 checks; real-app walkthroughs remain to be done together.
 
 ## Development
 

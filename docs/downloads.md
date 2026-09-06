@@ -3,7 +3,7 @@ title: "Downloads"
 description: "Durable HTTP downloads with native progress and recovery."
 ---
 
-`@ink/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Apps own the downloaded library and retention policy.
+`@ink/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Your app decides which files to keep.
 
 ```ts
 import { downloads } from "@ink/downloads";
@@ -17,7 +17,7 @@ const download = await downloads.enqueue({
 await saveEpisodeDownload(episode.id, download.id);
 ```
 
-The example assumes app-owned episode data and persistence. A stable key identifies one asset revision and deduplicates requests. The same key with conflicting source details rejects; use a new key for replacement content.
+`episode` and `saveEpisodeDownload` come from your app. A stable key identifies one asset revision and deduplicates requests. The same key with conflicting source details rejects; use a new key for replacement content.
 
 ## Observe and control
 
@@ -33,8 +33,8 @@ Production URLs require HTTPS. Debug builds also accept loopback HTTP for the te
 
 ## Provider integrations
 
-The initial interface handles URLs that remain usable for the transfer and recovery. Expired signed URLs surface a failure; the app obtains a replacement and enqueues a new request. Do not place a permanent bearer token into a persisted URL.
+The initial interface handles URLs that remain usable for the transfer and recovery. Expired signed URLs fail; the app obtains a replacement and enqueues a new request. Do not place a permanent bearer token into a persisted URL.
 
-There is no generic headless credential-resolver registry in this scope. Echo TV's Spotify downloads require its existing provider engine, authentication and offline-content handling. That integration remains separate; ordinary HTTP downloads do not replace it.
+Provider-specific offline media, such as Spotify downloads, needs its own integration. Ordinary HTTP downloads do not replace a provider’s authentication or playback engine.
 
 Use `fetch` for short foreground requests and [Files and media](files.md) for attachment uploads. Background jobs can schedule reconciliation, but do not act as a continuous download loop.

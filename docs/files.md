@@ -3,7 +3,7 @@ title: "Files and media"
 description: "Choose attachments and use the same managed file throughout an app."
 ---
 
-`@ink/files` owns managed attachments. Its optional `@ink/files/media` entry provides an Ink photo/video gallery. Developers can choose media, preview it, save its reference and upload it without managing Android content URIs or temporary files.
+Use `@ink/files` to pick, prepare, save and share attachments. Import `MediaPicker` from `@ink/files/media` for an Ink photo and video gallery. Both return managed files that you can preview, store and upload.
 
 ## Pick an attachment
 
@@ -20,7 +20,7 @@ export function Attachments({ onSelect }: { onSelect: (files: FileRef[]) => void
 
 The gallery requests full library access on entry. Android owns the permission prompt; Ink owns the gallery, square thumbnails, scrolling and selection checks. It displays photos and videos by default; `kind="image"` or `kind="video"` narrows the library. `title` optionally changes the header. Denied access offers a retry; blocked access offers settings and a fresh permission check. Partial access to selected photos does not satisfy the full-library permission required by this component.
 
-Tap thumbnails to select or deselect them, then press the header check. The component creates durable app-owned copies of every selected item before calling `onSelect(FileRef[])`. The callback may return a promise. It receives files in gallery order and owns them from that point, including retention if its own processing fails. The app decides when to navigate back, preview or upload them. Back cancels selection; disposal cancels unfinished imports and removes copies that have not been handed to the app.
+Tap thumbnails to select or deselect them, then press the header check. Selected thumbnails dim beneath a larger white check in the centre. The component creates durable app-owned copies of every selected item before calling `onSelect(FileRef[])`. The callback may return a promise. It receives files in gallery order and owns them from that point, including retention if its own processing fails. The app decides when to navigate back, preview or upload them. Back cancels selection; disposal cancels unfinished imports and removes copies that have not been handed to the app.
 
 Rows are virtualised through Ink's List. Library thumbnails are loaded natively at bounded resolution, while importing retains the original media. Importing `@ink/files/media` adds the media-library permission capability; document picking and other `@ink/files` commands do not require broad photo access.
 
@@ -60,4 +60,4 @@ The template's Files and media screen keeps attachment IDs in a store, reopens t
 
 ## Scope
 
-This module provides selection, image preparation, shared file references and explicit retention. It does not expose arbitrary filesystem paths, a document reader, a general filesystem toolkit or video playback. [Downloads](downloads.md) owns durable incoming transfers; apps own upload queues and provider rules.
+Arbitrary filesystem paths, document reading, general image editing and video playback are not supported. Use [Downloads](downloads.md) for files that should keep downloading after a screen closes.

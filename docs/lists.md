@@ -1,48 +1,48 @@
 # Lists
 
-Every `List` is virtualised and sizes rows from their content. Ink estimates unseen rows from the measured rows, using an internal starting estimate until measurements arrive. No height configuration is needed. `gap` supplies normal space between rows without making the app add it to each measurement.
+Use `List` for collections that scroll. It measures row heights automatically and mounts only the visible rows plus extra rows on either side. You do not need height hints.
 
 ```tsx
 <List
   items={messages}
-  gap={47}
   keyExtractor={message => message.id}
   renderItem={message => <Text size={18}>{message.text}</Text>}
 />
 ```
 
-Native layout measures mounted rows and uses estimates for the rest. A prefix-offset index finds the viewport window; one viewport before and after the visible area is mounted. Android presents ready content before processing the next drag movement and retains the last complete frame while destination rows load. Under load, the displayed content and scrollbar can briefly trail the requested position. Row-local React state disappears when a row unmounts; keep durable state in the app.
+## Update items
 
-The visible item key and its offset are preserved when earlier rows are inserted, removed or remeasured, including during an active drag. If that item is removed, the row at its old index becomes the anchor (or the last remaining row). `followEnd` follows additions only when already within 64 logical units of the end and no touch gesture is active; otherwise the reader's anchor is retained.
+Give every item a stable, unique key. Replace arrays and changed items instead of mutating them. Ink reuses measurements for unchanged items and keeps the visible row in place when earlier rows load or change height.
 
-Use immutable item arrays and replace changed items when changing content. Keys are cached while the item array and key extractor are unchanged. Window-only commits reuse native key and content-version metadata instead of sending the entire dataset again.
+Rows unmount when they leave the rendered window. Keep state that must survive scrolling in a parent component or store. All lists use the containing screen’s scroll position, not a separate scroll container.
 
-Native layout maintains a height index for each cached width. Updating a measured height and finding a row offset take logarithmic time; changing the estimate for unseen rows does not rebuild all offsets. Dataset revisions and new widths still require linear index preparation. Layout reads offsets only for mounted rows, and an unchanged anchor keeps its existing index.
-
-Pending viewport requests are coalesced per list before JavaScript receives them, so dragging the scrollbar thumb replaces an undelivered destination with the latest one. This reduces catch-up work but does not cancel a React render already in progress or make an arbitrary destination available immediately.
-
-Only ordered keys and layout metadata cross into native code; item objects remain in React. Key and content-version metadata is bounded to 128 KiB of UTF-8 JSON per list, and oversized metadata produces a clear error. Use compact stable keys or bound the loaded history. This limit keeps metadata below the runtime message limit; very large datasets need a paged model rather than silently dropping commits. Window events carry the data revision and obsolete revisions are ignored.
-
-The template's Follow new items page keeps Add and Clear actions in the screen's pinned `header` while the list scrolls below. Following is always enabled in this example. The Virtualised List page demonstrates 5,000 automatically sized rows. These are local fixtures, not real-app workflow validation.
-
-Measurements are cached by stable item key, content version and width. Ink keeps both the full and scrollbar-adjusted widths across layout passes. Replace changed items immutably so only their cached measurements are invalidated; prepend and reorder operations retain measurements for unchanged items. Mounted rows are remeasured during native layout, including completed image loads.
-
-The mounted window follows its existing first key immediately when items are prepended, preserving React identity for retained rows. If multiple lists are visible, the native anchor nearest the viewport top is used deterministically.
+Set `gap` to change the space between rows. Set `followEnd` to follow new items while the reader is near the bottom. Following pauses during a touch gesture or when the reader is more than 64 logical units from the end.
 
 ## Automatic pagination
 
-Provide `onLoadMore: () => Promise<void>` and `hasMore` for a paged data source. Ink calls the callback when the native viewport's forward overscan reaches the last loaded row (roughly one viewport ahead). The initial JavaScript window does not trigger requests before native layout. Short or empty lists can request enough content to fill that window.
+Provide `onLoadMore: () => Promise<void>` and `hasMore`. Ink calls your function when the reader gets roughly one viewport from the last loaded row. Append the fetched items and set `hasMore` to false when there are no more.
 
-Append the fetched items immutably and set `hasMore` to false at the end. The app owns its cursor, fetching and data; Ink owns when to request more. Only one request runs at a time, and an unchanged item boundary is not requested repeatedly. A rejected request displays its error with a retry action; normal loading adds no spinner or button. A successful request that adds no rows is not repeated for the same boundary. Use a new List key when replacing a query/data source.
+Your app keeps the cursor and fetches data. Ink decides when to load and allows one request at a time. Normal loading shows no extra button or spinner; a failed request shows an error and retry action.
 
-The Pagination example simulates 20-item pages up to 100 items. It contains no manual load-more control.
+Short or empty lists can load enough content to fill the window. A successful request that adds no rows is not repeated at the same boundary. Use a new List key when changing the query or data source.
 
-For history, provide `onLoadOlder` and `hasOlder`, then prepend fetched items immutably. Ink requests older rows when the backward overscan reaches the first loaded item. Requests are sequential and failures expose retry. `initialEnd` starts the mounted window at the last rows; it does not independently scroll a containing Screen. ConversationScreen owns both the initial bottom position and subsequent reply/send scroll requests. All lists use the containing screen's scrolling, rather than independent nested scroll containers.
+For older history, use `onLoadOlder` and `hasOlder`, then prepend the fetched items. Ink preserves the reader’s position. ConversationScreen already handles this pattern.
 
 ## Advanced composition
 
-Keep `initialEnd` and `measurementKey` as specialised controls, not requirements for ordinary lists. They solve separate problems and are not row-height hints.
+- `initialEnd` mounts the last rows first. It does not scroll the screen by itself. Use it for a custom history view whose screen starts at the bottom; ConversationScreen coordinates this for you.
+- `measurementKey` clears cached offscreen measurements when layout changes without changing item data. For example, pass `measurementKey={textSize}` for an app-wide text-size setting. Normal item updates, width changes and image loads do not need it.
 
-`initialEnd` is useful for a custom log or history view whose containing screen starts at the bottom: it mounts the last rows first. ConversationScreen already coordinates this, so chat apps do not set it.
+## Rendering and limits
 
-`measurementKey` invalidates offscreen geometry when rendering changes without changing item data. For example, a custom text-size preference used by every row can be passed as `measurementKey={textSize}`. Normal item updates, width changes and completed image loads do not require it.
+Ink renders one viewport of extra rows before and after the visible area. It estimates unseen heights from measured rows. While new rows render, the screen keeps its last complete frame, so fast scrolling can briefly run ahead of the displayed content.
+
+Measurements are cached by key, content version and width, including the width with a scrollbar. If the visible anchor is deleted, Ink uses the row at its old index or the last remaining row. With multiple lists, the anchor nearest the viewport top is used.
+
+Item data stays in React. Ordered keys and content versions are limited to 128 KiB of UTF-8 JSON per list. Use compact keys and limit loaded history; oversized metadata reports an error.
+
+Native height lookups and updates take logarithmic time. New dataset revisions and widths require linear preparation. Viewport requests keep only the newest pending destination, and stale revisions are ignored.
+
+## Examples
+
+The template includes a 5,000-row **Virtualised List**, a **Pagination** example with five 20-item pages, and **Follow new items** with pinned Add and Clear actions. These use local data; real-app paging still needs integration checks.

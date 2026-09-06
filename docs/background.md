@@ -3,9 +3,9 @@ title: "Background work"
 description: "Durable jobs with fresh JavaScript runtimes and recoverable inputs."
 ---
 
-Background jobs support persistence, separate workers, constraints, retries and job-state observation.
+Use `@ink/background` for work that can run later, such as refreshing forecasts, syncing a feed or sending queued messages.
 
-`@ink/background` runs deferrable work such as refreshing saved forecasts, synchronising a feed or draining a message outbox. Register worker code separately from the UI.
+Define tasks in a worker file, separate from your UI:
 
 ```ts
 // workers.ts
@@ -29,7 +29,7 @@ export const syncMessages = defineTask({
 entry = "./workers.ts"
 ```
 
-From an action or domain module:
+Schedule the task from your app:
 
 ```ts
 await syncMessages.enqueue({ accountId }, {
@@ -40,7 +40,7 @@ await syncMessages.enqueue({ accountId }, {
 
 The build bundles registered task code and its dependencies into a headless entry. Enqueueing persists the task ID and JSON input; it does not serialise a function or capture foreground state.
 
-## Execution contract
+## How tasks run
 
 Each invocation gets a fresh runtime, cancellation signal and decoded input. Open storage and account services there. Return `success`, `retry` with an optional requested delay, or `failed` with a stable reason. An uncaught exception is logged as a failure; the app must deliberately classify retryable failures.
 
@@ -52,7 +52,7 @@ Workers have a two-minute execution limit and accept at most 8 KiB of encoded in
 
 ## Persist before scheduling
 
-Commit an outbox row before requesting a wakeup. Recover unscheduled rows on app launch and later scheduled runs; a database commit and Android scheduling are not one transaction. Send with stable operation IDs, reconcile uncertain acknowledgements and delete or mark an entry only after acceptance.
+Save an outgoing operation before scheduling its task. Recover unscheduled rows on app launch and later scheduled runs; a database commit and Android scheduling are not one transaction. Send with stable operation IDs, reconcile uncertain acknowledgements and delete or mark an entry only after acceptance.
 
 `cancel(key)` removes pending work and signals running work. Cancellation cannot reverse a completed remote write. `getJobs()` returns current scheduling information and the latest outcome for up to 256 task keys. `watchJobs({ signal })` observes changes without repeatedly querying from JavaScript:
 
@@ -64,7 +64,7 @@ for await (const jobs of watchJobs({ signal })) {
 }
 ```
 
-States are `queued`, `running`, `retrying`, `succeeded`, `failed` or `cancelled`. `scheduled` and `periodic` describe pending Android work; a periodic task can have a successful last result and still be scheduled. The journal survives app restarts. This is task-level status; persist domain-specific progress and results in Store. Android can postpone or interrupt work, so a scheduled task has no promised start time.
+States are `queued`, `running`, `retrying`, `succeeded`, `failed` or `cancelled`. `scheduled` and `periodic` describe pending Android work; a periodic task can have a successful last result and still be scheduled. The journal survives app restarts. Save your app’s progress and results in Store. Android can postpone or interrupt work, so a scheduled task has no promised start time.
 
 ## Choose native services for continuous work
 

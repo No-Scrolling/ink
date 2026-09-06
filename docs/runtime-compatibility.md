@@ -1,8 +1,8 @@
 # JavaScript runtime compatibility
 
-Ink runs QuickJS-ng on a dedicated thread. Installing or bundling a dependency does not establish that its runtime requirements are available.
+Ink runs JavaScript in QuickJS-ng. Check a library’s required APIs before using it; a successful install or build does not guarantee runtime compatibility.
 
-An app should extend the shipped configuration:
+Extend Ink’s TypeScript configuration:
 
 ```json
 {
@@ -14,9 +14,9 @@ An app should extend the shipped configuration:
 
 This uses ECMAScript 2022 declarations and `ink/runtime-types`, without TypeScript's DOM library or automatically included Node globals. The runtime declarations derive networking, URL, blob, socket and stream types from the implementations Ink actually installs. They do not claim every browser method on similarly named classes. The compiler loads `ink/runtime` before application and worker code.
 
-The standard ECMAScript declarations are a language baseline, not a promise that every optional engine facility exists. In particular, QuickJS-ng does not supply an internationalisation engine for `Intl` here. TypeScript's standard ECMAScript declarations include `Intl`; use an explicit compatible polyfill if a dependency requires it. The native runtime has a 64 MiB JavaScript heap limit and a 512 KiB stack limit.
+TypeScript includes `Intl` declarations, but this QuickJS-ng runtime has no internationalisation engine. Add a compatible polyfill if needed. Each runtime has a 64 MiB JavaScript heap and a 512 KiB stack limit.
 
-## Installed facilities
+## Available APIs
 
 | Facility | Implementation and limits |
 | --- | --- |
@@ -35,7 +35,7 @@ The standard ECMAScript declarations are a language baseline, not a promise that
 
 No `window`, `document`, `navigator`, DOM nodes, localStorage, IndexedDB, service workers, browser `Worker`, XMLHttpRequest, Web Crypto, `atob`/`btoa`, Node `process`, `Buffer`, `fs`, `net`, or React Native native modules are installed. Ink's background package supplies separate supported job runtimes; it is not a browser Worker implementation. Use native media URIs rather than copying large media through JavaScript byte arrays.
 
-## Dependency patterns and existing demonstrations
+## Check a dependency
 
 | Pattern | Concrete code | What it establishes |
 | --- | --- | --- |
@@ -45,6 +45,6 @@ No `window`, `document`, `navigator`, DOM nodes, localStorage, IndexedDB, servic
 | Networking | Template `data/network-features.ts` and its network features screen demonstrate streamed responses, multipart upload, abort, redirects and text/binary WebSocket echo. | These flows are available for explicit manual verification against the included local server. Type-checking alone does not establish live network behaviour. |
 | Application state and decoding libraries | Check their resolved JavaScript and declarations for Node, DOM and native requirements, then exercise the operations the app uses. | A package's framework label or successful installation is insufficient evidence; no blanket compatibility guarantee is made. |
 
-The template and framework passed type-checking with `skipLibCheck` disabled after adopting the runtime declarations. Inspecting TypeScript's resolved file list found neither `lib.dom.d.ts` nor `@types/node`. React's declaration package contributes empty element interfaces for JSX compatibility, but does not install browser globals. `whatwg-url` references the standard ES2020 declarations; the stream declarations use their own interfaces and the supplied AbortSignal. Re-run this audit when changing dependencies: a dependency can explicitly reference the DOM library even when the app's `lib` setting excludes it.
+The template and framework pass type-checking without `lib.dom.d.ts` or `@types/node`. Check resolved declarations when adding dependencies: a package can include DOM types even when your app excludes them.
 
 Physical-device and wider application workflows remain deferred for verification with the user. See [native lifetimes](runtime-contracts.md) for cancellation, ownership and runtime restart behaviour.

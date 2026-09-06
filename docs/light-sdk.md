@@ -1,10 +1,9 @@
 ---
 title: "LightOS"
 description: "Tool entry, host preferences and available system services."
-tag: "In development"
 ---
 
-> **In development.** Host snapshots, permissions, dialler, ringtone and push bindings are implemented. Dialler presentation, audible ringtones and production push need device verification.
+Use `@ink/lightos` to read host preferences and permissions or open the LightOS dialler. Import ringtone and push features from their separate entry points. Dialler presentation is user-verified on the LP3; audible ringtones and production push still need device checks.
 
 Enable host integration in the app configuration:
 
@@ -30,13 +29,13 @@ await lightos.openDialler({ phoneNumber });
 
 The example assumes a user-selected phone number. Use host operations for the dialler and supported ringtone selection. Restricted services can return unavailable, denied or blocked-by-host outcomes. A local Android permission does not override host policy.
 
-A successful host response acknowledges the request; it does not confirm that a dialler appeared or a ringtone played. Check these behaviours on an LP3.
+A successful response means the host accepted the request. Check visible and audible results on your target phone.
 
 Hardware keys flow through focus, navigation and active media ownership. Avoid separate app listeners competing with the keyboard or media session for the same key.
 
 ## Entry and recovery
 
-A tool can open from the launcher, a link or a notification with a validated route. Cold launch reconstructs its account and records from storage. External inputs are decoded before navigation, and invalid or obsolete destinations lead to a controlled fallback.
+Your app can open from the launcher, a link or a notification. Decode external route data and restore saved records on a cold launch. Handle missing or outdated destinations with a useful fallback screen.
 
 `getPreferences()` and `getKeyboardOptions()` read fresh host values. Keyboard options include `emojis`, `displayVoice`, `enableKeyAnimation` and nullable `swipeEnabled` (older hosts omit it). These are snapshots, not subscriptions; refresh them when returning to the app. The host does not expose an account snapshot or general capability discovery. Query individual permissions and handle unavailable operations instead of inferring support from its version.
 

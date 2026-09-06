@@ -21,4 +21,4 @@ export function CopyReference({ value }: { value: string }) {
 
 `readText()` returns text or `null` when no readable text is available. Read in response to a paste action; polling the clipboard is unnecessary and can trigger system privacy behaviour.
 
-Clipboard content can come from another app. Validate it before treating it as a URL, code or structured record. Avoid copying credentials as part of ordinary account flows. Copying a pass value does not transfer the app's metadata or issuer validity.
+Validate pasted URLs, codes and records before using them. Avoid copying credentials.

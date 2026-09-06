@@ -9,4 +9,4 @@
 - The centred Barcode screen rendered its QR image. Apple's Vision barcode detector decoded the emulator screenshot as exactly `Hello World!`. Evidence: `image-20260906-134823-e9be57b3`.
 - Final process-filtered Ink/Android error log was empty. The initial bad row destination was corrected and retested.
 
-Image evidence is local under `.agent-tools/`. Pagination uses delayed local pages; live network paging, failure/retry interaction, query replacement during an outstanding request and physical-phone QR scanning were not exercised in this pass. The pagination implementation serialises requests, deduplicates the current item boundary and exposes an error/retry on rejection; use a new List key when changing data sources.
+Evidence is in `.agent-tools/`. These checks used local pages. Live paging, retry interaction, changing a query during a request and physical QR scanning were not exercised. See [Lists](lists.md) for pagination behaviour.

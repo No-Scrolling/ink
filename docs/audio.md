@@ -3,9 +3,9 @@ title: "Audio"
 description: "Native playback, queues and media controls."
 ---
 
-Native playback supports named sessions, queue recovery and audio capture.
+Use `@ink/audio` to play audio, manage queues and connect to native media controls. Import `@ink/audio/capture` for recording and audio analysis.
 
-`@ink/audio` owns decoding, buffering, audio focus, routing and media controls. JavaScript sends commands and observes useful state changes; it does not pump audio samples or playback timers.
+Ink handles decoding, buffering, audio focus and routing natively. Your app sends commands and observes playback state.
 
 ```tsx
 import { Button, Screen, Text, useAction } from "ink";
@@ -28,15 +28,15 @@ export function NowPlaying() {
 
 `session` defaults to `main`. Names contain 1–64 letters, numbers, dots, underscores or hyphens; up to eight sessions can be active. Attachments with the same name share playback and must use the same mode and usage. Different names retain independent queues. Playback is exclusive: starting a session pauses other sessions rather than mixing audio. `usePlayer` attaches after commit and releases its attachment when hidden. Wait for `state.ready` before issuing commands or inspecting a restored queue. Reconnecting observes the live session; mounting the screen does not replace its queue.
 
-## Two lifetimes
+## Choose a playback lifetime
 
 An **attached** player is useful for a short voice-note preview. Releasing its last owner stops it. A **detached** session supports music, podcasts and audiobooks: releasing a screen attachment leaves playback under a native media service. `stop()` explicitly stops playback; closing a screen does not.
 
-Detached does not mean immortal. Android can terminate the app process and its service. Ink persists the queue, index, speed and progress in private app storage. Queue changes, seeks and pauses save immediately; playback progress is checkpointed every five seconds. Reopening a terminated session restores it paused, without starting audio unexpectedly. `stop()` clears the queue and its recovery state. Unavailable remote sources or deleted recordings still report playback errors. UI attachments reconnect by session ID. Background workers cannot currently attach audio controllers.
+Android can stop a detached session. Ink saves its queue, index, speed and progress, then restores it paused when you reconnect. Queue changes, seeks and pauses save immediately; progress saves every five seconds. `stop()` clears the queue and saved state. Deleted files and unavailable URLs report playback errors. Background workers cannot attach audio controllers.
 
 ## Queue and state
 
-`setQueue(items, { startIndex })`, `play`, `pause`, `seek`, `next`, `previous` and `stop` return promises. Queue items have stable IDs, a `src` string naming bundled audio or a supported URL, title and optional artist/artwork metadata. Queue replacement is an explicit user/domain action.
+`setQueue(items, { startIndex })`, `play`, `pause`, `seek`, `next`, `previous` and `stop` return promises. Queue items have stable IDs, a `src` string naming bundled audio or a supported URL, title and optional artist/artwork metadata. Call `setQueue` when you want to replace the queue.
 
 Snapshots include readiness, current item, position, duration, buffering, playing and error. Position is sampled at a useful display rate; smooth native progress and seeking do not need frame-rate JavaScript events. Errors distinguish source, unsupported media and output failures. Skipping a broken item is an app policy, not an automatic consequence of any error.
 

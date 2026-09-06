@@ -8,6 +8,10 @@ const TOGGLE_MASK_PADDING: u32 = 1;
 const TOGGLE_SAMPLES: u32 = 4;
 
 impl Mask {
+    pub(crate) fn solid() -> Self {
+        Self::new(hash("ink_solid", 1), 1, 1, &[255])
+    }
+
     pub(crate) fn content_bounds(&self) -> Option<crate::Rect> {
         let (mut left, mut top, mut right, mut bottom) = (self.width as usize, self.height as usize, 0, 0);
         for (index, alpha) in self.pixels.as_ref().iter().enumerate() {

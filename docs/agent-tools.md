@@ -1,6 +1,6 @@
 # Agent tools
 
-Run `scripts/agent-tools --help`. The wrapper uses uv to run the Python CLI and provision Pillow. Builds need the usual Ink Android toolchain, Bun and Git. OCR uses Apple's Vision framework through Swift on macOS, or an installed Tesseract elsewhere.
+Use `scripts/agent-tools` to build experiments, run benchmarks, reserve devices and inspect images or memory. Run `scripts/agent-tools --help` for commands. The wrapper uses uv and Pillow; OCR uses Apple Vision on macOS or an installed Tesseract elsewhere. Builds use the usual Ink Android toolchain.
 
 Operations return compact JSON summaries by default, including key results and an evidence directory when finished. Synchronous commands emit one final response; `--background` returns only a queued ID immediately. Full evidence stays on disk. Use these commands to resume inspection from another shell or agent:
 
@@ -75,7 +75,7 @@ scripts/agent-tools device release --serial LP3LHMA531900140 --token RESERVATION
 
 `device run` verifies and installs a recorded APK, launches it, and tracks the package for cleanup. Only packages installed through the tool are removed. If settings were changed externally after acquisition, release leaves those newer values alone. A failed cleanup keeps the reservation and remaining cleanup actions on disk; reconnect the device and retry `device release` with its token. Read-only `memory` inspection can run during a manual reservation.
 
-## Pixel inspection and OCR
+## Inspect images
 
 ```sh
 scripts/agent-tools image /absolute/path/screenshot.png --ocr
@@ -83,9 +83,9 @@ scripts/agent-tools image /absolute/path/before.png \
   --compare /absolute/path/after.png --region 0,20,1080,90 --threshold 0 --ocr
 ```
 
-The region is `x,y,width,height`. Images must have matching dimensions; comparison never silently resizes them. Results include file hashes, bright/coloured pixel counts, mean colours, changed pixel count and bounding box, plus OCR text and confidence on macOS. `crop.png` preserves the inspected region and `diff.png` marks changed pixels white. The threshold ignores channel differences at or below the chosen 0–255 value. These are pixel facts, not an automatic judgement that a UI is correct. OCR can miss or misread text.
+The region is `x,y,width,height`. Images must have matching dimensions; comparison never silently resizes them. Results include file hashes, bright/coloured pixel counts, mean colours, changed pixel count and bounding box, plus OCR text and confidence on macOS. `crop.png` preserves the inspected region and `diff.png` marks changed pixels white. The threshold ignores channel differences at or below the chosen 0–255 value. Review the image as well as the numbers. OCR can miss or misread text.
 
-## Memory attribution
+## Inspect memory
 
 ```sh
 scripts/agent-tools memory --serial LP3LHMA531900140 \

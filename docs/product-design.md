@@ -5,7 +5,7 @@ description: "Ink's authoring model, implemented scope and remaining integration
 
 Ink is a React and TypeScript framework for Light Phone III apps. Developers supply app data and behaviour; Ink supplies the phone's visual language, native interaction and device integration.
 
-This is the product design reference. Module guides describe the current interfaces and their limits. Historical plans and verification records describe work at the time, not additional product requirements. Implemented interfaces and verified provider integrations are separate claims.
+Module guides describe current APIs. Verification records describe what was checked, including remaining integration work.
 
 ## Authoring
 
@@ -15,9 +15,9 @@ Ink does not promise React Native native-module, DOM or Node compatibility. Its 
 
 ## Screens and behaviour
 
-Screen owns navigation chrome, spacing, scrolling and keyboard accommodation. Row, PlayingScreen and ConversationScreen hide shared layout and interaction behind data and callbacks. Apps own provider requests, provider-specific playback engines, message delivery and persistence policies.
+`Screen` provides navigation, spacing, scrolling and keyboard handling. `Row`, `PlayingScreen` and `ConversationScreen` provide common layouts. Your app supplies data, provider requests, playback and message delivery.
 
-Keep ordinary composition available through Text, Image, Button, Stack and List. Every List is virtualised and measures its content automatically. Ink triggers pagination; the app fetches and appends or prepends data. ConversationScreen additionally owns message actions, reply selection and keyboard/scroll coordination.
+Compose other layouts with `Text`, `Image`, `Button`, `Stack` and `List`. Lists measure rows and trigger pagination automatically. ConversationScreen also handles replies, message actions and keyboard scrolling.
 
 Do not turn each app layout into a framework feature. Weather columns, album detail composition and saved-location screens can use existing primitives.
 
@@ -25,7 +25,7 @@ Do not turn each app layout into a framework feature. Weather columns, album det
 
 Commands return promises. Continuing work has an explicit owner; React hooks manage screen-owned work. Observations use the existing loading/ready/error snapshot shape. Persistent operations such as downloads survive observers disappearing.
 
-Keep the simple operation simple. Clipboard and Secure Store expose a few commands. Location separates a one-off fix from ongoing tracking. Background jobs use durable input rather than captured foreground state.
+Small APIs stay small: Clipboard copies text, Secure Store saves secrets, and Location separates a single fix from tracking. Background jobs receive saved input rather than capturing UI state.
 
 Include capabilities through explicit module imports. Optional engines and capture features must not increase every app's native footprint. Reuse native engines behind Ink interfaces; provider-specific behaviour stays in provider integrations.
 
@@ -46,7 +46,7 @@ Reader, Bluetooth and Sensors are outside scope. There is no separate Records or
 
 ## Shared files and optional engines
 
-The existing screen components remain the intended design. Capture, picking, recording and downloads now produce the same managed `FileRef`, used by rendering and standard networking. `fetch(file.src).blob()` retains native file ranges through slicing and multipart construction. Native upload preparation copies those ranges into a native spool without copying the complete attachment into JavaScript. Explicit byte and text reads materialise content.
+Picking, capture, recording and downloads return a shared `FileRef`. Use its source for display or upload, and save its ID to reopen it later. `fetch(file.src).blob()` keeps file data native through slicing and multipart upload. Text and byte reads copy the data into JavaScript.
 
 Completed recordings are retained independently until explicitly deleted. Apps persist file IDs and own reference counting and retention; disposing a screen does not delete accepted attachments.
 
@@ -54,6 +54,6 @@ Audio capture is imported from `@ink/audio/capture`; camera scanning is imported
 
 ## Integration and verification
 
-Custom Tabs launch, theme parameters and return handling are implemented. [Physical LP3 checks](verification-custom-tabs.md) passed website open/close, dark toolbar appearance and local OAuth sign-in/cancellation. Production providers still need checks with their registered redirects. Preserve browser security UI, and do not silently substitute the full browser or embedded OAuth when Custom Tabs is unavailable.
+[LP3 checks](verification-custom-tabs.md) cover website open/close, dark toolbar appearance and local OAuth sign-in and cancellation. Production providers still need checks with their registered redirects.
 
-Validate the integrations against Weather, Passes, Index, Buses, Beeper, Spotify and Echo TV. Provider playback, background messaging and offline engines need their own integrations; component coverage alone does not replace them. Keep physical-device behaviour, emulator checks and provider-specific verification explicit in the corresponding evidence records.
+Real-app walkthroughs remain deferred for a joint session. Use Weather, Passes, Index, Buses, Beeper, Spotify and Echo TV to check provider playback, messaging, permissions and offline behaviour.
