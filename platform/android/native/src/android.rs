@@ -199,6 +199,7 @@ impl AndroidEngine {
             0 => self.engine.pointer_down(x, y),
             1 => self.engine.pointer_up(x, y),
             2 => self.engine.pointer_move(x, y),
+            4 => self.engine.pointer_long_press(x, y), // POINTER_LONG_PRESS in MainActivity.
             3 => {
                 self.engine.pointer_cancel();
                 PointerOutcome::default()

@@ -137,3 +137,4 @@ export {
 } from "./patterns";
 
 export { findIcon, type IconAsset } from "./assets";
+export { PlayingScreen, type PlayingScreenProps } from "./playing";

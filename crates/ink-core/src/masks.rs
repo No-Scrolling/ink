@@ -8,6 +8,25 @@ const TOGGLE_MASK_PADDING: u32 = 1;
 const TOGGLE_SAMPLES: u32 = 4;
 
 impl Mask {
+    pub(crate) fn content_bounds(&self) -> Option<crate::Rect> {
+        let (mut left, mut top, mut right, mut bottom) = (self.width as usize, self.height as usize, 0, 0);
+        for (index, alpha) in self.pixels.as_ref().iter().enumerate() {
+            if *alpha == 0 { continue; }
+            let x = index % self.width as usize;
+            let y = index / self.width as usize;
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x + 1);
+            bottom = bottom.max(y + 1);
+        }
+        (right > left && bottom > top).then(|| crate::Rect {
+            x: left as f32 / self.width as f32,
+            y: top as f32 / self.height as f32,
+            width: (right - left) as f32 / self.width as f32,
+            height: (bottom - top) as f32 / self.height as f32,
+        })
+    }
+
     pub fn toggle_circle(filled: bool) -> Self {
         static OFF: OnceLock<Mask> = OnceLock::new();
         static ON: OnceLock<Mask> = OnceLock::new();

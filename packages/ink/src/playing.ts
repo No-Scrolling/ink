@@ -1,0 +1,58 @@
+import { createElement } from "react";
+import { Image, Screen, Stack, Text, type IconAsset } from "./index";
+import icons from "./playing.ink-icons";
+
+type TransportAction = { seconds?: 5 | 10 | 30; onPress: () => void; onLongPress?: () => void; disabled?: boolean };
+export type PlayingScreenProps = {
+  image?: string;
+  title: string;
+  onTitlePress?: () => void;
+  artists: readonly { name: string; onPress?: () => void }[];
+  playing: boolean;
+  onPlayPause: () => void;
+  position: number;
+  duration: number;
+  onSeek?: (position: number) => void;
+  previous: TransportAction;
+  next: TransportAction;
+  actions?: readonly { icon: IconAsset; selected?: boolean; disabled?: boolean; onPress: () => void }[];
+};
+
+function time(milliseconds: number) {
+  const seconds = Math.floor(milliseconds / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+export function PlayingScreen({ image, title, onTitlePress, artists, playing, onPlayPause, position, duration, onSeek, previous, next, actions = [] }: PlayingScreenProps) {
+  if (!Number.isFinite(position) || !Number.isFinite(duration) || position < 0 || duration < 0) {
+    throw new Error("Playback times must be finite, non-negative milliseconds");
+  }
+  const current = Math.min(position, duration);
+  const control = (icon: IconAsset, { onPress, onLongPress, disabled }: TransportAction) =>
+    createElement("PlayingPressable", { onPress: disabled ? undefined : onPress, onLongPress: disabled ? undefined : onLongPress },
+      createElement("Icon", { filled: true, tight: true, name: icon, size: 56, tone: disabled ? "muted" : "primary" }));
+  return createElement(Screen, null,
+    createElement("PlayingLayout", { centered: !image },
+      createElement(Stack, { gap: 16, align: "stretch" },
+        image && createElement(Stack, { align: "center" }, createElement(Image, { src: image, width: 200, height: 200, fit: "cover" })),
+        createElement(Stack, { gap: 0, align: "center" },
+          createElement("PlayingPressable", { onPress: onTitlePress }, createElement(Text, { size: 22, align: "center", maxLines: 2 }, title)),
+          artists.map((artist, index) => createElement("PlayingPressable", { key: index, onPress: artist.onPress },
+            createElement(Text, { size: 14, align: "center" }, artist.name))),
+        ),
+        createElement(Stack, { gap: 1, align: "stretch" },
+          createElement("PlayingProgress", { position: current / 1000, duration: duration / 1000, onSeek: onSeek && ((seconds: number) => onSeek(seconds * 1000)) }),
+          createElement(Stack, { axis: "horizontal", justify: "space-between" },
+            createElement(Text, { size: 12 }, time(current)),
+            createElement(Text, { size: 12 }, time(duration))),
+        ),
+        createElement("PlayingTransport", null,
+          control(previous.seconds ? icons[`replay_${previous.seconds}`] : icons.skip_previous, previous),
+          control(playing ? icons.pause : icons.play_arrow, { onPress: onPlayPause }),
+          control(next.seconds ? icons[`forward_${next.seconds}`] : icons.skip_next, next)),
+      ),
+      createElement(Stack, { axis: "horizontal", align: "center", justify: actions.length === 1 ? "center" : "space-between" },
+        actions.map((action, index) => createElement("PlayingPressable", { key: index, selected: action.selected, onPress: action.disabled ? undefined : action.onPress },
+          createElement("Icon", { filled: true, tight: true, name: action.icon, size: 44, tone: "primary" })))),
+    ));
+}

@@ -307,6 +307,7 @@ pub enum TextInputAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
+    Seek { id: usize, left: f32, width: f32, duration: f32 },
     ClearInput {
         state: StateId,
     },
@@ -529,6 +530,10 @@ struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
+    PlayingLayout { children: Vec<Node>, centred: bool },
+    PlayingPressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool },
+    PlayingTransport { children: Vec<Node> },
+    PlayingProgress { position: f32, duration: f32, seek: bool },
     Row {
         children: Vec<Node>,
         has_image: bool,
@@ -586,6 +591,7 @@ enum NodeKind {
         mask: Mask,
         size: f32,
         tone: Tone,
+        bounds: Option<Rect>,
     },
     Image {
         source: ImageSource,
@@ -714,7 +720,7 @@ impl Node {
     pub const fn icon(mask: Mask, size: f32, tone: Tone) -> Self {
         Self {
             identity: NodeIdentity(0),
-            kind: NodeKind::Icon { mask, size, tone },
+            kind: NodeKind::Icon { mask, size, tone, bounds: None },
         }
     }
 
@@ -965,6 +971,7 @@ impl Scene {
 struct HitRegion {
     rect: Rect,
     action: Action,
+    long_action: Option<Action>,
     scrolling: bool,
 }
 
@@ -1499,7 +1506,10 @@ impl Engine {
                 };
                 region.rect.contains(x, y)
             })
-            .map(|region| region.action.clone());
+            .map(|region| match region.action.clone() {
+                Action::Seek { id, left, width, duration } => react::event(id, "onSeek", vec![serde_json::json!(((x - left) / width).clamp(0.0, 1.0) * duration)]),
+                action => action,
+            });
         let blurred = self.focused_input.is_some()
             && !matches!(
                 action.as_ref(),
@@ -1669,6 +1679,21 @@ impl Engine {
             }) => PointerOutcome::default().captured(),
             Pointer::Content(_) => PointerOutcome::default(),
         }
+    }
+
+    pub fn pointer_long_press(&mut self, x: f32, y: f32) -> PointerOutcome {
+        if !matches!(self.pointer, Some(Pointer::Content(ContentPointer { dragging: false, cancelled: false, .. }))) {
+            return PointerOutcome::default();
+        }
+        let action = self.hit_regions.iter().rev().find(|region| {
+            let local_y = if region.scrolling { y + self.scroll_offset - self.scroll_origin } else { y };
+            region.rect.contains(x, local_y)
+        }).and_then(|region| region.long_action.clone());
+        let Some(action) = action else { return PointerOutcome::default(); };
+        self.pointer_cancel();
+        let changed = self.apply(action);
+        self.relayout_scene();
+        PointerOutcome::activated(changed).captured()
     }
 
     pub fn pointer_cancel(&mut self) {
@@ -2138,6 +2163,7 @@ impl Engine {
 
     fn apply(&mut self, action: Action) -> bool {
         match action {
+            Action::Seek { .. } => false,
             Action::ClearInput { state } => {
                 self.state[state.0] = StateValue::String(String::new());
                 if self.focused_input == Some(state) {
@@ -2302,7 +2328,10 @@ impl Engine {
                 auto_focus: true,
                 ..
             } => Some((node.identity, *state, *action)),
-            NodeKind::Screen { children, .. }
+            NodeKind::PlayingTransport { children, .. }
+            | NodeKind::PlayingLayout { children, .. }
+            | NodeKind::PlayingPressable { children, .. }
+            | NodeKind::Screen { children, .. }
             | NodeKind::Row { children, .. }
             | NodeKind::Stack { children, .. }
             | NodeKind::ReactList { children, .. } => {
@@ -2318,6 +2347,7 @@ impl Engine {
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
             | NodeKind::CameraPreview { .. }
+            | NodeKind::PlayingProgress { .. }
             | NodeKind::Toggle { .. } => None,
         }
     }
@@ -2380,12 +2410,18 @@ impl Engine {
                 self.list_metrics.insert(node.identity.0, metrics);
                 MeasuredSize { width: available.width, height }
             }
+            NodeKind::PlayingPressable { children, .. } => children.first().map(|child| self.measure(child, available)).unwrap_or_default(),
+            NodeKind::PlayingTransport { children } => MeasuredSize {
+                width: available.width,
+                height: children.iter().map(|child| self.measure(child, available).height).fold(0.0, f32::max),
+            },
+            NodeKind::PlayingProgress { .. } => MeasuredSize { width: available.width, height: self.scaled(6.0) },
             NodeKind::Row { children, has_image, .. } => {
                 let image_width = if *has_image { self.scaled(65.0).min(available.width) } else { 0.0 };
                 let text = children.last().map(|child| self.measure(child, Rect { width: (available.width - image_width).max(0.0), ..available })).unwrap_or_default();
                 MeasuredSize { width: available.width, height: text.height.max(self.scaled(50.0)).min(available.height) }
             }
-            NodeKind::Screen { .. } | NodeKind::Tabs { .. } => MeasuredSize {
+            NodeKind::PlayingLayout { .. } | NodeKind::Screen { .. } | NodeKind::Tabs { .. } => MeasuredSize {
                 width: available.width,
                 height: available.height,
             },
@@ -2476,15 +2512,15 @@ impl Engine {
                     height: (self.scaled(FIELD_LABEL_HEIGHT) + value_height).min(available.height),
                 }
             }
-            NodeKind::Icon { size, .. } => {
+            NodeKind::Icon { size, bounds, .. } => {
                 let size = self.scaled(if *size > 0.0 {
                     *size
                 } else {
                     DEFAULT_ICON_SIZE
                 });
                 MeasuredSize {
-                    width: size.min(available.width),
-                    height: size.min(available.height),
+                    width: (size * bounds.map_or(1.0, |bounds| bounds.width)).min(available.width),
+                    height: (size * bounds.map_or(1.0, |bounds| bounds.height)).min(available.height),
                 }
             }
             NodeKind::Image {
@@ -2583,6 +2619,55 @@ impl Engine {
                 }
             }
 
+            NodeKind::PlayingLayout { children, centred } => {
+                let inset = self.scaled(CONTENT_INSET_START);
+                let body = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), ..rect };
+                let footer = self.measure(&children[1], body);
+                let bottom = rect.y + rect.height - self.scaled(CONTENT_BOTTOM);
+                self.layout(&children[1], Rect { y: bottom - footer.height, height: footer.height, ..body });
+                let available = Rect { height: (bottom - footer.height - self.scaled(12.0) - body.y).max(0.0), ..body };
+                let size = self.measure(&children[0], available);
+                let y = available.y + if *centred { (available.height - size.height).max(0.0) / 2.0 } else { 0.0 };
+                self.layout(&children[0], Rect { y, height: size.height, ..available });
+            }
+            NodeKind::PlayingTransport { children } => {
+                for (index, child) in children.iter().enumerate() {
+                    let size = self.measure(child, rect);
+                    let x = match index {
+                        0 => rect.x,
+                        1 => rect.x + (rect.width - size.width) / 2.0,
+                        _ => rect.x + rect.width - size.width,
+                    };
+                    self.layout(child, Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width: size.width, height: size.height });
+                }
+            }
+            NodeKind::PlayingPressable { children, action, long_action, selected } => {
+                if let Some(child) = children.first() { self.layout(child, rect); }
+                if *selected {
+                    let height = self.control_line_height();
+                    self.scene.quads.push(Quad {
+                        rect: Rect { x: rect.x - self.scaled(3.0), y: rect.y + rect.height + self.scaled(5.0), width: rect.width + self.scaled(6.0), height },
+                        clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+                    });
+                }
+                if let Some(action) = action {
+                    let hit = if children.first().is_some_and(|child| matches!(child.kind, NodeKind::Icon { .. })) {
+                        let width = rect.width.max(self.scaled(52.0));
+                        let height = rect.height.max(self.scaled(52.0));
+                        Rect { x: rect.x - (width - rect.width) / 2.0, y: rect.y - (height - rect.height) / 2.0, width, height }
+                    } else { rect };
+                    self.push_press_region(hit, action.clone(), long_action.clone());
+                }
+            }
+            NodeKind::PlayingProgress { position, duration, seek } => {
+                let ratio = if *duration > 0.0 { (position / duration).clamp(0.0, 1.0) } else { 0.0 };
+                for (width, height) in [(rect.width, self.scaled(2.0)), (rect.width * ratio, self.scaled(6.0))] {
+                    self.scene.quads.push(Quad { rect: Rect { y: rect.y + (rect.height - height) / 2.0, width, height, ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
+                }
+                if *seek && *duration > 0.0 {
+                    self.push_hit_region(Rect { y: rect.y - self.scaled(15.0), height: self.scaled(36.0), ..rect }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
+                }
+            }
             NodeKind::Row { children, has_image, action } => {
                 let image_width = if *has_image { self.scaled(65.0).min(rect.width) } else { 0.0 };
                 if *has_image {
@@ -2655,9 +2740,13 @@ impl Engine {
                 value,
                 action,
             } => self.layout_field(label, value, action, rect),
-            NodeKind::Icon { mask, tone, .. } => self.scene.masks.push(MaskRun {
+            NodeKind::Icon { mask, tone, bounds, .. } => self.scene.masks.push(MaskRun {
                 mask: mask.clone(),
-                rect,
+                rect: bounds.map_or(rect, |bounds| {
+                    let width = rect.width / bounds.width;
+                    let height = rect.height / bounds.height;
+                    Rect { x: rect.x - bounds.x * width, y: rect.y - bounds.y * height, width, height }
+                }),
                 clip: self.clip,
                 colour: self.scene.colour(tone_colour(*tone)),
                 scrolling: self.scrolling,
@@ -3816,11 +3905,16 @@ impl Engine {
     }
 
     fn push_hit_region(&mut self, rect: Rect, action: Action) {
+        self.push_press_region(rect, action, None);
+    }
+
+    fn push_press_region(&mut self, rect: Rect, action: Action, long_action: Option<Action>) {
         let rect = rect.intersection(self.clip);
         if rect.width > 0.0 && rect.height > 0.0 {
             self.hit_regions.push(HitRegion {
                 rect,
                 action,
+                long_action,
                 scrolling: self.scrolling,
             });
         }
@@ -3927,6 +4021,7 @@ fn stretchable(node: &Node) -> bool {
     matches!(
         &node.kind,
         NodeKind::Stack { .. }
+            | NodeKind::PlayingTransport { .. }
             | NodeKind::Row { .. }
             | NodeKind::Text { .. }
             | NodeKind::TextInput { .. }
@@ -3985,7 +4080,7 @@ fn constrained_axis(content_start: f32, content_size: f32, view_start: f32, view
 fn fills_remaining_screen(node: &Node) -> bool {
     matches!(
         &node.kind,
-        NodeKind::CameraPreview { .. }
+        NodeKind::PlayingLayout { .. } | NodeKind::CameraPreview { .. }
             | NodeKind::Image {
                 bleed: true,
                 zoomable: true,

@@ -224,3 +224,13 @@ Use `Screen`'s optional `header` for content that stays below the navigation tit
 `rightAction` places one icon/action in the navigation title bar. It is separate from `header`, which pins composed content below the title. The Examples tab demonstrates the more-horizontal icon opening Action Page.
 
 The Code generation page links to all 13 supported formats, each displayed inside a centred Screen. QR Code encodes `Hello World!` at size 240 with a two-module white border. `size` sets the display width; height follows the generated image. QR stays square, PDF417 uses its encoded proportions, and linear codes use a compact bar height with a white border. Other formats use text or valid numeric samples as appropriate. Generation and display are handled by `Barcode` from `@ink/barcode/generate`.
+
+## Playing screen
+
+`PlayingScreen` groups optional artwork, title/artists, progress and transport controls at the top of the content area below the header. Its `actions` stay at the bottom and are distributed evenly. Omitting `image` centres the main group vertically between the header and bottom actions; a loading image reserves its space.
+
+Supply `playing`, `onPlayPause`, `position` and `duration` (milliseconds), and optional `onSeek` for tap-to-seek. `title` has optional `onTitlePress`; each entry in `artists` has a `name` and optional `onPress`. Required `previous` and `next` actions accept `onPress`, optional `onLongPress`, optional `disabled` and optional `seconds: 5 | 10 | 30` to show seek icons instead of track controls. Each bottom action accepts `icon`, `onPress`, optional `selected` and `disabled`.
+
+The screen owns presentation; the app owns playback and queue behaviour. The template's Image and No Image examples simulate progress without playing audio. Image uses Wallsocket artwork and track controls; No Image demonstrates backward 10-second and forward 30-second controls.
+
+A long press invokes `onLongPress` once and suppresses the normal tap on release. Moving away cancels it. The template seeks backward/forward by 15 seconds on a hold, matching Reverb; the callback determines the amount. Bottom actions can change their `icon` independently of `selected`, which adds an underline.

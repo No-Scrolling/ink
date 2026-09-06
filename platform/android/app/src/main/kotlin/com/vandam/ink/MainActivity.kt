@@ -963,6 +963,18 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
     }
 
     private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
+        private val longPress = Runnable {
+            if (engineHandle != 0L && surfaceAttached) {
+                if (processPointerResult(nativePointer(engineHandle, POINTER_LONG_PRESS, imageTapDownX, imageTapDownY))) requestFrame()
+                postFrame()
+            }
+        }
+
+        override fun onDetachedFromWindow() {
+            removeCallbacks(longPress)
+            super.onDetachedFromWindow()
+        }
+
         private val choreographer = Choreographer.getInstance()
         private val viewConfiguration = ViewConfiguration.get(this@MainActivity)
         private val minimumFlingVelocity = viewConfiguration.scaledMinimumFlingVelocity
@@ -1077,6 +1089,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
         override fun onTouchEvent(event: MotionEvent): Boolean {
             scaleGestureDetector.onTouchEvent(event)
             if (pinchActive || event.pointerCount > 1) {
+                removeCallbacks(longPress)
                 resetImageTap()
                 velocityTracker?.recycle()
                 velocityTracker = null
@@ -1087,6 +1100,8 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             var imageDoubleTap = 0
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    removeCallbacks(longPress)
+                    postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
                     stopFling()
                     downY = event.y
                     imageTapDownX = event.x
@@ -1103,10 +1118,12 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                 MotionEvent.ACTION_MOVE -> {
                     velocityTracker?.addMovement(event)
                     if (movedBeyond(event.x, event.y, imageTapDownX, imageTapDownY, touchSlop)) {
+                        removeCallbacks(longPress)
                         resetImageTap()
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    removeCallbacks(longPress)
                     if (imageTapTarget != 0L) {
                         val isSecondTap = previousImageTapTime != 0L &&
                             previousImageTapTarget == imageTapTarget &&
@@ -1145,6 +1162,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                     velocityTracker = null
                 }
                 MotionEvent.ACTION_CANCEL -> {
+                    removeCallbacks(longPress)
                     resetImageTap()
                     velocityTracker?.recycle()
                     velocityTracker = null
@@ -1301,6 +1319,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
         private const val TEXT_INPUT_BACKSPACE = 1
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
+        private const val POINTER_LONG_PRESS = 4
         private const val POINTER_CHANGED = 1
         private const val POINTER_ACTIVATED = 1 shl 1
         private const val POINTER_CAPTURED = 1 shl 2

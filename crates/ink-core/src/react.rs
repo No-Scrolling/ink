@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, sync::OnceLock};
 
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
@@ -61,6 +61,10 @@ enum HostKind {
     Button,
     Field,
     Row,
+    PlayingLayout,
+    PlayingTransport,
+    PlayingPressable,
+    PlayingProgress,
 }
 
 enum HostProps {
@@ -149,6 +153,8 @@ pub struct ReactTree {
 struct IconVariants {
     outlined: Option<Mask>,
     filled: Option<Mask>,
+    outlined_bounds: OnceLock<Option<crate::Rect>>,
+    filled_bounds: OnceLock<Option<crate::Rect>>,
 }
 
 struct InputBinding {
@@ -634,6 +640,22 @@ impl ReactTree {
                 }
                 screen
             }
+            HostKind::PlayingTransport => {
+                ensure!(host.children.len() == 3, "Playing transport requires three controls");
+                Node { identity: NodeIdentity(id), kind: NodeKind::PlayingTransport { children: self.children(host, depth)? } }
+            },
+            HostKind::PlayingLayout => {
+                ensure!(host.children.len() == 2, "Playing layout requires content and actions");
+                Node { identity: NodeIdentity(id), kind: NodeKind::PlayingLayout { children: self.children(host, depth)?, centred: props.get("centered") == Some(&Json::Bool(true)) } }
+            },
+            HostKind::PlayingPressable => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingPressable {
+                selected: props.get("selected") == Some(&Json::Bool(true)),
+                long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
+                children: self.children(host, depth)?, action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
+            } },
+            HostKind::PlayingProgress => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingProgress {
+                position: number(props, "position")?.unwrap_or(0.0), duration: number(props, "duration")?.unwrap_or(0.0), seek: props.get("onSeek") == Some(&Json::Bool(true)),
+            } },
             HostKind::Row => Node {
                 identity: NodeIdentity(id),
                 kind: NodeKind::Row {
@@ -776,14 +798,17 @@ impl ReactTree {
                     "muted" => Tone::Muted,
                     value => bail!("unsupported icon tone {value}"),
                 };
-                Node::icon(
-                    self.icon(
-                        string(props, "name").context("Icon requires a name")?,
-                        false,
-                    )?,
-                    number(props, "size")?.unwrap_or(28.0),
-                    tone,
-                )
+                let name = string(props, "name").context("Icon requires a name")?;
+                let filled = props.get("filled") == Some(&Json::Bool(true));
+                let mask = self.icon(name, filled)?;
+                let bounds = if props.get("tight") == Some(&Json::Bool(true)) {
+                    let variants = self.icons.get(name).context("missing icon variants")?;
+                    let cache = if filled { &variants.filled_bounds } else { &variants.outlined_bounds };
+                    *cache.get_or_init(|| mask.content_bounds())
+                } else { None };
+                Node { identity: NodeIdentity(id), kind: NodeKind::Icon {
+                    mask, size: number(props, "size")?.unwrap_or(28.0), tone, bounds,
+                } }
             }
             HostKind::Toggle => {
                 let value = props
@@ -878,7 +903,7 @@ fn empty_screen() -> Node {
     Node::screen(vec![], None, false)
 }
 
-fn event(id: usize, name: &str, args: Vec<Json>) -> Action {
+pub(super) fn event(id: usize, name: &str, args: Vec<Json>) -> Action {
     Action::Native {
         operation: event_operation(id, name, args),
     }
@@ -898,7 +923,10 @@ fn find_node(node: &Node, id: usize) -> Option<&Node> {
         return Some(node);
     }
     match &node.kind {
-        NodeKind::Screen { children, .. }
+        NodeKind::PlayingTransport { children, .. }
+        | NodeKind::PlayingLayout { children, .. }
+        | NodeKind::PlayingPressable { children, .. }
+        | NodeKind::Screen { children, .. }
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {
@@ -914,7 +942,10 @@ fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
         return Some(node);
     }
     match &mut node.kind {
-        NodeKind::Screen { children, .. }
+        NodeKind::PlayingTransport { children, .. }
+        | NodeKind::PlayingLayout { children, .. }
+        | NodeKind::PlayingPressable { children, .. }
+        | NodeKind::Screen { children, .. }
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {

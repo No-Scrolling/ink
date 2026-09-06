@@ -1,3 +1,4 @@
+import Playing, { PlayingExample } from "./screens/Playing";
 import Reordering from "./screens/Reordering";
 import Rows from "./screens/Rows";
 import Actions from "./screens/Actions";
@@ -52,6 +53,9 @@ export default function LightTemplate() {
     <>
       <AppearanceSettings />
       <Navigator>
+        <Route path="/examples/playing"><Playing /></Route>
+        <Route path="/examples/playing/image"><PlayingExample image /></Route>
+        <Route path="/examples/playing/no-image"><PlayingExample /></Route>
         <Route path="/">
           <Tabs>
             <Tab icon={icons.home}>
