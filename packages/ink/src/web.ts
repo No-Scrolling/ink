@@ -1,15 +1,24 @@
-import { ReadableStream, WritableStream, TransformStream, ByteLengthQueuingStrategy, CountQueuingStrategy } from "web-streams-polyfill";
-import { Blob, File, FormData } from "./blob";
-import { WebSocket, MessageEvent, CloseEvent } from "./websocket";
-import { URL, URLSearchParams } from "whatwg-url";
-import { fetch, Headers, Request, Response } from "./fetch";
+export {};
 
-Object.defineProperties(globalThis, {
-  ...Object.fromEntries(Object.entries({ Blob, File, FormData, ReadableStream, WritableStream, TransformStream, ByteLengthQueuingStrategy, CountQueuingStrategy, WebSocket, MessageEvent, CloseEvent }).map(([name, value]) => [name, { value, writable: true, configurable: true }])),
-  URL: { value: URL, writable: true, configurable: true },
-  URLSearchParams: { value: URLSearchParams, writable: true, configurable: true },
-  fetch: { value: fetch, writable: true, configurable: true },
-  Headers: { value: Headers, writable: true, configurable: true },
-  Request: { value: Request, writable: true, configurable: true },
-  Response: { value: Response, writable: true, configurable: true },
-});
+// The bundler keeps this synchronous dependency uninitialised until first access.
+declare function require(path: "./web-globals"): typeof import("./web-globals");
+
+const names = [
+  "Blob", "File", "FormData", "ReadableStream", "WritableStream", "TransformStream",
+  "ByteLengthQueuingStrategy", "CountQueuingStrategy", "WebSocket", "MessageEvent",
+  "CloseEvent", "URL", "URLSearchParams", "fetch", "Headers", "Request", "Response",
+] as const;
+
+for (const name of names) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    get() {
+      const value = require("./web-globals")[name];
+      Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
+      return value;
+    },
+    set(value) {
+      Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
+    },
+  });
+}

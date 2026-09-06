@@ -20,10 +20,8 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
     private val handler = Handler(Looper.getMainLooper())
     private val executor = Executors.newFixedThreadPool(2)
     private val requests = ConcurrentHashMap<Long, UrlRequest>()
-    private val engine: HttpEngine
-
-    init {
-        engine = HttpEngine.Builder(context)
+    private val httpEngine = lazy {
+        HttpEngine.Builder(context)
             .apply {
                 if (cacheName != null) {
                     val storage = File(context.cacheDir, cacheName).apply { mkdirs() }
@@ -36,6 +34,7 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
             .setEnableQuic(true)
             .build()
     }
+    private val engine by httpEngine
 
     private val streamTransport = lazy { InkFetchStreams(context, engine, executor, handler) }
     private val streams by streamTransport
@@ -83,7 +82,7 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
         if (socketTransport.isInitialized()) sockets.stop()
         requests.values.forEach(UrlRequest::cancel)
         requests.clear()
-        engine.shutdown()
+        if (httpEngine.isInitialized()) engine.shutdown()
         executor.shutdownNow()
     }
 

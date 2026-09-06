@@ -18,6 +18,7 @@ use rquickjs::{CatchResultExt, Context, Ctx, Exception, Function, Persistent, Ru
 
 const CHANNEL_CAPACITY: usize = 256;
 const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+type WebLoader = Box<dyn Fn() -> Result<String> + Send>;
 
 pub enum Event {
     Ready,
@@ -49,6 +50,22 @@ impl AppRuntime {
         source: String,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<(Self, Receiver<Event>)> {
+        Self::spawn_with_options(source, wake, None)
+    }
+
+    pub fn spawn_with_web_loader(
+        source: String,
+        wake: impl Fn() + Send + Sync + 'static,
+        load_web: impl Fn() -> Result<String> + Send + 'static,
+    ) -> Result<(Self, Receiver<Event>)> {
+        Self::spawn_with_options(source, wake, Some(Box::new(load_web)))
+    }
+
+    fn spawn_with_options(
+        source: String,
+        wake: impl Fn() + Send + Sync + 'static,
+        load_web: Option<WebLoader>,
+    ) -> Result<(Self, Receiver<Event>)> {
         let (commands, incoming) = mpsc::sync_channel(CHANNEL_CAPACITY);
         let (outgoing, events) = mpsc::sync_channel(CHANNEL_CAPACITY);
         let outgoing = EventSink {
@@ -69,6 +86,7 @@ impl AppRuntime {
                     outgoing.clone(),
                     cancelled.clone(),
                     failure,
+                    load_web,
                 ) {
                     outgoing.send_terminal(Event::Error(format!("{error:#}")), &cancelled);
                 }
@@ -171,6 +189,7 @@ fn run(
     events: EventSink,
     stopped: Arc<AtomicBool>,
     delivery_failed: Arc<Mutex<Option<String>>>,
+    load_web: Option<WebLoader>,
 ) -> Result<()> {
     let runtime = Runtime::new()?;
     runtime.set_memory_limit(64 * 1024 * 1024);
@@ -206,6 +225,22 @@ fn run(
         timers.clone(),
         transport_failed.clone(),
     )?;
+    if let Some(load_web) = load_web {
+        context.with(|ctx| -> rquickjs::Result<()> {
+            ctx.globals().set(
+                "__inkLoadWeb",
+                Function::new(ctx.clone(), move |ctx: Ctx<'_>| {
+                    let source = load_web()
+                        .map_err(|error| Exception::throw_message(&ctx, &error.to_string()))?;
+                    ctx.eval_with_options::<(), _>(source, {
+                        let mut options = rquickjs::context::EvalOptions::default();
+                        options.filename = Some("ink-web.js".into());
+                        options
+                    })
+                })?,
+            )
+        })?;
+    }
     context.with(|ctx| {
         ctx.eval_with_options::<(), _>(source, {
             let mut options = rquickjs::context::EvalOptions::default();
@@ -219,6 +254,8 @@ fn run(
         .try_send(Event::Ready)
         .map_err(|_| anyhow!("native event queue is unavailable"))?;
 
+    // Reclaim temporary startup allocations once the initial render has settled.
+    let mut startup_collection = Some(Instant::now() + Duration::from_secs(1));
     while !stopped.load(Ordering::Acquire) {
         if let Ok(mut failure) = delivery_failed.lock()
             && let Some(message) = failure.take()
@@ -253,6 +290,20 @@ fn run(
         if *transport_failed.borrow() {
             return Err(anyhow!("Native commit queue is full; reload the runtime"));
         }
+        if !runtime.is_job_pending()
+            && startup_collection.is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            runtime.run_gc();
+            #[cfg(target_os = "android")]
+            unsafe {
+                const M_PURGE_ALL: i32 = -104;
+                unsafe extern "C" {
+                    fn mallopt(option: i32, value: i32) -> i32;
+                }
+                mallopt(M_PURGE_ALL, 0);
+            }
+            startup_collection = None;
+        }
         let wait = if runtime.is_job_pending() {
             Some(Duration::ZERO)
         } else {
@@ -261,6 +312,13 @@ fn run(
                 .values()
                 .min()
                 .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+        };
+        let wait = match startup_collection {
+            Some(deadline) => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                Some(wait.map_or(remaining, |wait| wait.min(remaining)))
+            }
+            None => wait,
         };
         let command = match wait {
             Some(wait) => commands.recv_timeout(wait),

@@ -19,26 +19,35 @@ private class InkKeyboardAdapter(
     container: ViewGroup,
     private val onEdit: TextEditHandler,
 ) : TextInputAdapter, KeyboardListener {
-    private val keyboard = InkKeyboardView(activity).apply {
-        action = KeyboardAction.Search
-        listener = this@InkKeyboardAdapter
-        typeface = activity.publicSansTypeface
-        visibility = View.GONE
-    }
-
-    init {
-        container.addView(
-            keyboard,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM,
-            ),
-        )
-        keyboard.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            resizeContent()
+    private var lightAppearance = false
+    private var preferences: KeyboardPreferences? = null
+    private val keyboardView = lazy {
+        InkKeyboardView(activity).apply {
+            action = KeyboardAction.Search
+            listener = this@InkKeyboardAdapter
+            typeface = activity.publicSansTypeface
+            visibility = View.GONE
+            lightAppearance = this@InkKeyboardAdapter.lightAppearance
+            preferences?.let {
+                isHapticFeedbackEnabled = it.hapticsEnabled
+                emojis = it.emojis
+                keyAnimationEnabled = it.keyAnimationEnabled
+            }
+        }.also { keyboard ->
+            container.addView(
+                keyboard,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM,
+                ),
+            )
+            keyboard.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                resizeContent()
+            }
         }
     }
+    private val keyboard by keyboardView
 
     private fun resizeContent() {
         val inset = if (keyboard.visibility == View.VISIBLE) keyboard.height else 0
@@ -46,6 +55,7 @@ private class InkKeyboardAdapter(
     }
 
     override fun sync(active: Boolean, action: Int) {
+        if (!active && !keyboardView.isInitialized()) return
         keyboard.action = when (action) {
             0 -> KeyboardAction.Return
             2 -> KeyboardAction.Done
@@ -62,11 +72,12 @@ private class InkKeyboardAdapter(
     }
 
     override fun setLightAppearance(light: Boolean) {
-        keyboard.lightAppearance = light
+        lightAppearance = light
+        if (keyboardView.isInitialized()) keyboard.lightAppearance = light
     }
 
     override fun dismiss(): Boolean {
-        if (keyboard.visibility != View.VISIBLE) {
+        if (!keyboardView.isInitialized() || keyboard.visibility != View.VISIBLE) {
             return false
         }
         onDismiss()
@@ -74,6 +85,8 @@ private class InkKeyboardAdapter(
     }
 
     override fun applyPreferences(preferences: KeyboardPreferences) {
+        this.preferences = preferences
+        if (!keyboardView.isInitialized()) return
         keyboard.isHapticFeedbackEnabled = preferences.hapticsEnabled
         keyboard.emojis = preferences.emojis
         keyboard.keyAnimationEnabled = preferences.keyAnimationEnabled

@@ -1,6 +1,6 @@
 # Completing Ink's developer experience
 
-Status: framework implementation delivered, with focused verification completed on 6 September 2026. Real-app workflows and physical LP3 measurements are explicitly deferred for a joint session with the user. The detailed sections below preserve the intended design and its acceptance criteria; they are not a claim that every device scenario has been exercised.
+Status: framework implementation delivered, with focused verification completed on 6 September 2026. Physical LP3 counter/scroll benchmarks are now complete. Real-app workflows remain explicitly deferred for a joint session with the user. The detailed sections below preserve the intended design and its acceptance criteria; they are not a claim that every device scenario has been exercised.
 
 ## Current implementation status
 
@@ -12,9 +12,9 @@ Status: framework implementation delivered, with focused verification completed 
 | 4. Shared screen behaviour | Implemented; bounded verification | Prior template emulator work covers appearance, navigation, keyboard transitions, wrapping fields and common screen patterns. The [public-prop audit](public-props-audit.md) traces public interfaces to implementation and removes stale claims. Delayed input and wider composition/device stress are not signed off. |
 | 5. Variable-height lists | Implemented; focused fixture checks passed | Estimated heights, key/content/width measurement caches, anchored scrolling, bounded windows and optional end-following. Expansion, scrolling and prepend anchoring were checked in the emulator; fixed-height updates still work. See [lists](lists.md). Physical performance remains unmeasured. |
 | 6. Compatibility and standalone installation | Implemented for an explicit local SDK | Shared runtime typings/configuration, `ink create`, explicit SDK discovery and per-app Android output isolation. An app outside the repository installed dependencies, checked, launched in the emulator and produced signature-verified debug/release APKs. Public registry naming/publication remain release decisions. See [standalone setup](standalone.md) and [runtime compatibility](runtime-compatibility.md). |
-| 7. Real workflows and documentation | Documentation updated; workflows deferred by request | Compiler/runtime/development/list/distribution guides and API claims updated. Passes, Spotify and Beeper-style workflows, physical LP3 release measurements and wider dependency exercises will be done with the user later. |
+| 7. Real workflows and documentation | Documentation updated; workflows deferred by request | Compiler/runtime/development/list/distribution guides and API claims updated. Physical LP3 release counter/scroll benchmarks are complete. Passes, Spotify and Beeper-style workflows and wider dependency exercises will be done with the user later. |
 
-See [the verification record](verification-2026-09-06.md) for commands, scenarios and limits. No automated tests were added. Compilation and the focused emulator scenarios establish only the behaviours actually exercised; they do not establish hardware performance or production readiness. Reading the phone's existing confirmation screen was a visual reference, not verification of Ink running on that phone.
+See [the verification record](verification-2026-09-06.md) for commands, scenarios and limits. No automated tests were added. Compilation and focused emulator scenarios establish only the behaviours actually exercised. The [physical LP3 benchmark report](../benchmarks/results/ink-react-lp3-2026-09-06.md) now records release counter/scroll measurements, with [fresh Expo and Light SDK comparisons](../benchmarks/results/expo-light-sdk-lp3-2026-09-06.md). These fixtures do not establish variable-height list performance, input-to-photon latency, battery life or production readiness.
 
 ## Outcome
 

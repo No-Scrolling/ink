@@ -160,20 +160,40 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
             return false as jboolean;
         }
     };
-    let runtime = AppRuntime::spawn_with_waker(source, move || {
-        let result: jni::errors::Result<()> = vm.attach_current_thread(|env| {
-            env.call_method(
-                &activity,
-                jni_str!("onJavaScriptReady"),
-                jni_sig!(() -> void),
-                &[],
-            )?;
-            Ok(())
-        });
-        if let Err(error) = result {
-            android_log(ANDROID_LOG_ERROR, &error.to_string());
-        }
-    });
+    let loader_vm = vm.clone();
+    let activity = std::sync::Arc::new(activity);
+    let loader_activity = activity.clone();
+    let runtime = AppRuntime::spawn_with_web_loader(
+        source,
+        move || {
+            let result: jni::errors::Result<()> = vm.attach_current_thread(|env| {
+                env.call_method(
+                    activity.as_ref(),
+                    jni_str!("onJavaScriptReady"),
+                    jni_sig!(() -> void),
+                    &[],
+                )?;
+                Ok(())
+            });
+            if let Err(error) = result {
+                android_log(ANDROID_LOG_ERROR, &error.to_string());
+            }
+        },
+        move || {
+            let source = loader_vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+                let source = env
+                    .call_method(
+                        loader_activity.as_ref(),
+                        jni_str!("loadWebRuntime"),
+                        jni_sig!(() -> java.lang.String),
+                        &[],
+                    )?
+                    .l()?;
+                env.cast_local::<JString>(source)?.try_to_string(env)
+            })?;
+            Ok(source)
+        },
+    );
     match runtime {
         Ok((runtime, events)) => {
             let Some(engine) = engine(handle) else {

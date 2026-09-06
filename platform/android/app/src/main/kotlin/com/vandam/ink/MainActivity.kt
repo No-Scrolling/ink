@@ -59,7 +59,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var cameraAdapter: CameraAdapter
     private lateinit var textInputAdapter: TextInputAdapter
     private lateinit var notificationsAdapter: NotificationsAdapter
-    private val systemGlyphRasterizer = SystemGlyphRasterizer()
+    private val systemGlyphRasterizer by lazy { SystemGlyphRasterizer() }
     private var engineHandle = 0L
     private var surfaceAttached = false
     private val nativeRequestHandler = Handler(Looper.getMainLooper())
@@ -273,13 +273,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 else java.io.File(directory, "app.js").readText()
             val icons = if (directory == null) assets.open("ink-icons-v1.json").use { it.readBytes() }
                 else java.io.File(directory, "ink-icons-v1.json").readBytes()
-            val manifest = if (directory == null) assets.open("ink-bundle-v1.json").bufferedReader().use { it.readText() }
-                else java.io.File(directory, "ink-bundle-v1.json").readText()
-            refreshCompatibility = JSONObject(manifest).optString("refreshCompatibilityHash")
+            if (BuildConfig.DEBUG) {
+                val manifest = if (directory == null) assets.open("ink-bundle-v1.json").bufferedReader().use { it.readText() }
+                    else java.io.File(directory, "ink-bundle-v1.json").readText()
+                refreshCompatibility = JSONObject(manifest).optString("refreshCompatibilityHash")
+                developmentIcons = icons
+            }
             stopJavaScriptSession()
             nativeRequestHandler.removeCallbacks(drainJavaScript)
             javascriptPending.set(false)
-            developmentIcons = icons
             check(nativeStartJavaScript(engineHandle, source, icons, this)) { "Ink could not start JavaScript; see ink logs" }
             developmentBundle = directory
             inkView.requestFrame()
@@ -441,6 +443,8 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             nativeRequestHandler.post(drainJavaScript)
         }
     }
+
+    fun loadWebRuntime(): String = assets.open("ink-assets/ink-web.js").bufferedReader().use { it.readText() }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)

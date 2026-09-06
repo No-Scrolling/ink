@@ -4,9 +4,15 @@ The counter and 1,000-row scrolling apps use React with Ink's QuickJS-ng runtime
 
 ## Recorded results
 
-The [current React counter and scrolling results](results/ink-react-lp3-2026-09-06.md) measure Ink on a physical Light Phone III. They include the raw runtime samples and host build timings.
+The [current Ink, Expo and Light SDK comparison](results/optimised-comparison-lp3-2026-09-06.md) reruns all six ARM64 release apps in one interleaved LP3 session after Ink's memory optimisations. It supplies the root README figures, raw runtime samples and three-round build timings. Ink's median idle PSS is **18.1 MiB for the counter and 25.7 MiB for the non-virtualised list**.
 
-The [current Expo and Light SDK results](results/expo-light-sdk-lp3-2026-09-06.md) rerun the comparison fixtures on the same LP3, with ARM64-only release APKs. Ink's measurements were collected earlier in the same session.
+The earlier [React counter and scrolling results](results/ink-react-lp3-2026-09-06.md) and [Expo and Light SDK results](results/expo-light-sdk-lp3-2026-09-06.md) are retained as historical measurements from before this combined rerun.
+
+The [memory investigation](results/memory-lp3-2026-09-06.md) profiles eager web polyfills, garbage collection, allocator purging and list virtualisation on LP3. These exploratory variants are separate from the published comparison benchmarks.
+
+The [optional web-code split](results/split-web-lp3-2026-09-06.md) saves another 5.16 MiB in the counter and 4.91 MiB in the unchanged non-virtualised list in the LP3 experiment. Release apps now package web code separately and load it automatically on first use. `INK_SPLIT_WEB=0` retains the previous packaging for comparison.
+
+The subsequent [native startup memory reductions](results/native-memory-lp3-2026-09-06.md) bring median idle PSS to **18.07 MiB for the counter and 25.80 MiB for the non-virtualised list**, through deferred native initialisation, fuller startup purging and software rendering of the surrounding Android views. Ink's scene still uses Vulkan. The report includes paired measurements and remaining verification limits.
 
 The [runtime comparison](results/runtime-lp3.md) and [QuickJS-ng / Hermes comparison](results/runtime-engines-lp3.md) record the JavaScript runtime experiments on a physical Light Phone III. Their reports describe the measured builds and limitations.
 

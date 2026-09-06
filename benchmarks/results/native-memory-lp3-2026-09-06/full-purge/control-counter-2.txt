@@ -1,0 +1,60 @@
+Starting: Intent { cmp=com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity
+TotalTime: 368
+WaitTime: 378
+Complete
+
+  mCurrentFocus=Window{ad0c7b2 u0 com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity}
+Applications Memory Usage (in Kilobytes):
+Uptime: 129904343 Realtime: 325743605
+
+** MEMINFO in pid 25521 [com.vandam.benchmark.ink.counter] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap     9125     9068       20        5    12188    18284    10428     3302
+  Dalvik Heap     1584     1456        0       16     9552     4544     2272     2272
+ Dalvik Other      611      600        0        6     1388                           
+        Stack      524      524        0        0      536                           
+       Ashmem       10        0        0        0      396                           
+      Gfx dev        0        0        0        0        4                           
+    Other dev       38        0       20        0      764                           
+     .so mmap     4309      592      264        0    50028                           
+    .jar mmap      767        0       32        0    24980                           
+    .apk mmap     3639     3552        0        0     4644                           
+    .ttf mmap      135        0       28        0      308                           
+    .dex mmap       70       16       48        0      736                           
+    .oat mmap      251        0        4        0    11344                           
+    .art mmap      855      428       32        7    25572                           
+   Other mmap      431      428        0        0     1056                           
+      Unknown      875      836       32        0     1796                           
+        TOTAL    23258    17500      480       34   145292    22828    12700     5574
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:     1916                          35124
+         Native Heap:     9068                          12188
+                Code:     4552                          92056
+               Stack:      524                            536
+            Graphics:        0                              4
+       Private Other:     1920
+              System:     5278
+             Unknown:                                    5384
+ 
+           TOTAL PSS:    23258            TOTAL RSS:   145292       TOTAL SWAP PSS:       34
+ 
+ Objects
+               Views:       10         ViewRootImpl:        1
+         AppContexts:        6           Activities:        1
+              Assets:       14        AssetManagers:        0
+       Local Binders:       15        Proxy Binders:       37
+       Parcel memory:        4         Parcel count:       19
+    Death Recipients:        1             WebViews:        0
+ 
+ SQL
+         MEMORY_USED:        0
+  PAGECACHE_OVERFLOW:        0          MALLOC_SIZE:        0
+ 

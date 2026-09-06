@@ -2,6 +2,7 @@ import { dirname, resolve, relative, extname } from "node:path";
 import { realpath } from "node:fs/promises";
 const [root, entry, output, profile = "release"] = Bun.argv.slice(2);
 const development = profile === "development";
+const splitWeb = !development && process.env.INK_SPLIT_WEB !== "0" && output.endsWith("/app.js");
 const inputs = new Set();
 const capabilities = new Set();
 const assets = new Map();
@@ -108,6 +109,9 @@ function buildOptions(bootstrap = false) { return {
       await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
+      if (splitWeb && path === resolve(frameworkDirectory, "web.ts")) {
+        contents = 'import * as native from "./native";\nlet web;\nfunction loadWeb() { if (!web) { __inkLoadWeb(); web = globalThis.__inkWebFactory(native); delete globalThis.__inkWebFactory; } return web; }\n' + contents.replace('require("./web-globals")[name]', 'loadWeb()[name]');
+      }
       if (development && !bootstrap && !path.includes("/node_modules/")) {
         const original = contents;
         let transformed = await babel.transformAsync(contents, {
@@ -149,6 +153,28 @@ function buildOptions(bootstrap = false) { return {
   }}],
 }; }
 let result = await Bun.build(buildOptions());
+if (splitWeb) {
+  const web = await Bun.build({
+    entrypoints: [resolve(frameworkDirectory, "web-globals.ts")],
+    target: "browser", format: "cjs", minify: true,
+    define: { "process.env.NODE_ENV": '"production"' },
+    plugins: [{ name: "ink-web-shared-native", setup(build) {
+      build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
+        const resolved = await realpath(Bun.resolveSync(path, importer ? dirname(importer) : frameworkDirectory));
+        await inspect(resolved);
+        return resolved === resolve(frameworkDirectory, "native.ts")
+          ? { path: resolved, namespace: "ink-native" } : { path: resolved };
+      });
+      build.onLoad({ filter: /.*/, namespace: "ink-native" }, () => ({
+        contents: 'export const { NativeError, callNative, onNativeMessage } = inkNative;', loader: "js",
+      }));
+    } }],
+  });
+  if (!web.success) throw new AggregateError(web.logs, "Could not build optional web runtime");
+  const path = resolve(dirname(output), "ink-web.js");
+  await Bun.write(path, 'globalThis.__inkWebFactory = function(inkNative) { const module = {exports:{}}; const exports = module.exports;\n' + await web.outputs[0].text() + '\nreturn module.exports; };');
+  assets.set("ink-web.js", path);
+}
 if (development && result.success && components.size) {
   const refreshEntry = resolve(dirname(output), "refresh-entry.js");
   await Bun.write(refreshEntry, [...components].sort().map(path => "import " + JSON.stringify(path) + ";").join("\n") + "\nimport " + JSON.stringify(entry) + ";\n");

@@ -1,0 +1,20 @@
+diff --git a/benchmarks/apps/ink-scroll/App.tsx b/benchmarks/apps/ink-scroll/App.tsx
+index ca714e6..b82eb23 100644
+--- a/benchmarks/apps/ink-scroll/App.tsx
++++ b/benchmarks/apps/ink-scroll/App.tsx
+@@ -1,13 +1,11 @@
+-import { Screen, Stack, Text } from "ink";
++import { List, Screen, Text } from "ink";
+ 
+ const items = Array.from({ length: 1_000 }, (_, index) => `Item ${index + 1}`);
+ 
+ export default function Scroll() {
+   return (
+     <Screen title="Items">
+-      <Stack gap={24}>
+-        {items.map((item) => <Text key={item}>{item}</Text>)}
+-      </Stack>
++      <List items={items} itemHeight={40} gap={24} keyExtractor={item => item} renderItem={item => <Text>{item}</Text>} />
+     </Screen>
+   );
+ }

@@ -1,6 +1,6 @@
 # Framework verification — 6 September 2026
 
-This records focused checks for the implementation plan. Real-app workflows and physical Light Phone III measurements are deferred at the user's request. No automated tests were added; no physical-device settings or applications were changed.
+This records focused checks for the implementation plan. Real-app workflows remain deferred at the user's request. No automated tests were added. The initial emulator checks below were followed by physical LP3 release benchmarks; their results and cleanup are recorded separately.
 
 ## Build and interface checks
 
@@ -27,3 +27,7 @@ Verification exposed and corrected an ADB extraction race, a redundant first gra
 The previous template session exercised appearance, search/navigation, keyboard transitions, confirmation, wrapping fields, dynamic items and fixed-height list presentation. The latest full-capability template built, passed APK signature verification and launched through `ink dev --device emulator-5554 --once`. The final emulator pass exercised variable-row expansion, scrolling through mixed-height rows and prepending an earlier row while retaining the previous content position. The fixed-height list continued to render and increment updates. Typing with the native keyboard and submitting search opened Search Results with “Nothing found”. The final filtered Ink/Android error log was empty. End-following and image-load anchors were reviewed in source but not independently exercised in this pass.
 
 Compilation does not establish cancellation/pause/restart stress behaviour, detached playback, real network flows, general dependency compatibility, physical input behaviour or list performance. List measurements and metadata still rebuild linearly for structural changes. Delayed JavaScript input, native keyboard composition, image-loading anchors and sustained resource use need broader interaction verification. No latency, battery or production-readiness claim follows from these checks.
+
+## Subsequent physical LP3 benchmarks
+
+Release counter and non-virtualised 1,000-row scroll benchmarks completed on the physical LP3 for Ink, Expo and Light SDK. The Ink release check exposed an R8-stripped JNI callback; its keep rule was corrected before measurements. Separate counter checks reached 100, and scroll fixtures rendered and responded to swipes. See the [Ink results](../benchmarks/results/ink-react-lp3-2026-09-06.md) and [Expo/Light SDK results](../benchmarks/results/expo-light-sdk-lp3-2026-09-06.md). Device settings were restored and benchmark apps/APKs removed. These measurements do not cover the deferred real-app workflows or variable-height list stress scenarios.

@@ -228,10 +228,19 @@ function start(app: App): number {
   const result = shell(`am start -W -n ${app.component}`);
   const match = result.match(/^(?:TotalTime|WaitTime):\s+(\d+)/m);
   if (!match) throw new Error(`No launch time for ${app.packageName}:\n${result}`);
+  checkForeground(app);
   return Number(match[1]);
 }
 
+function checkForeground(app: App) {
+  const focus = shell("dumpsys window").split("\n").find((line) => line.includes("mCurrentFocus="));
+  if (!focus?.includes(app.packageName)) {
+    throw new Error(`Expected ${app.packageName} in the foreground: ${focus}`);
+  }
+}
+
 function memory(app: App): MemorySample {
+  checkForeground(app);
   const result = shell(`dumpsys meminfo ${app.packageName}`);
   const pss = result.match(/TOTAL PSS:\s+(\d+)/);
   const rss = result.match(/TOTAL RSS:\s+(\d+)/);
@@ -264,6 +273,7 @@ function thermalStatus(): number {
 }
 
 function surfaceStats(app: App) {
+  checkForeground(app);
   const dump = shell("dumpsys SurfaceFlinger --timestats -dump");
   const blocks = dump.match(/displayRefreshRate =[\s\S]*?(?=\ndisplayRefreshRate =|$)/g) ?? [];
   const candidates = blocks

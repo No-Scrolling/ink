@@ -77,26 +77,26 @@ See [standalone setup](docs/standalone.md), [development and refresh](docs/devel
 
 ## Benchmarks
 
-Physical Light Phone III measurements from 6 September 2026. Ink uses the current React/QuickJS-ng engine. Expo and Light SDK were measured in an interleaved run after Ink's run on the same phone. All APKs are release builds targeting ARM64. Values are medians unless stated.
+Physical Light Phone III measurements from 6 September 2026, rerun after Ink's memory optimisations. All three frameworks were measured in one interleaved run on the same phone. Ink uses React/QuickJS-ng; all APKs are release builds targeting ARM64. Values are medians unless stated.
 
 | Counter | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK size | 4.30 MB | 26.32 MB | 10.24 MB |
-| Activity launch, median / p95 | 329 / 357 ms | 432 / 558 ms | 1,187 / 1,207 ms |
-| Idle memory (PSS) | 35.5 MiB | 54.7 MiB | 18.3 MiB |
-| CPU time for 100 taps | 1,400 ms | 4,370 ms | 3,530 ms |
-| Clean app build, warm caches | 1.67 s | 56.22 s | 49.04 s |
+| APK size | 4.31 MB | 26.32 MB | 10.24 MB |
+| Activity launch, median / p95 | 305 / 320 ms | 502 / 564 ms | 1,214 / 1,241 ms |
+| Idle memory (PSS) | 18.1 MiB | 57.6 MiB | 21.7 MiB |
+| CPU time for 100 taps | 1,360 ms | 4,280 ms | 3,460 ms |
+| Clean app build, warm caches | 1.73 s | 58.62 s | 48.44 s |
 
 | 1,000-row scroll | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK size | 4.30 MB | 26.30 MB | 10.33 MB |
-| Activity launch, median / p95 | 327 / 366 ms | 1,308 / 1,377 ms | 1,204 / 1,225 ms |
-| Idle memory (PSS) | 45.6 MiB | 101.6 MiB | 32.5 MiB |
-| CPU time for 12 swipes | 1,490 ms | 2,860 ms | 4,170 ms |
-| Clean app build, warm caches | 1.74 s | 55.58 s | 45.14 s |
+| APK size | 4.31 MB | 26.30 MB | 10.33 MB |
+| Activity launch, median / p95 | 311 / 340 ms | 1,301 / 1,372 ms | 1,196 / 1,213 ms |
+| Idle memory (PSS) | 25.7 MiB | 104.5 MiB | 32.1 MiB |
+| CPU time for 12 swipes | 1,410 ms | 2,730 ms | 4,170 ms |
+| Clean app build, warm caches | 1.68 s | 55.22 s | 42.84 s |
 | Continuous-scroll frame interval, p99 | 16 ms | 16 ms | 16 ms |
-| Intervals longer than 17 ms | 1 | 2 | 1 |
+| Intervals longer than 17 ms | 2 | 1 | 2 |
 
-The scrolling fixture renders all 1,000 rows without virtualisation. Builds were measured on an Apple M4 Pro Mac; clean steps remove app outputs while retaining compiler, Gradle and dependency caches. Activity launch uses Android's timing, not an instrumented time-to-interactive measurement. The framework-specific fixtures are not pixel-identical.
+The scrolling fixture renders all 1,000 rows without virtualisation. Builds were measured on an Apple M4 Pro Mac; clean steps remove app outputs while retaining compiler, Gradle and dependency caches. Activity launch uses Android's timing, not an instrumented time-to-interactive measurement. Idle memory is sampled after a two-second settling period; it is not peak memory. The framework-specific fixtures are not pixel-identical.
 
-See [the Ink report](benchmarks/results/ink-react-lp3-2026-09-06.md) and [the Expo/Light SDK report](benchmarks/results/expo-light-sdk-lp3-2026-09-06.md) for raw samples, versions and methodology. Light SDK now packages only ARM64 native libraries; its older multi-architecture APK sizes are not directly comparable.
+See [the full comparison report](benchmarks/results/optimised-comparison-lp3-2026-09-06.md) for raw samples, versions, build timings and methodology.

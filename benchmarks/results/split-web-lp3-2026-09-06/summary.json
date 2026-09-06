@@ -1,0 +1,42 @@
+[
+  {
+    "fixture": "counter",
+    "variant": "control",
+    "samplesKiB": [
+      31653,
+      32101,
+      31789
+    ],
+    "medianMiB": 31.0439453125
+  },
+  {
+    "fixture": "counter",
+    "variant": "split",
+    "samplesKiB": [
+      26479,
+      26501,
+      26594
+    ],
+    "medianMiB": 25.8798828125
+  },
+  {
+    "fixture": "scroll",
+    "variant": "control",
+    "samplesKiB": [
+      41634,
+      41188,
+      41470
+    ],
+    "medianMiB": 40.498046875
+  },
+  {
+    "fixture": "scroll",
+    "variant": "split",
+    "samplesKiB": [
+      36438,
+      35737,
+      36482
+    ],
+    "medianMiB": 35.583984375
+  }
+]
