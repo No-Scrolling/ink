@@ -1,10 +1,10 @@
 # Benchmarks
 
-The counter and 1,000-row scrolling apps use React with Ink's QuickJS-ng runtime. The scrolling fixture deliberately renders all rows to keep its workload comparable with the earlier fixture; it does not use list virtualisation.
+The active comparison contains three counter apps: Ink, Expo (light-template) and Light SDK. Each has a standard header, a centred count starting at zero and an Increase button. Scrolling fixtures have been removed; older list measurements below are historical.
 
 ## Recorded results
 
-The [current Ink, Expo and Light SDK comparison](results/optimised-comparison-lp3-2026-09-06.md) reruns all six ARM64 release apps in one interleaved LP3 session after Ink's memory optimisations. It supplies the root README figures, raw runtime samples and three-round build timings. Ink's median idle PSS is **18.1 MiB for the counter and 25.7 MiB for the non-virtualised list**.
+The [matching-counter LP3 comparison](results/matching-counter-lp3-2026-09-06.md) supplies the current README figures and includes raw runtime/build samples, workload screenshots and verified device cleanup. Earlier comparisons below are historical and used different fixtures.
 
 The earlier [React counter and scrolling results](results/ink-react-lp3-2026-09-06.md) and [Expo and Light SDK results](results/expo-light-sdk-lp3-2026-09-06.md) are retained as historical measurements from before this combined rerun.
 
@@ -22,28 +22,12 @@ Apart from the current results and runtime experiments above, files in `results/
 
 ## Run current benchmarks
 
-Install workspace dependencies with `bun install`, build the current Ink CLI, and connect a Light Phone III through ADB:
+Build and measure the Ink counter with `BENCHMARK_DEVICE=<serial> ./benchmarks/measure-ink.sh`. Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to new paths to preserve earlier results.
 
-```bash
-export BENCHMARK_DEVICE=<adb-serial>
-./benchmarks/measure-ink.sh
-```
+For all three counters, overlay `apps/expo-counter` on a copy of light-template, preserving its components, hooks, utilities and frozen dependencies. Prepare its ARM64 release APK. Include `apps/light-sdk-counter` as `benchmark-counter` in a temporary Light SDK checkout.
 
-This builds and measures the React counter and scrolling apps. Outputs default to `results/ink.json` and `results/ink-build.csv`; copy recorded results before overwriting them. No current runtime budget has been established. Set `INK_BENCHMARK_BUDGETS` to a budget for your runtime and device to enable verification.
+Set `EXPO_COUNTER_DIR` and `LIGHT_SDK_DIR`, then run `./benchmarks/measure-builds.sh`. Clean and no-change builds now measure Counter only. Set `EXPO_COUNTER_APK` and `BENCHMARK_DEVICE` before running `bun benchmarks/measure.ts`. `INK_COUNTER_APK` can select an isolated experiment artifact. No scrolling project or APK is required.
 
-Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to preserve a named run. The build harness uses this checkout's `scripts/ink`. Its clean step removes each app's Android build outputs; shared Cargo, Gradle and dependency caches remain warm. These timings do not represent a first installation of the toolchain or a build with empty caches.
+For automatic reservation and cleanup, create a JSON object mapping `ink`, `expo` and `light-sdk` to their absolute APK paths, then run `scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SERIAL --background`. The tool saves raw results and screenshots, removes its installed apps and restores settings. Use a device without existing benchmark installations. Direct harness runs require a manual device reservation and cleanup.
 
-For an existing measurement:
-
-```bash
-INK_BENCHMARK_BUDGETS=/path/to/budget.json \
-bun benchmarks/verify.ts /path/to/runtime.json /path/to/build.csv
-```
-
-To compare Expo and Light SDK, prepare the Expo fixtures and add the Light SDK fixtures as temporary Gradle modules named `benchmark-counter` and `benchmark-scroll`. Set `LIGHT_SDK_DIR`, `EXPO_COUNTER_DIR`, `EXPO_SCROLL_DIR`, `EXPO_COUNTER_APK` and `EXPO_SCROLL_APK` to those projects and release APKs. Then run `./benchmarks/measure-builds.sh` and `bun benchmarks/measure.ts`.
-
-Use `BENCHMARK_STACKS` to select `ink`, `expo` and `light-sdk`; use `BUILD_BENCHMARK_STACKS` with `ink`, `expo` and `light` for build measurements.
-
-The harness alternates framework order. It measures cold process starts with Android `am start -W`, memory with `dumpsys meminfo`, process CPU time from `/proc`, and frame intervals through SurfaceFlinger. Workloads use 100 counter taps, twelve scrolling swipes and uninterrupted five-second drags. These measurements do not measure battery drain or per-process GPU use.
-
-Uninstall benchmark apps when the run finishes.
+The harness alternates frameworks across 15 cold process launches, five idle-memory samples and five 100-tap workloads. Activity launch is measured with Android `am start -W`; memory uses `dumpsys meminfo`, CPU uses process ticks and frame intervals use SurfaceFlinger. These do not measure time to interactive, peak memory, battery drain or GPU usage. Emulator checks establish appearance and behaviour; published performance measurements use the physical LP3.

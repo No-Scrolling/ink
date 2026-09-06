@@ -682,7 +682,63 @@ def workload(device, artifact, scenario, directory, prefix):
     return result
 
 
+def compare_frameworks(op, args):
+    config = read_json(args["comparison"])
+    packages = {
+        "ink": "com.vandam.benchmark.ink.counter",
+        "expo": "com.vandam.benchmark.expo.counter",
+        "light-sdk": "com.vandam.benchmark.lightsdk.counter",
+    }
+    artifacts = {}
+    for stack, package in packages.items():
+        source = Path(config[stack]).resolve()
+        target = op.path / f"{stack}.apk"
+        shutil.copy2(source, target)
+        target.chmod(0o444)
+        artifacts[stack] = {"package": package, "file": str(target), "sha256": digest(target)}
+    write_json(op.path / "artifacts.json", artifacts)
+    shutil.copy2(ROOT / "benchmarks/measure.ts", op.path / "measure.ts")
+    device = Device(args["serial"])
+    session = device.acquire(op.state["id"])
+    write_json(op.path / "settings-before.json", session["settings"])
+    try:
+        if re.findall(r"\d+x\d+", device.shell("wm", "size"))[-1:] != ["1080x1240"]:
+            raise RuntimeError("Counter comparison requires a 1080×1240 display")
+        session["timestats"] = True
+        device.save()
+        for stack, artifact in artifacts.items():
+            op.step(f"Installing {stack} counter")
+            device.install(artifact["package"], artifact["file"], artifact["sha256"])
+        env = {**os.environ, "BENCHMARK_DEVICE": device.serial,
+               "BENCHMARK_STACKS": "ink,expo,light-sdk", "BENCHMARK_SCENARIOS": "Counter",
+               "BENCHMARK_OUTPUT": str(op.path / "result.json"),
+               "BENCHMARK_EVIDENCE_DIR": str(op.path),
+               "INK_COUNTER_APK": artifacts["ink"]["file"],
+               "EXPO_COUNTER_APK": artifacts["expo"]["file"],
+               "LIGHT_COUNTER_APK": artifacts["light-sdk"]["file"]}
+        op.step("Measuring three counters: 15 launches, five idle samples and five 100-tap workloads each")
+        with (op.path / "runtime.log").open("w") as log:
+            run(["bun", op.path / "measure.ts"], cwd=ROOT, env=env, timeout=1800, log=log)
+        result = read_json(op.path / "result.json")
+        if result["environment"]["thermalStatusEnd"] != 0:
+            raise RuntimeError("Device heated during comparison; discard the run")
+        result["summary"] = {"apps": len(result["results"]), "workloads": sum(len(r["workload"]["samples"]) for r in result["results"])}
+        write_json(op.path / "result.json", result)
+        return result
+    finally:
+        op.step("Removing benchmark apps and restoring device settings")
+        device.release()
+        write_json(op.path / "settings-after.json", {
+            key: device.shell("settings", "get", "global", key).strip() for key in SETTINGS
+        })
+        (op.path / "packages-after.txt").write_text(device.shell("pm", "list", "packages", "com.vandam.benchmark"))
+
+
 def compare(op, args):
+    if args.get("comparison"):
+        return compare_frameworks(op, args)
+    if not all(args.get(key) for key in ["baseline", "candidate", "app"]):
+        raise ValueError("Paired benchmarks require --baseline, --candidate and --app")
     builds = {
         variant: load_build(args[variant], args["app"])
         for variant in ["baseline", "candidate"]
@@ -1038,8 +1094,10 @@ def parser():
     bench = commands.add_parser(
         "bench", help="Alternate baseline/candidate APKs on a reserved device"
     )
-    for key in ["baseline", "candidate", "app", "serial"]:
-        bench.add_argument("--" + key, required=True)
+    for key in ["baseline", "candidate", "app"]:
+        bench.add_argument("--" + key)
+    bench.add_argument("--serial", required=True)
+    bench.add_argument("--comparison", help="JSON mapping ink, expo and light-sdk to counter APK paths")
     bench.add_argument("--rounds", type=positive, default=3)
     bench.add_argument(
         "--scenario", choices=["idle", "counter", "scroll"], default="idle"
@@ -1215,6 +1273,8 @@ def main():
         else:
             emit(operation_view(state, args["full"]))
         return 0
+    if command == "bench" and args.get("comparison"):
+        args["comparison"] = str(Path(args["comparison"]).resolve())
     if command == "image":
         for key in ["file", "compare"]:
             if args.get(key):

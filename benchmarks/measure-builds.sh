@@ -9,13 +9,11 @@ light_sdk_dir="${LIGHT_SDK_DIR:-$HOME/Developer/light-sdk}"
 case "$stacks" in
   *" expo "*)
     : "${EXPO_COUNTER_DIR:?Set EXPO_COUNTER_DIR to the prepared Expo counter project}"
-    : "${EXPO_SCROLL_DIR:?Set EXPO_SCROLL_DIR to the prepared Expo scroll project}"
     ;;
 esac
 mkdir -p "$(dirname "$output")"
-mkdir -p benchmarks/apps/ink-counter/.benchmark benchmarks/apps/ink-scroll/.benchmark
+mkdir -p benchmarks/apps/ink-counter/.benchmark
 ln -sf "$HOME/.android/debug.keystore" benchmarks/apps/ink-counter/.benchmark/debug.keystore
-ln -sf "$HOME/.android/debug.keystore" benchmarks/apps/ink-scroll/.benchmark/debug.keystore
 echo "round,stack,scenario,kind,seconds" > "$output"
 
 measure() {
@@ -87,23 +85,17 @@ while [ "$round" -le "$rounds" ]; do
       ink)
         clean_ink benchmarks/apps/ink-counter
         measure "$round" Ink Counter clean build_ink benchmarks/apps/ink-counter
-        clean_ink benchmarks/apps/ink-scroll
-        measure "$round" Ink Scroll clean build_ink benchmarks/apps/ink-scroll
-        measure "$round" Ink Scroll noop build_ink benchmarks/apps/ink-scroll
+        measure "$round" Ink Counter noop build_ink benchmarks/apps/ink-counter
         ;;
       expo)
         clean_expo "$EXPO_COUNTER_DIR"
         measure "$round" Expo Counter clean build_expo "$EXPO_COUNTER_DIR"
-        clean_expo "$EXPO_SCROLL_DIR"
-        measure "$round" Expo Scroll clean build_expo "$EXPO_SCROLL_DIR"
-        measure "$round" Expo Scroll noop build_expo "$EXPO_SCROLL_DIR"
+        measure "$round" Expo Counter noop build_expo "$EXPO_COUNTER_DIR"
         ;;
       light)
         clean_light_sdk benchmark-counter
         measure "$round" Light-SDK Counter clean build_light_sdk benchmark-counter
-        clean_light_sdk benchmark-scroll
-        measure "$round" Light-SDK Scroll clean build_light_sdk benchmark-scroll
-        measure "$round" Light-SDK Scroll noop build_light_sdk benchmark-scroll
+        measure "$round" Light-SDK Counter noop build_light_sdk benchmark-counter
         ;;
     esac
   done

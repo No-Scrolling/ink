@@ -11,10 +11,9 @@ type App = {
   packageName: string;
   component: string;
   apk: string;
-} & (
-  | { scenario: "Counter"; counterTapY: number }
-  | { scenario: "Scroll" }
-);
+  scenario: "Counter";
+  counterTapY: number;
+};
 
 type MemorySample = {
   pssKb: number;
@@ -35,10 +34,8 @@ type WorkloadSample = {
   rssKb: number;
 };
 
-type ContinuousScrollSample = ReturnType<typeof surfaceStats>;
-
 const stackKeys = ["ink", "expo", "light-sdk"] as const;
-const scenarioKeys = ["Counter", "Scroll"] as const;
+const scenarioKeys = ["Counter"] as const;
 const selectedStacks = new Set(
   (process.env.BENCHMARK_STACKS ?? stackKeys.join(","))
     .split(",")
@@ -63,13 +60,10 @@ for (const scenario of selectedScenarios) {
 }
 
 const expoCounter = process.env.EXPO_COUNTER_APK ?? "";
-const expoScroll = process.env.EXPO_SCROLL_APK ?? "";
 const inkCounter = process.env.INK_COUNTER_APK ??
   "benchmarks/apps/ink-counter/dist/ink-counter-benchmark-1.0.0-arm64.apk";
-const inkScroll = process.env.INK_SCROLL_APK ??
-  "benchmarks/apps/ink-scroll/dist/ink-scroll-benchmark-1.0.0-arm64.apk";
-if (selectedStacks.has("expo") && (!expoCounter || !expoScroll)) {
-  throw new Error("Expo benchmarks require EXPO_COUNTER_APK and EXPO_SCROLL_APK");
+if (selectedStacks.has("expo") && !expoCounter) {
+  throw new Error("Expo benchmarks require EXPO_COUNTER_APK");
 }
 
 const apps: App[] = [
@@ -89,7 +83,7 @@ const apps: App[] = [
     packageName: "com.vandam.benchmark.expo.counter",
     component: "com.vandam.benchmark.expo.counter/.MainActivity",
     apk: expoCounter,
-    counterTapY: 810,
+    counterTapY: 760,
   },
   {
     key: "light-sdk",
@@ -97,32 +91,8 @@ const apps: App[] = [
     scenario: "Counter",
     packageName: "com.vandam.benchmark.lightsdk.counter",
     component: "com.vandam.benchmark.lightsdk.counter/com.thelightphone.sdk.LightActivity",
-    apk: "benchmarks/apps/light-sdk-counter/build/outputs/apk/release/benchmark-counter-release.apk",
+    apk: process.env.LIGHT_COUNTER_APK ?? "benchmarks/apps/light-sdk-counter/build/outputs/apk/release/benchmark-counter-release.apk",
     counterTapY: 760,
-  },
-  {
-    key: "light-sdk",
-    stack: "Light SDK",
-    scenario: "Scroll",
-    packageName: "com.vandam.benchmark.lightsdk.scroll",
-    component: "com.vandam.benchmark.lightsdk.scroll/com.thelightphone.sdk.LightActivity",
-    apk: "benchmarks/apps/light-sdk-scroll/build/outputs/apk/release/benchmark-scroll-release.apk",
-  },
-  {
-    key: "expo",
-    stack: "Expo",
-    scenario: "Scroll",
-    packageName: "com.vandam.benchmark.expo.scroll",
-    component: "com.vandam.benchmark.expo.scroll/.MainActivity",
-    apk: expoScroll,
-  },
-  {
-    key: "ink",
-    stack: "Ink",
-    scenario: "Scroll",
-    packageName: "com.vandam.benchmark.ink.scroll",
-    component: "com.vandam.benchmark.ink.scroll/com.vandam.ink.MainActivity",
-    apk: inkScroll,
   },
 ].filter((app) => selectedStacks.has(app.key) && selectedScenarios.has(app.scenario));
 
@@ -307,17 +277,8 @@ function workload(app: App): WorkloadSample {
   const before = cpuTicks(app);
   const started = performance.now();
 
-  if (app.scenario === "Counter") {
-    for (let index = 0; index < 100; index += 1) {
-      shell(`input tap 540 ${app.counterTapY}`);
-    }
-  } else {
-    for (let index = 0; index < 6; index += 1) {
-      shell("input swipe 540 1050 540 180 350");
-    }
-    for (let index = 0; index < 6; index += 1) {
-      shell("input swipe 540 180 540 1050 350");
-    }
+  for (let index = 0; index < 100; index += 1) {
+    shell(`input tap 540 ${app.counterTapY}`);
   }
 
   sleep(750);
@@ -330,14 +291,6 @@ function workload(app: App): WorkloadSample {
     ...surfaceStats(app),
     ...memory(app),
   };
-}
-
-function continuousScroll(app: App): ContinuousScrollSample {
-  start(app);
-  sleep(2_000);
-  shell("dumpsys SurfaceFlinger --timestats -clear");
-  shell("input swipe 540 1050 540 180 5000");
-  return surfaceStats(app);
 }
 
 run([...adbCommand, "wait-for-device"], true);
@@ -425,21 +378,12 @@ for (let round = 0; round < 5; round += 1) {
   for (const app of order) {
     console.log(`Workload ${round + 1}/5: ${app.stack} ${app.scenario}`);
     workloads[app.packageName].push(workload(app));
-    await Bun.sleep(0);
-  }
-}
-
-const continuousScrolls = Object.fromEntries(
-  apps
-    .filter((app) => app.scenario === "Scroll")
-    .map((app) => [app.packageName, [] as ContinuousScrollSample[]]),
-);
-for (let round = 0; round < 3; round += 1) {
-  const scrollApps = apps.filter((app) => app.scenario === "Scroll");
-  const order = round % 2 === 0 ? scrollApps : [...scrollApps].reverse();
-  for (const app of order) {
-    console.log(`Continuous scroll ${round + 1}/3: ${app.stack}`);
-    continuousScrolls[app.packageName].push(continuousScroll(app));
+    checkRuntimeErrors(app);
+    if (process.env.BENCHMARK_EVIDENCE_DIR) {
+      const capture = Bun.spawnSync([...adbCommand, "exec-out", "screencap", "-p"]);
+      if (capture.exitCode !== 0) throw new Error("Screenshot capture failed");
+      await Bun.write(`${process.env.BENCHMARK_EVIDENCE_DIR}/${app.key}-counter-${round + 1}.png`, capture.stdout);
+    }
     await Bun.sleep(0);
   }
 }
@@ -470,9 +414,6 @@ const results = apps.map((app) => {
   const memories = idle[app.packageName];
   const samples = workloads[app.packageName];
   const median = <K extends keyof WorkloadSample>(key: K) => percentile(samples.map((sample) => sample[key] as number), 0.5);
-  const continuousSamples = continuousScrolls[app.packageName] ?? [];
-  const continuousMedian = <K extends keyof ContinuousScrollSample>(key: K) =>
-    percentile(continuousSamples.map((sample) => sample[key] as number), 0.5);
   return {
     ...app,
     apk: apkBreakdown(app.apk),
@@ -499,19 +440,6 @@ const results = apps.map((app) => {
       medianPssKb: median("pssKb"),
       medianRssKb: median("rssKb"),
     },
-    continuousScroll: app.scenario === "Scroll"
-      ? {
-          samples: continuousSamples,
-          medianFrames: continuousMedian("frames"),
-          medianDroppedFrames: continuousMedian("droppedFrames"),
-          medianLateAcquireFrames: continuousMedian("lateAcquireFrames"),
-          medianJankyFrames: continuousMedian("jankyFrames"),
-          medianLongPresentIntervals: continuousMedian("longPresentIntervals"),
-          medianPresentP95Ms: continuousMedian("presentP95Ms"),
-          medianPresentP99Ms: continuousMedian("presentP99Ms"),
-          medianAcquireP95Ms: continuousMedian("acquireP95Ms"),
-        }
-      : undefined,
   };
 });
 
@@ -524,10 +452,6 @@ const protocol = {
   idleRuns: 5,
   workloadRuns: 5,
   counterTaps: 100,
-  scrollSwipesEachDirection: 6,
-  swipeDurationMs: 350,
-  continuousScrollRuns: 3,
-  continuousScrollDurationMs: 5_000,
 };
 await Bun.write(
   output,

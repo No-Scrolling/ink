@@ -17,13 +17,6 @@
         "react": "19.2.8",
       },
     },
-    "benchmarks/apps/ink-scroll": {
-      "name": "ink-scroll-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
     "examples/counter": {
       "name": "ink-counter-example",
       "dependencies": {
@@ -271,8 +264,6 @@
     "ink-counter-example": ["ink-counter-example@workspace:examples/counter"],
 
     "ink-light-template-example": ["ink-light-template-example@workspace:examples/light-template"],
-
-    "ink-scroll-benchmark": ["ink-scroll-benchmark@workspace:benchmarks/apps/ink-scroll"],
 
     "js-tokens": ["js-tokens@10.0.0", "", {}, "sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q=="],
 

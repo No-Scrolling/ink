@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { Header } from "@/components/Header";
 import { StyledButton } from "@/components/StyledButton";
 import { n } from "@/utils/scaling";
 
@@ -8,7 +9,7 @@ export default function Counter() {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.header}>Counter</Text>
+      <Header headerTitle="Counter" hideBackButton />
       <View style={styles.content}>
         <Text style={styles.count}>Count: {count}</Text>
         <StyledButton text="Increase" onPress={() => setCount((value) => value + 1)} />
@@ -22,19 +23,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "black",
   },
-  header: {
-    height: n(82),
-    color: "white",
-    fontFamily: "PublicSans-Regular",
-    fontSize: n(25),
-    lineHeight: n(82),
-    textAlign: "center",
-  },
   content: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: n(16),
+    paddingBottom: n(10),
   },
   count: {
     color: "white",

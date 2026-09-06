@@ -43,6 +43,8 @@ The build reads native requirements from packages in the resolved module graph a
 
 Read [the Ink documentation](docs/ink.md) and [how Ink works](docs/architecture.md). Package pages distinguish implemented features from planned packages.
 
+The agreed component work includes rows, pagination, reordering examples, code generation, PlayingScreen and ConversationScreen with a scrolling multiline composer. Focused emulator checks are recorded in [verification](docs/verification-2026-09-06.md); real-app integration on the LP3 remains deferred. Proposed packages such as Downloads, Files and Auth are not part of the implemented package set above. See [implementation status](docs/implementation-plan.md) and [app-pattern coverage](docs/example-pattern-coverage.md).
+
 ## Development
 
 Install workspace dependencies, check the toolchain and run the template:
@@ -77,26 +79,16 @@ See [standalone setup](docs/standalone.md), [development and refresh](docs/devel
 
 ## Benchmarks
 
-Physical Light Phone III measurements from 6 September 2026, rerun after Ink's memory optimisations. All three frameworks were measured in one interleaved run on the same phone. Ink uses React/QuickJS-ng; all APKs are release builds targeting ARM64. Values are medians unless stated.
+Physical Light Phone III measurements from 6 September 2026 using the three matching counter apps. All ARM64 release builds were measured in one interleaved run on the same phone. Values are medians unless stated.
 
 | Counter | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK size | 4.31 MB | 26.32 MB | 10.24 MB |
-| Activity launch, median / p95 | 305 / 320 ms | 502 / 564 ms | 1,214 / 1,241 ms |
-| Idle memory (PSS) | 18.1 MiB | 57.6 MiB | 21.7 MiB |
-| CPU time for 100 taps | 1,360 ms | 4,280 ms | 3,460 ms |
-| Clean app build, warm caches | 1.73 s | 58.62 s | 48.44 s |
+| APK size | 4.34 MB | 28.72 MB | 10.27 MB |
+| Activity launch, median / p95 | 306 / 332 ms | 466 / 587 ms | 1,213 / 1,231 ms |
+| Idle memory (PSS) | 17.9 MiB | 59.4 MiB | 21.7 MiB |
+| CPU time for 100 taps | 1,420 ms | 4,280 ms | 3,490 ms |
+| Clean app build, warm caches | 1.78 s | 58.40 s | 47.87 s |
 
-| 1,000-row scroll | Ink | Expo | Light SDK |
-| --- | ---: | ---: | ---: |
-| APK size | 4.31 MB | 26.30 MB | 10.33 MB |
-| Activity launch, median / p95 | 311 / 340 ms | 1,301 / 1,372 ms | 1,196 / 1,213 ms |
-| Idle memory (PSS) | 25.7 MiB | 104.5 MiB | 32.1 MiB |
-| CPU time for 12 swipes | 1,410 ms | 2,730 ms | 4,170 ms |
-| Clean app build, warm caches | 1.68 s | 55.22 s | 42.84 s |
-| Continuous-scroll frame interval, p99 | 16 ms | 16 ms | 16 ms |
-| Intervals longer than 17 ms | 2 | 1 | 2 |
+Each app has a standard header, Public Sans count and Increase action, with the same 100-tap workload. Minor framework rendering differences remain. Clean builds retain compiler and dependency caches. Activity launch is Android's timing, not time to interactive; idle PSS is sampled after two seconds and is not peak memory.
 
-The scrolling fixture renders all 1,000 rows without virtualisation. Builds were measured on an Apple M4 Pro Mac; clean steps remove app outputs while retaining compiler, Gradle and dependency caches. Activity launch uses Android's timing, not an instrumented time-to-interactive measurement. Idle memory is sampled after a two-second settling period; it is not peak memory. The framework-specific fixtures are not pixel-identical.
-
-See [the full comparison report](benchmarks/results/optimised-comparison-lp3-2026-09-06.md) for raw samples, versions, build timings and methodology.
+See [the full counter comparison](benchmarks/results/matching-counter-lp3-2026-09-06.md) for raw samples, versions, screenshots, build timings and verified device cleanup.

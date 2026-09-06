@@ -11,7 +11,7 @@ type Limit = {
 
 type RuntimeResult = {
   stack: string;
-  scenario: "Counter" | "Scroll";
+  scenario: "Counter";
   apk: { bytes: number };
   startup: { medianMs: number; p95Ms: number };
   idleMemory: {
@@ -23,15 +23,6 @@ type RuntimeResult = {
     medianCpuMs: number;
     medianAverageFps: number;
     medianPresentP95Ms: number;
-  };
-  continuousScroll?: {
-    medianDroppedFrames: number;
-    medianLateAcquireFrames: number;
-    medianJankyFrames: number;
-    medianLongPresentIntervals: number;
-    medianPresentP95Ms: number;
-    medianPresentP99Ms: number;
-    medianAcquireP95Ms: number;
   };
 };
 
@@ -58,13 +49,6 @@ type ScenarioBudget = {
   workloadCpuMs: number;
   averageFps?: number;
   presentP95Ms?: number;
-  continuousPresentP95Ms?: number;
-  continuousPresentP99Ms?: number;
-  continuousAcquireP95Ms?: number;
-  continuousLongPresentIntervals?: number;
-  continuousDroppedFrames?: number;
-  continuousJankyFrames?: number;
-  continuousLateAcquireFrames?: number;
 };
 
 type Budgets = {
@@ -76,11 +60,9 @@ type Budgets = {
     refreshRate: number;
   };
   counter: ScenarioBudget;
-  scroll: ScenarioBudget;
   build: {
     counterCleanSeconds: number;
-    scrollCleanSeconds: number;
-    scrollNoopSeconds: number;
+    counterNoopSeconds?: number;
   };
 };
 
@@ -131,7 +113,7 @@ if (!results.environment.resolution.includes(expectedResolution)) {
   );
 }
 
-for (const scenario of ["Counter", "Scroll"] as const) {
+for (const scenario of ["Counter"] as const) {
   const result = results.results.find(
     (candidate) => candidate.stack === "Ink" && candidate.scenario === scenario,
   );
@@ -139,7 +121,7 @@ for (const scenario of ["Counter", "Scroll"] as const) {
     failures.push(`missing Ink ${scenario} result`);
     continue;
   }
-  const budget = scenario === "Counter" ? budgets.counter : budgets.scroll;
+  const budget = budgets.counter;
   const prefix = `Ink ${scenario}`;
   maximum(`${prefix} APK`, result.apk.bytes, budget.apkBytes, " B");
   maximum(
@@ -194,55 +176,7 @@ for (const scenario of ["Counter", "Scroll"] as const) {
       " ms",
     );
   }
-  if (scenario === "Scroll" && budget.continuousPresentP95Ms !== undefined) {
-    const continuous = result.continuousScroll;
-    if (!continuous) {
-      failures.push("missing Ink continuous-scroll result");
-      continue;
-    }
-    maximum(
-      `${prefix} continuous p95`,
-      continuous.medianPresentP95Ms,
-      budget.continuousPresentP95Ms,
-      " ms",
-    );
-    maximum(
-      `${prefix} continuous p99`,
-      continuous.medianPresentP99Ms,
-      budget.continuousPresentP99Ms ?? budget.continuousPresentP95Ms,
-      " ms",
-    );
-    maximum(
-      `${prefix} continuous acquire p95`,
-      continuous.medianAcquireP95Ms,
-      budget.continuousAcquireP95Ms ?? budget.continuousPresentP95Ms,
-      " ms",
-    );
-    maximum(
-      `${prefix} continuous intervals >17ms`,
-      continuous.medianLongPresentIntervals,
-      budget.continuousLongPresentIntervals ?? 0,
-      "",
-    );
-    maximum(
-      `${prefix} continuous dropped frames`,
-      continuous.medianDroppedFrames,
-      budget.continuousDroppedFrames ?? 0,
-      "",
-    );
-    maximum(
-      `${prefix} continuous janky frames`,
-      continuous.medianJankyFrames,
-      budget.continuousJankyFrames ?? 0,
-      "",
-    );
-    maximum(
-      `${prefix} continuous late acquisitions`,
-      continuous.medianLateAcquireFrames,
-      budget.continuousLateAcquireFrames ?? 0,
-      "",
-    );
-  }
+
 }
 
 if (buildPath) {
@@ -264,9 +198,10 @@ if (buildPath) {
   };
   const buildLimits = [
     ["counter clean build", median("Counter", "clean"), budgets.build.counterCleanSeconds],
-    ["scroll clean build", median("Scroll", "clean"), budgets.build.scrollCleanSeconds],
-    ["scroll no-op build", median("Scroll", "noop"), budgets.build.scrollNoopSeconds],
   ] as const;
+  if (budgets.build.counterNoopSeconds !== undefined) {
+    buildLimits.push(["counter no-op build", median("Counter", "noop"), budgets.build.counterNoopSeconds]);
+  }
   for (const [name, actual, budget] of buildLimits) {
     if (actual === undefined) {
       failures.push(`missing Ink ${name} result`);

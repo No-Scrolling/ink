@@ -5,8 +5,7 @@
     "packages/*",
     "examples/light-template",
     "examples/counter",
-    "benchmarks/apps/ink-counter",
-    "benchmarks/apps/ink-scroll"
+    "benchmarks/apps/ink-counter"
   ],
   "scripts": {
     "check": "tsc -p packages/ink/tsconfig.json"
