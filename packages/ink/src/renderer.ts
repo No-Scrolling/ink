@@ -67,6 +67,11 @@ function update(instance: Instance, props: Props) {
   instance.props = props;
   if (Object.keys(previous).length !== Object.keys(next).length
     || Object.keys(next).some(key => !Object.is(previous[key], next[key]))) {
+    if (instance.type === "List" && previous.revision === next.revision
+      && previous.keys === next.keys && previous.contentVersions === next.contentVersions) {
+      delete next.keys;
+      delete next.contentVersions;
+    }
     operations.push({ op: "update", id: instance.id, props: next });
   }
 }

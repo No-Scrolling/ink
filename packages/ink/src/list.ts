@@ -23,6 +23,7 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = 
   }
   const previous = useRef<{
     measurementKey?: string | number;
+    keyExtractor: ListProps<T>["keyExtractor"];
     items: readonly T[]; keys: string[]; contentVersions: number[]; revision: number;
     records: Map<string, { item: T; version: number }>;
   } | null>(null);
@@ -31,15 +32,15 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = 
   const load = useAction(() => onLoadMore?.());
   const olderRequested = useRef<string | null>(null);
   const older = useAction(() => onLoadOlder?.());
-  const keys = items.map(keyExtractor);
-  if (keys.some(key => typeof key !== "string") || new Set(keys).size !== keys.length) {
-    throw new Error("List keys must be unique strings");
-  }
   let start = Math.min(window.start, items.length);
   let end = Math.min(window.end, items.length);
   let data = previous.current;
   const old = data;
-  const keysChanged = old && (keys.length !== old.keys.length || keys.some((key, i) => key !== old.keys[i]));
+  const keys = old && old.items === items && old.keyExtractor === keyExtractor ? old.keys : items.map(keyExtractor);
+  if (keys !== old?.keys && (keys.some(key => typeof key !== "string") || new Set(keys).size !== keys.length)) {
+    throw new Error("List keys must be unique strings");
+  }
+  const keysChanged = old && keys !== old.keys && (keys.length !== old.keys.length || keys.some((key, i) => key !== old.keys[i]));
   if (!data || data.items !== items || data.measurementKey !== measurementKey || keysChanged) {
     const revision = (old?.revision ?? 0) + 1;
     const records = new Map(keys.map((key, index) => {
@@ -56,9 +57,10 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = 
       end = Math.min(start + window.end - window.start, items.length);
       if (start !== window.start || end !== window.end) setWindow({ start, end, revision: window.revision });
     }
-    data = { items, keys, contentVersions, revision, records, measurementKey };
+    data = { items, keys, keyExtractor, contentVersions, revision, records, measurementKey };
     previous.current = data;
   }
+  data.keyExtractor = keyExtractor;
   const { revision, contentVersions } = data;
   const boundary = JSON.stringify([keys.length, keys.at(-1)]);
   useEffect(() => {

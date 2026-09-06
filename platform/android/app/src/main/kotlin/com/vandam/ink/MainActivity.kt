@@ -1057,7 +1057,11 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                 return@FrameCallback
             }
 
-            var changed = renderPending
+            // Present a completed React window before the next thumb movement
+            // can move the viewport beyond it again.
+            val presentBeforeMove = renderPending && hasPendingMove
+            if (presentBeforeMove) renderFrame()
+            var changed = renderPending && !presentBeforeMove
             renderPending = false
             if (hasPendingMove) {
                 hasPendingMove = false
@@ -1082,7 +1086,9 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                     }
                 }
             }
-            if (changed) renderFrame()
+            if (changed) {
+                if (presentBeforeMove) renderPending = true else renderFrame()
+            }
             postFrame()
         }
 

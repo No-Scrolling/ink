@@ -31,6 +31,7 @@ enum Command {
     #[cfg(debug_assertions)]
     EvaluateDevelopment(String),
     Message(String),
+    LatestMessage(u64),
     Stop,
 }
 
@@ -38,6 +39,7 @@ pub struct AppRuntime {
     commands: SyncSender<Command>,
     stopped: Arc<AtomicBool>,
     delivery_failed: Arc<Mutex<Option<String>>>,
+    latest_messages: Arc<Mutex<HashMap<u64, String>>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -76,6 +78,8 @@ impl AppRuntime {
         let cancelled = stopped.clone();
         let delivery_failed = Arc::new(Mutex::new(None));
         let failure = delivery_failed.clone();
+        let latest_messages = Arc::new(Mutex::new(HashMap::new()));
+        let pending_messages = latest_messages.clone();
         let thread = thread::Builder::new()
             .name("ink-js".into())
             .stack_size(2 * 1024 * 1024)
@@ -86,6 +90,7 @@ impl AppRuntime {
                     outgoing.clone(),
                     cancelled.clone(),
                     failure,
+                    pending_messages,
                     load_web,
                 ) {
                     outgoing.send_terminal(Event::Error(format!("{error:#}")), &cancelled);
@@ -99,6 +104,7 @@ impl AppRuntime {
                 commands,
                 stopped,
                 delivery_failed,
+                latest_messages,
                 thread: Some(thread),
             },
             events,
@@ -112,8 +118,30 @@ impl AppRuntime {
         if self.stopped.load(Ordering::Acquire) {
             return Err(anyhow!("JavaScript runtime is closed"));
         }
+        self.enqueue(Command::Message(message))
+    }
+
+    /// Replace an undelivered message for this key, keeping a single queue entry.
+    pub fn send_latest(&self, key: u64, message: String) -> Result<()> {
+        if message.len() > MAX_MESSAGE_BYTES {
+            return Err(anyhow!("native message exceeds {MAX_MESSAGE_BYTES} bytes"));
+        }
+        if self.stopped.load(Ordering::Acquire) {
+            return Err(anyhow!("JavaScript runtime is closed"));
+        }
+        let mut pending = self.latest_messages.lock().map_err(|_| anyhow!("JavaScript message queue is unavailable"))?;
+        if let Some(previous) = pending.get_mut(&key) {
+            *previous = message;
+            return Ok(());
+        }
+        self.enqueue(Command::LatestMessage(key))?;
+        pending.insert(key, message);
+        Ok(())
+    }
+
+    fn enqueue(&self, command: Command) -> Result<()> {
         self.commands
-            .try_send(Command::Message(message))
+            .try_send(command)
             .map_err(|error| match error {
                 TrySendError::Full(_) => {
                     let message = "JavaScript message queue is full; reload the runtime";
@@ -189,6 +217,7 @@ fn run(
     events: EventSink,
     stopped: Arc<AtomicBool>,
     delivery_failed: Arc<Mutex<Option<String>>>,
+    latest_messages: Arc<Mutex<HashMap<u64, String>>>,
     load_web: Option<WebLoader>,
 ) -> Result<()> {
     let runtime = Runtime::new()?;
@@ -324,18 +353,29 @@ fn run(
             Some(wait) => commands.recv_timeout(wait),
             None => commands.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
-        match command {
+        let message = match command {
             #[cfg(debug_assertions)]
-            Ok(Command::EvaluateDevelopment(source)) => context.with(|ctx| {
-                ctx.eval_with_options::<(), _>(source, {
-                    let mut options = rquickjs::context::EvalOptions::default();
-                    options.filename = Some("app.js".into());
-                    options
-                })
-                .catch(&ctx)
-                .map_err(|error| anyhow!("{error}"))
-            })?,
-            Ok(Command::Message(message)) => context
+            Ok(Command::EvaluateDevelopment(source)) => {
+                context.with(|ctx| {
+                    ctx.eval_with_options::<(), _>(source, {
+                        let mut options = rquickjs::context::EvalOptions::default();
+                        options.filename = Some("app.js".into());
+                        options
+                    })
+                    .catch(&ctx)
+                    .map_err(|error| anyhow!("{error}"))
+                })?;
+                None
+            }
+            Ok(Command::Message(message)) => Some(message),
+            Ok(Command::LatestMessage(key)) => Some(latest_messages.lock()
+                .map_err(|_| anyhow!("JavaScript message queue is unavailable"))?
+                .remove(&key).context("missing latest JavaScript message")?),
+            Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => None,
+        };
+        if let Some(message) = message {
+            context
                 .with(|ctx| {
                     let receive: Function = ctx.globals().get("__inkReceive")?;
                     receive.call::<_, ()>((message,))
@@ -343,9 +383,7 @@ fn run(
                 .map_err(|error| {
                     context
                         .with(|ctx| anyhow!("{}", rquickjs::CaughtError::from_error(&ctx, error)))
-                })?,
-            Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
-            Err(RecvTimeoutError::Timeout) => {}
+                })?;
         }
         if !stopped.load(Ordering::Acquire) {
             let now = Instant::now();

@@ -11,11 +11,15 @@ Every `List` is virtualised and sizes rows from their content. Ink estimates uns
 />
 ```
 
-Native layout measures mounted rows and uses estimates for the rest. A prefix-offset index finds the viewport window; one viewport before and after the visible area is mounted. Native scrolling remains responsive while JavaScript works, but rows outside the mounted window can briefly be blank until JavaScript catches up. Row-local React state disappears when a row unmounts; keep durable state in the app.
+Native layout measures mounted rows and uses estimates for the rest. A prefix-offset index finds the viewport window; one viewport before and after the visible area is mounted. Android presents ready content before processing the next drag movement and retains the last complete frame while destination rows load. Under load, the displayed content and scrollbar can briefly trail the requested position. Row-local React state disappears when a row unmounts; keep durable state in the app.
 
 The visible item key and its offset are preserved when earlier rows are inserted, removed or remeasured, including during an active drag. If that item is removed, the row at its old index becomes the anchor (or the last remaining row). `followEnd` follows additions only when already within 64 logical units of the end and no touch gesture is active; otherwise the reader's anchor is retained.
 
-Use immutable item arrays and replace changed items when changing content. Currently native tree reconstruction and offset rebuilding are linear in the number of keys. Further optimisation should be driven by measurements.
+Use immutable item arrays and replace changed items when changing content. Keys are cached while the item array and key extractor are unchanged. Window-only commits reuse native key and content-version metadata instead of sending the entire dataset again.
+
+Native layout maintains a height index for each cached width. Updating a measured height and finding a row offset take logarithmic time; changing the estimate for unseen rows does not rebuild all offsets. Dataset revisions and new widths still require linear index preparation. Layout reads offsets only for mounted rows, and an unchanged anchor keeps its existing index.
+
+Pending viewport requests are coalesced per list before JavaScript receives them, so dragging the scrollbar thumb replaces an undelivered destination with the latest one. This reduces catch-up work but does not cancel a React render already in progress or make an arbitrary destination available immediately.
 
 Only ordered keys and layout metadata cross into native code; item objects remain in React. Key and content-version metadata is bounded to 128 KiB of UTF-8 JSON per list, and oversized metadata produces a clear error. Use compact stable keys or bound the loaded history. This limit keeps metadata below the runtime message limit; very large datasets need a paged model rather than silently dropping commits. Window events carry the data revision and obsolete revisions are ignored.
 

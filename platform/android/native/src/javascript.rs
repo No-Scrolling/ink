@@ -38,13 +38,16 @@ impl ScriptRuntime {
     }
 
     pub(super) fn notify_inputs(&mut self, engine: &Engine) -> Result<()> {
-        for event in self
-            .tree
-            .input_events(engine)
-            .into_iter()
-            .chain(self.tree.viewport_events(engine))
-        {
+        for event in self.tree.input_events(engine) {
             self.send(event.to_string())?;
+        }
+        self.notify_viewports(engine)
+    }
+
+    fn notify_viewports(&mut self, engine: &Engine) -> Result<()> {
+        for event in self.tree.viewport_events(engine) {
+            let id = event["id"].as_u64().expect("viewport event has a list ID");
+            self.runtime.send_latest(id, event.to_string())?;
         }
         Ok(())
     }
@@ -109,9 +112,7 @@ impl ScriptRuntime {
                 }
             }
         }
-        for event in self.tree.viewport_events(engine) {
-            self.send(event.to_string())?;
-        }
+        self.notify_viewports(engine)?;
         Ok(changed)
     }
 }

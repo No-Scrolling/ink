@@ -546,8 +546,8 @@ enum NodeKind {
     ReactList {
         children: Vec<Node>,
         start: usize,
-        keys: Vec<String>,
-        content_versions: Vec<u64>,
+        keys: Arc<[String]>,
+        content_versions: Arc<[u64]>,
         revision: u64,
         gap: f32,
         follow_end: bool,
@@ -2200,6 +2200,17 @@ impl Engine {
         &self.scene
     }
 
+    pub fn list_viewports_ready(&self) -> bool {
+        let Some(clip) = self.scene.scroll_clip else { return true; };
+        self.react_list_positions.iter().all(|(id, top)| {
+            let Some(metrics) = self.list_metrics.get(id) else { return true; };
+            let start = (self.scroll_offset + clip.y - top).max(0.0);
+            let end = (self.scroll_offset + clip.y + clip.height - top).min(metrics.total());
+            end <= start || (metrics.mounted.contains(&metrics.index_at(start))
+                && metrics.mounted.contains(&metrics.index_at((end - 0.5).max(start))))
+        })
+    }
+
     pub const fn scroll_offset(&self) -> f32 {
         self.scroll_offset
     }
@@ -2275,7 +2286,7 @@ impl Engine {
             }
             let index = metrics.index_at(self.scroll_offset + clip.y - top);
             Some((*id, metrics.keys.get(index)?.clone(), index,
-                top + metrics.offsets[index] - self.scroll_offset,
+                top + metrics.offset(index) - self.scroll_offset,
                 metrics.follow_end && self.pointer.is_none()
                     && self.scroll_max - self.scroll_offset <= self.scaled(64.0)))
         }).collect();
@@ -2286,9 +2297,11 @@ impl Engine {
             let Some(top) = self.react_list_positions.get(&id) else { continue; };
             let Some(metrics) = self.list_metrics.get(&id) else { continue; };
             if metrics.keys.is_empty() { continue; }
-            let index = metrics.keys.iter().position(|candidate| candidate == &key)
-                .unwrap_or(old_index.min(metrics.keys.len() - 1));
-            let next = if follow { self.scroll_max } else { top + metrics.offsets[index] - position }
+            let index = if metrics.keys.get(old_index) == Some(&key) { old_index } else {
+                metrics.keys.iter().position(|candidate| candidate == &key)
+                    .unwrap_or(old_index.min(metrics.keys.len() - 1))
+            };
+            let next = if follow { self.scroll_max } else { top + metrics.offset(index) - position }
                 .clamp(0.0, self.scroll_max);
             if (next - self.scroll_offset).abs() > 0.5 {
                 self.scroll_offset = next;
@@ -2438,33 +2451,14 @@ impl Engine {
         match &node.kind {
             NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end } => {
                 let mut metrics = self.list_metrics.remove(&node.identity.0).unwrap_or_default();
-                metrics.prepare_width(available.width);
-                let versions: HashMap<_, _> = keys.iter().zip(content_versions).collect();
-                metrics.heights.retain(|(key, _, version), _| versions.get(key).is_some_and(|current| **current == *version));
-                metrics.revision = *revision;
+                metrics.prepare(keys, content_versions, *revision, available.width, self.scaled(*gap), self.scaled(40.0));
+                metrics.mounted = *start..*start + children.len();
                 metrics.follow_end = *follow_end;
-                metrics.keys.clone_from(keys);
                 for (index, child) in children.iter().enumerate() {
-                    if let Some(key) = keys.get(start + index) {
+                    if start + index < keys.len() {
                         let size = self.measure(child, Rect { height: f32::INFINITY, ..available });
-                        metrics.heights.insert((key.clone(), available.width.to_bits(), content_versions[start + index]), size.height.max(1.0));
+                        metrics.measure(start + index, size.height.max(1.0));
                     }
-                }
-                let (total_height, measured_count) = keys.iter().enumerate()
-                    .filter_map(|(index, key)| metrics.heights.get(&(key.clone(), available.width.to_bits(), content_versions[index])))
-                    .fold((0.0, 0), |(total, count), height| (total + height, count + 1));
-                let estimate = if measured_count == 0 {
-                    self.scaled(40.0)
-                } else {
-                    total_height / measured_count as f32
-                };
-                metrics.offsets.clear();
-                metrics.offsets.push(0.0);
-                for (index, key) in keys.iter().enumerate() {
-                    let height = metrics.heights.get(&(key.clone(), available.width.to_bits(), content_versions[index])).copied()
-                        .unwrap_or(estimate);
-                    let gap = if index + 1 < keys.len() { self.scaled(*gap) } else { 0.0 };
-                    metrics.offsets.push(metrics.total() + height + gap);
                 }
                 let height = metrics.total();
                 self.list_metrics.insert(node.identity.0, metrics);
@@ -2685,14 +2679,16 @@ impl Engine {
             NodeKind::ReactList { children, start, gap, .. } => {
                 self.react_list_positions.insert(node.identity.0, rect.y + self.scroll_origin);
                 let Some(metrics) = self.list_metrics.get(&node.identity.0) else { return; };
-                let offsets = metrics.offsets.clone();
+                let offsets: Vec<_> = (*start..=(*start + children.len()).min(metrics.keys.len()))
+                    .map(|row| metrics.offset(row)).collect();
+                let count = metrics.keys.len();
                 for (index, child) in children.iter().enumerate() {
                     let row = start + index;
-                    if row + 1 >= offsets.len() { break; }
-                    let gap = if row + 2 < offsets.len() { self.scaled(*gap) } else { 0.0 };
+                    if index + 1 >= offsets.len() { break; }
+                    let gap = if row + 1 < count { self.scaled(*gap) } else { 0.0 };
                     self.layout(child, Rect {
-                        y: rect.y + offsets[row],
-                        height: (offsets[row + 1] - offsets[row] - gap).max(0.0),
+                        y: rect.y + offsets[index],
+                        height: (offsets[index + 1] - offsets[index] - gap).max(0.0),
                         ..rect
                     });
                 }

@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, sync::OnceLock};
+use std::{collections::{HashMap, HashSet}, sync::{Arc, OnceLock}};
 
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
@@ -70,6 +70,29 @@ enum HostKind {
     PlayingProgress,
 }
 
+struct ListProps {
+    props: Map<String, Json>,
+    keys: Arc<[String]>,
+    content_versions: Arc<[u64]>,
+}
+
+impl ListProps {
+    fn new(mut props: Map<String, Json>, previous: Option<&Self>) -> Result<Self> {
+        let (keys, content_versions) = if !props.contains_key("keys") && !props.contains_key("contentVersions") {
+            let previous = previous.context("List requires keys and contentVersions")?;
+            ensure!(props.get("revision") == previous.props.get("revision"), "List metadata revision changed without keys");
+            (previous.keys.clone(), previous.content_versions.clone())
+        } else {
+            let keys: Vec<String> = serde_json::from_value(props.remove("keys").context("List requires keys")?)?;
+            let content_versions: Vec<u64> = serde_json::from_value(props.remove("contentVersions").context("List requires contentVersions")?)?;
+            ensure!(keys.len() <= 1_000_000 && keys.len() == content_versions.len(), "invalid List metadata length");
+            ensure!(keys.iter().collect::<HashSet<_>>().len() == keys.len(), "List keys must be unique");
+            (keys.into(), content_versions.into())
+        };
+        Ok(Self { props, keys, content_versions })
+    }
+}
+
 enum HostProps {
     RawText(Box<str>),
     Text {
@@ -77,6 +100,7 @@ enum HostProps {
         align: TextAlign,
         max_lines: Option<u32>,
     },
+    List(Box<ListProps>),
     Other(Map<String, Json>),
 }
 
@@ -88,6 +112,9 @@ impl Default for HostProps {
 
 impl HostProps {
     fn new(kind: HostKind, mut props: Map<String, Json>) -> Result<Self> {
+        if kind == HostKind::List {
+            return Ok(Self::List(Box::new(ListProps::new(props, None)?)));
+        }
         if kind == HostKind::RawText {
             let Some(Json::String(text)) = props.remove("text") else {
                 bail!("invalid React text");
@@ -124,6 +151,7 @@ impl HostProps {
     fn object(&self) -> Option<&Map<String, Json>> {
         match self {
             Self::Other(props) => Some(props),
+            Self::List(list) => Some(&list.props),
             _ => None,
         }
     }
@@ -209,7 +237,7 @@ impl ReactTree {
                     raw_text_bytes += text.len();
                 }
                 HostProps::Text { .. } => text_nodes += 1,
-                HostProps::Other(_) => other_property_nodes += 1,
+                HostProps::Other(_) | HostProps::List(_) => other_property_nodes += 1,
             }
         }
         json!({
@@ -290,7 +318,11 @@ impl ReactTree {
                         && props.get("scrollToEnd") != node.props.get("scrollToEnd") {
                         scroll_to_end.insert(id);
                     }
-                    node.props = HostProps::new(node.kind, props)?;
+                    node.props = if let HostProps::List(previous) = &node.props {
+                        HostProps::List(Box::new(ListProps::new(props, Some(previous))?))
+                    } else {
+                        HostProps::new(node.kind, props)?
+                    };
                     let mut target = id;
                     while matches!(self.node(target)?.kind, HostKind::RawText | HostKind::Text) {
                         let Some(parent) = self.node(target)?.parent else {
@@ -597,17 +629,16 @@ impl ReactTree {
         let props = &host.props;
         let mut node = match host.kind {
             HostKind::List => {
-                let keys: Vec<String> = serde_json::from_value(props.get("keys").cloned().context("List requires keys")?)?;
+                let HostProps::List(list) = props else { bail!("List requires metadata"); };
+                let keys = list.keys.clone();
                 let count = keys.len();
-                let content_versions: Vec<u64> = serde_json::from_value(props.get("contentVersions").cloned().context("List requires contentVersions")?)?;
-                ensure!(content_versions.len() == count, "List content versions must match keys");
+                let content_versions = list.content_versions.clone();
                 let start = props.get("start").and_then(Json::as_u64).context("List requires start")? as usize;
                 let revision = props.get("revision").and_then(Json::as_u64).context("List requires revision")?;
                 let gap = number(props, "gap")?.unwrap_or(0.0);
                 ensure!(gap >= 0.0 && ((40.0 + gap) * count as f32).is_finite()
                     && count <= 1_000_000 && start <= count && host.children.len() <= count - start,
                     "invalid List dimensions");
-                ensure!(keys.iter().collect::<HashSet<_>>().len() == count, "List keys must be unique");
                 Node {
                     identity: NodeIdentity(id),
                     kind: NodeKind::ReactList {

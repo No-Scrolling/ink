@@ -323,6 +323,10 @@ impl AndroidEngine {
         &mut self,
         text_cursor_visible: bool,
     ) -> Option<ink_renderer_wgpu::SystemGlyphRequest> {
+        // Keep the last complete frame until React supplies the requested rows.
+        if !self.engine.list_viewports_ready() {
+            return None;
+        }
         let Some(surface) = &mut self.surface else {
             return None;
         };
