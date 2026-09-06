@@ -54,7 +54,7 @@ The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScri
 
 Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches changes across the native seam and applies consistent updates at frame boundaries. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
 
-Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](/lists).
+Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](/ink#collections).
 
 A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 
