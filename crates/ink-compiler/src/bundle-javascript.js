@@ -93,7 +93,7 @@ function buildOptions(bootstrap = false) { return {
         references[name] = name;
         for (const filled of [false, true]) icons.set(`${name}:${filled}`, { name, filled, size: Math.max(icons.get(`${name}:${filled}`)?.size ?? 0, descriptor.resolution) });
       }
-      return { contents: `export default Object.freeze(${JSON.stringify(references)});`, loader: "js" };
+      return { contents: `export default /* @__PURE__ */ Object.freeze(${JSON.stringify(references)});`, loader: "js" };
     });
     build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
     build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
@@ -211,4 +211,10 @@ if (development) {
 } else {
   for (const artifact of result.outputs) await Bun.write(artifact.kind === "sourcemap" ? output + ".map" : output, artifact);
 }
-await Bun.write(`${output}.metadata.json`, JSON.stringify({ devRuntimeHash, refreshCompatibilityHash: development ? new Bun.CryptoHasher("sha256").update(JSON.stringify([...persistentModules].sort())).digest("hex") : undefined, inputs: [...inputs].sort(), capabilities: [...capabilities].sort(), assets: [...assets].map(([name,path])=>({name,path})), icons: [...icons.values()] }));
+let bundledCode = await Bun.file(output).text();
+if (development) {
+  const usedIcons = await Bun.build({ ...buildOptions(true), minify: true, sourcemap: "none" });
+  if (!usedIcons.success) throw new AggregateError(usedIcons.logs, "Could not determine application icons");
+  bundledCode = await usedIcons.outputs[0].text();
+}
+await Bun.write(`${output}.metadata.json`, JSON.stringify({ devRuntimeHash, refreshCompatibilityHash: development ? new Bun.CryptoHasher("sha256").update(JSON.stringify([...persistentModules].sort())).digest("hex") : undefined, inputs: [...inputs].sort(), capabilities: [...capabilities].sort(), assets: [...assets].map(([name,path])=>({name,path})), icons: [...icons.values()].filter(icon => bundledCode.includes(JSON.stringify(icon.name))) }));

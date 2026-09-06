@@ -10,6 +10,7 @@ export default function Examples() {
       <Button href="/settings/dynamic-ui">Dynamic UI</Button>
       <Button href="/settings/virtualised-list">Virtualised List</Button>
       <Button href="/settings/follow-items">Follow new items</Button>
+      <Button href="/examples/conversation">Conversation</Button>
       <Button href="/examples/playing">Playing screen</Button>
       <Button href="/examples/rows">Rows</Button>
       <Button href="/examples/reordering">Reordering</Button>

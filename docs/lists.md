@@ -13,7 +13,7 @@ Every `List` is virtualised and sizes rows from their content. Ink estimates uns
 
 Native layout measures mounted rows and uses estimates for the rest. A prefix-offset index finds the viewport window; one viewport before and after the visible area is mounted. Native scrolling remains responsive while JavaScript works, but rows outside the mounted window can briefly be blank until JavaScript catches up. Row-local React state disappears when a row unmounts; keep durable state in the app.
 
-The visible item key and its offset are preserved when earlier rows are inserted, removed or remeasured. If that item is removed, the row at its old index becomes the anchor (or the last remaining row). `followEnd` follows additions only when already within 64 logical units of the end; otherwise the reader's anchor is retained.
+The visible item key and its offset are preserved when earlier rows are inserted, removed or remeasured, including during an active drag. If that item is removed, the row at its old index becomes the anchor (or the last remaining row). `followEnd` follows additions only when already within 64 logical units of the end and no touch gesture is active; otherwise the reader's anchor is retained.
 
 Use immutable item arrays and replace changed items when changing content. Currently native tree reconstruction and offset rebuilding are linear in the number of keys. Further optimisation should be driven by measurements.
 

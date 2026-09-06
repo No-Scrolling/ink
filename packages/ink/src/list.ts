@@ -12,9 +12,12 @@ export type ListProps<T> = {
   measurementKey?: string | number;
   onLoadMore?: () => Promise<void>;
   hasMore?: boolean;
+  onLoadOlder?: () => Promise<void>;
+  hasOlder?: boolean;
+  initialEnd?: boolean;
 };
 
-export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = false, measurementKey, onLoadMore, hasMore = true }: ListProps<T>) {
+export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = false, measurementKey, onLoadMore, hasMore = true, onLoadOlder, hasOlder = false, initialEnd = false }: ListProps<T>) {
   if (!Number.isFinite(gap) || gap < 0) {
     throw new Error("List gap must be finite and non-negative");
   }
@@ -23,9 +26,11 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = 
     items: readonly T[]; keys: string[]; contentVersions: number[]; revision: number;
     records: Map<string, { item: T; version: number }>;
   } | null>(null);
-  const [window, setWindow] = useState({ start: 0, end: 32, revision: 0 });
+  const [window, setWindow] = useState({ start: initialEnd ? Math.max(0, items.length - 32) : 0, end: initialEnd ? items.length : 32, revision: 0 });
   const requested = useRef<string | null>(null);
   const load = useAction(() => onLoadMore?.());
+  const olderRequested = useRef<string | null>(null);
+  const older = useAction(() => onLoadOlder?.());
   const keys = items.map(keyExtractor);
   if (keys.some(key => typeof key !== "string") || new Set(keys).size !== keys.length) {
     throw new Error("List keys must be unique strings");
@@ -62,6 +67,13 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = 
     requested.current = boundary;
     load.run();
   }, [onLoadMore, hasMore, load.status, load.run, window, revision, items.length, boundary]);
+  const firstBoundary = JSON.stringify([keys.length, keys[0]]);
+  useEffect(() => {
+    if (!onLoadOlder || !hasOlder || older.status === "pending" || older.status === "error"
+      || window.revision !== revision || window.start > 0 || olderRequested.current === firstBoundary) return;
+    olderRequested.current = firstBoundary;
+    older.run();
+  }, [onLoadOlder, hasOlder, older.status, older.run, window, revision, firstBoundary]);
   const children: ReactNode[] = [];
   for (let index = start; index < end; index++) {
     children.push(createElement("Stack", { key: keys[index], axis: "vertical", align: "stretch" }, renderItem(items[index], index)));
@@ -79,7 +91,7 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = 
     },
   };
   const list = createElement("List", props, children);
-  return createElement(Fragment, null, list, load.status === "error" && createElement(ErrorState, {
+  return createElement(Fragment, null, older.status === "error" && createElement(ErrorState, { message: older.error.message, onRetry: older.run }), list, load.status === "error" && createElement(ErrorState, {
     message: load.error.message,
     onRetry: load.run,
   }));

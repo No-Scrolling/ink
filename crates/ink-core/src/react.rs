@@ -61,6 +61,9 @@ enum HostKind {
     Button,
     Field,
     Row,
+    Message,
+    MessageQuote,
+    ConversationComposer,
     PlayingLayout,
     PlayingTransport,
     PlayingPressable,
@@ -258,6 +261,7 @@ impl ReactTree {
             .iter()
             .any(|operation| !matches!(operation, Operation::Update { .. }));
         let mut targets = HashSet::new();
+        let mut scroll_to_end = HashSet::new();
         for operation in operations {
             match operation {
                 Operation::Create { id, r#type, props } => {
@@ -277,6 +281,10 @@ impl ReactTree {
                 }
                 Operation::Update { id, props } => {
                     let node = self.node_mut(id)?;
+                    if node.kind == HostKind::Screen && props.get("scrollToEnd").is_some()
+                        && props.get("scrollToEnd") != node.props.get("scrollToEnd") {
+                        scroll_to_end.insert(id);
+                    }
                     node.props = HostProps::new(node.kind, props)?;
                     let mut target = id;
                     while matches!(self.node(target)?.kind, HostKind::RawText | HostKind::Text) {
@@ -307,7 +315,7 @@ impl ReactTree {
         }
         engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
         self.sync_inputs(engine)?;
-        if !structural
+        if !structural && scroll_to_end.is_empty()
             && targets.iter().all(|id| {
                 self.nodes
                     .get(id)
@@ -362,6 +370,9 @@ impl ReactTree {
             screen = &tabs[index].screen;
         }
         let screen_id = screen.identity.0;
+        for id in &scroll_to_end {
+            self.scroll_positions.insert(*id, f32::MAX);
+        }
         if self.active_screen != Some(screen_id) {
             if let Some(previous) = self.active_screen {
                 self.scroll_positions.insert(previous, engine.scroll_offset);
@@ -370,12 +381,16 @@ impl ReactTree {
                 .scroll_positions
                 .get(&screen_id)
                 .copied()
-                .unwrap_or(0.0);
+                .unwrap_or_else(|| if self.nodes.get(&screen_id).is_some_and(|node| node.props.get("initialEnd") == Some(&Json::Bool(true))) { f32::MAX } else { 0.0 });
             engine.react_list_positions.clear();
             engine.pointer = None;
             engine.focused_input = None;
             engine.auto_focus_node = None;
             self.active_screen = Some(screen_id);
+        }
+        if scroll_to_end.contains(&screen_id) {
+            engine.scroll_offset = f32::MAX;
+            engine.react_list_positions.clear();
         }
         self.scroll_positions
             .retain(|id, _| self.nodes.contains_key(id));
@@ -640,6 +655,12 @@ impl ReactTree {
                 }
                 screen
             }
+            HostKind::ConversationComposer => {
+                ensure!((2..=3).contains(&host.children.len()), "Composer requires two or three children");
+                Node { identity: NodeIdentity(id), kind: NodeKind::ConversationComposer { children: self.children(host, depth)? } }
+            },
+            HostKind::Message => Node { identity: NodeIdentity(id), kind: NodeKind::Message { children: self.children(host, depth)?, outgoing: props.get("outgoing") == Some(&Json::Bool(true)) } },
+            HostKind::MessageQuote => Node { identity: NodeIdentity(id), kind: NodeKind::MessageQuote { children: self.children(host, depth)? } },
             HostKind::PlayingTransport => {
                 ensure!(host.children.len() == 3, "Playing transport requires three controls");
                 Node { identity: NodeIdentity(id), kind: NodeKind::PlayingTransport { children: self.children(host, depth)? } }
@@ -673,8 +694,9 @@ impl ReactTree {
                 let props = props.object().context("invalid Screen properties")?;
                 let props: ScreenProps = serde_json::from_value(Json::Object(props.clone()))?;
                 let mut screen = Node::screen(self.children(host, depth)?, props.title, props.centered);
-                if let NodeKind::Screen { pinned_header, right_action: action, .. } = &mut screen.kind {
+                if let NodeKind::Screen { pinned_header, pinned_footer, right_action: action, .. } = &mut screen.kind {
                     *pinned_header = props.pinned_header;
+                    *pinned_footer = props.pinned_footer;
                     *action = right_action;
                 }
                 screen
@@ -879,6 +901,8 @@ struct ScreenProps {
     centered: bool,
     #[serde(default, rename = "pinnedHeader")]
     pinned_header: bool,
+    #[serde(default, rename = "pinnedFooter")]
+    pinned_footer: bool,
 }
 
 fn string<'a>(props: &'a HostProps, key: &str) -> Option<&'a str> {
@@ -923,7 +947,10 @@ fn find_node(node: &Node, id: usize) -> Option<&Node> {
         return Some(node);
     }
     match &node.kind {
-        NodeKind::PlayingTransport { children, .. }
+        NodeKind::ConversationComposer { children, .. }
+        | NodeKind::Message { children, .. }
+        | NodeKind::MessageQuote { children, .. }
+        | NodeKind::PlayingTransport { children, .. }
         | NodeKind::PlayingLayout { children, .. }
         | NodeKind::PlayingPressable { children, .. }
         | NodeKind::Screen { children, .. }
@@ -942,7 +969,10 @@ fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
         return Some(node);
     }
     match &mut node.kind {
-        NodeKind::PlayingTransport { children, .. }
+        NodeKind::ConversationComposer { children, .. }
+        | NodeKind::Message { children, .. }
+        | NodeKind::MessageQuote { children, .. }
+        | NodeKind::PlayingTransport { children, .. }
         | NodeKind::PlayingLayout { children, .. }
         | NodeKind::PlayingPressable { children, .. }
         | NodeKind::Screen { children, .. }

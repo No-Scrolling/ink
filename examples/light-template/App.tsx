@@ -1,3 +1,4 @@
+import Conversation, { ConversationExample } from "./screens/Conversation";
 import Playing, { PlayingExample } from "./screens/Playing";
 import Reordering from "./screens/Reordering";
 import Rows from "./screens/Rows";
@@ -53,6 +54,9 @@ export default function LightTemplate() {
     <>
       <AppearanceSettings />
       <Navigator>
+        <Route path="/examples/conversation"><Conversation /></Route>
+        <Route path="/examples/conversation/single"><ConversationExample /></Route>
+        <Route path="/examples/conversation/group"><ConversationExample group /></Route>
         <Route path="/examples/playing"><Playing /></Route>
         <Route path="/examples/playing/image"><PlayingExample image /></Route>
         <Route path="/examples/playing/no-image"><PlayingExample /></Route>

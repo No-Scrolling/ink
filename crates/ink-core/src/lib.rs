@@ -530,6 +530,9 @@ struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
+    Message { children: Vec<Node>, outgoing: bool },
+    MessageQuote { children: Vec<Node> },
+    ConversationComposer { children: Vec<Node> },
     PlayingLayout { children: Vec<Node>, centred: bool },
     PlayingPressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool },
     PlayingTransport { children: Vec<Node> },
@@ -554,6 +557,7 @@ enum NodeKind {
         centred: bool,
         footer: Option<(String, Option<Action>)>,
         pinned_header: bool,
+        pinned_footer: bool,
         right_action: Option<(Mask, Action)>,
     },
     Stack {
@@ -629,6 +633,7 @@ impl Node {
                 centred,
                 footer: None,
                 pinned_header: false,
+                pinned_footer: false,
                 right_action: None,
             },
         }
@@ -2219,6 +2224,7 @@ impl Engine {
     fn relayout_scene(&mut self) {
         #[cfg(feature = "perf")]
         let (started, trace) = (Instant::now(), PerfTraceSection::new(b"Ink relayout\0"));
+        let previous_offset = self.scroll_offset;
         let mut anchors: Vec<_> = self.react_list_positions.iter().filter_map(|(id, top)| {
             let metrics = self.list_metrics.get(id)?;
             let clip = self.scene.scroll_clip?;
@@ -2228,7 +2234,8 @@ impl Engine {
             let index = metrics.index_at(self.scroll_offset + clip.y - top);
             Some((*id, metrics.keys.get(index)?.clone(), index,
                 top + metrics.offsets[index] - self.scroll_offset,
-                metrics.follow_end && self.scroll_max - self.scroll_offset <= self.scaled(64.0)))
+                metrics.follow_end && self.pointer.is_none()
+                    && self.scroll_max - self.scroll_offset <= self.scaled(64.0)))
         }).collect();
         let clip_top = self.scene.scroll_clip.map_or(0.0, |clip| clip.y);
         anchors.sort_by(|left, right| (left.3 - clip_top).abs().total_cmp(&(right.3 - clip_top).abs()).then_with(|| left.0.cmp(&right.0)));
@@ -2246,6 +2253,14 @@ impl Engine {
                 self.relayout_scene_inner();
             }
             break;
+        }
+        // Layout corrections must move the drag origin too, or the next motion undoes them.
+        let adjustment = self.scroll_offset - previous_offset;
+        match &mut self.pointer {
+            Some(Pointer::Content(pointer)) => pointer.start_offset += adjustment,
+            Some(Pointer::EdgeBack(pointer)) => pointer.start_offset += adjustment,
+            Some(Pointer::TextInput(pointer)) => pointer.content_offset += adjustment,
+            _ => {}
         }
 
         #[cfg(feature = "perf")]
@@ -2328,7 +2343,10 @@ impl Engine {
                 auto_focus: true,
                 ..
             } => Some((node.identity, *state, *action)),
-            NodeKind::PlayingTransport { children, .. }
+            NodeKind::ConversationComposer { children, .. }
+            | NodeKind::Message { children, .. }
+            | NodeKind::MessageQuote { children, .. }
+            | NodeKind::PlayingTransport { children, .. }
             | NodeKind::PlayingLayout { children, .. }
             | NodeKind::PlayingPressable { children, .. }
             | NodeKind::Screen { children, .. }
@@ -2408,6 +2426,21 @@ impl Engine {
                 }
                 let height = metrics.total();
                 self.list_metrics.insert(node.identity.0, metrics);
+                MeasuredSize { width: available.width, height }
+            }
+            NodeKind::Message { children, .. } => {
+                let width = available.width * 0.85;
+                let size = children.first().map(|child| self.measure(child, Rect { width, ..available })).unwrap_or_default();
+                MeasuredSize { width: available.width, height: size.height }
+            }
+            NodeKind::MessageQuote { children } => {
+                let inset = self.scaled(10.0);
+                let size = children.first().map(|child| self.measure(child, Rect { width: (available.width - inset).max(0.0), ..available })).unwrap_or_default();
+                MeasuredSize { width: (size.width + inset).min(available.width), height: size.height }
+            }
+            NodeKind::ConversationComposer { children } => {
+                let width = (available.width - self.scaled(40.0 * (children.len() - 1) as f32)).max(0.0);
+                let height = children.iter().map(|child| self.measure(child, Rect { width, ..available }).height).fold(0.0, f32::max);
                 MeasuredSize { width: available.width, height }
             }
             NodeKind::PlayingPressable { children, .. } => children.first().map(|child| self.measure(child, available)).unwrap_or_default(),
@@ -2619,6 +2652,39 @@ impl Engine {
                 }
             }
 
+            NodeKind::ConversationComposer { children } => {
+                let side = self.scaled(28.0);
+                let gap = self.scaled(12.0);
+                for (index, child) in children.iter().enumerate() {
+                    let (x, width) = match (children.len(), index) {
+                        (2, 0) => (rect.x, (rect.width - side - gap).max(0.0)),
+                        (3, 0) => (rect.x, side),
+                        (3, 1) => (rect.x + side + gap, (rect.width - (side + gap) * 2.0).max(0.0)),
+                        _ => (rect.x + rect.width - side, side),
+                    };
+                    let size = self.measure(child, Rect { width, ..rect });
+                    let child_rect = Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width, height: size.height };
+                    if let NodeKind::TextInput { placeholder, state, action, clear, .. } = &child.kind {
+                        self.layout_text_input(placeholder, *state, *action, clear,
+                            Rect { width: width + side + gap, ..child_rect }, side + gap);
+                    } else {
+                        self.layout(child, child_rect);
+                    }
+                }
+            }
+            NodeKind::Message { children, outgoing } => {
+                if let Some(child) = children.first() {
+                    let max_width = rect.width * 0.85;
+                    let size = self.measure(child, Rect { width: max_width, ..rect });
+                    let width = size.width.ceil().min(max_width);
+                    self.layout(child, Rect { x: if *outgoing { rect.x + rect.width - width } else { rect.x }, width, ..rect });
+                }
+            }
+            NodeKind::MessageQuote { children } => {
+                let inset = self.scaled(10.0);
+                self.scene.quads.push(Quad { rect: Rect { width: self.scaled(2.0), ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
+                if let Some(child) = children.first() { self.layout(child, Rect { x: rect.x + inset, width: (rect.width - inset).max(0.0), ..rect }); }
+            }
             NodeKind::PlayingLayout { children, centred } => {
                 let inset = self.scaled(CONTENT_INSET_START);
                 let body = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), ..rect };
@@ -2642,7 +2708,6 @@ impl Engine {
                 }
             }
             NodeKind::PlayingPressable { children, action, long_action, selected } => {
-                if let Some(child) = children.first() { self.layout(child, rect); }
                 if *selected {
                     let height = self.control_line_height();
                     self.scene.quads.push(Quad {
@@ -2658,6 +2723,7 @@ impl Engine {
                     } else { rect };
                     self.push_press_region(hit, action.clone(), long_action.clone());
                 }
+                if let Some(child) = children.first() { self.layout(child, rect); }
             }
             NodeKind::PlayingProgress { position, duration, seek } => {
                 let ratio = if *duration > 0.0 { (position / duration).clamp(0.0, 1.0) } else { 0.0 };
@@ -2689,6 +2755,7 @@ impl Engine {
                 centred,
                 footer,
                 pinned_header,
+                pinned_footer,
                 right_action,
             } => self.layout_screen(
                 children,
@@ -2696,6 +2763,7 @@ impl Engine {
                 *centred,
                 footer.as_ref(),
                 *pinned_header,
+                *pinned_footer,
                 right_action.as_ref(),
                 screen_bottom_inset,
                 rect,
@@ -2728,7 +2796,7 @@ impl Engine {
                 action,
                 clear,
                 ..
-            } => self.layout_text_input(placeholder, *state, *action, clear, rect),
+            } => self.layout_text_input(placeholder, *state, *action, clear, rect, 0.0),
             NodeKind::Button {
                 label,
                 icon,
@@ -2796,6 +2864,7 @@ impl Engine {
         centred: bool,
         footer: Option<&(String, Option<Action>)>,
         pinned_header: bool,
+        pinned_footer: bool,
         right_action: Option<&(Mask, Action)>,
         bottom_inset: bool,
         rect: Rect,
@@ -2862,6 +2931,21 @@ impl Engine {
             });
         }
 
+        let content_inset = if pinned_footer { 16.0 } else { CONTENT_INSET_START };
+        let scroll_track_end = SCROLL_TRACK_END + content_inset - CONTENT_INSET_START;
+        let scroll_content_inset_end = scroll_track_end * 2.0 - SCROLL_TRACK_WIDTH;
+
+        let (children, rect) = if pinned_footer {
+            let (composer, messages) = children.split_last().expect("screen footer requires a child");
+            let inset = self.scaled(content_inset);
+            let available = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), height: (rect.height - header_height).max(0.0), ..rect };
+            let size = self.measure(composer, available);
+            let bottom = if self.keyboard_inset > 0 { 0.0 } else { self.scaled(CONTENT_BOTTOM) };
+            let height = size.height + bottom + self.scaled(10.0);
+            self.layout(composer, Rect { y: rect.y + rect.height - bottom - size.height, height: size.height, ..available });
+            (messages, Rect { height: (rect.height - height).max(header_height), ..rect })
+        } else { (children, rect) };
+
         let rect = if let Some((label, action)) = footer {
             let font_size = self.scaled_font(40.0);
             let inset = self.scaled(CONTENT_INSET_START);
@@ -2926,12 +3010,12 @@ impl Engine {
         let inset_start = if fills_remaining {
             0.0
         } else {
-            self.scaled(CONTENT_INSET_START)
+            self.scaled(content_inset)
         };
         let inset_end = if fills_remaining {
             0.0
         } else {
-            self.scaled(CONTENT_INSET_END)
+            self.scaled(content_inset)
         };
         let first_child_is_full_bleed = children.first().is_some_and(full_bleed_image);
         let inset_top = if fills_remaining || first_child_is_full_bleed {
@@ -2941,7 +3025,7 @@ impl Engine {
         } else {
             self.scaled(CONTENT_TOP)
         };
-        let requested_bottom_inset = if bottom_inset && !fills_remaining {
+        let requested_bottom_inset = if bottom_inset && !fills_remaining && !pinned_footer {
             self.scaled(CONTENT_BOTTOM)
         } else {
             0.0
@@ -2984,7 +3068,7 @@ impl Engine {
         };
         if content_height > content.height && !fills_remaining {
             unbounded_content.width =
-                (rect.width - inset_start - self.scaled(SCROLL_CONTENT_INSET_END)).max(0.0);
+                (rect.width - inset_start - self.scaled(scroll_content_inset_end)).max(0.0);
             (sizes, content_height) = self.measure_screen_content(children, unbounded_content, gap);
             inset_bottom = if first_child_is_full_bleed {
                 requested_bottom_inset
@@ -3040,7 +3124,7 @@ impl Engine {
         if self.scroll_max > 0.0 {
             let track_width = self.scaled(SCROLL_TRACK_WIDTH);
             let thumb_width = self.scaled(SCROLL_THUMB_WIDTH);
-            let track_x = rect.x + rect.width - self.scaled(SCROLL_TRACK_END);
+            let track_x = rect.x + rect.width - self.scaled(scroll_track_end);
             self.scene.scroll_bar = Some(ScrollBar {
                 track: Rect {
                     x: track_x,
@@ -3340,32 +3424,34 @@ impl Engine {
         action: TextInputAction,
         clear: &Mask,
         rect: Rect,
+        trailing_width: f32,
     ) {
         let value = match self.state.get(state.0) {
             Some(StateValue::String(value)) => value.clone(),
             _ => String::new(),
         };
         let focused = self.focused_input == Some(state);
-        let text = if value.is_empty() && !focused {
+        let showing_placeholder = value.is_empty() && !focused;
+        let text = if showing_placeholder {
             placeholder
         } else {
             &value
         };
         let text_height = (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0);
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let clear_button_width = if value.is_empty() {
+        let clear_button_width = if value.is_empty() || trailing_width > 0.0 {
             0.0
         } else {
             self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE + TEXT_INPUT_CLEAR_PADDING * 2.0)
         };
-        let clear_gap = if value.is_empty() {
+        let clear_gap = if value.is_empty() || trailing_width > 0.0 {
             0.0
         } else {
             self.scaled(TEXT_INPUT_CLEAR_GAP)
         };
         let cursor_width = self.scaled(1.0);
         let text_viewport = Rect {
-            width: (rect.width - clear_button_width - clear_gap - cursor_width).max(0.0),
+            width: (rect.width - trailing_width - clear_button_width - clear_gap - cursor_width).max(0.0),
             height: text_height,
             ..rect
         };
@@ -3394,7 +3480,7 @@ impl Engine {
             },
             clip: text_viewport.intersection(self.clip),
             font_size,
-            colour: self.scene.colour(Colour::WHITE),
+            colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
@@ -3434,7 +3520,7 @@ impl Engine {
             action,
             text_run,
             hit_rect: Rect {
-                width: (rect.width - clear_button_width).max(0.0),
+                width: (rect.width - trailing_width - clear_button_width).max(0.0),
                 ..rect
             }
             .intersection(self.clip),
@@ -3445,7 +3531,7 @@ impl Engine {
             scrolling: self.scrolling,
         });
         self.push_hit_region(rect, Action::FocusTextInput { state, action });
-        if !value.is_empty() {
+        if !value.is_empty() && trailing_width == 0.0 {
             let icon_size = self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE);
             let clear_rect = Rect {
                 x: rect.x + rect.width - clear_button_width,
@@ -4021,6 +4107,9 @@ fn stretchable(node: &Node) -> bool {
     matches!(
         &node.kind,
         NodeKind::Stack { .. }
+            | NodeKind::ConversationComposer { .. }
+            | NodeKind::Message { .. }
+            | NodeKind::MessageQuote { .. }
             | NodeKind::PlayingTransport { .. }
             | NodeKind::Row { .. }
             | NodeKind::Text { .. }

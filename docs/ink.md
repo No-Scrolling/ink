@@ -234,3 +234,29 @@ Supply `playing`, `onPlayPause`, `position` and `duration` (milliseconds), and o
 The screen owns presentation; the app owns playback and queue behaviour. The template's Image and No Image examples simulate progress without playing audio. Image uses Wallsocket artwork and track controls; No Image demonstrates backward 10-second and forward 30-second controls.
 
 A long press invokes `onLongPress` once and suppresses the normal tap on release. Moving away cancels it. The template seeks backward/forward by 15 seconds on a hold, matching Reverb; the callback determines the amount. Bottom actions can change their `icon` independently of `selected`, which adds an underline.
+
+## Conversations
+
+`ConversationScreen` owns message presentation, the list, composer and message actions page. Use it inside a `Navigator`; no extra route or provider is needed. Supply `ConversationMessage` objects with an `id`, `timestamp` and text or an image. Ink handles keys, rendering and reply previews.
+
+```tsx
+<ConversationScreen
+  title="Alex"
+  messages={messages}
+  draft={draft}
+  onDraftChange={setDraft}
+  actions={message => [{
+    label: "React ❤️",
+    onPress: () => toggleReaction(message.id),
+  }]}
+  onSend={({ text, replyTo }) => sendMessage(text, replyTo?.id)}
+/>
+```
+
+Long-pressing a message or its image opens its preview and the built-in Reply action. Reply returns to the chat, selects the reply target and scrolls to the bottom. Ink builds the preview from the message's author and text (or “Photo” for an image). Outgoing replies use “You”; an omitted incoming author falls back to the screen title. The composer owns the reply banner and its close button. `onSend` receives `{ text, replyTo }`: trimmed text and the original reply target, if selected. After the callback returns, Ink clears the selected reply. The app handles sending, stores any reply snapshot on the sent message and clears its controlled draft when appropriate.
+
+`actions` supplies additional labels and callbacks. Ink returns to the chat before invoking a callback, so it can update data or navigate elsewhere. Back dismisses the actions page without changing the selected reply or chat scroll position. Optional `onRetry`, `onImagePress` and `onDoubleTap` callbacks receive the message. `Message` remains available independently for custom screens.
+
+`timestamp` is milliseconds since the Unix epoch. Ink displays local time for today and adds the month and day for older messages. Set `group` for group chats to show incoming authors; single chats hide authors and outgoing messages never show “You” in their subtitle. Reactions share the subtitle. Optional statuses are `sending`, `sent`, `delivered`, `read` and `failed`; the app supplies them from its messaging service. A failed message offers “Tap to try again” when `onRetry` is supplied. An image supplies `src`, `width` and `height`; a stored `reply` supplies `author` and `text`.
+
+Use `onLoadOlder` and `hasOlder` to prepend history. `onAttach` supplies the composer's plus action. The Single chat and Group chat examples use local data and demonstrate text, image-only messages, replies, reactions and delivery states.

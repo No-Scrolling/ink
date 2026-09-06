@@ -8,8 +8,8 @@ import { onNativeMessage } from "./native";
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type Params = Record<string, Json>;
 export type Destination = string | { path: string; params?: Params };
-type Entry = { key: number; path: string; params: Params; unavailable?: boolean };
-type NavigationAction = { type: "back" } | { type: "push" | "replace"; destination: Destination };
+type Entry = { key: number; path: string; params: Params; unavailable?: boolean; page?: ReactElement };
+type NavigationAction = { type: "back" } | { type: "push" | "replace"; destination: Destination } | { type: "present"; page: ReactElement };
 let dispatch: ((action: NavigationAction) => void) | undefined;
 let openNativeRoute: ((destination: Destination) => void) | undefined;
 let pendingNativeRoute: Destination | undefined;
@@ -31,6 +31,8 @@ function send(action: NavigationAction) {
 export function navigate(destination: Destination) { send({ type: "push", destination }); }
 export function replace(destination: Destination) { send({ type: "replace", destination }); }
 export function back() { send({ type: "back" }); }
+
+export function presentPage(page: ReactElement) { send({ type: "present", page }); }
 
 export function useRouteParams<T extends object = Params>(decode?: (value: unknown) => T): T {
   const params = useContext(RouteContext);
@@ -65,6 +67,11 @@ export function Navigator({ children }: { children: ReactNode }) {
         setEntries(current => current.length > 1 ? current.slice(0, -1) : current);
         return;
       }
+      if (action.type === "present") {
+        const key = nextKey.current++;
+        setEntries(current => [...current, { key, path: "", params: {}, page: action.page }]);
+        return;
+      }
       const target = typeof action.destination === "string"
         ? { path: action.destination, params: {} } : action.destination;
       if (!routes.has(target.path)) throw new Error(`Unknown route: ${target.path}`);
@@ -94,7 +101,7 @@ export function Navigator({ children }: { children: ReactNode }) {
         ? createElement("Screen", { title: "Page unavailable" },
           createElement("Text", null, "This notification links to a page that is no longer available."),
           createElement("Button", { onPress: back }, "Go back"))
-        : routes.get(entry.path)),
+        : entry.page ?? routes.get(entry.path)),
     })),
   );
 }
