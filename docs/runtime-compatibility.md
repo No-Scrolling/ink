@@ -1,4 +1,7 @@
-# JavaScript runtime compatibility
+---
+title: "JavaScript runtime compatibility"
+description: "Available JavaScript APIs, runtime limits and dependency compatibility."
+---
 
 Ink runs JavaScript in QuickJS-ng. Check a library’s required APIs before using it; a successful install or build does not guarantee runtime compatibility.
 
@@ -47,4 +50,4 @@ No `window`, `document`, `navigator`, DOM nodes, localStorage, IndexedDB, servic
 
 The template and framework pass type-checking without `lib.dom.d.ts` or `@types/node`. Check resolved declarations when adding dependencies: a package can include DOM types even when your app excludes them.
 
-Physical-device and wider application workflows remain deferred for verification with the user. See [native lifetimes](runtime-contracts.md) for cancellation, ownership and runtime restart behaviour.
+See [native lifetimes](/runtime-contracts) for cancellation, ownership and runtime restart behaviour.

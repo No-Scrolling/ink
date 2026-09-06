@@ -20,7 +20,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 internal class InkMediaLibrary(private val activity: Activity) {
-    private val executor = Executors.newFixedThreadPool(2)
+    private val executor = Executors.newSingleThreadExecutor()
+    private val thumbnails = Executors.newFixedThreadPool(2)
     private val pending = ConcurrentHashMap<Long, CancellationSignal>()
     private val preferences = activity.getSharedPreferences("ink-media-permissions", 0)
     @Volatile private var stopped = false
@@ -59,7 +60,8 @@ internal class InkMediaLibrary(private val activity: Activity) {
             }
             return
         }
-        executor.execute {
+        val queue = if (operation == "image") thumbnails else executor
+        queue.execute {
             var temporary: File? = null
             var imported: JSONObject? = null
             var delivered = false
@@ -187,7 +189,7 @@ internal class InkMediaLibrary(private val activity: Activity) {
     fun cancel(id: Long) {
         pending[id]?.cancel()
     }
-    fun stop() { stopped = true; permissionRequest = null; pending.values.forEach { it.cancel() }; executor.shutdownNow() }
+    fun stop() { stopped = true; permissionRequest = null; pending.values.forEach { it.cancel() }; executor.shutdownNow(); thumbnails.shutdownNow() }
     private fun failure(error: Throwable) = NativeResult.Failure(if (error is SecurityException) NativeErrorKind.PERMISSION_DENIED else NativeErrorKind.UNAVAILABLE, error.message ?: "Media library operation failed", true)
     private companion object { const val PERMISSION_REQUEST = 7305 }
 }

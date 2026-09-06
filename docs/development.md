@@ -1,4 +1,7 @@
-# Develop an app
+---
+title: "Develop an app"
+description: "Run your app and refresh it as you edit."
+---
 
 Run the development command from your app directory:
 
@@ -30,7 +33,3 @@ Runtime errors appear in a development dialog with a **Reload** action and in Lo
 Each scheduled job keeps a copy of its worker bundle, so an app refresh does not change a running job’s code. Ink keeps the newest three development bundles. Worker bundles and detached audio assets have separate caches; uninstalling the app clears them.
 
 Release builds use minified code and exclude the development reload command.
-
-## Verification
-
-[Emulator checks](verification-2026-09-06.md) cover state-preserving edits, hook changes, linked packages and recovery from errors. Real-app workflows and physical-device performance need separate checks.

@@ -5,13 +5,13 @@ description: "Ink's authoring model, implemented scope and remaining integration
 
 Ink is a React and TypeScript framework for Light Phone III apps. Developers supply app data and behaviour; Ink supplies the phone's visual language, native interaction and device integration.
 
-Module guides describe current APIs. Verification records describe what was checked, including remaining integration work.
+Module guides describe current APIs.
 
 ## Authoring
 
 Functions, hooks, context, composition, conditional rendering and array mapping use ordinary React semantics. Native requirements come from imported modules, not special rules about application expressions. Use standard networking and compatible JavaScript libraries.
 
-Ink does not promise React Native native-module, DOM or Node compatibility. Its runtime facilities are listed in [runtime compatibility](runtime-compatibility.md).
+Ink does not promise React Native native-module, DOM or Node compatibility. Its runtime facilities are listed in [runtime compatibility](/runtime-compatibility).
 
 ## Screens and behaviour
 
@@ -33,14 +33,14 @@ Include capabilities through explicit module imports. Optional engines and captu
 
 | Capability | Current scope |
 | --- | --- |
-| [Auth](auth.md) | Browser and device-code sign-in, session observation, coordinated refresh and local sign-out. |
-| [Connectivity](connectivity.md) | Observe network state; request success remains an HTTP concern. |
-| [Downloads](downloads.md) | Durable ordinary HTTP files; provider download engines remain separate. |
+| [Auth](/auth) | Browser and device-code sign-in, session observation, coordinated refresh and local sign-out. |
+| [Connectivity](/connectivity) | Observe network state; request success remains an HTTP concern. |
+| [Downloads](/downloads) | Durable ordinary HTTP files; provider download engines remain separate. |
 | External actions | Web links and browser sign-in use Android Custom Tabs with explicit unavailable errors when unsupported. Phone, mail and other supported external URLs dispatch to installed handlers. Text sharing uses a framework command; file sharing belongs with files and media. |
-| [Files and media](files.md) | An Ink photo/video gallery with multi-selection, document picker actions, shared durable file references, image preparation, saving and sharing. |
-| [Maps](maps.md) | An optional MapLibre view filling the screen's content area, with markers, native gestures and explicit camera movement. |
-| [Secure Store](secure-store.md) | Small encrypted string values, shared by Auth and app code. |
-| [Store](store.md) | JSON storage and direct read-only SQLite queries over imported bundled databases. |
+| [Files and media](/files) | An Ink photo/video gallery with multi-selection, document picker actions, shared durable file references, image preparation, saving and sharing. |
+| [Maps](/maps) | An optional MapLibre view filling the screen's content area, with markers, native gestures and explicit camera movement. |
+| [Secure Store](/secure-store) | Small encrypted string values, shared by Auth and app code. |
+| [Store](/store) | JSON storage and direct read-only SQLite queries over imported bundled databases. |
 
 Reader, Bluetooth and Sensors are outside scope. There is no separate Records or System module. Map clustering, offline map regions, general image editing and video playback are not part of this scope.
 
@@ -51,9 +51,3 @@ Picking, capture, recording and downloads return a shared `FileRef`. Use its sou
 Completed recordings are retained independently until explicitly deleted. Apps persist file IDs and own reference counting and retention; disposing a screen does not delete accepted attachments.
 
 Audio capture is imported from `@ink/audio/capture`; camera scanning is imported from `@ink/camera/scan`. Playback and still-photo imports exclude those optional native engines. MapLibre and other optional engines follow their module capability graph.
-
-## Integration and verification
-
-[LP3 checks](verification-custom-tabs.md) cover website open/close, dark toolbar appearance and local OAuth sign-in and cancellation. Production providers still need checks with their registered redirects.
-
-Real-app walkthroughs remain deferred for a joint session. Use Weather, Passes, Index, Buses, Beeper, Spotify and Echo TV to check provider playback, messaging, permissions and offline behaviour.

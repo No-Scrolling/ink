@@ -37,6 +37,6 @@ Scanning stays native. Release the camera on leaving the screen. A scan result i
 
 ## A pass library
 
-Store ID, title, format, payload, sort order and optional expiry in [Store](store.md). Keep original documents with [Files and media](files.md). Editing a display name must not change the encoded value.
+Store ID, title, format, payload, sort order and optional expiry in [Store](/store). Keep original documents with [Files and media](/files). Editing a display name must not change the encoded value.
 
 Tickets with rotating codes or provider authentication need a provider integration. A screenshot or copied payload does not guarantee that the resulting pass remains valid. Keep a fallback human-readable reference where the issuer provides one.

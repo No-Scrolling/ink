@@ -1,4 +1,7 @@
-# Lists
+---
+title: "Lists"
+description: "Display collections with automatic virtualisation, pagination and scrolling."
+---
 
 Use `List` for collections that scroll. It measures row heights automatically and mounts only the visible rows plus extra rows on either side. You do not need height hints.
 

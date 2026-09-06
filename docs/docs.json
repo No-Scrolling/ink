@@ -25,18 +25,25 @@
   "navigation": {
     "groups": [
       {
-        "group": "Ink",
+        "group": "Get started",
+        "pages": [
+          "standalone",
+          "development"
+        ]
+      },
+      {
+        "group": "Guides",
         "pages": [
           "ink",
-          "product-design",
-          "architecture"
+          "lists",
+          "runtime-compatibility"
         ]
       },
       {
         "group": "Modules",
         "pages": [
-          "auth",
           "audio",
+          "auth",
           "background",
           "barcode",
           "camera",
@@ -52,6 +59,16 @@
           "notifications",
           "secure-store",
           "store"
+        ]
+      },
+      {
+        "group": "Framework",
+        "pages": [
+          "product-design",
+          "architecture",
+          "build-contracts",
+          "runtime-contracts",
+          "agent-tools"
         ]
       }
     ]

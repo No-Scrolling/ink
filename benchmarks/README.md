@@ -6,22 +6,6 @@ The current comparison uses three counter apps: Ink, Expo (light-template) and L
 
 The [matching-counter LP3 comparison](results/matching-counter-lp3-2026-09-06.md) supplies the README figures. It includes build and runtime samples, screenshots and device cleanup checks.
 
-Earlier runs used different fixtures. Keep their results separate:
-
-| Report | What it measured |
-| --- | --- |
-| [Ink React](results/ink-react-lp3-2026-09-06.md) | Earlier counter and scrolling fixtures. |
-| [Expo and Light SDK](results/expo-light-sdk-lp3-2026-09-06.md) | Separate runs of the earlier comparison fixtures. |
-| [Optimised comparison](results/optimised-comparison-lp3-2026-09-06.md) | All three frameworks after Ink’s startup changes. |
-| [Memory investigation](results/memory-lp3-2026-09-06.md) | Web initialisation, garbage collection, allocator purging and virtualisation. |
-| [Web-code split](results/split-web-lp3-2026-09-06.md) | Loading web code on first use. Release builds use this; `INK_SPLIT_WEB=0` disables it for comparison. |
-| [Native startup](results/native-memory-lp3-2026-09-06.md) | Deferred native setup and startup memory reductions. |
-| [Renderer resources](results/renderer-nodes-lp3-2026-09-06.md) | Lazy image resources and smaller native nodes. |
-| [Runtime prototype](results/runtime-lp3.md) | Early JavaScript and Effect experiments. |
-| [QuickJS-ng and Hermes](results/runtime-engines-lp3.md) | Synchronous counter calls through different engines. |
-
-Other files in `results/`, the `baselines/` directory and budget files contain historical declarative-engine measurements. They do not describe current React performance. Use the recorded source revisions to reproduce them.
-
 ## Run the Ink counter
 
 ```sh

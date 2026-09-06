@@ -1,4 +1,7 @@
-# Agent tools
+---
+title: "Agent tools"
+description: "Run experiments, benchmarks and device tasks with the repository tools."
+---
 
 Use `scripts/agent-tools` to build experiments, run benchmarks, reserve devices and inspect images or memory. Run `scripts/agent-tools --help` for commands. The wrapper uses uv and Pillow; OCR uses Apple Vision on macOS or an installed Tesseract elsewhere. Builds use the usual Ink Android toolchain.
 

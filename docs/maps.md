@@ -55,4 +55,4 @@ The map supports markers, gestures and camera movement. Clustering, offline regi
 
 The default style needs no credentials. If you choose another source, supply its style URL and any required credentials. Attribution stays visible. Cached tiles do not guarantee offline access.
 
-Use [Location](location.md) for the phone's position. Location permission is not required merely to display supplied coordinates.
+Use [Location](/location) for the phone's position. Location permission is not required merely to display supplied coordinates.

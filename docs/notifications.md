@@ -29,6 +29,6 @@ Define whether a reminder follows an absolute instant or local wall time. Reconc
 
 ## Push and privacy
 
-Use [LightOS](light-sdk.md) for host push integration. Validate incoming account and record IDs, update your app’s data, then decide whether to show a notification.
+Use [LightOS](/light-sdk) for host push integration. Validate incoming account and record IDs, update your app’s data, then decide whether to show a notification.
 
 Notification content may be visible outside the app. Messaging apps can offer sender-only or generic previews. Native host policy may restrict presentation or actions, so exposed capabilities determine what the app can request.

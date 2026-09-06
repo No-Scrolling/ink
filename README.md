@@ -45,7 +45,7 @@ Import local images, audio and icon collections. You can use JavaScript librarie
 
 See [how Ink works](docs/architecture.md) for the engine and [product design](docs/product-design.md) for scope.
 
-The template demonstrates the components and device packages. A [local fixture](examples/light-template/scripts/auth-server.md) supports account and transfer development. [Verification records](docs/implementation-plan.md#verification) cover emulator and LP3 checks; real-app walkthroughs remain to be done together.
+The template demonstrates the components and device packages. A [local fixture](examples/light-template/scripts/auth-server.md) supports account and transfer development.
 
 ## Development
 

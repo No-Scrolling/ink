@@ -21,7 +21,7 @@ await saveEpisodeDownload(episode.id, download.id);
 
 ## Observe and control
 
-`downloads.observe(id)` supplies Ink's standard `loading`, `ready` or `error` snapshot for `useSnapshot`. Ready data contains the transfer state: `queued`, `running`, `paused`, `completed`, `failed` or `cancelled`. Progress contains received bytes and an optional total. Completion contains a [FileRef](files.md#one-file-representation). Failure to read the job is a snapshot error; a failed transfer is job data with an error explaining the failure.
+`downloads.observe(id)` supplies Ink's standard `loading`, `ready` or `error` snapshot for `useSnapshot`. Ready data contains the transfer state: `queued`, `running`, `paused`, `completed`, `failed` or `cancelled`. Progress contains received bytes and an optional total. Completion contains a [FileRef](/files#one-file-representation). Failure to read the job is a snapshot error; a failed transfer is job data with an error explaining the failure.
 
 `pause(id)`, `resume(id)`, `cancel(id)` and `remove(id)` return promises. Cancel stops unfinished work and deletes partial content. Remove also deletes the completed file and the saved job; discard its ID afterwards. Closing a screen or releasing an observer does neither.
 
@@ -37,4 +37,4 @@ The initial interface handles URLs that remain usable for the transfer and recov
 
 Provider-specific offline media, such as Spotify downloads, needs its own integration. Ordinary HTTP downloads do not replace a provider’s authentication or playback engine.
 
-Use `fetch` for short foreground requests and [Files and media](files.md) for attachment uploads. Background jobs can schedule reconciliation, but do not act as a continuous download loop.
+Use `fetch` for short foreground requests and [Files and media](/files) for attachment uploads. Background jobs can schedule reconciliation, but do not act as a continuous download loop.

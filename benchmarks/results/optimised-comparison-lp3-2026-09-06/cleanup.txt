@@ -1,1 +1,0 @@
-No com.vandam.benchmark packages remain on LP3.

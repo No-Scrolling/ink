@@ -24,7 +24,7 @@ Build timings use three sequential rounds on an Apple M4 Pro with 24 GiB RAM, ma
 
 ## Versions and evidence
 
-Ink uses React and QuickJS-ng from the working checkout. Expo 55.0.9, React Native 0.83.4 and React 19.2.0 use Hermes and the new architecture, with release minification and resource shrinking. Light SDK uses the same prepared 0.1.1 snapshot as the earlier comparison, with the updated counter fixture, release minification and resource shrinking. All three APKs contain ARM64 native libraries only. APKs use development signing keys for local measurement.
+Ink uses React and QuickJS-ng from the working checkout. Expo 55.0.9, React Native 0.83.4 and React 19.2.0 use Hermes and the new architecture, with release minification and resource shrinking. Light SDK uses a prepared 0.1.1 snapshot, with the updated counter fixture, release minification and resource shrinking. All three APKs contain ARM64 native libraries only. APKs use development signing keys for local measurement.
 
 [Runtime samples](matching-counter-lp3-2026-09-06.json), [build samples](matching-counter-lp3-2026-09-06-build.csv), [source hashes](matching-counter-lp3-2026-09-06/source-hashes.txt), [fixture source archive](matching-counter-lp3-2026-09-06/fixture-sources.tar.gz), [APK hashes](matching-counter-lp3-2026-09-06/artifacts.json), [resolved Expo versions](matching-counter-lp3-2026-09-06/versions.json), [runtime log](matching-counter-lp3-2026-09-06/runtime.log).
 
@@ -34,4 +34,4 @@ All 15 workload screenshots were checked with OCR and displayed Count: 100. Fina
 
 The benchmark tool removed all three apps from the LP3. A final package query found no benchmark packages. The four changed Android settings were restored and verified against their original values, and SurfaceFlinger collection was disabled. [Before](matching-counter-lp3-2026-09-06/settings-before.json), [after](matching-counter-lp3-2026-09-06/settings-after.json), [package check](matching-counter-lp3-2026-09-06/packages-after.txt).
 
-No tests were written. Harness bundling, shell syntax and diff whitespace checks passed. This report replaces the headline counter figures; earlier reports remain historical.
+No tests were written. Harness bundling, shell syntax and diff whitespace checks passed. This report supplies the README benchmark figures.

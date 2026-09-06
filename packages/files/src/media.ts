@@ -34,6 +34,7 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
   const [importing, setImporting] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const cursor = useRef<string | null>(null);
+  const nextPage = useRef<Promise<MediaPage> | null>(null);
   const active = useRef<AbortController | null>(null);
   const loadingPage = useRef<AbortSignal | null>(null);
   const confirming = useRef<AbortSignal | null>(null);
@@ -41,8 +42,11 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
   const loadPage = useCallback(async (signal: AbortSignal, first = false) => {
     if (loadingPage.current || signal.aborted) return;
     loadingPage.current = signal;
+    const prefetched = first ? null : nextPage.current;
+    nextPage.current = null;
     try {
-      const page = decodePage(await callNative("files", "media-list", { kind, cursor: first ? undefined : cursor.current, limit: 60 }, { signal }));
+      const page = await prefetched
+        ?? decodePage(await callNative("files", "media-list", { kind, cursor: first ? undefined : cursor.current, limit: 60 }, { signal }));
       if (signal.aborted) return;
       if (!first && page.nextCursor !== null && page.nextCursor === cursor.current) throw new NativeError("protocol", "Media pagination did not advance");
       setItems(previous => {
@@ -51,11 +55,17 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
       });
       cursor.current = page.nextCursor;
       setHasMore(page.nextCursor !== null);
+      if (page.nextCursor !== null) {
+        nextPage.current = callNative("files", "media-list", { kind, cursor: page.nextCursor, limit: 60 }, { signal }).then(decodePage);
+        // The next load awaits this promise and exposes any failure through List's retry action.
+        void nextPage.current.catch(() => {});
+      }
     } finally { if (loadingPage.current === signal) loadingPage.current = null; }
   }, [kind]);
 
   const refresh = useCallback(async (request: boolean) => {
     active.current?.abort();
+    nextPage.current = null;
     const controller = new AbortController(); active.current = controller;
     loadingPage.current = null;
     setLoading(true); setError(null);
@@ -124,7 +134,7 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
         items: rows, keyExtractor: row => row[0].id, gap: 0, hasMore,
         onLoadMore: async () => { if (active.current) await loadPage(active.current.signal); },
         renderItem: row => createElement("MediaGridRow", null, row.map(item => createElement("MediaCell", {
-          key: item.id, src: item.src, selected: selected.has(item.id), video: item.mimeType.startsWith("video/"), checkIcon: icons.check, videoIcon: icons.play_arrow,
+          key: item.id, src: item.src, selected: selected.has(item.id), video: item.mimeType.startsWith("video/"), checkIcon: icons.check_circle, videoIcon: icons.video_file,
           onPress: () => setSelected(previous => { const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; }),
         }))),
       }));

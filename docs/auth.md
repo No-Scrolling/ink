@@ -5,7 +5,6 @@ description: "Sign in and keep a session without managing token refresh in scree
 
 `@ink/auth` owns OAuth sign-in, secure token persistence, refresh and sign-out. Apps configure their provider; screens do not store tokens or implement refresh loops.
 
-The [account verification record](verification-auth-secure-store-2026-09-06.md) covers emulator device-code sign-in and storage checks, plus physical LP3 browser sign-in. Production providers and broader lifecycle scenarios remain integration work.
 
 ```ts
 import { createOAuthClient } from "@ink/auth";
@@ -52,7 +51,7 @@ A device-only configuration does not require browser settings. Calling a flow wi
 
 `useSnapshot(account)` uses Ink's standard `loading`, `ready` and `error` snapshot. Ready data contains a `status` of `signed-out` or `signed-in`, without tokens. Provider profile data belongs to the app. A provider request function obtains a token and uses ordinary `fetch` or a compatible JavaScript client.
 
-A worker imports the same configuration and opens its session from [Secure store](secure-store.md). If interactive sign-in is required, it reports that outcome rather than opening UI.
+A worker imports the same configuration and opens its session from [Secure store](/secure-store). If interactive sign-in is required, it reports that outcome rather than opening UI.
 
 Android coordinates session access within the app process, including worker runtimes. Separate Android processes are not supported for Auth. Refresh completes before a waiting sign-out removes the credentials, and pending sign-in exchanges carry a generation that prevents them restoring a signed-out session.
 

@@ -5,7 +5,7 @@ description: "Small TypeScript apps with a native Light Phone interface."
 
 Build Light Phone III apps with React and TypeScript. Ink provides native components, navigation, rendering and device APIs.
 
-Start with [Create an app](standalone.md), or run the template below.
+Start with [Create an app](/standalone), or run the template below.
 
 ## Run the template
 
@@ -17,7 +17,7 @@ cargo run -p ink-cli -- -C examples/light-template check
 cargo run -p ink-cli -- -C examples/light-template dev --device emulator-5554 --once
 ```
 
-Use `ink devices` to find the serial of a connected LP3 or emulator. The template contains `App.tsx`, `ink.toml` and TypeScript configuration. `ink dev` installs the development host and launches the app; omit `--once` to watch for changes. Compatible edits use JavaScript reload or refresh, while native changes rebuild the APK. See [the development loop](development.md) and [standalone setup](standalone.md).
+Use `ink devices` to find the serial of a connected LP3 or emulator. The template contains `App.tsx`, `ink.toml` and TypeScript configuration. `ink dev` installs the development host and launches the app; omit `--once` to watch for changes. Compatible edits use JavaScript reload or refresh, while native changes rebuild the APK. See [the development loop](/development) and [standalone setup](/standalone).
 
 ```tsx
 import { useState } from "react";
@@ -57,7 +57,7 @@ export default function Settings() {
 
 `Screen` provides the title bar, back button, content padding and space above tabs. It scrolls when content overflows. `Stack` arranges children vertically; use `axis="horizontal"` for a row. Set `gap`, `align` and `justify` to control the layout.
 
-Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. General icons are imported Material Symbol collections. `Icon.name`, `Button.icon` and `Tab.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](build-contracts.md) for formats and migration.
+Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. General icons are imported Material Symbol collections. `Icon.name`, `Button.icon` and `Tab.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](/build-contracts) for formats and migration.
 
 | Component | Use |
 | --- | --- |
@@ -130,7 +130,7 @@ Remote images use HTTPS. Images require explicit positive `width` and `height`, 
 
 ## Collections
 
-Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Row heights are measured automatically; `gap` adds spacing and `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor. See [list behaviour and limits](lists.md).
+Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Row heights are measured automatically; `gap` adds spacing and `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor. See [list behaviour and limits](/lists).
 
 For example:
 
@@ -176,9 +176,9 @@ Covered screens keep their React state. Tabs also keep separate scroll positions
 
 ## External actions
 
-Import `openURL(url)` and `share({ text })` from `ink`. Both return promises and restore the app when the external window closes. Cancellation resolves normally; invalid URLs, missing handlers and native failures reject. Use [Files and media](files.md) to share attachments.
+Import `openURL(url)` and `share({ text })` from `ink`. Both return promises and restore the app when the external window closes. Cancellation resolves normally; invalid URLs, missing handlers and native failures reject. Use [Files and media](/files) to share attachments.
 
-Web links open in Android Custom Tabs. The toolbar follows Ink’s appearance while keeping the site identity and browser security controls visible. If Custom Tabs is unavailable, the command rejects. Telephone links open the dialler; message links open a composer. Other app schemes use their installed handlers. File, content, script and intent URLs are rejected. See [LP3 verification](verification-custom-tabs.md).
+Web links open in Android Custom Tabs. The toolbar follows Ink’s appearance while keeping the site identity and browser security controls visible. If Custom Tabs is unavailable, the command rejects. Telephone links open the dialler; message links open a composer. Other app schemes use their installed handlers. File, content, script and intent URLs are rejected.
 
 ## Build and inspect
 
@@ -189,7 +189,7 @@ ink build
 ink logs
 ```
 
-`ink check` validates the project and checks types. `ink info` shows the resolved build configuration. `ink build` creates a signed release APK; `ink dev --once` installs a development build. Check third-party libraries against [runtime compatibility](runtime-compatibility.md).
+`ink check` validates the project and checks types. `ink info` shows the resolved build configuration. `ink build` creates a signed release APK; `ink dev --once` installs a development build. Check third-party libraries against [runtime compatibility](/runtime-compatibility).
 
 Configure your release key in `ink.toml`, with the keystore path relative to that file:
 
@@ -234,7 +234,7 @@ Use `Screen`'s optional `header` for content that stays below the navigation tit
 
 `rightAction` places one icon/action in the navigation title bar. It is separate from `header`, which pins composed content below the title. The Examples tab demonstrates the more-horizontal icon opening Action Page.
 
-Use `Barcode` from `@ink/barcode/generate` for codes. See [Barcodes and passes](barcode.md).
+Use `Barcode` from `@ink/barcode/generate` for codes. See [Barcodes and passes](/barcode).
 
 ## Playing screen
 
@@ -289,4 +289,4 @@ Set `status` to `sending`, `sent`, `delivered`, `read` or `failed` using your se
 
 Use `onLoadOlder` and `hasOlder` to prepend history. `onAttach` supplies the composer's plus action. The Single chat and Group chat examples use local data and demonstrate text, image-only messages, replies, reactions and delivery states.
 
-Sending requests keyboard dismissal and the bottom scroll position in the same React update as clearing the reply. The app should add its outgoing message and clear its controlled draft in `onSend`; Ink does not wait for a network acknowledgement. `sending` disables sending, and `loading` shows the initial loading content. Playback and conversation examples have focused emulator verification; real-service integration and physical LP3 workflow validation remain deferred.
+Sending requests keyboard dismissal and the bottom scroll position in the same React update as clearing the reply. The app should add its outgoing message and clear its controlled draft in `onSend`; Ink does not wait for a network acknowledgement. `sending` disables sending, and `loading` shows the initial loading content.

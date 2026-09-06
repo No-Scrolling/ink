@@ -55,9 +55,9 @@ form.append("photo", photoBlob, "entrance.jpg");
 await fetch(uploadUrl, { method: "POST", body: form, signal });
 ```
 
-Let fetch set the multipart Content-Type, including its boundary. [Managed attachments](files.md), including accepted camera photos, can be read with `fetch(file.src)`. Calling `blob()` preserves native file ranges, including through Blob slicing, File construction and FormData. Native code copies those ranges into the upload spool without bringing attachment bytes into JavaScript; its size is constrained by available storage. The 64 MiB limit applies to bodies streamed from JavaScript. Managed sources do not grant arbitrary filesystem access. The earlier `fetch(photo.file.uri)` camera path remains supported for compatibility.
+Let fetch set the multipart Content-Type, including its boundary. [Managed attachments](/files), including accepted camera photos, can be read with `fetch(file.src)`. Calling `blob()` preserves native file ranges, including through Blob slicing, File construction and FormData. Native code copies those ranges into the upload spool without bringing attachment bytes into JavaScript; its size is constrained by available storage. The 64 MiB limit applies to bodies streamed from JavaScript. Managed sources do not grant arbitrary filesystem access. The earlier `fetch(photo.file.uri)` camera path remains supported for compatibility.
 
-Each runtime allows 16 open responses and eight pending uploads. An abandoned response stream or upload spool expires after 60 seconds without reads or writes. Attachment preparation uses bounded 32 KiB operations and checks cancellation between chunks; file bytes remain native even when mixed with large text fields. Use [Downloads](downloads.md) for durable incoming transfers.
+Each runtime allows 16 open responses and eight pending uploads. An abandoned response stream or upload spool expires after 60 seconds without reads or writes. Attachment preparation uses bounded 32 KiB operations and checks cancellation between chunks; file bytes remain native even when mixed with large text fields. Use [Downloads](/downloads) for durable incoming transfers.
 
 Use HTTPS. Redirect handling strips credentials when crossing origins. There is no browser origin sandbox or ambient browser login session. A provider that needs cookies must use an explicit account-scoped cookie jar supplied by its adapter; ordinary fetch does not borrow browser cookies.
 
@@ -75,15 +75,15 @@ socket.close(1000, "Finished");
 
 There are at most eight sockets per runtime. Messages are limited to 256 KiB and incoming/outgoing queues to 512 KiB; overflowing an incoming queue closes the connection. `bufferedAmount` includes JavaScript sends and the latest native queue snapshot. Manage authentication and reconnection in a shared module. Do not open sockets during rendering.
 
-For ordered message streams, track provider cursors or sequence numbers and recover after gaps. Bound pending sends and incoming queues. A socket surviving briefly after backgrounding is not a delivery guarantee; use [background work](background.md) and push where available.
+For ordered message streams, track provider cursors or sequence numbers and recover after gaps. Bound pending sends and incoming queues. A socket surviving briefly after backgrounding is not a delivery guarantee; use [background work](/background) and push where available.
 
 ## Recovery
 
 Retry selected reads with bounded backoff. Writes need an idempotency key or a way to reconcile uncertain outcomes. Going offline can leave a request accepted remotely even if no response arrives locally.
 
-Persist small results explicitly with [Store](store.md); its read-only SQLite interface queries imported database assets. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
+Persist small results explicitly with [Store](/store); its read-only SQLite interface queries imported database assets. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
 
-Use [Downloads](downloads.md) for durable transfers and [Auth](auth.md) for account flows. You can use an npm HTTP client if it supports [Ink’s runtime](runtime-compatibility.md).
+Use [Downloads](/downloads) for durable transfers and [Auth](/auth) for account flows. You can use an npm HTTP client if it supports [Ink’s runtime](/runtime-compatibility).
 
 ## Template server
 

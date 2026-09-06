@@ -1,4 +1,7 @@
-# Builds, native requirements and assets
+---
+title: "Builds, native requirements and assets"
+description: "How Ink resolves native requirements, assets and release builds."
+---
 
 ## Product contract
 
@@ -55,4 +58,4 @@ A successful bundle emits `.ink/bundle/ink-bundle-v1.json`; compilation copies i
 
 Development refresh keeps React, the renderer, installed dependencies and device packages in a persistent framework bundle. App modules receive React Refresh registration and hook signatures. Component modules update in place; other modules are cached so task registration and module initialisers do not repeat on every edit. Changes to cached or mixed-export modules change `refreshCompatibilityHash` and request a runtime reload. `devRuntimeHash` identifies the persistent framework. Hook-signature changes remount the affected component. External source maps account for both the framework prefix and per-module transforms. This does not provide general hot replacement of arbitrary module side effects.
 
-The manifest also records rasterised icon variants and their dimensions. See [verification results](verification-2026-09-06.md) for compiler, refresh and emulator checks.
+The manifest also records rasterised icon variants and their dimensions.

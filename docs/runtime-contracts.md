@@ -1,4 +1,7 @@
-# Native messages and resource ownership
+---
+title: "Native messages and resource ownership"
+description: "How native requests, resources and background runtimes are managed."
+---
 
 Ink's foreground and background runtimes use JSON messages. The host accepts at most 256 queued messages in each direction, 256 native requests per runtime and 1 MiB per ordinary message. Development bundle evaluation has a separate bound.
 
@@ -47,7 +50,3 @@ A full JavaScript-to-native call queue rejects with retryable `NativeError("busy
 A lost commit cannot be retried safely after the reconciler has advanced. Commit enqueue failure therefore marks the runtime as failed even if JavaScript catches the thrown transport exception. A terminal error is retried until the foreground host can receive it or shutdown interrupts delivery. Recovery replaces the UI runtime and tree. Native-to-JavaScript delivery failure must likewise be treated as runtime failure by the host, to avoid losing a result silently.
 
 The runtime gives up to 256 promise jobs one turn, receives one native message, and services a due timer independently of whether reception timed out. Timers are ordered by deadline and identifier. Repeated promise chains, incoming messages and due timers therefore share turns; the interrupt flag and bounded job drain keep shutdown interruptible. This does not pre-empt a long synchronous native adapter call.
-
-## Verification
-
-See [verification results and remaining device checks](verification-2026-09-06.md).

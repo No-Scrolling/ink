@@ -3,11 +3,11 @@ title: "How Ink works"
 description: "TypeScript app behaviour, QuickJS-ng execution and retained native rendering."
 ---
 
-Ink runs React and TypeScript through QuickJS-ng, with native layout and Vulkan rendering. This page explains the engine; use [Build with Ink](ink.md) for app development.
+Ink runs React and TypeScript through QuickJS-ng, with native layout and Vulkan rendering. This page explains the engine; use [Build with Ink](/ink) for app development.
 
 Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler type-checks and bundles the app, prepares its assets and selects native integrations.
 
-See [product design](product-design.md) for scope and [verification](verification-2026-09-06.md) for recorded checks.
+See [product design](/product-design) for scope.
 
 ```text
 App.tsx + TypeScript + npm dependencies
@@ -38,7 +38,7 @@ version_code = 1
 enabled = true
 ```
 
-`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The build reads versioned `ink-native.json` requirements from resolved package modules. Explicit app capabilities are additive. See [build contracts](build-contracts.md).
+`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The build reads versioned `ink-native.json` requirements from resolved package modules. Explicit app capabilities are additive. See [build contracts](/build-contracts).
 
 ## Build responsibilities
 
@@ -54,7 +54,7 @@ The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScri
 
 Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches changes across the native seam and applies consistent updates at frame boundaries. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
 
-Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](lists.md).
+Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](/lists).
 
 A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 
@@ -70,17 +70,17 @@ A visually idle app requests no rendering frames. This is not a promise of zero 
 
 Hooks release native resources when their effects end. For explicit handles, call `close()` or unsubscribe. Garbage collection does not close a camera, socket or player. Reconnecting creates fresh handles; use saved IDs, not handles, to reopen durable resources.
 
-Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio does not need a continuously running JavaScript loop. [Downloads](downloads.md) uses persisted native jobs for HTTP file transfers. Android can stop work; storage and domain reconciliation provide recovery.
+Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio does not need a continuously running JavaScript loop. [Downloads](/downloads) uses persisted native jobs for HTTP file transfers. Android can stop work; storage and domain reconciliation provide recovery.
 
 ## Package execution and trust
 
 JavaScript dependencies execute in the app's runtime and share its available host APIs. A package namespace is not a security sandbox. Native dependencies execute with the app's Android authority. A lockfile and build report make dependencies reproducible and inspectable; they do not make arbitrary third-party code safe.
 
-For hashing, use [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) instead of an Ink crypto package. Secure credentials belong in [Secure store](secure-store.md). JavaScript hashing does not provide Android Keystore-backed keys.
+For hashing, use [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) instead of an Ink crypto package. Secure credentials belong in [Secure store](/secure-store). JavaScript hashing does not provide Android Keystore-backed keys.
 
 ## LightOS integration
 
-Ink adapts to available LightOS services, preferences and Android lifecycle. Host integration and distribution eligibility are separate contracts; see [LightOS](light-sdk.md).
+Ink adapts to available LightOS services, preferences and Android lifecycle. Host integration and distribution eligibility are separate contracts; see [LightOS](/light-sdk).
 
 ## Performance
 
@@ -88,6 +88,4 @@ Keep gestures and large media operations native. Batch updates, page large colle
 
 ### LP3 runtime benchmark
 
-The [QuickJS-ng and Hermes comparison](../benchmarks/results/runtime-engines-lp3.md) records physical LP3 measurements from 4 September 2026. QuickJS-ng used less APK space and idle memory in that counter experiment. It measured synchronous engine calls, not the current React runtime, display latency or battery life.
-
-Use the [benchmark index](../benchmarks/README.md) for current app comparisons and the measurement limits.
+Use the [benchmark index](https://github.com/vandamd/ink/blob/main/benchmarks/README.md) for current app comparisons and the measurement limits.

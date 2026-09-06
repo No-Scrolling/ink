@@ -1,4 +1,7 @@
-# Create an app
+---
+title: "Create an app"
+description: "Create, configure and build your first Ink app."
+---
 
 Ink currently uses a local SDK checkout, not a published npm release. Keep the checkout: it contains the compiler, Android project, native code, fonts and packages.
 
@@ -30,6 +33,6 @@ When moving an app to another machine, update its local package paths and SDK lo
 
 ## Build a release
 
-Configure a keystore in `ink.toml`, set `INK_KEYSTORE_PASSWORD` and run `ink build`. If the key has a separate password, set `INK_KEY_PASSWORD` too. See [release signing](ink.md#build-and-inspect).
+Configure a keystore in `ink.toml`, set `INK_KEYSTORE_PASSWORD` and run `ink build`. If the key has a separate password, set `INK_KEY_PASSWORD` too. See [release signing](/ink#build-and-inspect).
 
 Each app keeps its generated files, Gradle cache and Android output in `.ink`. The SDK shares its Cargo cache and locks native builds to prevent conflicting writes. Generated `.gitignore` rules exclude build output, dependencies and signing keys.

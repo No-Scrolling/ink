@@ -42,5 +42,3 @@ The Files and Downloads examples use the emulator’s host address, `http://10.0
 | --- | --- |
 | `GET /download` | Sends a 4 MiB file in 64 KiB chunks every 100 ms. Supports `Range`, `If-Range` and a stable ETag for pause and resume. |
 | `POST /upload` | Reads the request body and returns the received byte count. |
-
-See the [account verification record](../../../docs/verification-auth-secure-store-2026-09-06.md) and [LP3 browser checks](../../../docs/verification-custom-tabs.md) for results.

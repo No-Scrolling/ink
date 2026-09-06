@@ -1,9 +1,0 @@
---------- beginning of main
-09-06 03:24:57.887 10820 10820 I Ink     : created Ink engine
-09-06 03:24:57.960 10820 10820 I Ink     : attached Vulkan surface 1080x1240
-09-06 03:24:57.993 10820 10820 I Ink     : JavaScript app ready
-09-06 03:24:59.422 10820 10820 I Ink     : SPLIT_SMOKE before function
-09-06 03:24:59.465 10820 10820 I Ink     : SPLIT_SMOKE url xn--mnich-kva.example
-09-06 03:24:59.466 10820 10820 I Ink     : SPLIT_SMOKE APIs b hello function
-09-06 03:24:59.513 10820 10820 I Ink     : SPLIT_SMOKE fetch 200 true
-09-06 03:28:11.873 10820 10820 I Ink     : KEYBOARD_SMOKE q

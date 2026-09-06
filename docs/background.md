@@ -68,4 +68,4 @@ States are `queued`, `running`, `retrying`, `succeeded`, `failed` or `cancelled`
 
 ## Choose native services for continuous work
 
-Audio playback and downloads have specialised native lifecycles. A permanent JavaScript loop or interval is not a background service. Push can request reconciliation through [LightOS](light-sdk.md) where supported, but handlers must validate the payload and tolerate duplicate delivery.
+Audio playback and downloads have specialised native lifecycles. A permanent JavaScript loop or interval is not a background service. Push can request reconciliation through [LightOS](/light-sdk) where supported, but handlers must validate the payload and tolerate duplicate delivery.

@@ -22,7 +22,9 @@ The gallery requests full library access on entry. Android owns the permission p
 
 Tap thumbnails to select or deselect them, then press the header check. Selected thumbnails dim beneath a larger white check in the centre. The component creates durable app-owned copies of every selected item before calling `onSelect(FileRef[])`. The callback may return a promise. It receives files in gallery order and owns them from that point, including retention if its own processing fails. The app decides when to navigate back, preview or upload them. Back cancels selection; disposal cancels unfinished imports and removes copies that have not been handed to the app.
 
-Rows are virtualised through Ink's List. Library thumbnails are loaded natively at bounded resolution, while importing retains the original media. Importing `@ink/files/media` adds the media-library permission capability; document picking and other `@ink/files` commands do not require broad photo access.
+Rows are virtualised through Ink's List. Ink prepares the next page of metadata and loads thumbnails up to one viewport ahead and behind. Page queries run separately from thumbnail decoding. This reduces gaps during scrolling without loading the whole library into memory. Importing keeps the original media.
+
+Selected items use a filled Check Circle; videos have a filled Video File icon. Importing `@ink/files/media` adds the media-library permission capability; document picking and other `@ink/files` commands do not require broad photo access.
 
 For documents, `await files.pick({ types: ["application/pdf"] })` opens the platform picker and returns one durable `FileRef`, or `null` on cancellation. It owns the external activity round trip.
 
@@ -56,8 +58,8 @@ A successful native import makes the file durable. Cancellation before that succ
 
 `files.save(file)` lets the user save an external copy. `files.share(file)` opens an external share destination with temporary Android access grants. Cancellation leaves the original intact.
 
-The template's Files and media screen keeps attachment IDs in a store, reopens them after a restart, previews images and prepares a smaller copy. Its upload action uses the [local account and transfer fixture](../examples/light-template/scripts/auth-server.md): run `node examples/light-template/scripts/auth-server.mjs`, then use a debug Android emulator build. The example uploads multipart data to `http://10.0.2.2:8788/upload`. Save and share open Android interfaces from explicit button actions.
+The template's Files and media screen keeps attachment IDs in a store, reopens them after a restart, previews images and prepares a smaller copy. Its upload action uses the [local account and transfer fixture](https://github.com/vandamd/ink/blob/main/examples/light-template/scripts/auth-server.md): run `node examples/light-template/scripts/auth-server.mjs`, then use a debug Android emulator build. The example uploads multipart data to `http://10.0.2.2:8788/upload`. Save and share open Android interfaces from explicit button actions.
 
 ## Scope
 
-Arbitrary filesystem paths, document reading, general image editing and video playback are not supported. Use [Downloads](downloads.md) for files that should keep downloading after a screen closes.
+Arbitrary filesystem paths, document reading, general image editing and video playback are not supported. Use [Downloads](/downloads) for files that should keep downloading after a screen closes.

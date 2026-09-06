@@ -1,8 +1,0 @@
-127452b2ffc95296a43e8d7fd145fe4d3f04aee4cabec65e228239cbc1fd41c0  benchmarks/measure.ts
-508e1538652b90a47adc8c8190a206d637556666bbabdd44700206addb640576  benchmarks/measure-builds.sh
-b119971ba0e3d70ab755539f7276b5298bd884322423c412c8f61a2304fdc47a  benchmarks/apps/ink-counter/App.tsx
-2f0e424479b99a68fd8e08891bc44b36a8537d15a87f8a4f4db64db2cafa967b  benchmarks/apps/ink-scroll/App.tsx
-cc840fa98707fb420196cff42330b8f9de368197218ebd168f5c65e7a29521c1  benchmarks/apps/expo-counter/app/index.tsx
-a74913c29501ce0461845f61e4962ca3ac4f10f4161abc7a28ed5f0803132e3e  benchmarks/apps/expo-scroll/app/index.tsx
-1d29ba1e68787dfb0369cd6eecc766b6b6a89f15a639994ed722dbe7f228935c  benchmarks/apps/light-sdk-counter/src/main/kotlin/com/vandam/benchmark/lightsdk/counter/CounterScreen.kt
-00d663a3de21de160f44fa01da8f4b0abc698bfe58425f107b508d46b7c0b1ed  benchmarks/apps/light-sdk-scroll/src/main/kotlin/com/vandam/benchmark/lightsdk/scroll/ItemsScreen.kt

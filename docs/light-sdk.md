@@ -41,7 +41,7 @@ Your app can open from the launcher, a link or a notification. Decode external r
 
 ## Jobs, media and push
 
-[Background jobs](background.md) register named handlers and durable inputs. [Audio](audio.md) keeps detached playback under a native media service and reconnects UI to existing state. Both must recover from Android termination.
+[Background jobs](/background) register named handlers and durable inputs. [Audio](/audio) keeps detached playback under a native media service and reconnects UI to existing state. Both must recover from Android termination.
 
 `usePush()` from `@ink/lightos/push` exposes registration state, a persisted inbox, and `register`, `retry`, `unregister`, `dismiss` and `clear` commands. Registration uses the configured LightOS UnifiedPush distributor. `register(subscriptionBaseUrl, bearerToken?)` sends `PUT {subscriptionBaseUrl}/{installationId}` with `{ "endpoint": "…" }`; unregister sends `DELETE` to that URL. The subscription server must return a successful HTTP status. The template's loopback URL requires a local subscription server and an ADB reverse connection on port 18080.
 
@@ -77,7 +77,7 @@ Installing an APK and qualifying for Light-approved distribution are separate pr
 
 ## Background push tasks
 
-Define the handler in the existing worker entry and register it from the UI with `setPushTask(task)`. Enable the background capability and worker bundle as described in [Background](background.md).
+Define the handler in the existing worker entry and register it from the UI with `setPushTask(task)`. Enable the background capability and worker bundle as described in [Background](/background).
 
 ```ts
 // workers.ts

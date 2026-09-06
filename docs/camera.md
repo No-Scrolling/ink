@@ -29,4 +29,4 @@ Use `useCamera({ facing: "front" })` to request the front camera. Missing hardwa
 
 The camera releases when its screen is covered or the app backgrounds, and reacquires on return. Interrupted capture rejects or completes with a result tied to the original request; it cannot update a replacement screen. Handle denial, camera-in-use and unavailable hardware distinctly.
 
-Use `@ink/camera/scan` for [code scanning](barcode.md); still-capture imports do not include the scanner. Choose an existing photo with [Files and media](files.md). Apps should not build a JavaScript frame-processing loop merely to decode a code.
+Use `@ink/camera/scan` for [code scanning](/barcode); still-capture imports do not include the scanner. Choose an existing photo with [Files and media](/files). Apps should not build a JavaScript frame-processing loop merely to decode a code.

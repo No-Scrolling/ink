@@ -23,6 +23,6 @@ Use `await connectivity.get()` for a fresh one-off reading in workers or command
 
 Being connected does not prove that a provider is reachable or authenticated. Always handle request errors. A captive portal, DNS failure or expired account can coexist with a connected network.
 
-Use metered state to inform download preferences. The native [download manager](downloads.md) and [background scheduler](background.md) enforce their own constraints; a JavaScript preflight check can race with a network change.
+Use metered state to inform download preferences. The native [download manager](/downloads) and [background scheduler](/background) enforce their own constraints; a JavaScript preflight check can race with a network change.
 
 Keep reconnect and retry handling in one shared module so each screen does not start a separate retry loop.

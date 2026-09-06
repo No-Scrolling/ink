@@ -3,7 +3,7 @@ title: "Store"
 description: "Persist small settings with explicit decoding and migrations."
 ---
 
-`@ink/store` stores small JSON values: selected units, saved locations, a sort order or the last selected account. Use [Secure store](secure-store.md) for credentials.
+`@ink/store` stores small JSON values: selected units, saved locations, a sort order or the last selected account. Use [Secure store](/secure-store) for credentials.
 
 ## JSON storage
 

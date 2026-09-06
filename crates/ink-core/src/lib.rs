@@ -2696,6 +2696,7 @@ impl Engine {
                 NodeKind::Screen { .. }
                     | NodeKind::Stack { .. }
                     | NodeKind::MediaGridRow { .. }
+                    | NodeKind::MediaCell { .. }
                     | NodeKind::Tabs { .. }
                     | NodeKind::ReactList { .. }
             )
@@ -2731,11 +2732,8 @@ impl Engine {
                     let inset = self.scaled(6.0);
                     let x = rect.x + inset;
                     let y = rect.y + rect.height - size - inset;
-                    self.scene.masks.push(MaskRun { mask: Mask::toggle_circle(true), rect: Rect { x, y, width: size, height: size },
-                        clip: self.clip, colour: Colour::BLACK, scrolling: self.scrolling });
-                    let padding = size / 6.0;
                     self.scene.masks.push(MaskRun { mask: play.clone(), rect: Rect {
-                        x: x + padding, y: y + padding, width: size - padding * 2.0, height: size - padding * 2.0 },
+                        x, y, width: size, height: size },
                         clip: self.clip, colour: Colour::WHITE, scrolling: self.scrolling });
                 }
             }
@@ -3926,7 +3924,15 @@ impl Engine {
     ) {
         let visible = rect.intersection(self.clip);
         if visible.width <= 0.0 || visible.height <= 0.0 {
-            return;
+            let nearby = rect.intersection(Rect {
+                y: self.clip.y - self.clip.height,
+                height: self.clip.height * 3.0,
+                ..self.clip
+            });
+            if !matches!(source, ImageSource::Native(module, url) if module == "files" && url.starts_with("ink-media://"))
+                || nearby.width <= 0.0 || nearby.height <= 0.0 {
+                return;
+            }
         }
         let image = match source {
             ImageSource::Asset(asset) => Some(ImageData::Asset(asset.clone())),
@@ -3955,6 +3961,7 @@ impl Engine {
                 }
             }
         };
+        if visible.width <= 0.0 || visible.height <= 0.0 { return; }
         if let Some(image) = image {
             let transform = if zoomable {
                 let content = image_content_rect(&image, rect, fit);

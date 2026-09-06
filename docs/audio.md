@@ -54,14 +54,14 @@ Each capture hook returns `ready`, `state` and promise-returning commands. Wait 
 | `useLevelMeter()` | `start()`, `stop()` | Status, RMS, peak and error. These are signal levels, not calibrated sound-pressure measurements. |
 | `usePitchDetector({ referenceHz })` | `start()`, `stop()` | Status, frequency in Hz, note, octave, cents, confidence and error. Reference defaults to 440 Hz. |
 
-Recorder status is idle, recording, stopping, ready or error. A completed recording is a [FileRef](files.md#one-file-representation) with `id`, `src`, `name`, `mimeType`, `size` and `duration` in milliseconds. Its source can be played by `usePlayer` or read with `fetch`. Read completion from state rather than treating `stop()` as a returned recording. Cancel discards unfinished capture; delete removes the current saved recording.
+Recorder status is idle, recording, stopping, ready or error. A completed recording is a [FileRef](/files#one-file-representation) with `id`, `src`, `name`, `mimeType`, `size` and `duration` in milliseconds. Its source can be played by `usePlayer` or read with `fetch`. Read completion from state rather than treating `stop()` as a returned recording. Cancel discards unfinished capture; delete removes the current saved recording.
 
 Completing another recording retains earlier accepted recordings. Persist their IDs alongside app data and reopen them with `files.open(id)`. They survive screen disposal and app restarts until `files.remove(id)`, recorder deletion of the current recording, or app-data removal. The recorder exposes its most recent recording; the app owns its library and retention policy.
 
-Recording, level and pitch processing use the optional `@ink/audio/capture` entry point. Playback-only apps omit its recorder code and microphone permission. See the [build contract](build-contracts.md#product-contract).
+Recording, level and pitch processing use the optional `@ink/audio/capture` entry point. Playback-only apps omit its recorder code and microphone permission. See the [build contract](/build-contracts#product-contract).
 
 ## Providers and offline media
 
 A podcast enclosure or owned audio file can use this player directly. A music service may require a provider SDK, remote-control session, DRM or a dedicated native engine. Its package exposes domain commands and snapshots appropriate to that provider; generic audio does not grant catalogue or offline playback rights.
 
-[Downloads](downloads.md) supplies durable managed files. Resolve a downloaded ID to current content before playback; deletion and expired provider access remain possible.
+[Downloads](/downloads) supplies durable managed files. Resolve a downloaded ID to current content before playback; deletion and expired provider access remain possible.
