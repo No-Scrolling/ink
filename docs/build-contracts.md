@@ -9,6 +9,8 @@ Include native functionality by explicit package entry point, never by inspectin
 
 `@ink/files` provides managed file operations. `@ink/files/images` adds image preparation; `@ink/files/media` adds the photo/video gallery and thumbnail rendering. Basic files and recordings do not require either image feature.
 
+`openURL` and `share` from `ink`, and `@ink/auth`, include the `external` capability for browser and sharing windows. Browser package queries are included only with this capability. The playback service is declared only for `audio-detached`.
+
 Networking follows the same rule: `@ink/network` installs web globals, while `/connectivity` and `/downloads` include only their respective native features. UI imports from `ink` do not install web globals. Development compiler tools live in the SDK workspace’s development dependencies, separate from app runtime dependencies.
 
 ## Declare native requirements
@@ -48,25 +50,38 @@ import track from './track.mp3';
 Import icon collections as `.ink-icons` files containing JSON:
 
 ```json
-{"version":1,"resolution":52,"names":["home","settings"]}
+{
+  "version": 2,
+  "resolution": 52,
+  "icons": {
+    "settings": "settings",
+    "heart": "favorite",
+    "heartFilled": { "name": "favorite", "filled": true }
+  }
+}
 ```
 
 ```tsx
-import icons from './navigation.ink-icons';
-import { Icon, Button, Tab, findIcon } from 'ink';
-<Icon name={icons.home} size={28} />
-<Button icon={icons.settings}>Settings</Button>
-<Tab icon={icons.home}>...</Tab>
-const optional = findIcon(icons, externalName);
+import { settings, heart, heartFilled } from './navigation.ink-icons';
+import { Icon, Button } from 'ink';
+
+<Button icon={settings}>Settings</Button>
+<Icon name={active ? heartFilled : heart} size={28} />
 ```
 
-Pass imported icon references through props, arrays or objects. `findIcon` returns `undefined` when a name is outside the collection; omit the icon or provide a fallback. Unknown names declared in a collection fail the build. Collections include outlined and filled variants.
+A string declares an outlined icon. Use `{ "name": "favorite", "filled": true }` for a filled icon. The object key becomes its export name. Each reference includes its variant: `Icon`, buttons, tabs and screen actions display the reference you supply. To change appearance at runtime, switch references.
+
+Prefer named imports: unused exports and their raster assets can be removed from release builds. Pass references through props, arrays or objects as ordinary TypeScript values. Both variants are retained when your code can select either one.
+
+For dynamic lookups, use the default collection import and `findIcon(collection, externalName)` from `ink`. It returns `undefined` for an unknown key. A collection used dynamically retains all its possible icons. Unknown Material Symbols names fail the build.
+
+`ink check`, `ink build` and `ink dev` generate `.ink-icons.d.ts` files beside imported collections for TypeScript completion. Ignore these generated declarations in version control. Run `ink check` after adding or changing a collection to refresh its types.
 
 `resolution` sets the raster size in logical units, from 16 to 128. Ink applies its 2.55 pixel scale and native display scaling. Rendering above the declared resolution can soften edges. Back and input-clear icons are always included.
 
 ## Build metadata
 
-A successful bundle emits `.ink/bundle/ink-bundle-v1.json`; compilation copies it to Android assets. Version 1 contains absolute resolved `inputs`, content-addressed `assets` with source paths, closed `capabilities`, `worker`, `frameworkVersion`, `protocolVersion` and `profile`. Development compilation emits readable development React code and external source maps. Release compilation minifies production code. Watching must ignore generated `.ink` inputs and watch graph/config changes; the manifest is local build metadata, not portable source paths.
+A successful bundle emits `.ink/bundle/ink-bundle-v1.json`; only development builds copy it to Android assets. Version 1 contains absolute resolved `inputs`, content-addressed `assets` with source paths, closed `capabilities`, `worker`, `frameworkVersion`, `protocolVersion` and `profile`. Development compilation emits readable development React code and external source maps. Release compilation minifies production code and omits build metadata and source maps. Watching must ignore generated `.ink` inputs and watch graph/config changes; the manifest is local build metadata, not portable source paths.
 
 Development refresh keeps React, the renderer, installed dependencies and device packages in a persistent framework bundle. App modules receive React Refresh registration and hook signatures. Component modules update in place; other modules are cached so task registration and module initialisers do not repeat on every edit. Changes to cached or mixed-export modules change `refreshCompatibilityHash` and request a runtime reload. `devRuntimeHash` identifies the persistent framework. Hook-signature changes remount the affected component. External source maps account for both the framework prefix and per-module transforms. This does not provide general hot replacement of arbitrary module side effects.
 

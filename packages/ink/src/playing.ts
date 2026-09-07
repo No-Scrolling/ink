@@ -30,7 +30,7 @@ export function PlayingScreen({ image, title, onTitlePress, artists, playing, on
   const current = Math.min(position, duration);
   const control = (icon: IconAsset, { onPress, onLongPress, disabled }: TransportAction) =>
     createElement("PlayingPressable", { onPress: disabled ? undefined : onPress, onLongPress: disabled ? undefined : onLongPress },
-      createElement("Icon", { filled: true, tight: true, name: icon, size: 56, tone: disabled ? "muted" : "primary" }));
+      createElement("Icon", { tight: true, name: icon, size: 56, tone: disabled ? "muted" : "primary" }));
   return createElement(Screen, null,
     createElement("PlayingLayout", { centered: !image },
       createElement(Stack, { gap: 16, align: "stretch" },
@@ -53,6 +53,6 @@ export function PlayingScreen({ image, title, onTitlePress, artists, playing, on
       ),
       createElement(Stack, { axis: "horizontal", align: "center", justify: actions.length === 1 ? "center" : "space-between" },
         actions.map((action, index) => createElement("PlayingPressable", { key: index, selected: action.selected, onPress: action.disabled ? undefined : action.onPress },
-          createElement("Icon", { filled: true, tight: true, name: action.icon, size: 44, tone: "primary" })))),
+          createElement("Icon", { tight: true, name: action.icon, size: 44, tone: "primary" })))),
     ));
 }

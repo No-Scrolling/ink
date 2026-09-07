@@ -1,1 +1,46 @@
-{"version":1,"resolution":56,"names":["skip_previous","skip_next","play_arrow","pause","replay_5","replay_10","replay_30","forward_5","forward_10","forward_30"]}
+{
+  "version": 2,
+  "resolution": 56,
+  "icons": {
+    "skip_previous": {
+      "name": "skip_previous",
+      "filled": true
+    },
+    "skip_next": {
+      "name": "skip_next",
+      "filled": true
+    },
+    "play_arrow": {
+      "name": "play_arrow",
+      "filled": true
+    },
+    "pause": {
+      "name": "pause",
+      "filled": true
+    },
+    "replay_5": {
+      "name": "replay_5",
+      "filled": true
+    },
+    "replay_10": {
+      "name": "replay_10",
+      "filled": true
+    },
+    "replay_30": {
+      "name": "replay_30",
+      "filled": true
+    },
+    "forward_5": {
+      "name": "forward_5",
+      "filled": true
+    },
+    "forward_10": {
+      "name": "forward_10",
+      "filled": true
+    },
+    "forward_30": {
+      "name": "forward_30",
+      "filled": true
+    }
+  }
+}

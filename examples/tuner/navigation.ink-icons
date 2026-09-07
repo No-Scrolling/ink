@@ -1,5 +1,7 @@
 {
-  "version": 1,
+  "version": 2,
   "resolution": 52,
-  "names": ["settings"]
+  "icons": {
+    "settings": "settings"
+  }
 }

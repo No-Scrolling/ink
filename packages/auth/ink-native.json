@@ -1,1 +1,9 @@
-{"version":1,"modules":{"*":["network"]}}
+{
+  "version": 1,
+  "modules": {
+    "*": [
+      "network",
+      "external"
+    ]
+  }
+}

@@ -68,6 +68,7 @@ val inkUsesLightSdkPush = inkUses("light-sdk-push")
 val inkUsesNetwork = inkUses("network")
 val inkUsesAudio = inkUses("audio")
 val inkUsesAudioPlayback = inkUses("audio-playback")
+val inkUsesExternal = inkUses("external")
 val inkUsesDetachedAudio = inkUses("audio-detached")
 val inkUsesCameraPermission = inkUses("camera-permission")
 val inkUsesPhotoCapture = inkUses("photo-capture")
@@ -114,6 +115,8 @@ val generateInkPermissionManifest by tasks.registering {
         ).joinToString(","),
     )
     outputs.file(inkPermissionManifest)
+    inputs.property("external", inkUsesExternal)
+    inputs.property("detachedAudio", inkUsesDetachedAudio)
     inputs.property("authRedirectUri", inkAuthRedirectUri)
     doLast {
         val output = inkPermissionManifest.get().asFile
@@ -132,7 +135,7 @@ val generateInkPermissionManifest by tasks.registering {
                     "    <uses-feature android:name=\"android.hardware.nfc\" android:required=\"false\" />",
                 )
             }
-            val hasInkComponents = inkUsesBackground.get() ||
+            val hasInkComponents = inkUsesDetachedAudio.get() || inkUsesBackground.get() ||
                 inkUsesNotifications.get() ||
                 inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get() ||
                 inkUsesLocation.get() || inkUsesNfc.get() || inkUsesNetwork.get() ||
@@ -165,6 +168,11 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine("            <category android:name=\"android.intent.category.BROWSABLE\" />")
                 appendLine("            <data android:scheme=\"$scheme\" />")
                 appendLine("        </intent-filter></activity>")
+            }
+            if (inkUsesDetachedAudio.get()) {
+                appendLine("        <service android:name=\".InkAudioService\" android:exported=\"true\" android:foregroundServiceType=\"mediaPlayback\">")
+                appendLine("            <intent-filter><action android:name=\"androidx.media3.session.MediaSessionService\" /></intent-filter>")
+                appendLine("        </service>")
             }
             if (inkUsesLocation.get()) {
                 appendLine("        <service android:name=\"com.vandam.ink.InkLocationService\" android:exported=\"false\" android:foregroundServiceType=\"location\" />")
@@ -203,6 +211,12 @@ val generateInkPermissionManifest by tasks.registering {
             if (hasInkComponents) {
                 appendLine("    </application>")
             }
+            if (inkUsesExternal.get()) {
+                appendLine("    <queries>")
+                appendLine("        <intent><action android:name=\"android.support.customtabs.action.CustomTabsService\" /></intent>")
+                appendLine("        <intent><action android:name=\"android.intent.action.VIEW\" /><data android:scheme=\"https\" /></intent>")
+                appendLine("    </queries>")
+            }
             appendLine("</manifest>")
         })
     }
@@ -233,7 +247,6 @@ android {
         manifestPlaceholders["inkLightSdkMarkerAction"] = inkLightSdkMarkerAction
         manifestPlaceholders["inkLightSdkVersion"] = inkLightSdkVersion
         manifestPlaceholders["inkLightServerPackage"] = inkLightServerPackage.get()
-        manifestPlaceholders["inkDetachedAudioEnabled"] = inkUsesDetachedAudio.get()
         buildConfigField(
             "String",
             "INK_LIGHT_SERVER_PACKAGE",
@@ -259,6 +272,8 @@ android {
             }
         }
     }
+
+    packaging.resources.excludes += setOf("kotlin/*.kotlin_builtins", "kotlin/**/*.kotlin_builtins", "kotlin-tooling-metadata.json")
 
     sourceSets {
         val audioSource = if (inkUses("audio-capture").get()) "audioCapture" else if (inkUsesAudio.get()) "audioPlaybackAdapter" else "noAudio"

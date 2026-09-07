@@ -120,6 +120,11 @@
         "disabled": "noDownloads"
       }
     },
+    "external": {
+      "cost": "external browser and sharing windows",
+      "dependencies": [],
+      "permissions": []
+    },
     "file-images": {
       "cost": "image preparation",
       "dependencies": [
@@ -135,17 +140,6 @@
         "enabled": "files",
         "disabled": "noFiles"
       }
-    },
-    "media-library": {
-      "cost": "native media library browsing and thumbnails",
-      "dependencies": [
-        "files",
-        "image"
-      ],
-      "permissions": [
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO"
-      ]
     },
     "image": {
       "cost": "image decoder",
@@ -213,6 +207,17 @@
         "enabled": "maps",
         "disabled": "noMaps"
       }
+    },
+    "media-library": {
+      "cost": "native media library browsing and thumbnails",
+      "dependencies": [
+        "files",
+        "image"
+      ],
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
+      ]
     },
     "microphone-permission": {
       "cost": "microphone permission and recording access",

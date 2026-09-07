@@ -131,7 +131,7 @@ export function ConversationScreen<T extends ConversationMessage>({ title, group
     return renderMessage(message, open);
   }
   const iconButton = (name: string, onPress?: () => void) => createElement("PlayingPressable", { onPress },
-    createElement("Icon", { name, size: 28, filled: true, tone: onPress ? "primary" : "muted" }));
+    createElement("Icon", { name, size: 28, tone: onPress ? "primary" : "muted" }));
   return createElement("Screen", { title, pinnedFooter: true, initialEnd: true, scrollToEnd, dismissKeyboard },
     loading ? createElement(Text, { size: 18, align: "center" }, "Loading…")
       : createElement(List<T>, { items: messages, keyExtractor: message => message.id, renderItem: messageItem, gap: 28, followEnd: true, initialEnd: true, onLoadOlder, hasOlder }),

@@ -283,11 +283,12 @@ impl ReactTree {
         Ok(tree)
     }
 
-    fn icon(&self, name: &str, filled: bool) -> Result<Mask> {
+    fn icon(&self, reference: &str) -> Result<Mask> {
+        let (name, filled) = icon_reference(reference);
         self.icons.get(name).and_then(|variants| {
             if filled { variants.filled.as_ref() } else { variants.outlined.as_ref() }
         }).cloned()
-            .with_context(|| format!("icon {name:?} was not bundled; icon names must appear as string literals in the app"))
+            .with_context(|| format!("icon {name:?} was not bundled; use a reference from an imported .ink-icons collection"))
     }
 
     pub fn apply(&mut self, operations: Json, engine: &mut Engine) -> Result<()> {
@@ -400,7 +401,7 @@ impl ReactTree {
                     && self.node(*id)?.props.get("onBack") == Some(&Json::Bool(true)) =>
             {
                 Some((
-                    self.icon("arrow_back_ios", false)?,
+                    self.icon("arrow_back_ios")?,
                     event_operation(*id, "onBack", vec![]),
                 ))
             }
@@ -675,10 +676,7 @@ impl ReactTree {
                     let tab = self.node(*child)?;
                     ensure!(tab.kind == HostKind::Tab, "Tabs requires Tab children");
                     tabs.push(Tab::new(
-                        self.icon(
-                            string(&tab.props, "icon").context("Tab requires an icon")?,
-                            true,
-                        )?,
+                        self.icon(string(&tab.props, "icon").context("Tab requires an icon")?)?,
                         event(*child, "onPress", vec![]),
                         self.render_node(*child, depth + 1)?
                             .unwrap_or_else(empty_screen),
@@ -751,15 +749,15 @@ impl ReactTree {
                     source: ImageSource::Native("files".into(), src.to_owned()),
                     selected: props.get("selected") == Some(&Json::Bool(true)),
                     video: props.get("video") == Some(&Json::Bool(true)),
-                    check: self.icon(string(props, "checkIcon").context("Media cell requires a check icon")?, true)?,
-                    play: self.icon(string(props, "videoIcon").context("Media cell requires a video icon")?, true)?,
+                    check: self.icon(string(props, "checkIcon").context("Media cell requires a check icon")?)?,
+                    play: self.icon(string(props, "videoIcon").context("Media cell requires a video icon")?)?,
                     action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
                 } }
             }
             HostKind::Screen | HostKind::MediaPickerScreen => {
                 let right_action = string(props, "rightIcon").map(|icon| {
                     ensure!(props.get("onRightPress") == Some(&Json::Bool(true)), "Screen right action requires onPress");
-                    Ok((self.icon(icon, false)?, event(id, "onRightPress", vec![])))
+                    Ok((self.icon(icon)?, event(id, "onRightPress", vec![])))
                 }).transpose()?;
                 let props = props.object().context("invalid Screen properties")?;
                 let props: ScreenProps = serde_json::from_value(Json::Object(props.clone()))?;
@@ -824,7 +822,7 @@ impl ReactTree {
                     numeric,
                     string(props, "prefix").unwrap_or("").to_owned(),
                     string(props, "suffix").unwrap_or("").to_owned(),
-                    self.icon("close", false)?,
+                    self.icon("close")?,
                 )
             }
             HostKind::Barcode => {
@@ -909,8 +907,8 @@ impl ReactTree {
                     value => bail!("unsupported icon tone {value}"),
                 };
                 let name = string(props, "name").context("Icon requires a name")?;
-                let filled = props.get("filled") == Some(&Json::Bool(true));
-                let mask = self.icon(name, filled)?;
+                let mask = self.icon(name)?;
+                let (name, filled) = icon_reference(name);
                 let bounds = if props.get("tight") == Some(&Json::Bool(true)) {
                     let variants = self.icons.get(name).context("missing icon variants")?;
                     let cache = if filled { &variants.filled_bounds } else { &variants.outlined_bounds };
@@ -961,7 +959,7 @@ impl ReactTree {
                     Node::button(
                         label,
                         string(props, "icon")
-                            .map(|name| self.icon(name, false))
+                            .map(|name| self.icon(name))
                             .transpose()?,
                         props.get("selected") == Some(&Json::Bool(true)),
                         action,
@@ -1075,5 +1073,13 @@ fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
             .iter_mut()
             .find_map(|tab| find_node_mut(&mut tab.screen, id)),
         _ => None,
+    }
+}
+
+fn icon_reference(reference: &str) -> (&str, bool) {
+    if let Some(name) = reference.strip_prefix("filled:") {
+        (name, true)
+    } else {
+        (reference.strip_prefix("outlined:").unwrap_or(reference), false)
     }
 }

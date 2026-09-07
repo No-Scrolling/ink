@@ -5,6 +5,7 @@ __pycache__/
 **/*.rs.bk
 
 # TypeScript
+*.ink-icons.d.ts
 node_modules/
 
 # Ink applications

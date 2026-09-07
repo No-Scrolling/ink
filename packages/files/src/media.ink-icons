@@ -1,1 +1,15 @@
-{"version":1,"resolution":52,"names":["check","check_circle","video_file"]}
+{
+  "version": 2,
+  "resolution": 52,
+  "icons": {
+    "check": "check",
+    "check_circle": {
+      "name": "check_circle",
+      "filled": true
+    },
+    "video_file": {
+      "name": "video_file",
+      "filled": true
+    }
+  }
+}

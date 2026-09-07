@@ -138,7 +138,11 @@ pub fn compile_development(project: &Project) -> Result<Capabilities> {
 
 fn compile_profile(project: &Project, development: bool) -> Result<Capabilities> {
     let bundle = javascript::bundle_profile(project, development)?;
-    write_if_changed(&project.bundle_manifest_path(), &bundle.manifest)?;
+    if development {
+        write_if_changed(&project.bundle_manifest_path(), &bundle.manifest)?;
+    } else {
+        remove_obsolete_output(&project.bundle_manifest_path())?;
+    }
     for name in ["app.js.map", "worker.js.map"] {
         let path = project.root().join(".ink/bundle").join(name);
         let destination = project.android_assets_path().join(name);

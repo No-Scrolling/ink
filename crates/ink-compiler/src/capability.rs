@@ -21,6 +21,7 @@ pub enum Capability {
     CodeScanner,
     Connectivity,
     Downloads,
+    External,
     FileImages,
     Files,
     Image,

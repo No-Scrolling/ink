@@ -54,7 +54,7 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
     )?;
     fs::write(
         directory.join(".gitignore"),
-        "node_modules/\n.ink/\ndist/\n*.jks\n*.keystore\n",
+        "node_modules/\n.ink/\n*.ink-icons.d.ts\ndist/\n*.jks\n*.keystore\n",
     )?;
     fs::write(
         directory.join("README.md"),

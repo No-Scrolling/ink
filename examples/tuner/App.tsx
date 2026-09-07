@@ -6,7 +6,7 @@ import {
 } from "ink";
 import { TextInput } from "ink/input/numeric";
 import { preferences, type Preferences } from "./settings";
-import icons from "./navigation.ink-icons";
+import { settings } from "./navigation.ink-icons";
 
 const flatNames: Record<string, string> = {
   "C#": "D♭", "D#": "E♭", "F#": "G♭", "G#": "A♭", "A#": "B♭",
@@ -85,7 +85,7 @@ function Tuner({ referenceHz, flats, showCents, showFrequency }: Preferences) {
   if (showFrequency) readings.push(frequency !== null ? `${frequency.toFixed(1)} Hz` : "— Hz");
 
   return (
-    <Screen title="Tuner" centered rightAction={{ icon: icons.settings, onPress: () => navigate("/settings") }}>
+    <Screen title="Tuner" centered rightAction={{ icon: settings, onPress: () => navigate("/settings") }}>
       {error ? <Text size={20} align="center">{error}</Text>
         : permissionMessage ? <Text size={20} align="center">{permissionMessage}</Text>
         : <Stack gap={14} align="center">

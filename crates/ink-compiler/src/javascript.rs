@@ -44,17 +44,6 @@ pub(super) fn bundle(project: &Project) -> Result<Bundle> {
 }
 
 pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bundle> {
-    let compiler = project
-        .root()
-        .ancestors()
-        .map(|root| root.join("node_modules/typescript/bin/tsc"))
-        .find(|path| path.is_file())
-        .context("TypeScript is not installed; install the application's dependencies first")?;
-    run(Command::new("bun")
-        .current_dir(project.root())
-        .arg(compiler)
-        .args(["--noEmit", "--project", "tsconfig.json"]))?;
-
     let entry = project.root().join(".ink/entry.tsx");
     let output = project.root().join(".ink/bundle/app.js");
     let source = format!(
@@ -118,6 +107,17 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
     if worker.is_some() {
         capabilities.insert(Capability::Background);
     }
+    let compiler = project
+        .root()
+        .ancestors()
+        .map(|root| root.join("node_modules/typescript/bin/tsc"))
+        .find(|path| path.is_file())
+        .context("TypeScript is not installed; install the application's dependencies first")?;
+    run(Command::new("bun")
+        .current_dir(project.root())
+        .arg(compiler)
+        .args(["--noEmit", "--project", "tsconfig.json"]))?;
+
     capabilities.resolve_dependencies()?;
     let mut icons = BTreeMap::<(String, bool), f32>::new();
     let mut add = |name: String, size: f32, filled| -> Result<()> {

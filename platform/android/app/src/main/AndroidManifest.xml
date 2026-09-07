@@ -36,24 +36,8 @@
                 android:name="com.thelightphone.sdk.SDK_VERSION"
                 android:value="${inkLightSdkVersion}" />
         </receiver>
-        <service
-            android:name=".InkAudioService"
-            android:enabled="${inkDetachedAudioEnabled}"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-            </intent-filter>
-        </service>
     </application>
     <queries>
-        <intent>
-            <action android:name="android.support.customtabs.action.CustomTabsService" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
         <package android:name="${inkLightServerPackage}" />
         <intent>
             <action android:name="${inkLightSdkMarkerAction}" />

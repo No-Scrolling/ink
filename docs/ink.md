@@ -215,7 +215,7 @@ Covered screens keep their React state. Tabs also keep separate scroll positions
 
 ## External actions
 
-Import `openURL(url)` and `share({ text })` from `ink`. Both return promises and restore the app when the external window closes. Cancellation resolves normally; invalid URLs, missing handlers and native failures reject. Use [Files and media](/files) to share attachments.
+Import `openURL(url)` and `share({ text })` from `ink`. Both return promises and restore the app when the external window closes. These imports add the native `external` capability, including browser package queries. Cancellation resolves normally; invalid URLs, missing handlers and native failures reject. Use [Files and media](/files) to share attachments.
 
 Web links open in Android Custom Tabs. The toolbar follows Ink’s appearance while keeping the site identity and browser security controls visible. If Custom Tabs is unavailable, the command rejects. Telephone links open the dialler; message links open a composer. Other app schemes use their installed handlers. File, content, script and intent URLs are rejected.
 
