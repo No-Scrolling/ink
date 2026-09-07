@@ -61,7 +61,7 @@ Ink uses Public Sans, strong contrast, clear text and a small set of familiar co
 
 | Component | Use |
 | --- | --- |
-| `Text` | Wrapping text; `size`, `align` and `maxLines` control presentation. |
+| `Text` | Wrapping text; `size`, `align`, `maxLines` and `tabularNumbers` control presentation. |
 | `Button` | A text action, optional icon, selected or disabled state, or `href`. Only selected buttons are underlined. |
 | `Field` | A single-line label and wrapping value, optionally actionable. The field grows with its value and keeps the whole area tappable. |
 | `Toggle` | A labelled boolean input. |
@@ -74,6 +74,12 @@ Ink uses Public Sans, strong contrast, clear text and a small set of familiar co
 | `ConversationScreen`, `Message` | Conversation presentation and interaction, or a standalone message. |
 
 Keep button labels and important values readable without relying on truncation. `Text`, `Button`, `Field` values and `Confirmation` messages accept text content, including components that produce text. Nested `Text` is flattened: the outer text style applies, so nested size/alignment props do not create styled spans. Layout controls and inputs must be siblings rather than text children.
+
+Use `tabularNumbers` for changing readings, timers or counters. It gives digits `0`–`9` equal-width spaces, so changing `340` to `350` doesn't shift the text. Other characters keep their usual spacing, and adding another digit still increases the width.
+
+```tsx
+<Text tabularNumbers>{frequency.toFixed(1)} Hz</Text>
+```
 
 `useAction(operation)` tracks an asynchronous command as `idle`, `pending`, `success` (with `data`) or `error` (with `error`). Call `action.run(...args)` from a control and disable it while pending. Repeated calls while pending are ignored; failures become state rather than unhandled promise rejections. Unmounting the component or hiding it through navigation discards its eventual UI result, but does not cancel the underlying operation.
 

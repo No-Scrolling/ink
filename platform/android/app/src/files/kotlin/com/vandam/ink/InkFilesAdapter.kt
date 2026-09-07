@@ -102,7 +102,10 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
                 val result = when (operation) {
                     "open" -> files.open(data.getString("id"))?.toString() ?: "null"
                     "remove" -> { files.remove(data.getString("id")); "null" }
-                    "prepare-image" -> files.prepareImage(data.getString("id"), data.getInt("maxWidth"), data.getInt("maxHeight")).toString()
+                    "prepare-image" -> {
+                        check(BuildConfig.INK_FILE_IMAGES_ENABLED) { "Image preparation is not included in this app" }
+                        files.prepareImage(data.getString("id"), data.getInt("maxWidth"), data.getInt("maxHeight")).toString()
+                    }
                     else -> error("Unknown file operation")
                 }
                 if (stopped || cancelled.remove(requestId)) {

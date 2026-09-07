@@ -7,11 +7,10 @@
       "permissions": []
     },
     "audio-capture": {
-      "cost": "microphone recording and analysis",
+      "cost": "audio input adapter",
       "dependencies": [
         "audio",
-        "microphone-permission",
-        "files"
+        "microphone-permission"
       ],
       "permissions": []
     },
@@ -30,6 +29,17 @@
         "disabled": "noAudioDetached"
       }
     },
+    "audio-microphone": {
+      "cost": "microphone analysis",
+      "dependencies": [
+        "audio-capture"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "audioMicrophone",
+        "disabled": "noAudioMicrophone"
+      }
+    },
     "audio-playback": {
       "cost": "Media3 playback",
       "dependencies": [
@@ -39,6 +49,18 @@
       "androidSourceGroup": {
         "enabled": "audioPlayback",
         "disabled": "noAudioPlayback"
+      }
+    },
+    "audio-recording": {
+      "cost": "audio file recording",
+      "dependencies": [
+        "audio-capture",
+        "files"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "audioRecording",
+        "disabled": "noAudioRecording"
       }
     },
     "background": {
@@ -98,11 +120,16 @@
         "disabled": "noDownloads"
       }
     },
+    "file-images": {
+      "cost": "image preparation",
+      "dependencies": [
+        "files"
+      ],
+      "permissions": []
+    },
     "files": {
       "cost": "managed files and attachment picker",
-      "dependencies": [
-        "image"
-      ],
+      "dependencies": [],
       "permissions": [],
       "androidSourceGroup": {
         "enabled": "files",
@@ -112,7 +139,8 @@
     "media-library": {
       "cost": "native media library browsing and thumbnails",
       "dependencies": [
-        "files"
+        "files",
+        "image"
       ],
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",

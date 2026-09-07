@@ -11,7 +11,7 @@ use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
     Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene,
-    TextAlign, TextRun, is_emoji_grapheme,
+    TextAlign, TextRun, is_emoji_grapheme, font_for_character, tabular_digit_width, text_width_with_numbers,
 };
 #[cfg(feature = "perf")]
 use ink_core::{PerfTraceSection, perf_trace_counter};
@@ -442,7 +442,7 @@ struct GlyphAtlas {
     font: FontRef<'static>,
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
-    glyphs: HashMap<(GlyphId, u16), CachedGlyph>,
+    glyphs: HashMap<(usize, GlyphId, u16), CachedGlyph>,
     masks: HashMap<u64, CachedMask>,
     cursor_x: u32,
     cursor_y: u32,
@@ -511,14 +511,16 @@ impl GlyphAtlas {
     fn glyph(
         &mut self,
         queue: &wgpu::Queue,
-        id: GlyphId,
+        character: char,
         size: u16,
     ) -> Result<Option<CachedGlyph>> {
-        if let Some(glyph) = self.glyphs.get(&(id, size)) {
+        let (font_index, font) = font_for_character(character);
+        let id = font.glyph_id(character);
+        if let Some(glyph) = self.glyphs.get(&(font_index, id, size)) {
             return Ok(Some(*glyph));
         }
 
-        let Some(outlined) = self.font.outline_glyph(id.with_scale(size as f32)) else {
+        let Some(outlined) = font.outline_glyph(id.with_scale(size as f32)) else {
             return Ok(None);
         };
         let bounds = outlined.px_bounds();
@@ -531,7 +533,7 @@ impl GlyphAtlas {
         let height = glyph_height + ATLAS_PADDING * 2;
         if width > ATLAS_SIZE || height > ATLAS_SIZE {
             return Err(anyhow!(
-                "a Public Sans glyph exceeds the Ink atlas dimensions"
+                "a font glyph exceeds the Ink atlas dimensions"
             ));
         }
         if self.cursor_x + width > ATLAS_SIZE {
@@ -581,7 +583,7 @@ impl GlyphAtlas {
         };
         self.cursor_x += width;
         self.row_height = self.row_height.max(height);
-        self.glyphs.insert((id, size), glyph);
+        self.glyphs.insert((font_index, id, size), glyph);
         #[cfg(feature = "perf")]
         {
             self.cache_misses += 1;
@@ -1551,7 +1553,7 @@ impl Renderer {
                     .filter(|grapheme| grapheme.chars().all(char::is_whitespace))
                     .count();
                 (spaces > 0).then(|| {
-                    (run.rect.width - text_run_width(&scaled, &run.text, size as f32)).max(0.0)
+                    (run.rect.width - text_width_with_numbers(&run.text, size as f32, run.tabular_numbers)).max(0.0)
                         / spaces as f32
                 })
             } else {
@@ -1560,11 +1562,11 @@ impl Renderer {
             let mut pen_x = match run.align {
                 TextAlign::Start | TextAlign::Justify => run.rect.x,
                 TextAlign::Centre => {
-                    let width = text_run_width(&scaled, &run.text, size as f32);
+                    let width = text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
                     run.rect.x + (run.rect.width - width).max(0.0) / 2.0
                 }
                 TextAlign::End => {
-                    let width = text_run_width(&scaled, &run.text, size as f32);
+                    let width = text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
                     run.rect.x + (run.rect.width - width).max(0.0)
                 }
             };
@@ -1592,17 +1594,26 @@ impl Renderer {
                     continue;
                 }
                 for character in grapheme.chars() {
+                    let (font_index, font) = font_for_character(character);
+                    let scaled = font.as_scaled(PxScale::from(size as f32));
                     let id = scaled.glyph_id(character);
-                    if let Some(previous) = previous {
-                        pen_x += scaled.kern(previous, id);
+                    let tabular = run.tabular_numbers && character.is_ascii_digit();
+                    let advance = if tabular { tabular_digit_width(size as f32) } else { scaled.h_advance(id) };
+                    if tabular {
+                        previous = None;
                     }
-                    if let Some(glyph) = self.glyph_atlas.glyph(&self.queue, id, size)? {
+                    if let Some((previous_index, previous_glyph)) = previous {
+                        if previous_index == font_index {
+                            pen_x += scaled.kern(previous_glyph, id);
+                        }
+                    }
+                    if let Some(glyph) = self.glyph_atlas.glyph(&self.queue, character, size)? {
                         push_text_quad(
                             &mut instances,
                             scene,
                             clip,
                             Rect {
-                                x: pen_x + glyph.offset_x,
+                                x: pen_x + glyph.offset_x + (advance - scaled.h_advance(id)) / 2.0,
                                 y: baseline + glyph.offset_y,
                                 width: glyph.width as f32,
                                 height: glyph.height as f32,
@@ -1611,8 +1622,8 @@ impl Renderer {
                             run.colour,
                         );
                     }
-                    pen_x += scaled.h_advance(id);
-                    previous = Some(id);
+                    pen_x += advance;
+                    previous = if tabular { None } else { Some((font_index, id)) };
                 }
                 if grapheme.chars().all(char::is_whitespace) {
                     pen_x += justified_space.unwrap_or_default();
@@ -1659,27 +1670,6 @@ impl Renderer {
         }
         Ok((instances, draws))
     }
-}
-
-fn text_run_width<F: Font>(font: &impl ScaleFont<F>, text: &str, emoji_size: f32) -> f32 {
-    let mut width = 0.0;
-    let mut previous = None;
-    for grapheme in text.graphemes(true) {
-        if is_emoji_grapheme(grapheme) {
-            width += emoji_size;
-            previous = None;
-            continue;
-        }
-        for character in grapheme.chars() {
-            let glyph = font.glyph_id(character);
-            width += previous
-                .map(|previous| font.kern(previous, glyph))
-                .unwrap_or_default();
-            width += font.h_advance(glyph);
-            previous = Some(glyph);
-        }
-    }
-    width
 }
 
 fn prepared_masks_match(prepared: &[PreparedMaskRun], current: &[ink_core::MaskRun]) -> bool {

@@ -1,9 +1,9 @@
 ---
 title: "Audio"
-description: "Native playback, queues and media controls."
+description: "Play audio, record files and analyse microphone input."
 ---
 
-Use `@ink/audio` to play audio, manage queues and connect to native media controls. Import `@ink/audio/capture` for recording and audio analysis.
+Use `@ink/audio` to play audio, manage queues and connect to native media controls. Import `@ink/audio/microphone` for analysis or `@ink/audio/recording` to record files.
 
 Ink handles decoding, buffering, audio focus and routing natively. Your app sends commands and observes playback state.
 
@@ -44,9 +44,9 @@ Native media sessions coordinate hardware keys, lock-screen controls and focus i
 
 ## Recording and analysis
 
-`@ink/audio/capture` exports `microphone`, `useRecorder`, `useLevelMeter` and `usePitchDetector`. Request microphone permission from a user action using `microphone.requestPermission()`; `getPermission()` reads the existing grant. Permission results are `granted`, `denied` or `blocked`.
+`@ink/audio/microphone` exports `useLevelMeter`, `usePitchDetector` and `PitchIndicator`. `@ink/audio/recording` exports `useRecorder`. Both entry points export `microphone` for permission checks. Request access when the user opens a feature that needs it using `microphone.requestPermission()`; `getPermission()` reads the existing grant. Permission results are `granted`, `denied` or `blocked`.
 
-Each capture hook returns `ready`, `state` and promise-returning commands. Wait for readiness before enabling controls. Hook cleanup releases the native attachment; capture is foreground work, not a background recording service.
+Each capture hook returns `ready`, `state` and promise-returning commands. Wait for readiness before enabling controls. Hook cleanup releases the native attachment; capture is foreground work, not a background recording service. Active pitch and level analysers pause when the app leaves the foreground and resume when it returns. Calling `stop()` or disposing the hook cancels this automatic resumption. Recordings stop on backgrounding and do not restart automatically.
 
 | Hook | Commands | State |
 | --- | --- | --- |
@@ -54,11 +54,13 @@ Each capture hook returns `ready`, `state` and promise-returning commands. Wait 
 | `useLevelMeter()` | `start()`, `stop()` | Status, RMS, peak and error. These are signal levels, not calibrated sound-pressure measurements. |
 | `usePitchDetector({ referenceHz })` | `start()`, `stop()` | Status, frequency in Hz, note, octave, cents, confidence and error. Reference defaults to 440 Hz. |
 
+`PitchIndicator` from `@ink/audio/microphone` displays a 25-tick tuning gauge. Pass the detector’s `state.cents` while active, or `null` when no note is detected. The taller centre tick marks the target; readings within ±5 cents settle there. The scale spans −50 to +50 cents, with flat notes on the left and sharp notes on the right. It follows Ink’s colour scheme and does not handle touch input.
+
 Recorder status is idle, recording, stopping, ready or error. A completed recording is a [FileRef](/files#one-file-representation) with `id`, `src`, `name`, `mimeType`, `size` and `duration` in milliseconds. Its source can be played by `usePlayer` or read with `fetch`. Read completion from state rather than treating `stop()` as a returned recording. Cancel discards unfinished capture; delete removes the current saved recording.
 
 Completing another recording retains earlier accepted recordings. Persist their IDs alongside app data and reopen them with `files.open(id)`. They survive screen disposal and app restarts until `files.remove(id)`, recorder deletion of the current recording, or app-data removal. The recorder exposes its most recent recording; the app owns its library and retention policy.
 
-Recording, level and pitch processing use the optional `@ink/audio/capture` entry point. Playback-only apps omit its recorder code and microphone permission. See the [build contract](/build-contracts#product-contract).
+The microphone entry point includes analysis without recording, managed files or image decoding. The recording entry point includes file storage without the pitch and level analysis engine. Apps using both share the audio adapter, which prevents recording and analysis from taking the microphone at the same time. Playback-only apps omit both input engines and microphone permission. See the [build contract](/build-contracts#product-contract).
 
 ## Providers and offline media
 

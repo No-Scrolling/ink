@@ -19,6 +19,8 @@ This uses ECMAScript 2022 declarations and `ink/runtime-types`, without TypeScri
 
 TypeScript includes `Intl` declarations, but this QuickJS-ng runtime has no internationalisation engine. Add a compatible polyfill if needed. Each runtime has a 64 MiB JavaScript heap and a 512 KiB stack limit.
 
+Text uses bundled Public Sans. On Android, missing characters can use the phone’s Noto Sans Symbols fonts, loaded only when needed. Ink uses the same font for measurement, cursor placement and drawing. No fallback font files are added to the APK. Coverage depends on the installed system fonts; this does not add general complex-script shaping. Emoji keep their existing Android rendering path.
+
 ## Available APIs
 
 | Facility | Implementation and limits |

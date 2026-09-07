@@ -55,6 +55,15 @@
         "typescript": "5.9.3",
       },
     },
+    "examples/tuner": {
+      "name": "ink-tuner-example",
+      "dependencies": {
+        "@ink/audio": "workspace:*",
+        "@ink/store": "workspace:*",
+        "ink": "workspace:*",
+        "react": "19.2.8",
+      },
+    },
     "packages/audio": {
       "name": "@ink/audio",
       "version": "0.1.0",
@@ -322,6 +331,8 @@
     "ink-counter-example": ["ink-counter-example@workspace:examples/counter"],
 
     "ink-light-template-example": ["ink-light-template-example@workspace:examples/light-template"],
+
+    "ink-tuner-example": ["ink-tuner-example@workspace:examples/tuner"],
 
     "js-tokens": ["js-tokens@10.0.0", "", {}, "sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q=="],
 

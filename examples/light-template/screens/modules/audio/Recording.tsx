@@ -1,4 +1,4 @@
-import { useRecorder } from "@ink/audio/capture";
+import { useRecorder } from "@ink/audio/recording";
 import { Button, Field, Screen, useAction } from "ink";
 
 export default function Recording() {

@@ -35,6 +35,7 @@ export function Text(props: {
   size?: number;
   align?: "start" | "center" | "end" | "justify";
   maxLines?: number;
+  tabularNumbers?: boolean;
 }) {
   return createElement("Text", props);
 }

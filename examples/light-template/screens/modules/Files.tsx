@@ -1,3 +1,4 @@
+import { prepareImage } from "@ink/files/images";
 import "@ink/network";
 import { useEffect, useRef, useState } from "react";
 import { files, type FileRef } from "@ink/files";
@@ -49,7 +50,7 @@ export default function Files() {
         <Field label="Attachment">{`${file.name} · ${file.size} bytes`}</Field>
         {file.mimeType.startsWith("image/") && <>
           <Image src={file.src} width={280} height={220} />
-          <Button disabled={pending} onPress={() => action.run(async () => keep(await files.prepareImage(file, { maxWidth: 1024, maxHeight: 1024 })))}>Prepare smaller image</Button>
+          <Button disabled={pending} onPress={() => action.run(async () => keep(await prepareImage(file, { maxWidth: 1024, maxHeight: 1024 })))}>Prepare smaller image</Button>
         </>}
         <Button disabled={pending} onPress={() => action.run(async () => { await files.save(file); return "Save dialogue closed"; })}>Save a copy</Button>
         <Button disabled={pending} onPress={() => action.run(async () => { await files.share(file); return "Share destinations opened"; })}>Share attachment</Button>

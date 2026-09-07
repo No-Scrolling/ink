@@ -1,0 +1,13 @@
+{
+  "name": "ink-tuner-example",
+  "private": true,
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ink/audio": "workspace:*",
+    "@ink/store": "workspace:*",
+    "ink": "workspace:*",
+    "react": "19.2.8"
+  }
+}

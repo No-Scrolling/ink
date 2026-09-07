@@ -10,5 +10,7 @@ internal interface AudioAdapter : NativeAdapter {
 
     fun pause()
 
+    fun resume() = Unit
+
     fun stop()
 }

@@ -220,6 +220,7 @@ android {
 
     defaultConfig {
         buildConfigField("boolean", "INK_MEDIA_LIBRARY_ENABLED", inkUses("media-library").get().toString())
+        buildConfigField("boolean", "INK_FILE_IMAGES_ENABLED", inkUses("file-images").get().toString())
         applicationId = inkApplicationId.get()
         minSdk = 34
         ndk { abiFilters += "arm64-v8a" }
@@ -354,7 +355,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
         for ((feature, enabled) in listOf(
             "network" to inkUsesNetwork,
             "image" to inkUsesImage,
-            "audio" to inkUses("audio-capture"),
+            "audio" to inkUses("audio-microphone"),
             "background" to inkUsesBackground,
             "camera-photo" to inkUsesPhotoCapture,
             "benchmark" to inkBenchmark,

@@ -50,6 +50,8 @@ bun install
 ./scripts/ink -C examples/light-template dev
 ```
 
+For a small app example, see [Tuner](examples/tuner), a chromatic tuner with adjustable reference pitch and sharp or flat note names.
+
 - `ink create <directory>` creates an app outside the repository using the selected local SDK.
 - `ink check` checks TypeScript and bundles an app.
 - `ink dev` installs a development host, then transfers bundle generations over ADB. Compatible component edits preserve React state; other JavaScript edits reload the runtime and native changes rebuild the APK. Use `--device <serial>` to select a device.

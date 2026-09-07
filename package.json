@@ -5,6 +5,7 @@
     "packages/*",
     "examples/light-template",
     "examples/counter",
+    "examples/tuner",
     "benchmarks/apps/ink-counter"
   ],
   "scripts": {

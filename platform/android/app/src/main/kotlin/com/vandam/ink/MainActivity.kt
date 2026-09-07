@@ -493,6 +493,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
         externalAdapter.onResume()
         connectivityAdapter.start()
         mapsAdapter.resume()
+        audioAdapter.resume()
         locationAdapter.resume()
         lightSdkAdapter.refresh()
 

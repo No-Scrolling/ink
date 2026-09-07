@@ -15,6 +15,9 @@ use unicode_properties::emoji::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+mod fonts;
+pub use fonts::{font_for_character, tabular_digit_width, text_width, text_width_with_numbers};
+
 mod list;
 mod masks;
 mod react;
@@ -542,6 +545,7 @@ enum NodeKind {
     PlayingPressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool },
     PlayingTransport { children: Vec<Node> },
     PlayingProgress { position: f32, duration: f32, seek: bool },
+    PitchIndicator { cents: Option<f32> },
     Row {
         children: Vec<Node>,
         has_image: bool,
@@ -578,6 +582,7 @@ enum NodeKind {
         font_size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
+        tabular_numbers: bool,
     },
     TextInput {
         placeholder: String,
@@ -676,6 +681,7 @@ impl Node {
         font_size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
+        tabular_numbers: bool,
     ) -> Self {
         Self {
             identity: NodeIdentity(0),
@@ -684,6 +690,7 @@ impl Node {
                 font_size,
                 align,
                 max_lines,
+                tabular_numbers,
             },
         }
     }
@@ -876,6 +883,7 @@ pub struct TextRun {
     pub font_size: f32,
     pub colour: Colour,
     pub align: TextAlign,
+    pub tabular_numbers: bool,
     pub scrolling: bool,
 }
 
@@ -2305,7 +2313,7 @@ impl Engine {
                 true
             }
             Action::Native { operation } => self.queue_native_action(operation),
-            Action::Back => self.back(),
+            Action::Back => self.pop_route(),
         }
     }
 
@@ -2495,6 +2503,7 @@ impl Engine {
             | NodeKind::MapView { .. }
             | NodeKind::MediaCell { .. }
             | NodeKind::PlayingProgress { .. }
+            | NodeKind::PitchIndicator { .. }
             | NodeKind::Toggle { .. } => None,
         }
     }
@@ -2561,6 +2570,7 @@ impl Engine {
                 height: children.iter().map(|child| self.measure(child, available).height).fold(0.0, f32::max),
             },
             NodeKind::PlayingProgress { .. } => MeasuredSize { width: available.width, height: self.scaled(6.0) },
+            NodeKind::PitchIndicator { .. } => MeasuredSize { width: available.width, height: self.scaled(40.0) },
             NodeKind::Row { children, has_image, .. } => {
                 let image_width = if *has_image { self.scaled(65.0).min(available.width) } else { 0.0 };
                 let text = children.last().map(|child| self.measure(child, Rect { width: (available.width - image_width).max(0.0), ..available })).unwrap_or_default();
@@ -2615,10 +2625,11 @@ impl Engine {
                 font_size,
                 align,
                 max_lines,
+                tabular_numbers,
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font_size = self.scaled_font(size);
-                let lines = self.wrap_text(text, font_size, available.width, *max_lines);
+                let lines = self.wrap_text(text, font_size, available.width, *max_lines, *tabular_numbers);
                 let line_height = self.text_line_height(size, lines.len());
                 MeasuredSize {
                     width: if *align == TextAlign::Justify && lines.iter().any(|line| line.wrapped)
@@ -2654,7 +2665,7 @@ impl Engine {
             }
             NodeKind::Field { label, value, .. } => {
                 let label_width = self.text_width(label, self.scaled_font(FIELD_LABEL_SIZE));
-                let lines = self.wrap_text(value, self.scaled_font(DEFAULT_TEXT_SIZE), available.width, None);
+                let lines = self.wrap_text(value, self.scaled_font(DEFAULT_TEXT_SIZE), available.width, None, false);
                 let value_width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
                 let value_height = self.text_line_height(DEFAULT_TEXT_SIZE, lines.len()) * lines.len() as f32;
                 MeasuredSize {
@@ -2883,6 +2894,25 @@ impl Engine {
                 }
                 if let Some(child) = children.first() { self.layout(child, rect); }
             }
+            NodeKind::PitchIndicator { cents } => {
+                let active = cents.map(|value| {
+                    if value.abs() <= 5.0 { 12.0 } else { (value + 50.0) / 100.0 * 24.0 }
+                });
+                let width = self.scaled(2.0).min(rect.width);
+                for tick in 0..25 {
+                    let height = self.scaled(if tick == 12 { 40.0 } else { 16.0 });
+                    self.scene.quads.push(Quad {
+                        rect: Rect {
+                            x: rect.x + (rect.width - width) * tick as f32 / 24.0,
+                            y: rect.y + (rect.height - height) / 2.0,
+                            width, height,
+                        },
+                        clip: self.clip,
+                        colour: self.scene.colour(if active.is_some_and(|value| tick as f32 <= value) { Colour::WHITE } else { Colour::MUTED }),
+                        scrolling: self.scrolling,
+                    });
+                }
+            }
             NodeKind::PlayingProgress { position, duration, seek } => {
                 let ratio = if *duration > 0.0 { (position / duration).clamp(0.0, 1.0) } else { 0.0 };
                 for (width, height) in [(rect.width, self.scaled(2.0)), (rect.width * ratio, self.scaled(6.0))] {
@@ -2947,8 +2977,9 @@ impl Engine {
                 font_size,
                 align,
                 max_lines,
+                tabular_numbers,
             } => {
-                self.layout_text(text, *font_size, *align, *max_lines, rect);
+                self.layout_text(text, *font_size, *align, *max_lines, *tabular_numbers, rect);
             }
             NodeKind::TextInput {
                 placeholder,
@@ -3087,6 +3118,7 @@ impl Engine {
             };
             let font_size = self.scaled_font(HEADER_TEXT_SIZE);
             self.scene.text.push(TextRun {
+                tabular_numbers: false,
                 text: self.ellipsize(title, font_size, title_rect.width),
                 rect: title_rect,
                 clip: self.clip,
@@ -3116,7 +3148,7 @@ impl Engine {
             let font_size = self.scaled_font(40.0);
             let inset = self.scaled(CONTENT_INSET_START);
             let available_width = (rect.width - inset * 2.0).max(0.0);
-            let lines = self.wrap_text(label, font_size, available_width, None);
+            let lines = self.wrap_text(label, font_size, available_width, None, false);
             let line_height = self.text_line_height(40.0, lines.len());
             let height = (line_height * lines.len() as f32 + self.scaled(CONTENT_BOTTOM))
                 .min((rect.height - header_height).max(0.0));
@@ -3129,13 +3161,17 @@ impl Engine {
             let scaled = self.font.as_scaled(PxScale::from(font_size));
             let baseline = (line_height - scaled.height()) / 2.0 + scaled.ascent();
             let ink_bottom = lines.last().into_iter().flat_map(|line| line.text.chars())
-                .filter_map(|character| self.font.outline_glyph(self.font.glyph_id(character).with_scale(font_size)))
+                .filter_map(|character| {
+                    let (_, font) = font_for_character(character);
+                    font.outline_glyph(font.glyph_id(character).with_scale(font_size))
+                })
                 .map(|glyph| glyph.px_bounds().max.y)
                 .reduce(f32::max)
                 .unwrap_or(0.0);
             let baseline_shift = line_height - baseline - ink_bottom;
             for (index, line) in lines.iter().enumerate() {
                 self.scene.text.push(TextRun {
+                    tabular_numbers: false,
                     text: line.text.clone(),
                     rect: Rect {
                         y: action_rect.y + index as f32 * line_height + baseline_shift,
@@ -3494,6 +3530,7 @@ impl Engine {
         let visible_label = self.ellipsize(label, font_size, text_rect.width);
         let text_width = self.text_width(&visible_label, font_size);
         self.scene.text.push(TextRun {
+            tabular_numbers: false,
             text: visible_label,
             rect: text_rect,
             clip: self.clip,
@@ -3521,10 +3558,10 @@ impl Engine {
         }
     }
 
-    fn layout_text(&mut self, text: &str, font_size: Option<f32>, align: TextAlign, max_lines: Option<u32>, rect: Rect) {
+    fn layout_text(&mut self, text: &str, font_size: Option<f32>, align: TextAlign, max_lines: Option<u32>, tabular_numbers: bool, rect: Rect) {
         let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
         let font_size = self.scaled_font(size);
-        let lines = self.wrap_text(text, font_size, rect.width, max_lines);
+        let lines = self.wrap_text(text, font_size, rect.width, max_lines, tabular_numbers);
         let line_height = self.text_line_height(size, lines.len());
         for (index, line) in lines.into_iter().enumerate() {
             let mut line_rect = Rect {
@@ -3538,6 +3575,7 @@ impl Engine {
                 line_rect.height = (line_rect.height - self.scaled(1.0)).max(0.0);
             }
             self.scene.text.push(TextRun {
+                tabular_numbers,
                 text: line.text,
                 rect: line_rect,
                 clip: self.clip,
@@ -3557,6 +3595,7 @@ impl Engine {
         let label_height = self.scaled(FIELD_LABEL_HEIGHT).min(rect.height);
         let label_font_size = self.scaled_font(FIELD_LABEL_SIZE);
         self.scene.text.push(TextRun {
+            tabular_numbers: false,
             text: self.ellipsize(label, label_font_size, rect.width),
             rect: Rect {
                 height: label_height,
@@ -3573,6 +3612,7 @@ impl Engine {
             None,
             TextAlign::Start,
             None,
+            false,
             Rect {
                 y: rect.y + label_height,
                 height: (rect.height - label_height).max(0.0),
@@ -3592,7 +3632,7 @@ impl Engine {
             let mut start = 0;
             if paragraph.is_empty() { lines.push((offset, offset)); }
             while start < paragraph.len() {
-                let end = self.forced_text_break(paragraph, start, font_size, width);
+                let end = self.forced_text_break(paragraph, start, font_size, width, false);
                 lines.push((offset + start, offset + end));
                 start = end;
             }
@@ -3628,6 +3668,7 @@ impl Engine {
         let showing_placeholder = value.is_empty() && !focused;
         for (index, (start, end)) in lines.iter().copied().enumerate() {
             self.scene.text.push(TextRun {
+                tabular_numbers: false,
                 text: if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
                 rect: Rect { y: viewport.y + index as f32 * line_height - scroll_offset, height: line_height, ..viewport },
                 clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
@@ -3685,6 +3726,7 @@ impl Engine {
                 height: self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING),
             };
             self.scene.text.push(TextRun {
+                tabular_numbers: false,
                 text: text.to_owned(),
                 rect: bounds,
                 clip: bounds.intersection(self.clip),
@@ -3746,6 +3788,7 @@ impl Engine {
         };
         let text_run = self.scene.text.len();
         self.scene.text.push(TextRun {
+            tabular_numbers: false,
             text: text.to_owned(),
             rect: Rect {
                 x: text_viewport.x - scroll_offset,
@@ -3908,6 +3951,7 @@ impl Engine {
         };
         let label_font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
         self.scene.text.push(TextRun {
+            tabular_numbers: false,
             text: self.ellipsize(label, label_font_size, label_rect.width),
             rect: label_rect,
             clip: self.clip,
@@ -4105,6 +4149,7 @@ impl Engine {
         font_size: f32,
         available_width: f32,
         max_lines: Option<u32>,
+        tabular_numbers: bool,
     ) -> Vec<WrappedLine> {
         let mut lines = Vec::new();
         for paragraph in text.split('\n') {
@@ -4126,7 +4171,7 @@ impl Engine {
                 for end in breakpoints.iter().copied().filter(|end| *end > start) {
                     let display_end = trim_whitespace_end(paragraph, start, end);
                     let candidate = &paragraph[start..display_end];
-                    let width = self.text_width(candidate, font_size);
+                    let width = text_width_with_numbers(candidate, font_size, tabular_numbers);
                     if width <= available_width {
                         best = Some((end, display_end, width));
                     } else {
@@ -4135,8 +4180,8 @@ impl Engine {
                 }
 
                 let (end, display_end, width) = best.unwrap_or_else(|| {
-                    let end = self.forced_text_break(paragraph, start, font_size, available_width);
-                    (end, end, self.text_width(&paragraph[start..end], font_size))
+                    let end = self.forced_text_break(paragraph, start, font_size, available_width, tabular_numbers);
+                    (end, end, text_width_with_numbers(&paragraph[start..end], font_size, tabular_numbers))
                 });
                 lines.push(WrappedLine {
                     text: paragraph[start..display_end].to_owned(),
@@ -4151,8 +4196,8 @@ impl Engine {
         {
             lines.truncate(max_lines);
             if let Some(line) = lines.last_mut() {
-                line.text = self.ellipsize_forced(&line.text, font_size, available_width);
-                line.width = self.text_width(&line.text, font_size);
+                line.text = self.ellipsize_forced(&line.text, font_size, available_width, tabular_numbers);
+                line.width = text_width_with_numbers(&line.text, font_size, tabular_numbers);
                 line.wrapped = false;
             }
         }
@@ -4165,11 +4210,12 @@ impl Engine {
         start: usize,
         font_size: f32,
         available_width: f32,
+        tabular_numbers: bool,
     ) -> usize {
         let mut best = start;
         for (offset, grapheme) in text[start..].grapheme_indices(true) {
             let end = start + offset + grapheme.len();
-            if best > start && self.text_width(&text[start..end], font_size) > available_width {
+            if best > start && text_width_with_numbers(&text[start..end], font_size, tabular_numbers) > available_width {
                 break;
             }
             best = end;
@@ -4191,27 +4237,10 @@ impl Engine {
     }
 
     fn text_width(&self, text: &str, font_size: f32) -> f32 {
-        let scaled = self.font.as_scaled(PxScale::from(font_size));
-        let mut previous = None;
-        text.graphemes(true).fold(0.0, |mut width, grapheme| {
-            if is_emoji_grapheme(grapheme) {
-                previous = None;
-                return width + font_size;
-            }
-            for character in grapheme.chars() {
-                let glyph = scaled.glyph_id(character);
-                let kerning = previous
-                    .map(|previous| scaled.kern(previous, glyph))
-                    .unwrap_or_default();
-                width += kerning + scaled.h_advance(glyph);
-                previous = Some(glyph);
-            }
-            width
-        })
+        text_width(text, font_size)
     }
 
     fn text_cursor_for_offset(&self, text: &str, font_size: f32, offset: f32) -> usize {
-        let scaled = self.font.as_scaled(PxScale::from(font_size));
         let mut previous = None;
         let mut width = 0.0;
         for (index, grapheme) in text.grapheme_indices(true) {
@@ -4221,12 +4250,16 @@ impl Engine {
                 previous = None;
             } else {
                 for character in grapheme.chars() {
+                    let (font_index, font) = font_for_character(character);
+                    let scaled = font.as_scaled(PxScale::from(font_size));
                     let glyph = scaled.glyph_id(character);
-                    width += previous
-                        .map(|previous| scaled.kern(previous, glyph))
-                        .unwrap_or_default()
-                        + scaled.h_advance(glyph);
-                    previous = Some(glyph);
+                    if let Some((previous_index, previous_glyph)) = previous {
+                        if previous_index == font_index {
+                            width += scaled.kern(previous_glyph, glyph);
+                        }
+                    }
+                    width += scaled.h_advance(glyph);
+                    previous = Some((font_index, glyph));
                 }
             }
             if offset < (start + width) / 2.0 {
@@ -4240,15 +4273,15 @@ impl Engine {
         if self.text_width(text, font_size) <= available_width {
             return text.to_owned();
         }
-        self.ellipsize_forced(text, font_size, available_width)
+        self.ellipsize_forced(text, font_size, available_width, false)
     }
 
-    fn ellipsize_forced(&self, text: &str, font_size: f32, available_width: f32) -> String {
+    fn ellipsize_forced(&self, text: &str, font_size: f32, available_width: f32, tabular_numbers: bool) -> String {
         let ellipsis = '…';
         let ellipsis_width = self.text_width("…", font_size);
         let mut visible = text.to_owned();
         while !visible.is_empty()
-            && self.text_width(&visible, font_size) + ellipsis_width > available_width
+            && text_width_with_numbers(&visible, font_size, tabular_numbers) + ellipsis_width > available_width
         {
             let Some((index, _)) = visible.grapheme_indices(true).next_back() else {
                 break;

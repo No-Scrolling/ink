@@ -3,7 +3,15 @@ title: "Files and media"
 description: "Choose attachments and use the same managed file throughout an app."
 ---
 
-Use `@ink/files` to pick, prepare, save and share attachments. Import `MediaPicker` from `@ink/files/media` for an Ink photo and video gallery. Both return managed files that you can preview, store and upload.
+Use managed files to preview, store and upload attachments. Choose the import for the operation you need:
+
+| Import | Provides |
+| --- | --- |
+| `@ink/files` | Pick documents, open, remove, save and share files. |
+| `@ink/files/images` | Prepare images for display or upload. |
+| `@ink/files/media` | An Ink photo and video gallery with thumbnail display. |
+
+Basic file operations do not include image preparation or Ink’s image renderer. Import `Image` from `ink` to display images. The gallery includes thumbnail rendering without image preparation.
 
 ## Pick an attachment
 
@@ -52,7 +60,13 @@ A successful native import makes the file durable. Cancellation before that succ
 
 `Image` and audio playback accept appropriate file `src` values. Media bytes stay native during display. Picking a video does not provide video playback.
 
-`files.prepareImage(file, { maxWidth, maxHeight })` returns a new managed image with orientation applied and dimensions bounded while retaining aspect ratio. The original remains intact. Prepared output omits location metadata. This is one preparation operation, not a general image editor.
+`prepareImage` returns a new managed image with orientation applied and dimensions bounded while retaining aspect ratio. The original remains intact. Prepared output omits location metadata.
+
+```ts
+import { prepareImage } from "@ink/files/images";
+
+const smaller = await prepareImage(file, { maxWidth: 1024, maxHeight: 1024 });
+```
 
 Import `"@ink/network"` before using `fetch`, `Blob` or `FormData`. `fetch(file.src)` reads the local file as a native-backed response. Its `blob()` can be used as a request body or appended to `FormData` without copying the complete file into the JavaScript heap. Native upload preparation copies attachment ranges into an upload spool, preserving multipart boundaries and replay after redirects. Explicit `text()` and `arrayBuffer()` calls materialise bytes; use `body` for incremental reading. Apps supply endpoints, authentication and upload state.
 

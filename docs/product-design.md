@@ -25,6 +25,8 @@ Do not turn each app layout into a framework feature. Weather columns, album det
 
 Commands return promises. Continuing work has an explicit owner; React hooks manage screen-owned work. Observations use the existing loading/ready/error snapshot shape. Persistent operations such as downloads survive observers disappearing.
 
+Image preparation lives in `@ink/files/images`; basic file operations do not pull in image rendering or preparation.
+
 Small APIs stay small: Clipboard copies text, Secure Store saves secrets, and Location separates a single fix from tracking. Background jobs receive saved input rather than capturing UI state.
 
 Include capabilities through explicit module imports. Optional engines and capture features must not increase every app's native footprint. Reuse native engines behind Ink interfaces; provider-specific behaviour stays in provider integrations.
@@ -50,4 +52,4 @@ Picking, capture, recording and downloads return a shared `FileRef`. Use its sou
 
 Completed recordings are retained independently until explicitly deleted. Apps persist file IDs and own reference counting and retention; disposing a screen does not delete accepted attachments.
 
-Audio capture is imported from `@ink/audio/capture`; camera scanning is imported from `@ink/barcode/scan`. Playback and still-photo imports exclude those optional native engines. MapLibre and other optional engines follow their module capability graph.
+Microphone analysis is imported from `@ink/audio/microphone` and recording from `@ink/audio/recording`; camera scanning is imported from `@ink/barcode/scan`. Playback and still-photo imports exclude those optional native engines. MapLibre and other optional engines follow their module capability graph.

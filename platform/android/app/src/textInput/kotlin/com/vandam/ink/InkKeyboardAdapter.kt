@@ -107,7 +107,6 @@ private class InkKeyboardAdapter(
             onEdit(TextEdit.Insert("\n"))
         } else {
             onEdit(TextEdit.Submit)
-            sync(false, 0, false)
         }
     }
 }

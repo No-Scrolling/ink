@@ -72,6 +72,7 @@ enum HostKind {
     PlayingTransport,
     PlayingPressable,
     PlayingProgress,
+    PitchIndicator,
 }
 
 struct ListProps {
@@ -103,6 +104,7 @@ enum HostProps {
         size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
+        tabular_numbers: bool,
     },
     List(Box<ListProps>),
     Other(Map<String, Json>),
@@ -147,6 +149,7 @@ impl HostProps {
                 size: number(&props, "size")?,
                 align,
                 max_lines,
+                tabular_numbers: props.get("tabularNumbers") == Some(&Json::Bool(true)),
             });
         }
         Ok(props)
@@ -624,9 +627,10 @@ impl ReactTree {
             size,
             align,
             max_lines,
+            tabular_numbers,
         } = &host.props
         {
-            let mut node = Node::text(self.text(id, depth)?, *size, *align, *max_lines);
+            let mut node = Node::text(self.text(id, depth)?, *size, *align, *max_lines, *tabular_numbers);
             node.identity = NodeIdentity(id);
             return Ok(Some(node));
         }
@@ -716,6 +720,13 @@ impl ReactTree {
                 selected: props.get("selected") == Some(&Json::Bool(true)),
                 long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
                 children: self.children(host, depth)?, action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
+            } },
+            HostKind::PitchIndicator => Node { identity: NodeIdentity(id), kind: NodeKind::PitchIndicator {
+                cents: props.get("cents").filter(|value| !value.is_null()).map(|value| {
+                    let cents = value.as_f64().context("PitchIndicator requires numeric cents")?;
+                    ensure!(cents.is_finite(), "PitchIndicator requires finite cents");
+                    Ok(cents.clamp(-50.0, 50.0) as f32)
+                }).transpose()?,
             } },
             HostKind::PlayingProgress => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingProgress {
                 position: number(props, "position")?.unwrap_or(0.0), duration: number(props, "duration")?.unwrap_or(0.0), seek: props.get("onSeek") == Some(&Json::Bool(true)),

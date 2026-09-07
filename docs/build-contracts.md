@@ -5,7 +5,9 @@ description: "How Ink resolves native requirements, assets and release builds."
 
 ## Product contract
 
-Include native functionality by explicit package entry point, never by inspecting hook arguments or component names. Import `@ink/audio` for playback and `@ink/audio/capture` for recording and analysis. Camera capture uses `@ink/camera`; scanning uses `@ink/barcode/scan`. A playback-only app does not require microphone permission or include recorder code, and a capture-only app does not include the barcode scanner.
+Include native functionality by explicit package entry point, never by inspecting hook arguments or component names. Import `@ink/audio` for playback and `@ink/audio/microphone` for analysis or `@ink/audio/recording` for recording. Camera capture uses `@ink/camera`; scanning uses `@ink/barcode/scan`. A playback-only app does not require microphone permission or include recorder code, and a capture-only app does not include the barcode scanner.
+
+`@ink/files` provides managed file operations. `@ink/files/images` adds image preparation; `@ink/files/media` adds the photo/video gallery and thumbnail rendering. Basic files and recordings do not require either image feature.
 
 Networking follows the same rule: `@ink/network` installs web globals, while `/connectivity` and `/downloads` include only their respective native features. UI imports from `ink` do not install web globals. Development compiler tools live in the SDK workspace’s development dependencies, separate from app runtime dependencies.
 
@@ -16,7 +18,15 @@ The bundler follows resolved imports, including re-exports, aliases, linked pack
 Each supported package ships `ink-native.json` beside `package.json`:
 
 ```json
-{"version":1,"modules":{"src/index.ts":["audio-detached"],"src/capture.ts":["audio-capture"]}}
+{
+  "version": 1,
+  "modules": {
+    "src/index.ts": ["audio-detached"],
+    "src/microphone.ts": ["audio-microphone"],
+    "src/recording.ts": ["audio-recording"],
+    "src/microphone-permission.ts": ["microphone-permission"]
+  }
+}
 ```
 
 Paths are relative to the resolved package directory. `*` applies to each contributing module. Named entries apply when that implementation file contributes code to the release bundle. Modules removed by tree shaking do not add capabilities. Development builds conservatively include loaded modules so refresh can use their exports. This supports package export splits without depending on how a consumer names an import. A resolved Ink package missing its declaration fails with an installation/migration diagnostic; unknown capabilities fail during metadata decoding. Ordinary JavaScript dependencies do not require declarations. Third-party packages may provide declarations too.
