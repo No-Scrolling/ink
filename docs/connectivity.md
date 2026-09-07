@@ -3,11 +3,11 @@ title: "Connectivity"
 description: "Read and watch the device’s network connection."
 ---
 
-`@ink/connectivity` exposes an immutable snapshot of the current network state.
+`@ink/network/connectivity` exposes an immutable snapshot of the current network state.
 
 ```tsx
 import { Text, useSnapshot } from "ink";
-import { connectivity } from "@ink/connectivity";
+import { connectivity } from "@ink/network/connectivity";
 
 export function ConnectionNotice() {
   const connection = useSnapshot(connectivity);

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "modules": {
+    "src/index.ts": [
+      "network"
+    ],
+    "src/connectivity.ts": [
+      "connectivity"
+    ],
+    "src/downloads.ts": [
+      "downloads"
+    ]
+  }
+}

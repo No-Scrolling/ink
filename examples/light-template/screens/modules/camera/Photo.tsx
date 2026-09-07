@@ -1,3 +1,4 @@
+import "@ink/network";
 import { CameraPreview, camera, useCamera } from "@ink/camera";
 import { Button, Field, Screen, useAction, useRouteParams } from "ink";
 

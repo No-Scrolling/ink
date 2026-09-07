@@ -122,6 +122,19 @@ export function Search() {
 
 Update `value` synchronously in `onChange`. Debounce network requests rather than input updates. Ink rejects stale native edits, but cannot decide which delayed app updates you intended to keep.
 
+Use `prefix` and `suffix` for fixed text above the input underline, such as `prefix="£"` and `suffix="GBP"`. They stay visible while the editable text scrolls and are not included in the value. Tap either to focus the input. Keep them short; each is clipped to at most a third of the input width.
+
+Use `inputMode="numeric"` for a digits-only keypad with backspace and a Search or Done action. Values remain strings, preserving leading zeros. Numeric mode rejects non-digit edits and cannot use `action="return"`.
+
+If an app only needs a numpad, import `TextInput` from `ink/input/numeric`. It always uses numeric mode and defaults to Done. Release builds omit letter layouts, emoji data and full-keyboard icons unless the normal `TextInput` or `ConversationScreen` is also used.
+
+```tsx
+import { Screen } from "ink";
+import { TextInput } from "ink/input/numeric";
+```
+
+Import `"@ink/network"` in apps that use `fetch`, `WebSocket` or related web globals. UI imports from `ink` do not install networking globals. Unused image and input components do not add their native capabilities to release builds. Development builds retain the capabilities of loaded modules to support refresh.
+
 Centred images in a full-width vertical stack stay centred on the page when it scrolls; text and controls retain space for the scrollbar.
 
 Placeholders use muted grey. Back dismisses the keyboard, which has a 20-unit bottom inset. Multiline editing keeps the current scroll position unless it needs to reveal the cursor.
@@ -254,7 +267,7 @@ Use `Screen`'s optional `header` for content that stays below the navigation tit
 
 `rightAction` places one icon/action in the navigation title bar. It is separate from `header`, which pins composed content below the title. The Examples tab demonstrates the more-horizontal icon opening Action Page.
 
-Use `Barcode` from `@ink/barcode/generate` for codes. See [Barcodes and passes](/barcode).
+Use `Barcode` from `@ink/barcode` for codes. See [Barcodes and passes](/barcode).
 
 ## Playing screen
 

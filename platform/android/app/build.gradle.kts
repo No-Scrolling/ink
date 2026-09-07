@@ -289,6 +289,9 @@ android {
         }
         if (inkUsesTextInput.get()) {
             getByName("main").res.srcDir("src/textInput/res")
+            val keyboard = if (inkUses("text-input-full").get()) "textInputFull" else "textInputNumeric"
+            getByName("main").java.srcDir("src/$keyboard/kotlin")
+            if (keyboard == "textInputFull") getByName("main").res.srcDir("src/textInputFull/res")
         }
         if (inkUsesLightSdkPush.get() || inkUsesNetwork.get()) {
             getByName("main").res.srcDir("src/networkSecurity/res")

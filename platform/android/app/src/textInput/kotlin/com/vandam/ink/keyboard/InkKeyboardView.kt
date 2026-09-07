@@ -50,6 +50,12 @@ internal class InkKeyboardView @JvmOverloads constructor(
             field = value
             invalidate()
         }
+    var numeric: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            reset()
+        }
     var typeface: Typeface = Typeface.DEFAULT
         set(value) {
             field = value
@@ -87,11 +93,7 @@ internal class InkKeyboardView @JvmOverloads constructor(
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT
     }
-    private val icons: Map<KeyboardIcon, Drawable> = KeyboardIcon.entries.associateWith { icon ->
-        checkNotNull(context.getDrawable(icon.resource)).mutate().apply {
-            setTint(Color.WHITE)
-        }
-    }
+    private val icons = mutableMapOf<KeyboardIcon, Drawable>()
     private val keys = mutableListOf<PlacedKey>()
     private var emojiKeys = KeyboardLayouts.defaultEmojis
     private val repeatHandler = Handler(Looper.getMainLooper())
@@ -191,12 +193,12 @@ internal class InkKeyboardView @JvmOverloads constructor(
     }
 
     fun reset() {
-        show(KeyboardMode.Letters)
+        show(if (numeric) KeyboardMode.Numeric else KeyboardMode.Letters)
         cancelPress()
     }
 
     private fun drawLayout(canvas: Canvas, layout: KeyboardLayout) {
-        var top = dp(KEYBOARD_TOP_PADDING_DP)
+        var top = dp(KEYBOARD_TOP_PADDING_DP + if (numeric) 6f else 0f)
         layout.rows.forEach { row ->
             val rowWidth = row.keys.sumOf { it.widthDp.toDouble() }.toFloat()
             var left = (width - dp(rowWidth)) / 2f
@@ -237,18 +239,10 @@ internal class InkKeyboardView @JvmOverloads constructor(
             }
 
             when (key.command) {
-                KeyboardCommand.Shift -> drawIcon(
-                    canvas,
-                    if (shifted) KeyboardIcon.KeyboardArrowDown else KeyboardIcon.KeyboardArrowUp,
-                    x,
-                    y,
-                )
                 KeyboardCommand.Backspace -> drawIcon(canvas, KeyboardIcon.ChevronLeft, x, y)
-                KeyboardCommand.Emoji -> drawIcon(canvas, KeyboardIcon.Mood, x, y)
-                KeyboardCommand.Submit -> drawIcon(canvas, action.icon, x, y)
+                KeyboardCommand.Submit -> drawIcon(canvas, KeyboardLayouts.actionIcon(action), x, y)
                 KeyboardCommand.Space -> drawSpace(canvas, placed.bounds)
-                KeyboardCommand.Letters -> drawIcon(canvas, KeyboardIcon.MatchCase, x, y)
-                KeyboardCommand.Numbers, KeyboardCommand.Symbols -> Unit
+                else -> KeyboardLayouts.commandIcon(key.command, shifted)?.let { drawIcon(canvas, it, x, y) }
             }
         }
     }
@@ -288,7 +282,11 @@ internal class InkKeyboardView @JvmOverloads constructor(
     private fun drawIcon(canvas: Canvas, icon: KeyboardIcon, x: Float, y: Float) {
         val size = dp(icon.sizeDp).toInt()
         val halfSize = size / 2
-        icons.getValue(icon).apply {
+        icons.getOrPut(icon) {
+            checkNotNull(context.getDrawable(icon.resource)).mutate().apply {
+                setTint(if (lightAppearance) Color.BLACK else Color.WHITE)
+            }
+        }.apply {
             setBounds(x.toInt() - halfSize, y.toInt() - halfSize, x.toInt() + halfSize, y.toInt() + halfSize)
             draw(canvas)
         }
@@ -354,13 +352,6 @@ internal class InkKeyboardView @JvmOverloads constructor(
             key.command == KeyboardCommand.Space &&
             x >= bounds.left && x < bounds.right &&
             y >= bounds.bottom && y < bounds.bottom + dp(SPACE_HIT_EXTENSION_DP)
-
-    private val KeyboardAction.icon: KeyboardIcon
-        get() = when (this) {
-            KeyboardAction.Return -> KeyboardIcon.KeyboardReturn
-            KeyboardAction.Search -> KeyboardIcon.Search
-            KeyboardAction.Done -> KeyboardIcon.Done
-        }
 
     private data class PlacedKey(
         val key: KeyboardKey,

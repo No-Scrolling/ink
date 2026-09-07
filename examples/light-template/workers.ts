@@ -1,3 +1,4 @@
+import "@ink/network";
 import { notifications } from "@ink/notifications";
 import { location } from "@ink/location";
 import { defineTask, getJobs } from "@ink/background";

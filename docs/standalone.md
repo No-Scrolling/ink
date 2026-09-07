@@ -25,6 +25,30 @@ Use `ink devices` to find another device serial. Creation requires a new directo
 
 Generated apps use local package paths and a compatible React version. Add other `@ink/*` packages from the SDK’s package directories. Extend `ink/tsconfig` so TypeScript uses Ink’s runtime types.
 
+## Add features
+
+Use `ink` for components and navigation. Add optional packages for the features your app needs:
+
+| Package | Features |
+| --- | --- |
+| `@ink/audio` | Playback; recording through `/capture` |
+| `@ink/auth` | Sign-in and account tokens |
+| `@ink/background` | Background jobs |
+| `@ink/barcode` | Generated codes; scanning through `/scan` |
+| `@ink/camera` | Camera preview and photos |
+| `@ink/clipboard` | Clipboard access |
+| `@ink/files` | File operations; photo/video picker through `/media` |
+| `@ink/lightos` | LightOS services |
+| `@ink/location` | Location fixes and tracking |
+| `@ink/maps` | Maps |
+| `@ink/network` | Web globals; `/connectivity` and `/downloads` for native network features |
+| `@ink/nfc` | NFC tags |
+| `@ink/notifications` | Notifications |
+| `@ink/secure-store` | Encrypted secrets |
+| `@ink/store` | Persisted app data and read-only databases |
+
+Related features share a package, but their entry points select native capabilities independently. For example, generating a barcode does not include the camera or scanner.
+
 ## Choose the SDK
 
 `scripts/ink` selects its own checkout. If you use a separately compiled CLI, set `INK_SDK_ROOT` or install the SDK at `$XDG_CONFIG_HOME/ink/sdk/current` (default `~/.config/ink/sdk/current`).

@@ -31,35 +31,7 @@ interface CameraState<T> {
   error: Error | null;
 }
 function initial<T>(): CameraState<T> { return { status: "idle", ready: false, value: null, reviewSource: null, saving: false, error: null }; }
-function decodePhoto(value: unknown): CapturedPhoto {
-  if (typeof value !== "object" || value === null
-    || !("source" in value) || typeof value.source !== "string"
-    || !("width" in value) || typeof value.width !== "number" || !Number.isSafeInteger(value.width) || value.width <= 0
-    || !("height" in value) || typeof value.height !== "number" || !Number.isSafeInteger(value.height) || value.height <= 0
-    || !("mimeType" in value) || value.mimeType !== "image/jpeg"
-    || !("capturedAtMs" in value) || typeof value.capturedAtMs !== "number" || !Number.isSafeInteger(value.capturedAtMs)) throw new NativeError("protocol", "Invalid captured photo");
-  if (!("file" in value) || typeof value.file !== "object" || value.file === null
-    || !("uri" in value.file) || typeof value.file.uri !== "string"
-    || !("source" in value.file) || typeof value.file.source !== "string"
-    || !("name" in value.file) || typeof value.file.name !== "string"
-    || !("size" in value.file) || typeof value.file.size !== "number" || !Number.isSafeInteger(value.file.size) || value.file.size < 0
-    || !("mimeType" in value.file) || value.file.mimeType !== "image/jpeg") throw new NativeError("protocol", "Invalid captured file");
-  if (!("id" in value.file) || typeof value.file.id !== "string" || !("src" in value.file) || typeof value.file.src !== "string") throw new NativeError("protocol", "Invalid managed photo");
-  const file: CapturedFile = { id: value.file.id, src: value.file.src, width: value.width, height: value.height, uri: value.file.uri, source: value.file.source, name: value.file.name, size: value.file.size, mimeType: value.file.mimeType };
-  return { file, source: value.source, width: value.width, height: value.height, mimeType: value.mimeType, capturedAt: value.capturedAtMs };
-}
-function codeFormat(value: unknown): CodeFormat {
-  const format = codeFormats.find(format => format === value);
-  if (!format) throw new NativeError("protocol", "Invalid barcode format");
-  return format;
-}
-function decodeCode(value: unknown): CodeScan {
-  if (typeof value !== "object" || value === null || !("text" in value) || typeof value.text !== "string" || !("format" in value)) throw new NativeError("protocol", "Invalid scanned code");
-  if (!("rawBytes" in value) || (value.rawBytes !== null && (!Array.isArray(value.rawBytes)
-    || !value.rawBytes.every((byte: unknown) => typeof byte === "number" && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) throw new NativeError("protocol", "Invalid barcode bytes");
-  return { text: value.text, format: codeFormat(value.format), rawBytes: value.rawBytes === null ? null : new Uint8Array(value.rawBytes) };
-}
-function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown) => T, config = "{}") {
+export function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown) => T, config = "{}") {
   const [state, setState] = useState<CameraState<T>>(initial);
   const [previewId, setPreviewId] = useState<number | null>(null);
   const controller = useRef<ReturnType<typeof attachNativeController> | null>(null);
@@ -108,15 +80,7 @@ function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown) => T,
   }, []);
   return { kind, state, previewId, ...commands, requestPermission: camera.requestPermission };
 }
-export function useCamera({ facing = "back" }: { facing?: "back" | "front" } = {}) {
-  return useSession("photo", decodePhoto, JSON.stringify({ facing }));
-}
-export function useCodeScanner({ formats = [...codeFormats], continuous = false, intervalMs = 1000, facing = "back" }: { formats?: readonly CodeFormat[]; continuous?: boolean; intervalMs?: number; facing?: "back" | "front" } = {}) {
-  if (!Number.isSafeInteger(intervalMs) || intervalMs < 100 || intervalMs > 60_000) throw new RangeError("Scan interval must be between 100 and 60000 milliseconds");
-  if (!formats.length) throw new TypeError("Choose at least one barcode format");
-  return useSession("scanner", decodeCode, JSON.stringify({ formats: formats.map(codeFormat), continuous, intervalMs, facing }));
-}
-export function CameraPreview({ controller }: { controller: ReturnType<typeof useCamera> | ReturnType<typeof useCodeScanner> }) {
+export function CameraPreview({ controller }: { controller: ReturnType<typeof useSession<CapturedPhoto>> | ReturnType<typeof useSession<CodeScan>> }) {
   const command = useAction((run: () => Promise<void>) => run());
   const { state } = controller;
   let content;

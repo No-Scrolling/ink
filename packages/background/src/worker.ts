@@ -1,4 +1,3 @@
-import "ink/runtime";
 import { onNativeMessage } from "ink/native";
 import { runRegisteredTask } from "./index";
 

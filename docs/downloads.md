@@ -3,10 +3,10 @@ title: "Downloads"
 description: "Durable HTTP downloads with native progress and recovery."
 ---
 
-`@ink/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Your app decides which files to keep.
+`@ink/network/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Your app decides which files to keep.
 
 ```ts
-import { downloads } from "@ink/downloads";
+import { downloads } from "@ink/network/downloads";
 
 const download = await downloads.enqueue({
   key: `episode:${episode.id}`,

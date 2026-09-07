@@ -1,4 +1,4 @@
-import { connectivity } from "@ink/connectivity";
+import { connectivity } from "@ink/network/connectivity";
 import { Button, Field, Screen, Text, useAction, useSnapshot } from "ink";
 
 export default function Connectivity() {

@@ -645,7 +645,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
 
     private fun syncTextInput() {
         val active = nativeTextInputActive(engineHandle)
-        textInputAdapter.sync(active, nativeTextInputAction(engineHandle))
+        textInputAdapter.sync(active, nativeTextInputAction(engineHandle), nativeTextInputNumeric(engineHandle))
         inkView.setTextCursorActive(active)
     }
 
@@ -1517,6 +1517,9 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
 
         @JvmStatic
         private external fun nativeTextInputAction(handle: Long): Int
+
+        @JvmStatic
+        private external fun nativeTextInputNumeric(handle: Long): Boolean
 
         @JvmStatic
         private external fun nativeTextInput(handle: Long, action: Int, value: String?): Boolean

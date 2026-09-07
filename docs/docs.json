@@ -47,13 +47,18 @@
           "barcode",
           "camera",
           "clipboard",
-          "connectivity",
-          "downloads",
           "files",
           "light-sdk",
           "location",
           "maps",
-          "network",
+          {
+            "group": "Network",
+            "pages": [
+              "network",
+              "connectivity",
+              "downloads"
+            ]
+          },
           "nfc",
           "notifications",
           "secure-store",

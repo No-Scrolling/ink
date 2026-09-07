@@ -1,3 +1,4 @@
+import "@ink/network";
 import { useEffect, useRef, useState } from "react";
 import { files, type FileRef } from "@ink/files";
 import { Button, Field, Image, Row, Screen, useAction, useSnapshot } from "ink";

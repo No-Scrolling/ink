@@ -69,6 +69,8 @@ pub const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-
 
 const DEFAULT_TEXT_SIZE: f32 = 30.0;
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
+const TEXT_INPUT_AFFIX_SIZE: f32 = 26.0;
+const TEXT_INPUT_AFFIX_GAP: f32 = 8.0;
 const TEXT_INPUT_HEIGHT: f32 = 38.0;
 const TEXT_INPUT_BOTTOM_PADDING: f32 = 6.0;
 const TEXT_INPUT_MAX_LINES: usize = 3;
@@ -582,6 +584,9 @@ enum NodeKind {
         state: StateId,
         action: TextInputAction,
         auto_focus: bool,
+        numeric: bool,
+        prefix: String,
+        suffix: String,
         clear: Mask,
     },
     Button {
@@ -688,6 +693,9 @@ impl Node {
         state: StateId,
         action: TextInputAction,
         auto_focus: bool,
+        numeric: bool,
+        prefix: String,
+        suffix: String,
         clear: Mask,
     ) -> Self {
         Self {
@@ -697,6 +705,9 @@ impl Node {
                 state,
                 action,
                 auto_focus,
+                numeric,
+                prefix,
+                suffix,
                 clear,
             },
         }
@@ -2169,10 +2180,37 @@ impl Engine {
         self.focused_input_action
     }
 
+    pub fn text_input_numeric(&self) -> bool {
+        fn find(node: &Node, target: StateId) -> bool {
+            match &node.kind {
+                NodeKind::TextInput { state, numeric, .. } => *state == target && *numeric,
+                NodeKind::ConversationComposer { children, .. }
+                | NodeKind::Message { children, .. }
+                | NodeKind::MessageQuote { children, .. }
+                | NodeKind::PlayingTransport { children, .. }
+                | NodeKind::PlayingLayout { children, .. }
+                | NodeKind::PlayingPressable { children, .. }
+                | NodeKind::Screen { children, .. }
+                | NodeKind::MediaGridRow { children }
+                | NodeKind::Row { children, .. }
+                | NodeKind::Stack { children, .. }
+                | NodeKind::ReactList { children, .. } => children.iter().any(|child| find(child, target)),
+                NodeKind::Tabs { tabs, .. } => tabs.iter().any(|tab| find(&tab.screen, target)),
+                _ => false,
+            }
+        }
+        self.focused_input.is_some_and(|state| find(&self.root, state))
+    }
+
     pub fn edit_text(&mut self, edit: TextEdit) -> bool {
         let Some(state) = self.focused_input else {
             return false;
         };
+        if let TextEdit::Insert(text) = &edit {
+            if self.text_input_numeric() && !text.bytes().all(|byte| byte.is_ascii_digit()) {
+                return false;
+            }
+        }
         let mut mutated = false;
         let changed = match edit {
             TextEdit::Insert(text) if !text.chars().any(|c| c.is_control() && !(c == '\n' && self.focused_input_action == TextInputAction::Return)) => {
@@ -2593,11 +2631,12 @@ impl Engine {
                     height: (line_height * lines.len() as f32).min(available.height),
                 }
             }
-            NodeKind::TextInput { state, action, .. } => MeasuredSize {
+            NodeKind::TextInput { state, action, prefix, suffix, .. } => MeasuredSize {
                 width: available.width,
                 height: if *action == TextInputAction::Return {
                     let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.as_str(), _ => "" };
-                    let lines = self.input_lines(value, (available.width - self.scaled(1.0)).max(0.0)).len().min(TEXT_INPUT_MAX_LINES);
+                    let (prefix_width, suffix_width) = self.input_affix_widths(prefix, suffix, available.width);
+                    let lines = self.input_lines(value, (available.width - prefix_width - suffix_width - self.scaled(1.0)).max(0.0)).len().min(TEXT_INPUT_MAX_LINES);
                     self.scaled((TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING) * lines as f32 + TEXT_INPUT_BOTTOM_PADDING).min(available.height)
                 } else { self.scaled(TEXT_INPUT_HEIGHT).min(available.height) },
             },
@@ -2778,8 +2817,8 @@ impl Engine {
                     };
                     let size = self.measure(child, Rect { width, ..rect });
                     let child_rect = Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width, height: size.height };
-                    if let NodeKind::TextInput { placeholder, state, action, clear, .. } = &child.kind {
-                        self.layout_text_input(placeholder, *state, *action, clear,
+                    if let NodeKind::TextInput { placeholder, state, action, prefix, suffix, clear, .. } = &child.kind {
+                        self.layout_text_input(placeholder, *state, *action, prefix, suffix, clear,
                             Rect { width: width + side + gap, ..child_rect }, side + gap);
                     } else {
                         let first_hit = self.hit_regions.len();
@@ -2915,9 +2954,11 @@ impl Engine {
                 placeholder,
                 state,
                 action,
+                prefix,
+                suffix,
                 clear,
                 ..
-            } => self.layout_text_input(placeholder, *state, *action, clear, rect, 0.0),
+            } => self.layout_text_input(placeholder, *state, *action, prefix, suffix, clear, rect, 0.0),
             NodeKind::Button {
                 label,
                 icon,
@@ -3560,13 +3601,21 @@ impl Engine {
         lines
     }
 
-    fn layout_multiline_input(&mut self, placeholder: &str, state: StateId, rect: Rect, trailing_width: f32) {
+    fn input_affix_widths(&self, prefix: &str, suffix: &str, width: f32) -> (f32, f32) {
+        let font_size = self.scaled_font(TEXT_INPUT_AFFIX_SIZE);
+        let measure = |text: &str| if text.is_empty() { 0.0 } else {
+            (self.text_width(text, font_size) + self.scaled(TEXT_INPUT_AFFIX_GAP)).min(width / 3.0)
+        };
+        (measure(prefix), measure(suffix))
+    }
+
+    fn layout_multiline_input(&mut self, placeholder: &str, state: StateId, rect: Rect, content: Rect, trailing_width: f32) {
         let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.clone(), _ => String::new() };
         let focused = self.focused_input == Some(state);
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
         let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
         let cursor_width = self.scaled(1.0);
-        let viewport = Rect { width: (rect.width - trailing_width - cursor_width).max(0.0), height: (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0), ..rect };
+        let viewport = Rect { x: content.x, width: (content.width - trailing_width - cursor_width).max(0.0), height: (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0), ..rect };
         let lines = self.input_lines(&value, viewport.width);
         let cursor = if focused { self.focused_input_cursor } else { value.len() };
         let cursor_line = lines.iter().rposition(|(start, _)| *start <= cursor).unwrap_or(0);
@@ -3615,12 +3664,39 @@ impl Engine {
         placeholder: &str,
         state: StateId,
         action: TextInputAction,
+        prefix: &str,
+        suffix: &str,
         clear: &Mask,
         rect: Rect,
         trailing_width: f32,
     ) {
+        let font_size = self.scaled_font(TEXT_INPUT_AFFIX_SIZE);
+        let (prefix_width, suffix_width) = self.input_affix_widths(prefix, suffix, (rect.width - trailing_width).max(0.0));
+        let gap = self.scaled(TEXT_INPUT_AFFIX_GAP);
+        for (text, x, width) in [
+            (prefix, rect.x, prefix_width),
+            (suffix, rect.x + rect.width - trailing_width - suffix_width + gap, suffix_width),
+        ] {
+            if text.is_empty() { continue; }
+            let bounds = Rect {
+                x,
+                y: rect.y,
+                width: (width - gap).max(0.0),
+                height: self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING),
+            };
+            self.scene.text.push(TextRun {
+                text: text.to_owned(),
+                rect: bounds,
+                clip: bounds.intersection(self.clip),
+                font_size,
+                colour: self.scene.colour(Colour::WHITE),
+                align: TextAlign::Start,
+                scrolling: self.scrolling,
+            });
+        }
+        let content = Rect { x: rect.x + prefix_width, width: (rect.width - prefix_width - suffix_width).max(0.0), ..rect };
         if action == TextInputAction::Return {
-            self.layout_multiline_input(placeholder, state, rect, trailing_width);
+            self.layout_multiline_input(placeholder, state, rect, content, trailing_width);
             return;
         }
         let value = match self.state.get(state.0) {
@@ -3648,7 +3724,8 @@ impl Engine {
         };
         let cursor_width = self.scaled(1.0);
         let text_viewport = Rect {
-            width: (rect.width - trailing_width - clear_button_width - clear_gap - cursor_width).max(0.0),
+            x: content.x,
+            width: (content.width - trailing_width - clear_button_width - clear_gap - cursor_width).max(0.0),
             height: text_height,
             ..rect
         };
@@ -3717,7 +3794,7 @@ impl Engine {
             action,
             text_run,
             hit_rect: Rect {
-                width: (rect.width - trailing_width - clear_button_width).max(0.0),
+                width: (rect.width - suffix_width - trailing_width - clear_button_width).max(0.0),
                 ..rect
             }
             .intersection(self.clip),
@@ -3731,7 +3808,7 @@ impl Engine {
         if !value.is_empty() && trailing_width == 0.0 {
             let icon_size = self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE);
             let clear_rect = Rect {
-                x: rect.x + rect.width - clear_button_width,
+                x: content.x + content.width - clear_button_width,
                 y: rect.y,
                 width: clear_button_width,
                 height: rect.height,

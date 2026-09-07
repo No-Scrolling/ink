@@ -1,6 +1,6 @@
 import { URLSearchParams } from "whatwg-url";
 import { ReadableStream } from "web-streams-polyfill";
-import { callNative } from "./native";
+import { callNative } from "ink/native";
 import { fromByteArray, toByteArray } from "base64-js";
 
 type BlobPart = string | ArrayBuffer | ArrayBufferView | Blob;

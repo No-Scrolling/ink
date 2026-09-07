@@ -1,9 +1,12 @@
 {
   "version": 1,
   "modules": {
-    "*": [
+    "src/generate.ts": [
       "barcode-generate",
       "image"
+    ],
+    "src/scan.ts": [
+      "code-scanner"
     ]
   }
 }

@@ -1,13 +1,15 @@
 {
   "version": 1,
   "modules": {
-    "src/index.ts": [
+    "src/image.ts": [
       "image",
-      "network",
-      "text-input"
-    ],
-    "src/web.ts": [
       "network"
+    ],
+    "src/input.ts": [
+      "text-input-full"
+    ],
+    "src/input-numeric.ts": [
+      "text-input"
     ]
   }
 }

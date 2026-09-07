@@ -50,4 +50,4 @@ Picking, capture, recording and downloads return a shared `FileRef`. Use its sou
 
 Completed recordings are retained independently until explicitly deleted. Apps persist file IDs and own reference counting and retention; disposing a screen does not delete accepted attachments.
 
-Audio capture is imported from `@ink/audio/capture`; camera scanning is imported from `@ink/camera/scan`. Playback and still-photo imports exclude those optional native engines. MapLibre and other optional engines follow their module capability graph.
+Audio capture is imported from `@ink/audio/capture`; camera scanning is imported from `@ink/barcode/scan`. Playback and still-photo imports exclude those optional native engines. MapLibre and other optional engines follow their module capability graph.

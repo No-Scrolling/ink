@@ -796,6 +796,12 @@ impl ReactTree {
                     "done" => TextInputAction::Done,
                     value => bail!("unsupported input action {value}"),
                 };
+                let numeric = match string(props, "inputMode").unwrap_or("text") {
+                    "text" => false,
+                    "numeric" => true,
+                    value => bail!("unsupported input mode {value}"),
+                };
+                ensure!(!numeric || action != TextInputAction::Return, "numeric inputs require a search or done action");
                 Node::text_input(
                     string(props, "placeholder").unwrap_or(""),
                     self.inputs
@@ -804,6 +810,9 @@ impl ReactTree {
                         .state,
                     action,
                     props.get("autoFocus") == Some(&Json::Bool(true)),
+                    numeric,
+                    string(props, "prefix").unwrap_or("").to_owned(),
+                    string(props, "suffix").unwrap_or("").to_owned(),
                     self.icon("close", false)?,
                 )
             }

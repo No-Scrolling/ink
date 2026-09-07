@@ -5,11 +5,13 @@ description: "How Ink resolves native requirements, assets and release builds."
 
 ## Product contract
 
-Include native functionality by explicit package entry point, never by inspecting hook arguments or component names. Import `@ink/audio` for playback and `@ink/audio/capture` for recording and analysis. Camera capture uses `@ink/camera`; scanning uses `@ink/camera/scan`. A playback-only app does not require microphone permission or include recorder code, and a capture-only app does not include the barcode scanner.
+Include native functionality by explicit package entry point, never by inspecting hook arguments or component names. Import `@ink/audio` for playback and `@ink/audio/capture` for recording and analysis. Camera capture uses `@ink/camera`; scanning uses `@ink/barcode/scan`. A playback-only app does not require microphone permission or include recorder code, and a capture-only app does not include the barcode scanner.
+
+Networking follows the same rule: `@ink/network` installs web globals, while `/connectivity` and `/downloads` include only their respective native features. UI imports from `ink` do not install web globals. Development compiler tools live in the SDK workspace’s development dependencies, separate from app runtime dependencies.
 
 ## Declare native requirements
 
-The bundler follows resolved imports, including re-exports, aliases, linked packages and worker code. Renaming an imported component does not change its native requirements. Use `ink info` to inspect the result.
+The bundler follows resolved imports, including re-exports, aliases, linked packages and worker code. Renaming an imported component does not change its native requirements. Release builds use the bundler’s output metadata to select retained modules; they do not inspect JSX props. Use `ink info` to inspect the result.
 
 Each supported package ships `ink-native.json` beside `package.json`:
 
@@ -17,7 +19,7 @@ Each supported package ships `ink-native.json` beside `package.json`:
 {"version":1,"modules":{"src/index.ts":["audio-detached"],"src/capture.ts":["audio-capture"]}}
 ```
 
-Paths are relative to the resolved package directory. `*` applies to every loaded module. Named entries apply when that implementation file enters the graph. This supports package export splits without depending on how a consumer names an import. A resolved Ink package missing its declaration fails with an installation/migration diagnostic; unknown capabilities fail during metadata decoding. Ordinary JavaScript dependencies do not require declarations. Third-party packages may provide declarations too.
+Paths are relative to the resolved package directory. `*` applies to each contributing module. Named entries apply when that implementation file contributes code to the release bundle. Modules removed by tree shaking do not add capabilities. Development builds conservatively include loaded modules so refresh can use their exports. This supports package export splits without depending on how a consumer names an import. A resolved Ink package missing its declaration fails with an installation/migration diagnostic; unknown capabilities fail during metadata decoding. Ordinary JavaScript dependencies do not require declarations. Third-party packages may provide declarations too.
 
 `crates/ink-compiler/capabilities-v1.json` owns capability costs, dependency closure, permissions and Android source groups. The compiler resolves dependencies after adding explicit `ink.toml` capabilities. Gradle consumes the same catalogue and retains build actions and SDK dependency wiring.
 

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { downloads } from "@ink/downloads";
+import { downloads } from "@ink/network/downloads";
 import { createStore } from "@ink/store";
 import { Button, Screen, Text, useAction, useSnapshot } from "ink";
 

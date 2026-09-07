@@ -1,3 +1,4 @@
+import "@ink/network";
 export async function streamResponse(base: string, signal: AbortSignal) {
   const response = await fetch(`${base}/stream`, { signal });
   if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);

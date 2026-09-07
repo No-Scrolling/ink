@@ -2,7 +2,7 @@ import { ReadableStream, type ReadableStreamDefaultReader } from "web-streams-po
 import { Blob, FormData, multipart, parseFormData } from "./blob";
 import { URL, URLSearchParams } from "whatwg-url";
 import { requestHttp } from "./http";
-import { callNative } from "./native";
+import { callNative } from "ink/native";
 
 const immutableHeaders = new WeakSet<Headers>();
 const token = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;

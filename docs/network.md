@@ -5,13 +5,11 @@ description: "Use fetch with native HTTP transport."
 
 Ink supports fetch, response streams, Blob, File, FormData, multipart uploads and WebSocket. Public WSS and transport limits still need broader verification.
 
-Use standard `fetch` for HTTP. Enable the `network` capability in `ink.toml`. Ink runs transport natively and delivers completions to JavaScript.
-
-```toml
-capabilities = ["network"]
-```
+Add `@ink/network` to your app’s dependencies and import it in modules that use `fetch`, `WebSocket` or related web globals. The import includes the native transport automatically.
 
 ```ts
+import "@ink/network";
+
 export async function getDepartureBoard(stopId: string, signal?: AbortSignal) {
   const url = new URL("https://api.example.com/departures");
   url.searchParams.set("stop", stopId);
@@ -23,6 +21,17 @@ export async function getDepartureBoard(stopId: string, signal?: AbortSignal) {
 ```
 
 `decodeDepartures` validates the response for your app. A successful HTTP response still needs decoding. `fetch` rejects transport failures and cancellation; HTTP error statuses remain responses. Apply timeouts with `AbortSignal.timeout()` and propagate caller cancellation with `AbortSignal.any()`.
+
+## Optional features
+
+The package has separate entry points for [connection state](/connectivity) and [managed downloads](/downloads):
+
+```ts
+import { connectivity } from "@ink/network/connectivity";
+import { downloads } from "@ink/network/downloads";
+```
+
+These imports include their own native capabilities without installing the web globals. Importing `@ink/network` alone does not include either feature. Native image loading and maps also work without the JavaScript networking globals.
 
 ## Requests
 

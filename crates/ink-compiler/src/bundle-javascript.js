@@ -5,6 +5,7 @@ const development = profile === "development";
 const splitWeb = !development && process.env.INK_SPLIT_WEB !== "0" && output.endsWith("/app.js");
 const inputs = new Set();
 const capabilities = new Set();
+const moduleCapabilities = new Map();
 const assets = new Map();
 const icons = new Map();
 const declarations = new Map();
@@ -33,6 +34,7 @@ for (let directory = root; ; directory = dirname(directory)) {
   if (dirname(directory) === directory) break;
 }
 const frameworkDirectory = dirname(Bun.resolveSync("ink", root));
+let networkEntry;
 const remapping = development ? (await import(Bun.resolveSync("@jridgewell/remapping", frameworkDirectory))).default : null;
 const babel = development ? await import(Bun.resolveSync("@babel/core", frameworkDirectory)) : null;
 const refreshPlugin = development ? (await import(Bun.resolveSync("react-refresh/babel", frameworkDirectory))).default : null;
@@ -62,8 +64,11 @@ async function inspect(path) {
       const { pkg, declaration } = declarations.get(directory);
       if (declaration) {
         const module = relative(directory, path).replaceAll("\\", "/");
-        for (const name of [...(declaration.modules["*"] ?? []), ...(declaration.modules[module] ?? [])]) capabilities.add(name);
+        const names = [...(declaration.modules["*"] ?? []), ...(declaration.modules[module] ?? [])];
+        moduleCapabilities.set(path, names);
+        if (development) for (const name of names) capabilities.add(name);
       }
+      if (pkg.name === "@ink/network" && path === resolve(directory, "src/index.ts")) networkEntry = path;
       return pkg.name;
     }
     const parent = dirname(directory);
@@ -81,6 +86,7 @@ async function addAsset(path) {
 function buildOptions(bootstrap = false) { return {
   entrypoints: [entry], target: "browser", format: development && !bootstrap ? "cjs" : "iife", minify: !development,
   sourcemap: development ? "external" : "none",
+  metafile: true,
   define: { "process.env.NODE_ENV": JSON.stringify(development ? "development" : "production") },
   plugins: [{ name: "ink-resolved-inputs", setup(build) {
     build.onLoad({ filter: /\.ink-icons$/ }, async ({ path }) => {
@@ -109,8 +115,8 @@ function buildOptions(bootstrap = false) { return {
       await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
-      if (splitWeb && path === resolve(frameworkDirectory, "web.ts")) {
-        contents = 'import * as native from "./native";\nlet web;\nfunction loadWeb() { if (!web) { __inkLoadWeb(); web = globalThis.__inkWebFactory(native); delete globalThis.__inkWebFactory; } return web; }\n' + contents.replace('require("./web-globals")[name]', 'loadWeb()[name]');
+      if (splitWeb && path === networkEntry) {
+        contents = 'import * as native from "ink/native";\nlet web;\nfunction loadWeb() { if (!web) { __inkLoadWeb(); web = globalThis.__inkWebFactory(native); delete globalThis.__inkWebFactory; } return web; }\n' + contents.replace('require("./web-globals")[name]', 'loadWeb()[name]');
       }
       if (development && !bootstrap && !path.includes("/node_modules/")) {
         const original = contents;
@@ -153,9 +159,9 @@ function buildOptions(bootstrap = false) { return {
   }}],
 }; }
 let result = await Bun.build(buildOptions());
-if (splitWeb) {
+if (splitWeb && networkEntry) {
   const web = await Bun.build({
-    entrypoints: [resolve(frameworkDirectory, "web-globals.ts")],
+    entrypoints: [resolve(dirname(networkEntry), "web-globals.ts")],
     target: "browser", format: "cjs", minify: true,
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "ink-web-shared-native", setup(build) {
@@ -174,6 +180,7 @@ if (splitWeb) {
   const path = resolve(dirname(output), "ink-web.js");
   await Bun.write(path, 'globalThis.__inkWebFactory = function(inkNative) { const module = {exports:{}}; const exports = module.exports;\n' + await web.outputs[0].text() + '\nreturn module.exports; };');
   assets.set("ink-web.js", path);
+  for (const name of moduleCapabilities.get(networkEntry) ?? []) capabilities.add(name);
 }
 if (development && result.success && components.size) {
   const refreshEntry = resolve(dirname(output), "refresh-entry.js");
@@ -183,6 +190,14 @@ if (development && result.success && components.size) {
   result = await Bun.build(options);
 }
 if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1); }
+if (!development) {
+  for (const bundle of Object.values(result.metafile.outputs)) {
+    for (const [path, contribution] of Object.entries(bundle.inputs)) {
+      if (contribution.bytesInOutput === 0) continue;
+      for (const name of moduleCapabilities.get(resolve(bundleDirectory, path)) ?? []) capabilities.add(name);
+    }
+  }
+}
 let devRuntimeHash;
 if (development) {
   const bootstrapEntry = resolve(dirname(output), "framework-entry.js");

@@ -1,6 +1,6 @@
 import { fromByteArray, toByteArray } from "base64-js";
 import { ReadableStream } from "web-streams-polyfill";
-import { callNative, NativeError } from "./native";
+import { callNative, NativeError } from "ink/native";
 
 interface HttpRequest { url: string; method: string; headers: Readonly<Record<string, string>>; nativeParts?: Iterable<{ bytes: string } | { src: string; offset: number; size: number }> }
 interface HttpResponse { status: number; statusText: string; url: string; headers: [string, string][]; body: ReadableStream<Uint8Array> | null }

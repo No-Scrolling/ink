@@ -34,6 +34,7 @@ pub enum Capability {
     Notifications,
     PhotoCapture,
     TextInput,
+    TextInputFull,
 }
 
 impl Capability {

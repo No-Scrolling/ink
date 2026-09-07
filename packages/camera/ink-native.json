@@ -1,8 +1,12 @@
 {
   "version": 1,
   "modules": {
-    "src/shared.ts": ["camera-permission", "light-sdk"],
-    "src/index.ts": ["photo-capture"],
-    "src/scan.ts": ["code-scanner"]
+    "src/shared.ts": [
+      "camera-permission",
+      "light-sdk"
+    ],
+    "src/index.ts": [
+      "photo-capture"
+    ]
   }
 }

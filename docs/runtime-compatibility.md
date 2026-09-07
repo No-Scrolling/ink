@@ -15,7 +15,7 @@ Extend Ink’s TypeScript configuration:
 }
 ```
 
-This uses ECMAScript 2022 declarations and `ink/runtime-types`, without TypeScript's DOM library or automatically included Node globals. The runtime declarations derive networking, URL, blob, socket and stream types from the implementations Ink actually installs. They do not claim every browser method on similarly named classes. The compiler loads `ink/runtime` before application and worker code.
+This uses ECMAScript 2022 declarations and `ink/runtime-types`, without TypeScript’s DOM library or automatically included Node globals. Import `"@ink/network"` to enable networking, URL, blob, socket and stream globals and their TypeScript declarations. These types describe Ink’s implementations, rather than claiming full browser support. Workers have a separate runtime: import `"@ink/network"` in the worker module when it needs these globals.
 
 TypeScript includes `Intl` declarations, but this QuickJS-ng runtime has no internationalisation engine. Add a compatible polyfill if needed. Each runtime has a 64 MiB JavaScript heap and a 512 KiB stack limit.
 

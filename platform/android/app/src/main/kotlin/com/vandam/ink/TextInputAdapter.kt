@@ -8,7 +8,7 @@ internal sealed interface TextEdit {
 }
 
 internal interface TextInputAdapter {
-    fun sync(active: Boolean, action: Int)
+    fun sync(active: Boolean, action: Int, numeric: Boolean)
     fun setLightAppearance(light: Boolean)
     fun dismiss(): Boolean
     fun applyPreferences(preferences: KeyboardPreferences)

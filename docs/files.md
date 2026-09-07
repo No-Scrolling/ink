@@ -54,7 +54,7 @@ A successful native import makes the file durable. Cancellation before that succ
 
 `files.prepareImage(file, { maxWidth, maxHeight })` returns a new managed image with orientation applied and dimensions bounded while retaining aspect ratio. The original remains intact. Prepared output omits location metadata. This is one preparation operation, not a general image editor.
 
-`fetch(file.src)` reads the local file as a native-backed response. Its `blob()` can be used as a request body or appended to `FormData` without copying the complete file into the JavaScript heap. Native upload preparation copies attachment ranges into an upload spool, preserving multipart boundaries and replay after redirects. Explicit `text()` and `arrayBuffer()` calls materialise bytes; use `body` for incremental reading. Apps supply endpoints, authentication and upload state.
+Import `"@ink/network"` before using `fetch`, `Blob` or `FormData`. `fetch(file.src)` reads the local file as a native-backed response. Its `blob()` can be used as a request body or appended to `FormData` without copying the complete file into the JavaScript heap. Native upload preparation copies attachment ranges into an upload spool, preserving multipart boundaries and replay after redirects. Explicit `text()` and `arrayBuffer()` calls materialise bytes; use `body` for incremental reading. Apps supply endpoints, authentication and upload state.
 
 `files.save(file)` lets the user save an external copy. `files.share(file)` opens an external share destination with temporary Android access grants. Cancellation leaves the original intact.
 

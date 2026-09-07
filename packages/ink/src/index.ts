@@ -1,7 +1,7 @@
 /// <reference path="./assets.d.ts" />
 import type { IconAsset } from "./assets";
-import "./web";
-import { createElement, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { createElement } from "./react";
 import { navigate, type Destination } from "./navigation";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
 export { useAction, type Action } from "./action";
@@ -52,22 +52,7 @@ export function Button(props: {
   return createElement("Button", { ...rest, onPress: href === undefined ? onPress : () => navigate(href) });
 }
 
-export function Row({ image, title, subtitle, href, onPress }: {
-  image?: string;
-  title: string;
-  subtitle?: string;
-  href?: Destination;
-  onPress?: () => void;
-}) {
-  if (href !== undefined && onPress) throw new Error("Row accepts either href or onPress");
-  return createElement("Row", { hasImage: image !== undefined, onPress: href === undefined ? onPress : () => navigate(href) },
-    image !== undefined && createElement(Image, { src: image, width: 50, height: 50, fit: "cover" }),
-    createElement(Stack, { gap: 0 },
-      createElement(Text, { size: 26 }, title),
-      subtitle !== undefined && createElement(Text, { size: 16 }, subtitle),
-    ),
-  );
-}
+export { Row, Image } from "./image";
 
 export function Field(props: {
   label: string;
@@ -97,36 +82,7 @@ export function Icon(props: {
   return createElement("Icon", props);
 }
 
-export function Image(props: {
-  src: string;
-  width: number;
-  height: number;
-  fit?: "contain" | "cover";
-  bleed?: boolean;
-  zoomable?: boolean;
-}) {
-  return createElement("Image", props);
-}
-
-export function TextInput(props: {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit?: (value: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
-  action?: "return" | "search" | "done";
-}) {
-  const [eventCount, setEventCount] = useState(0);
-  const nativeProps = {
-    ...props,
-    eventCount,
-    onChange(value: string, count: number) {
-      setEventCount(count);
-      props.onChange(value);
-    },
-  };
-  return createElement("TextInput", nativeProps);
-}
+export { TextInput } from "./input";
 
 export { List, type ListProps } from "./list";
 export { setColourScheme, useColourScheme, type ColourScheme } from "./appearance";

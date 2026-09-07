@@ -1,4 +1,4 @@
-import { Barcode, type BarcodeFormat } from "@ink/barcode/generate";
+import { Barcode, type BarcodeFormat } from "@ink/barcode";
 import { Button, Screen, Text, useRouteParams } from "ink";
 
 const examples: { format: BarcodeFormat; title: string; value: string }[] = [

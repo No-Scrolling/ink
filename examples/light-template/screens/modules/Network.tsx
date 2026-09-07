@@ -3,6 +3,8 @@ import { Button, Screen } from "ink";
 export default function Network() {
   return (
     <Screen title="Network">
+      <Button href="/modules/connectivity">Connectivity</Button>
+      <Button href="/modules/downloads">Downloads</Button>
       <Button href={{ path: "/modules/network/data", params: { label: "Data Resources" } }}>
         Data Resources
       </Button>

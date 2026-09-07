@@ -751,6 +751,17 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputActive(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputNumeric(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|engine| engine.engine.text_input_numeric()) as jboolean
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputAction(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,

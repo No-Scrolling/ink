@@ -1,3 +1,4 @@
+/// <reference path="../runtime.d.ts" />
 export {};
 
 // The bundler keeps this synchronous dependency uninitialised until first access.

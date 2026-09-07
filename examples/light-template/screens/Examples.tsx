@@ -4,6 +4,7 @@ import { Button, navigate, Screen } from "ink";
 export default function Examples() {
   return (
     <Screen title="Examples" rightAction={{ icon: icons["more_horiz"], onPress: () => navigate("/actions") }}>
+      <Button href="/examples/inputs">Inputs</Button>
       <Button href="/display/typography">Typography</Button>
       <Button href="/display/emoji">Emoji</Button>
       <Button href="/display/local-images">Local images</Button>

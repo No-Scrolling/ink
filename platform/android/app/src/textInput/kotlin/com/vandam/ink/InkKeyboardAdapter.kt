@@ -54,8 +54,9 @@ private class InkKeyboardAdapter(
         activity.setKeyboardInset(inset)
     }
 
-    override fun sync(active: Boolean, action: Int) {
+    override fun sync(active: Boolean, action: Int, numeric: Boolean) {
         if (!active && !keyboardView.isInitialized()) return
+        keyboard.numeric = numeric
         keyboard.action = when (action) {
             0 -> KeyboardAction.Return
             2 -> KeyboardAction.Done
@@ -81,7 +82,7 @@ private class InkKeyboardAdapter(
             return false
         }
         onEdit(TextEdit.Dismiss)
-        sync(false, 0)
+        sync(false, 0, false)
         return true
     }
 
@@ -106,7 +107,7 @@ private class InkKeyboardAdapter(
             onEdit(TextEdit.Insert("\n"))
         } else {
             onEdit(TextEdit.Submit)
-            sync(false, 0)
+            sync(false, 0, false)
         }
     }
 }

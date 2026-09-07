@@ -1,7 +1,7 @@
 import { fromByteArray, toByteArray } from "base64-js";
 import { URL } from "whatwg-url";
 import { Blob } from "./blob";
-import { callNative } from "./native";
+import { callNative } from "ink/native";
 
 export class MessageEvent extends Event {
   readonly data: unknown;

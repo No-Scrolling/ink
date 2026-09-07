@@ -111,8 +111,13 @@
     },
     "media-library": {
       "cost": "native media library browsing and thumbnails",
-      "dependencies": ["files"],
-      "permissions": ["android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO"]
+      "dependencies": [
+        "files"
+      ],
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
+      ]
     },
     "image": {
       "cost": "image decoder",
@@ -242,13 +247,20 @@
       "permissions": []
     },
     "text-input": {
-      "cost": "Public Sans keyboard adapter",
+      "cost": "Numeric keyboard adapter",
       "dependencies": [],
       "permissions": [],
       "androidSourceGroup": {
         "enabled": "textInput",
         "disabled": "noTextInput"
       }
+    },
+    "text-input-full": {
+      "cost": "Letter, symbol and emoji keyboard layouts",
+      "dependencies": [
+        "text-input"
+      ],
+      "permissions": []
     }
   },
   "androidCameraSources": {

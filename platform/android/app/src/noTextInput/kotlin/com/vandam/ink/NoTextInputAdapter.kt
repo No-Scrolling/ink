@@ -7,7 +7,7 @@ internal fun createTextInputAdapter(
     _container: ViewGroup,
     _onEdit: TextEditHandler,
 ): TextInputAdapter = object : TextInputAdapter {
-    override fun sync(active: Boolean, action: Int) = Unit
+    override fun sync(active: Boolean, action: Int, numeric: Boolean) = Unit
 
     override fun setLightAppearance(light: Boolean) = Unit
 

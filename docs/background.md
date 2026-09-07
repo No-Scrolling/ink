@@ -48,6 +48,8 @@ Android chooses when eligible jobs run. Periodic work has a minimum interval of 
 
 A key identifies unique scheduled work: enqueueing the same key coalesces a pending request. If it is already running, a follow-up run is retained so newly queued data is not lost. Keys are not substitutes for idempotency at the remote service.
 
+Import `"@ink/network"` in worker modules that use web globals. Workers do not inherit imports or globals from the foreground app.
+
 Workers have a two-minute execution limit and accept at most 8 KiB of encoded input. Workers can use fetch (including response streams and multipart bodies), WebSocket, Store, task scheduling/state, notifications (schedule/cancel/status) and one-off location with an existing permission grant. Permission screens, UI controllers, camera, microphone and NFC are unavailable inside a worker. Each native call has its own timeout and is cancelled when the worker stops. Retry delays are minimum delays, not execution deadlines.
 
 ## Persist before scheduling

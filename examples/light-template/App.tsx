@@ -13,6 +13,8 @@ import Confirm from "./screens/Confirm";
 import Examples from "./screens/Examples";
 import Home from "./screens/Home";
 import Modules from "./screens/Modules";
+import Inputs, { Affixes } from "./screens/Inputs";
+import Numpad from "./screens/Numpad";
 import Search from "./screens/Search";
 import SearchResults from "./screens/SearchResults";
 import Settings from "./screens/Settings";
@@ -83,9 +85,6 @@ export default function LightTemplate() {
             <Tab icon={icons.home}>
               <Home />
             </Tab>
-            <Tab icon={icons.search}>
-              <Search />
-            </Tab>
             <Tab icon={icons.widgets}>
               <Modules />
             </Tab>
@@ -97,6 +96,10 @@ export default function LightTemplate() {
             </Tab>
           </Tabs>
         </Route>
+        <Route path="/examples/inputs"><Inputs /></Route>
+        <Route path="/examples/inputs/text"><Search /></Route>
+        <Route path="/examples/inputs/numpad"><Numpad /></Route>
+        <Route path="/examples/inputs/affixes"><Affixes /></Route>
         <Route path="/actions"><Actions /></Route>
         <Route path="/examples/action"><ActionResult /></Route>
         <Route path="/examples/reordering"><Reordering /></Route>

@@ -1,3 +1,4 @@
+import "@ink/network";
 import { createStore } from "@ink/store";
 
 export interface Todo {
