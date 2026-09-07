@@ -119,7 +119,7 @@ impl AudioProcessor for PitchProcessor {
             .sum::<f64>()
             / self.samples.len() as f64)
             .sqrt();
-        if rms < 0.008 {
+        if rms < 0.0002 {
             return Some(self.listening());
         }
 
@@ -207,7 +207,7 @@ impl AudioProcessor for PitchProcessor {
 }
 
 const NOTES: [&str; 12] = [
-    "C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B",
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
 ];
 
 fn pitch_value(
