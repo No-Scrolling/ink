@@ -79,6 +79,10 @@ For dynamic lookups, use the default collection import and `findIcon(collection,
 
 `resolution` sets the raster size in logical units, from 16 to 128. Ink applies its 2.55 pixel scale and native display scaling. Rendering above the declared resolution can soften edges. Back and input-clear icons are always included.
 
+## Native shaders
+
+Ink renders directly through Vulkan. Naga compiles its shaders to SPIR-V on the build machine; apps do not bundle a runtime shader compiler. The renderer requires Vulkan 1.1 and an sRGB presentation format.
+
 ## Build metadata
 
 A successful bundle emits `.ink/bundle/ink-bundle-v1.json`; only development builds copy it to Android assets. Version 1 contains absolute resolved `inputs`, content-addressed `assets` with source paths, closed `capabilities`, `worker`, `frameworkVersion`, `protocolVersion` and `profile`. Development compilation emits readable development React code and external source maps. Release compilation minifies production code and omits build metadata and source maps. Watching must ignore generated `.ink` inputs and watch graph/config changes; the manifest is local build metadata, not portable source paths.

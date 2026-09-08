@@ -1,5 +1,5 @@
 [package]
-name = "ink-renderer-wgpu"
+name = "ink-renderer-vulkan"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -12,13 +12,10 @@ bytemuck.workspace = true
 ink-core = { path = "../ink-core" }
 miniz_oxide.workspace = true
 unicode-segmentation.workspace = true
-wgpu.workspace = true
+ash = { version = "0.38.0", default-features = false, features = ["loaded", "std", "debug"] }
 
 [build-dependencies]
 naga = { version = "30.0.1", features = ["spv-out", "wgsl-in"] }
-
-[lib]
-path = "src/lib.rs"
 
 [features]
 image = []

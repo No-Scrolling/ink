@@ -16,7 +16,7 @@ use ink_core::{
     CameraPreviewKind, ControllerId, Engine, NativeRequestKind, PUBLIC_SANS, PointerOutcome,
     ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
 };
-use ink_renderer_wgpu::{RenderOutcome, Renderer};
+use ink_renderer_vulkan::{RenderOutcome, Renderer, SystemGlyphRequest};
 use jni::EnvUnowned;
 use jni::objects::JByteArray;
 #[cfg(feature = "audio")]
@@ -102,22 +102,8 @@ struct AndroidEngine {
 }
 
 struct AttachedSurface {
-    _window: Arc<NativeWindow>,
     renderer: Renderer,
-}
-
-struct AndroidWindow(Arc<NativeWindow>);
-
-impl wgpu::rwh::HasWindowHandle for AndroidWindow {
-    fn window_handle(&self) -> Result<wgpu::rwh::WindowHandle<'_>, wgpu::rwh::HandleError> {
-        self.0.window_handle()
-    }
-}
-
-impl wgpu::rwh::HasDisplayHandle for AndroidWindow {
-    fn display_handle(&self) -> Result<wgpu::rwh::DisplayHandle<'_>, wgpu::rwh::HandleError> {
-        Ok(wgpu::rwh::DisplayHandle::android())
-    }
+    _window: NativeWindow,
 }
 
 impl AndroidEngine {
@@ -144,32 +130,16 @@ impl AndroidEngine {
             android_log(ANDROID_LOG_ERROR, "ANativeWindow_fromSurface returned null");
             return;
         };
-        let window = Arc::new(window);
-        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
-        descriptor.backends = wgpu::Backends::VULKAN;
-        descriptor.flags = wgpu::InstanceFlags::empty();
-        let instance = wgpu::Instance::new(descriptor);
-        let wgpu_surface = match instance.create_surface(AndroidWindow(window.clone())) {
-            Ok(surface) => surface,
+        let renderer = match unsafe { Renderer::new(window.ptr().as_ptr().cast(), width, height) } {
+            Ok(renderer) => renderer,
             Err(error) => {
                 android_log(
                     ANDROID_LOG_ERROR,
-                    &format!("failed to create wgpu surface: {error}"),
+                    &format!("failed to initialise Vulkan: {error:#}"),
                 );
                 return;
             }
         };
-        let renderer =
-            match pollster::block_on(Renderer::new(instance, wgpu_surface, width, height)) {
-                Ok(renderer) => renderer,
-                Err(error) => {
-                    android_log(
-                        ANDROID_LOG_ERROR,
-                        &format!("failed to initialise renderer: {error:#}"),
-                    );
-                    return;
-                }
-            };
 
         self.surface = Some(AttachedSurface {
             _window: window,
@@ -319,10 +289,7 @@ impl AndroidEngine {
         self.engine.fail_native(request_id, error)
     }
 
-    fn render(
-        &mut self,
-        text_cursor_visible: bool,
-    ) -> Option<ink_renderer_wgpu::SystemGlyphRequest> {
+    fn render(&mut self, text_cursor_visible: bool) -> Option<SystemGlyphRequest> {
         // Keep the last complete frame while rows or the camera review image load.
         if !self.engine.list_viewports_ready() || !self.engine.camera_review_ready() {
             return None;
@@ -402,6 +369,9 @@ impl AndroidEngine {
                     renderer.cache_misses,
                 ),
             );
+            if let Some(ns) = renderer.gpu_ns {
+                android_log(ANDROID_LOG_INFO, &format!("GPU command_span_ns={ns}"));
+            }
             self.update_ns = 0;
         }
         if surface_lost {

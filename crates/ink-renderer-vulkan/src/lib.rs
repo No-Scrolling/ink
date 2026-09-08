@@ -1,5 +1,6 @@
 #[cfg(all(target_os = "android", feature = "image"))]
 mod android_image;
+mod gpu;
 #[cfg(all(target_os = "android", not(feature = "image")))]
 mod android_image {
     use anyhow::{Result, anyhow};

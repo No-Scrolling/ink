@@ -1,3 +1,4 @@
+use crate::gpu;
 use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
@@ -35,15 +36,14 @@ enum SystemGlyphEntry {
 }
 
 struct AtlasPage {
-    texture: wgpu::Texture,
-    bind_group: wgpu::BindGroup,
+    texture: gpu::Texture,
+    bind_group: gpu::BindGroup,
     cursor_x: u32,
     cursor_y: u32,
     row_height: u32,
 }
 
 pub(crate) struct SystemGlyphAtlas {
-    bind_group_layout: wgpu::BindGroupLayout,
     pages: Vec<AtlasPage>,
     glyphs: HashMap<SystemGlyphKey, SystemGlyphEntry>,
     next_request_id: u64,
@@ -59,9 +59,8 @@ impl SystemGlyphAtlas {
         self.pages.len() * ATLAS_SIZE as usize * ATLAS_SIZE as usize * 4
     }
 
-    pub fn new(bind_group_layout: wgpu::BindGroupLayout) -> Self {
+    pub fn new() -> Self {
         Self {
-            bind_group_layout,
             pages: Vec::new(),
             glyphs: HashMap::new(),
             next_request_id: 1,
@@ -124,14 +123,14 @@ impl SystemGlyphAtlas {
         }
     }
 
-    pub fn bind_group(&self, page: usize) -> &wgpu::BindGroup {
+    pub fn bind_group(&self, page: usize) -> &gpu::BindGroup {
         &self.pages[page].bind_group
     }
 
     pub fn install(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        device: &gpu::Device,
+        queue: &gpu::Queue,
         request_id: u64,
         pixels: Option<&[u8]>,
     ) -> Result<()> {
@@ -157,8 +156,7 @@ impl SystemGlyphAtlas {
             .iter_mut()
             .position(|page| page.can_fit(size))
             .unwrap_or_else(|| {
-                self.pages
-                    .push(AtlasPage::new(device, &self.bind_group_layout));
+                self.pages.push(AtlasPage::new(device));
                 self.pages.len() - 1
             });
         let (atlas_x, atlas_y) = self.pages[page].write(queue, pixels, size);
@@ -188,42 +186,9 @@ impl SystemGlyphAtlas {
 }
 
 impl AtlasPage {
-    fn new(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Ink system glyph atlas"),
-            size: wgpu::Extent3d {
-                width: ATLAS_SIZE,
-                height: ATLAS_SIZE,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Ink system glyph sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Ink system glyph bind group"),
-            layout: bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
+    fn new(device: &gpu::Device) -> Self {
+        let texture = device.texture(ATLAS_SIZE, ATLAS_SIZE, false);
+        let bind_group = texture.bind_group();
         Self {
             texture,
             bind_group,
@@ -239,7 +204,7 @@ impl AtlasPage {
             || (padded <= ATLAS_SIZE && self.cursor_y + self.row_height + padded <= ATLAS_SIZE)
     }
 
-    fn write(&mut self, queue: &wgpu::Queue, pixels: &[u8], size: u32) -> (u32, u32) {
+    fn write(&mut self, queue: &gpu::Queue, pixels: &[u8], size: u32) -> (u32, u32) {
         let padded = size + PADDING * 2;
         if self.cursor_x + padded > ATLAS_SIZE {
             self.cursor_x = 0;
@@ -248,29 +213,7 @@ impl AtlasPage {
         }
         let atlas_x = self.cursor_x + PADDING;
         let atlas_y = self.cursor_y + PADDING;
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: atlas_x,
-                    y: atlas_y,
-                    z: 0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
-            pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(size * 4),
-                rows_per_image: Some(size),
-            },
-            wgpu::Extent3d {
-                width: size,
-                height: size,
-                depth_or_array_layers: 1,
-            },
-        );
+        queue.write_texture(&self.texture, [atlas_x, atlas_y], [size, size], pixels);
         self.cursor_x += padded;
         self.row_height = self.row_height.max(padded);
         (atlas_x, atlas_y)

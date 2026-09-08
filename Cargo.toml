@@ -5,7 +5,7 @@ members = [
   "crates/ink-cli",
   "crates/ink-compiler",
   "crates/ink-core",
-  "crates/ink-renderer-wgpu",
+  "crates/ink-renderer-vulkan",
   "crates/ink-runtime",
   "platform/android/native",
 ]
@@ -26,14 +26,12 @@ jni = "0.22.4"
 miniz_oxide = "0.8.9"
 ndk = "0.9.0"
 owo-colors = { version = "4.2.3", features = ["supports-colors"] }
-pollster = "0.4.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 toml = "0.9.8"
 unicode-linebreak = "0.1.5"
 unicode-segmentation = "1.13.1"
 unicode-properties = { version = "0.1.4", default-features = false, features = ["emoji"] }
-wgpu = { version = "30.0.1", default-features = false, features = ["std", "vulkan"] }
 
 [profile.release]
 codegen-units = 1

@@ -1,3 +1,4 @@
+use crate::gpu;
 #[cfg(feature = "perf")]
 use std::time::Instant;
 use std::{
@@ -11,7 +12,8 @@ use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
     Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene,
-    TextAlign, TextRun, is_emoji_grapheme, font_for_character, tabular_digit_width, text_width_with_numbers,
+    TextAlign, TextRun, font_for_character, is_emoji_grapheme, tabular_digit_width,
+    text_width_with_numbers,
 };
 #[cfg(feature = "perf")]
 use ink_core::{PerfTraceSection, perf_trace_counter};
@@ -49,7 +51,7 @@ struct TransformUniform {
 }
 
 struct InstanceBuffer<T> {
-    buffer: Option<wgpu::Buffer>,
+    buffer: Option<gpu::Buffer>,
     capacity: usize,
     instances: Vec<T>,
     label: &'static str,
@@ -61,7 +63,7 @@ impl<T: Pod + PartialEq> InstanceBuffer<T> {
         self.capacity * size_of::<T>()
     }
 
-    fn new(device: &wgpu::Device, label: &'static str, capacity: usize) -> Self {
+    fn new(device: &gpu::Device, label: &'static str, capacity: usize) -> Self {
         Self {
             buffer: Some(raw_instance_buffer::<T>(device, label, capacity)),
             capacity,
@@ -79,13 +81,13 @@ impl<T: Pod + PartialEq> InstanceBuffer<T> {
         }
     }
 
-    fn buffer(&self) -> &wgpu::Buffer {
+    fn buffer(&self) -> &gpu::Buffer {
         self.buffer
             .as_ref()
             .expect("instances uploaded before drawing")
     }
 
-    fn write(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, instances: &[T]) -> usize {
+    fn write(&mut self, device: &gpu::Device, queue: &gpu::Queue, instances: &[T]) -> usize {
         let resized = instances.len() > self.capacity;
         if resized {
             self.capacity = instances.len().next_power_of_two();
@@ -226,8 +228,8 @@ struct CachedMask {
 }
 
 struct CachedImage {
-    _texture: wgpu::Texture,
-    bind_group: wgpu::BindGroup,
+    _texture: gpu::Texture,
+    bind_group: gpu::BindGroup,
     width: u32,
     height: u32,
     generation: u64,
@@ -236,7 +238,6 @@ struct CachedImage {
 }
 
 struct ImageCache {
-    bind_group_layout: wgpu::BindGroupLayout,
     images: HashMap<u64, CachedImage>,
     frame: u64,
     #[cfg(feature = "perf")]
@@ -246,9 +247,8 @@ struct ImageCache {
 }
 
 impl ImageCache {
-    fn new(bind_group_layout: wgpu::BindGroupLayout) -> Self {
+    fn new() -> Self {
         Self {
-            bind_group_layout,
             images: HashMap::new(),
             frame: 0,
             #[cfg(feature = "perf")]
@@ -260,8 +260,8 @@ impl ImageCache {
 
     fn prepare(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        device: &gpu::Device,
+        queue: &gpu::Queue,
         image: &ImageData,
     ) -> Result<&CachedImage> {
         let id = image.id();
@@ -304,60 +304,9 @@ impl ImageCache {
             if pixels.len() != expected_length {
                 return Err(anyhow!("an Ink image has invalid pixel data"));
             }
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Ink image"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &pixels,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(width * 4),
-                    rows_per_image: Some(height),
-                },
-                wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-            );
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("Ink image sampler"),
-                mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Linear,
-                ..Default::default()
-            });
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Ink image bind group"),
-                layout: &self.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                ],
-            });
+            let texture = device.texture(width, height, false);
+            queue.write_texture(&texture, [0, 0], [width, height], &pixels);
+            let bind_group = texture.bind_group();
             self.images.insert(
                 id,
                 CachedImage {
@@ -440,8 +389,8 @@ struct SystemGlyphDraw {
 
 struct GlyphAtlas {
     font: FontRef<'static>,
-    texture: wgpu::Texture,
-    bind_group: wgpu::BindGroup,
+    texture: gpu::Texture,
+    bind_group: gpu::BindGroup,
     glyphs: HashMap<(usize, GlyphId, u16), CachedGlyph>,
     masks: HashMap<u64, CachedMask>,
     cursor_x: u32,
@@ -454,43 +403,10 @@ struct GlyphAtlas {
 }
 
 impl GlyphAtlas {
-    fn new(device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout) -> Result<Self> {
+    fn new(device: &gpu::Device) -> Result<Self> {
         let font = FontRef::try_from_slice(PUBLIC_SANS).context("Public Sans is invalid")?;
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Ink glyph atlas"),
-            size: wgpu::Extent3d {
-                width: ATLAS_SIZE,
-                height: ATLAS_SIZE,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Ink glyph sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Ink glyph atlas bind group"),
-            layout: bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
+        let texture = device.texture(ATLAS_SIZE, ATLAS_SIZE, true);
+        let bind_group = texture.bind_group();
 
         Ok(Self {
             font,
@@ -510,7 +426,7 @@ impl GlyphAtlas {
 
     fn glyph(
         &mut self,
-        queue: &wgpu::Queue,
+        queue: &gpu::Queue,
         character: char,
         size: u16,
     ) -> Result<Option<CachedGlyph>> {
@@ -532,9 +448,7 @@ impl GlyphAtlas {
         let width = glyph_width + ATLAS_PADDING * 2;
         let height = glyph_height + ATLAS_PADDING * 2;
         if width > ATLAS_SIZE || height > ATLAS_SIZE {
-            return Err(anyhow!(
-                "a font glyph exceeds the Ink atlas dimensions"
-            ));
+            return Err(anyhow!("a font glyph exceeds the Ink atlas dimensions"));
         }
         if self.cursor_x + width > ATLAS_SIZE {
             self.cursor_x = 0;
@@ -550,27 +464,10 @@ impl GlyphAtlas {
             pixels[(y * glyph_width + x) as usize] = (coverage * 255.0).round() as u8;
         });
         queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: self.cursor_x + ATLAS_PADDING,
-                    y: self.cursor_y + ATLAS_PADDING,
-                    z: 0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
+            &self.texture,
+            [self.cursor_x + ATLAS_PADDING, self.cursor_y + ATLAS_PADDING],
+            [glyph_width, glyph_height],
             &pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(glyph_width),
-                rows_per_image: Some(glyph_height),
-            },
-            wgpu::Extent3d {
-                width: glyph_width,
-                height: glyph_height,
-                depth_or_array_layers: 1,
-            },
         );
 
         let glyph = CachedGlyph {
@@ -592,7 +489,7 @@ impl GlyphAtlas {
         Ok(Some(glyph))
     }
 
-    fn mask(&mut self, queue: &wgpu::Queue, mask: &Mask) -> Result<CachedMask> {
+    fn mask(&mut self, queue: &gpu::Queue, mask: &Mask) -> Result<CachedMask> {
         if let Some(mask) = self.masks.get(&mask.id) {
             return Ok(*mask);
         }
@@ -617,27 +514,10 @@ impl GlyphAtlas {
         }
 
         queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: self.cursor_x + ATLAS_PADDING,
-                    y: self.cursor_y + ATLAS_PADDING,
-                    z: 0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
+            &self.texture,
+            [self.cursor_x + ATLAS_PADDING, self.cursor_y + ATLAS_PADDING],
+            [width, height],
             mask.pixels.as_ref(),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width),
-                rows_per_image: Some(height),
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
         );
 
         let cached = CachedMask {
@@ -677,6 +557,7 @@ pub enum RenderOutcome {
 #[cfg(feature = "perf")]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RenderPerfMetrics {
+    pub gpu_ns: Option<u64>,
     pub prepare_ns: u64,
     pub upload_ns: u64,
     pub acquire_ns: u64,
@@ -701,22 +582,20 @@ pub struct RenderMemoryMetrics {
 }
 
 pub struct Renderer {
-    _instance: wgpu::Instance,
-    surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    fixed_transform: wgpu::BindGroup,
-    scroll_transform: wgpu::BindGroup,
-    scroll_transform_buffer: wgpu::Buffer,
-    quad_pipeline: wgpu::RenderPipeline,
+    surface: gpu::Surface,
+    device: gpu::Device,
+    queue: gpu::Queue,
+    config: gpu::SurfaceConfiguration,
+    fixed_transform: gpu::BindGroup,
+    scroll_transform: gpu::BindGroup,
+    scroll_transform_buffer: gpu::Buffer,
+    quad_pipeline: gpu::RenderPipeline,
     quad_buffer: InstanceBuffer<QuadInstance>,
     overlay_buffer: InstanceBuffer<QuadInstance>,
     overlay_instances: Vec<QuadInstance>,
-    text_pipeline: wgpu::RenderPipeline,
+    text_pipeline: gpu::RenderPipeline,
     text_buffer: InstanceBuffer<TextInstance>,
-    image_pipeline: Option<wgpu::RenderPipeline>,
-    transform_layout: wgpu::BindGroupLayout,
+    image_pipeline: Option<gpu::RenderPipeline>,
     image_buffer: InstanceBuffer<TextInstance>,
     image_cache: ImageCache,
     system_glyph_buffer: InstanceBuffer<TextInstance>,
@@ -728,229 +607,21 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub async fn new(
-        instance: wgpu::Instance,
-        surface: wgpu::Surface<'static>,
-        width: u32,
-        height: u32,
-    ) -> Result<Self> {
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::LowPower,
-                force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
-                apply_limit_buckets: false,
-            })
-            .await
-            .context("no Vulkan adapter supports the Android surface")?;
-        if !adapter
-            .features()
-            .contains(wgpu::Features::PASSTHROUGH_SHADERS)
-        {
-            return Err(anyhow!(
-                "the Vulkan adapter does not support SPIR-V passthrough"
-            ));
-        }
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                required_features: wgpu::Features::PASSTHROUGH_SHADERS,
-                ..Default::default()
-            })
-            .await
-            .context("failed to create the Vulkan device")?;
-
-        let capabilities = surface.get_capabilities(&adapter);
-        let format = capabilities
-            .formats
-            .iter()
-            .copied()
-            .find(wgpu::TextureFormat::is_srgb)
-            .or_else(|| capabilities.formats.first().copied())
-            .ok_or_else(|| anyhow!("the Android surface exposes no texture formats"))?;
-        let present_mode = capabilities
-            .present_modes
-            .iter()
-            .copied()
-            .find(|mode| *mode == wgpu::PresentMode::Fifo)
-            .or_else(|| capabilities.present_modes.first().copied())
-            .ok_or_else(|| anyhow!("the Android surface exposes no present modes"))?;
-        let alpha_mode = capabilities
-            .alpha_modes
-            .iter()
-            .copied()
-            .find(|mode| *mode == wgpu::CompositeAlphaMode::Opaque)
-            .or_else(|| capabilities.alpha_modes.first().copied())
-            .ok_or_else(|| anyhow!("the Android surface exposes no alpha modes"))?;
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: width.max(1),
-            height: height.max(1),
-            present_mode,
-            alpha_mode,
-            view_formats: Vec::new(),
-            desired_maximum_frame_latency: 1,
-            color_space: wgpu::SurfaceColorSpace::Auto,
+    pub unsafe fn new(window: *mut std::ffi::c_void, width: u32, height: u32) -> Result<Self> {
+        let surface = unsafe { gpu::Surface::new(window, width, height)? };
+        let device = surface.device();
+        let queue = device.clone();
+        let config = gpu::SurfaceConfiguration {
+            width,
+            height,
+            format: surface.format(),
         };
-        surface.configure(&device, &config);
-
-        let quad_vertex_shader = spirv_shader(
-            &device,
-            "quad_vertex",
-            include_bytes!(concat!(env!("OUT_DIR"), "/quad_vertex.spv")),
-        );
-        let quad_fragment_shader = spirv_shader(
-            &device,
-            "quad_fragment",
-            include_bytes!(concat!(env!("OUT_DIR"), "/quad_fragment.spv")),
-        );
-        let text_vertex_shader = spirv_shader(
-            &device,
-            "text_vertex",
-            include_bytes!(concat!(env!("OUT_DIR"), "/text_vertex.spv")),
-        );
-        let text_fragment_shader = spirv_shader(
-            &device,
-            "text_fragment",
-            include_bytes!(concat!(env!("OUT_DIR"), "/text_fragment.spv")),
-        );
-        let transform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Ink transform bind group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let glyph_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Ink glyph bind group layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-        let quad_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Ink quad pipeline layout"),
-            bind_group_layouts: &[Some(&transform_layout)],
-            immediate_size: 0,
-        });
-        let quad_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Ink quad pipeline"),
-            layout: Some(&quad_layout),
-            vertex: wgpu::VertexState {
-                module: &quad_vertex_shader,
-                entry_point: Some("quad_vertex"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: size_of::<QuadInstance>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 4]>() as u64,
-                            shader_location: 1,
-                        },
-                    ],
-                })],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &quad_fragment_shader,
-                entry_point: Some("quad_fragment"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(colour_target(format))],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        let text_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Ink text pipeline layout"),
-            bind_group_layouts: &[Some(&transform_layout), Some(&glyph_bind_group_layout)],
-            immediate_size: 0,
-        });
-        let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Ink text pipeline"),
-            layout: Some(&text_layout),
-            vertex: wgpu::VertexState {
-                module: &text_vertex_shader,
-                entry_point: Some("text_vertex"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: size_of::<TextInstance>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 4]>() as u64,
-                            shader_location: 1,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: size_of::<[f32; 8]>() as u64,
-                            shader_location: 2,
-                        },
-                    ],
-                })],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &text_fragment_shader,
-                entry_point: Some("text_fragment"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(colour_target(format))],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        let image_bind_group_layout = glyph_bind_group_layout.clone();
+        let quad_pipeline = device.pipeline(config.format, false, false)?;
+        let text_pipeline = device.pipeline(config.format, true, false)?;
         let fixed_transform_buffer = transform_buffer(&device, "Ink fixed transform");
         let scroll_transform_buffer = transform_buffer(&device, "Ink scroll transform");
-        let fixed_transform = transform_bind_group(
-            &device,
-            &transform_layout,
-            &fixed_transform_buffer,
-            "Ink fixed transform",
-        );
-        let scroll_transform = transform_bind_group(
-            &device,
-            &transform_layout,
-            &scroll_transform_buffer,
-            "Ink scroll transform",
-        );
+        let fixed_transform = fixed_transform_buffer.bind_group();
+        let scroll_transform = scroll_transform_buffer.bind_group();
         queue.write_buffer(
             &fixed_transform_buffer,
             0,
@@ -962,13 +633,12 @@ impl Renderer {
         let overlay_buffer = InstanceBuffer::new(&device, "Ink overlay instances", 3);
         let text_buffer = InstanceBuffer::new(&device, "Ink text instances", MAX_GLYPHS);
         let image_buffer = InstanceBuffer::lazy("Ink image instances");
-        let system_glyph_atlas = SystemGlyphAtlas::new(image_bind_group_layout.clone());
-        let image_cache = ImageCache::new(image_bind_group_layout);
+        let system_glyph_atlas = SystemGlyphAtlas::new();
+        let image_cache = ImageCache::new();
         let system_glyph_buffer = InstanceBuffer::lazy("Ink system glyph instances");
-        let glyph_atlas = GlyphAtlas::new(&device, &glyph_bind_group_layout)?;
+        let glyph_atlas = GlyphAtlas::new(&device)?;
 
         Ok(Self {
-            _instance: instance,
             surface,
             device,
             queue,
@@ -983,7 +653,6 @@ impl Renderer {
             text_pipeline,
             text_buffer,
             image_pipeline: None,
-            transform_layout,
             image_buffer,
             image_cache,
             system_glyph_buffer,
@@ -1001,14 +670,23 @@ impl Renderer {
         }
         self.config.width = width;
         self.config.height = height;
-        self.surface.configure(&self.device, &self.config);
+        self.surface.resize(self.config.width, self.config.height);
     }
 
     pub fn render(&mut self, scene: &Scene, text_cursor_visible: bool) -> Result<RenderOutcome> {
+        match self.render_frame(scene, text_cursor_visible) {
+            Err(error) if gpu::surface_lost(&error) => Ok(RenderOutcome::SurfaceLost),
+            result => result,
+        }
+    }
+
+    fn render_frame(&mut self, scene: &Scene, text_cursor_visible: bool) -> Result<RenderOutcome> {
         #[cfg(feature = "perf")]
         let frame_started = Instant::now();
         #[cfg(feature = "perf")]
         let frame_trace = PerfTraceSection::new(b"Ink frame\0");
+        // Shared buffers and cached textures cannot change until the previous draw completes.
+        self.surface.wait_for_frame()?;
         if scene.width == 0 || scene.height == 0 {
             return Ok(RenderOutcome::Skipped);
         }
@@ -1071,6 +749,7 @@ impl Renderer {
         let _overlay_uploaded_bytes =
             self.overlay_buffer
                 .write(&self.device, &self.queue, &self.overlay_instances);
+        self.queue.flush_uploads();
         #[cfg(feature = "perf")]
         {
             drop(upload_trace);
@@ -1088,23 +767,8 @@ impl Renderer {
         let acquire_started = Instant::now();
         #[cfg(feature = "perf")]
         let acquire_trace = PerfTraceSection::new(b"Ink acquire\0");
-        let mut retried_outdated_surface = false;
-        let frame = loop {
-            match self.surface.get_current_texture() {
-                wgpu::CurrentSurfaceTexture::Success(frame)
-                | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => break frame,
-                wgpu::CurrentSurfaceTexture::Outdated if !retried_outdated_surface => {
-                    retried_outdated_surface = true;
-                    self.surface.configure(&self.device, &self.config);
-                }
-                wgpu::CurrentSurfaceTexture::Outdated
-                | wgpu::CurrentSurfaceTexture::Timeout
-                | wgpu::CurrentSurfaceTexture::Occluded => return Ok(RenderOutcome::Skipped),
-                wgpu::CurrentSurfaceTexture::Lost => return Ok(RenderOutcome::SurfaceLost),
-                wgpu::CurrentSurfaceTexture::Validation => {
-                    return Err(anyhow!("surface validation failed"));
-                }
-            }
+        let Some(mut pass) = self.surface.begin(scene.light)? else {
+            return Ok(RenderOutcome::Skipped);
         };
         #[cfg(feature = "perf")]
         {
@@ -1115,45 +779,17 @@ impl Renderer {
         let encode_started = Instant::now();
         #[cfg(feature = "perf")]
         let encode_trace = PerfTraceSection::new(b"Ink encode\0");
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Ink frame encoder"),
-            });
         {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Ink frame"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(if scene.light {
-                            wgpu::Color::WHITE
-                        } else {
-                            wgpu::Color::BLACK
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
             if !self.prepared.quad_fixed.is_empty() {
                 pass.set_pipeline(&self.quad_pipeline);
-                pass.set_bind_group(0, &self.fixed_transform, &[]);
-                pass.set_vertex_buffer(0, self.quad_buffer.buffer().slice(..));
+                pass.set_bind_group(0, &self.fixed_transform);
+                pass.set_vertex_buffer(0, self.quad_buffer.buffer());
                 pass.draw(0..6, self.prepared.quad_fixed.clone());
             }
             if !self.prepared.quad_scroll.is_empty() {
                 pass.set_pipeline(&self.quad_pipeline);
-                pass.set_bind_group(0, &self.scroll_transform, &[]);
-                pass.set_vertex_buffer(0, self.quad_buffer.buffer().slice(..));
+                pass.set_bind_group(0, &self.scroll_transform);
+                pass.set_vertex_buffer(0, self.quad_buffer.buffer());
                 set_scroll_scissor(&mut pass, scene);
                 pass.draw(0..6, self.prepared.quad_scroll.clone());
                 reset_scissor(&mut pass, scene);
@@ -1164,7 +800,7 @@ impl Renderer {
                         .as_ref()
                         .expect("image pipeline prepared before drawing"),
                 );
-                pass.set_vertex_buffer(0, self.image_buffer.buffer().slice(..));
+                pass.set_vertex_buffer(0, self.image_buffer.buffer());
                 for draw in &self.prepared.image_draws {
                     let image = self
                         .image_cache
@@ -1178,9 +814,8 @@ impl Renderer {
                         } else {
                             &self.fixed_transform
                         },
-                        &[],
                     );
-                    pass.set_bind_group(1, &image.bind_group, &[]);
+                    pass.set_bind_group(1, &image.bind_group);
                     if draw.scrolling {
                         set_scroll_scissor(&mut pass, scene);
                     } else {
@@ -1196,7 +831,7 @@ impl Renderer {
                         .as_ref()
                         .expect("image pipeline prepared before drawing"),
                 );
-                pass.set_vertex_buffer(0, self.system_glyph_buffer.buffer().slice(..));
+                pass.set_vertex_buffer(0, self.system_glyph_buffer.buffer());
                 for draw in &self.prepared.system_glyph_draws {
                     pass.set_bind_group(
                         0,
@@ -1205,9 +840,8 @@ impl Renderer {
                         } else {
                             &self.fixed_transform
                         },
-                        &[],
                     );
-                    pass.set_bind_group(1, self.system_glyph_atlas.bind_group(draw.page), &[]);
+                    pass.set_bind_group(1, self.system_glyph_atlas.bind_group(draw.page));
                     if draw.scrolling {
                         set_scroll_scissor(&mut pass, scene);
                     } else {
@@ -1219,16 +853,16 @@ impl Renderer {
             }
             if !self.prepared.text_fixed.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
-                pass.set_bind_group(0, &self.fixed_transform, &[]);
-                pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.text_buffer.buffer().slice(..));
+                pass.set_bind_group(0, &self.fixed_transform);
+                pass.set_bind_group(1, &self.glyph_atlas.bind_group);
+                pass.set_vertex_buffer(0, self.text_buffer.buffer());
                 pass.draw(0..6, self.prepared.text_fixed.clone());
             }
             if !self.prepared.text_scroll.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
-                pass.set_bind_group(0, &self.scroll_transform, &[]);
-                pass.set_bind_group(1, &self.glyph_atlas.bind_group, &[]);
-                pass.set_vertex_buffer(0, self.text_buffer.buffer().slice(..));
+                pass.set_bind_group(0, &self.scroll_transform);
+                pass.set_bind_group(1, &self.glyph_atlas.bind_group);
+                pass.set_vertex_buffer(0, self.text_buffer.buffer());
                 set_scroll_scissor(&mut pass, scene);
                 pass.draw(0..6, self.prepared.text_scroll.clone());
                 reset_scissor(&mut pass, scene);
@@ -1246,9 +880,8 @@ impl Renderer {
                     } else {
                         &self.fixed_transform
                     },
-                    &[],
                 );
-                pass.set_vertex_buffer(0, self.overlay_buffer.buffer().slice(..));
+                pass.set_vertex_buffer(0, self.overlay_buffer.buffer());
                 if scrolling {
                     set_scroll_scissor(&mut pass, scene);
                 }
@@ -1259,12 +892,12 @@ impl Renderer {
             }
             if cursor_end < overlay_end {
                 pass.set_pipeline(&self.quad_pipeline);
-                pass.set_bind_group(0, &self.fixed_transform, &[]);
-                pass.set_vertex_buffer(0, self.overlay_buffer.buffer().slice(..));
+                pass.set_bind_group(0, &self.fixed_transform);
+                pass.set_vertex_buffer(0, self.overlay_buffer.buffer());
                 pass.draw(0..6, cursor_end..overlay_end);
             }
         }
-        let command_buffer = encoder.finish();
+
         #[cfg(feature = "perf")]
         {
             drop(encode_trace);
@@ -1306,7 +939,7 @@ impl Renderer {
         let queue_submit_started = Instant::now();
         #[cfg(feature = "perf")]
         let queue_submit_trace = PerfTraceSection::new(b"Ink queue submit\0");
-        self.queue.submit(Some(command_buffer));
+        pass.finish()?;
         #[cfg(feature = "perf")]
         {
             drop(queue_submit_trace);
@@ -1316,7 +949,7 @@ impl Renderer {
         let queue_present_started = Instant::now();
         #[cfg(feature = "perf")]
         let queue_present_trace = PerfTraceSection::new(b"Ink queue present\0");
-        self.queue.present(frame);
+
         #[cfg(feature = "perf")]
         {
             drop(queue_present_trace);
@@ -1329,6 +962,7 @@ impl Renderer {
 
     #[cfg(feature = "perf")]
     pub fn take_perf_metrics(&mut self) -> RenderPerfMetrics {
+        self.perf.gpu_ns = self.surface.gpu_ns.take();
         std::mem::take(&mut self.perf)
     }
 
@@ -1360,18 +994,14 @@ impl Renderer {
     }
 
     pub fn install_system_glyph(&mut self, request_id: u64, pixels: Option<&[u8]>) -> Result<()> {
+        self.surface.wait_for_frame()?;
         self.system_glyph_atlas
             .install(&self.device, &self.queue, request_id, pixels)
     }
 
     fn prepare_image_pipeline(&mut self) {
         if self.image_pipeline.is_none() {
-            self.image_pipeline = Some(image_pipeline(
-                &self.device,
-                self.config.format,
-                &self.transform_layout,
-                &self.image_cache.bind_group_layout,
-            ));
+            self.image_pipeline = Some(image_pipeline(&self.device, self.config.format));
         }
     }
 
@@ -1553,7 +1183,9 @@ impl Renderer {
                     .filter(|grapheme| grapheme.chars().all(char::is_whitespace))
                     .count();
                 (spaces > 0).then(|| {
-                    (run.rect.width - text_width_with_numbers(&run.text, size as f32, run.tabular_numbers)).max(0.0)
+                    (run.rect.width
+                        - text_width_with_numbers(&run.text, size as f32, run.tabular_numbers))
+                    .max(0.0)
                         / spaces as f32
                 })
             } else {
@@ -1562,11 +1194,13 @@ impl Renderer {
             let mut pen_x = match run.align {
                 TextAlign::Start | TextAlign::Justify => run.rect.x,
                 TextAlign::Centre => {
-                    let width = text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
+                    let width =
+                        text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
                     run.rect.x + (run.rect.width - width).max(0.0) / 2.0
                 }
                 TextAlign::End => {
-                    let width = text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
+                    let width =
+                        text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
                     run.rect.x + (run.rect.width - width).max(0.0)
                 }
             };
@@ -1598,7 +1232,11 @@ impl Renderer {
                     let scaled = font.as_scaled(PxScale::from(size as f32));
                     let id = scaled.glyph_id(character);
                     let tabular = run.tabular_numbers && character.is_ascii_digit();
-                    let advance = if tabular { tabular_digit_width(size as f32) } else { scaled.h_advance(id) };
+                    let advance = if tabular {
+                        tabular_digit_width(size as f32)
+                    } else {
+                        scaled.h_advance(id)
+                    };
                     if tabular {
                         previous = None;
                     }
@@ -1623,7 +1261,11 @@ impl Renderer {
                         );
                     }
                     pen_x += advance;
-                    previous = if tabular { None } else { Some((font_index, id)) };
+                    previous = if tabular {
+                        None
+                    } else {
+                        Some((font_index, id))
+                    };
                 }
                 if grapheme.chars().all(char::is_whitespace) {
                     pen_x += justified_space.unwrap_or_default();
@@ -1688,138 +1330,21 @@ fn prepared_images_match(prepared: &[PreparedImageRun], current: &[ImageRun]) ->
             .all(|(prepared, current)| *prepared == PreparedImageRun::from(current))
 }
 
-fn image_pipeline(
-    device: &wgpu::Device,
-    format: wgpu::TextureFormat,
-    transform_layout: &wgpu::BindGroupLayout,
-    image_bind_group_layout: &wgpu::BindGroupLayout,
-) -> wgpu::RenderPipeline {
-    let text_vertex_shader = spirv_shader(
-        device,
-        "text_vertex",
-        include_bytes!(concat!(env!("OUT_DIR"), "/text_vertex.spv")),
-    );
-    let image_fragment_shader = spirv_shader(
-        device,
-        "image_fragment",
-        include_bytes!(concat!(env!("OUT_DIR"), "/image_fragment.spv")),
-    );
-    let image_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Ink image pipeline layout"),
-        bind_group_layouts: &[Some(transform_layout), Some(image_bind_group_layout)],
-        immediate_size: 0,
-    });
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Ink image pipeline"),
-        layout: Some(&image_layout),
-        vertex: wgpu::VertexState {
-            module: &text_vertex_shader,
-            entry_point: Some("text_vertex"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: size_of::<TextInstance>() as u64,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &[
-                    wgpu::VertexAttribute {
-                        format: wgpu::VertexFormat::Float32x4,
-                        offset: 0,
-                        shader_location: 0,
-                    },
-                    wgpu::VertexAttribute {
-                        format: wgpu::VertexFormat::Float32x4,
-                        offset: size_of::<[f32; 4]>() as u64,
-                        shader_location: 1,
-                    },
-                    wgpu::VertexAttribute {
-                        format: wgpu::VertexFormat::Float32x4,
-                        offset: size_of::<[f32; 8]>() as u64,
-                        shader_location: 2,
-                    },
-                ],
-            })],
-        },
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-        fragment: Some(wgpu::FragmentState {
-            module: &image_fragment_shader,
-            entry_point: Some("image_fragment"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            targets: &[Some(colour_target(format))],
-        }),
-        multiview_mask: None,
-        cache: None,
-    })
+fn image_pipeline(device: &gpu::Device, format: gpu::TextureFormat) -> gpu::RenderPipeline {
+    device
+        .pipeline(format, true, true)
+        .expect("create image pipeline")
 }
-
-fn colour_target(format: wgpu::TextureFormat) -> wgpu::ColorTargetState {
-    wgpu::ColorTargetState {
-        format,
-        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-        write_mask: wgpu::ColorWrites::ALL,
-    }
-}
-
-const fn shader_entry_point(name: &'static str) -> wgpu::PassthroughShaderEntryPoint<'static> {
-    wgpu::PassthroughShaderEntryPoint {
-        name: Cow::Borrowed(name),
-        workgroup_size: (0, 0, 0),
-    }
-}
-
-fn spirv_shader(
-    device: &wgpu::Device,
-    entry_point: &'static str,
-    spirv: &'static [u8],
-) -> wgpu::ShaderModule {
-    unsafe {
-        device.create_shader_module_passthrough(wgpu::ShaderModuleDescriptorPassthrough {
-            label: Some(entry_point),
-            entry_points: Cow::Owned(vec![shader_entry_point(entry_point)]),
-            spirv: Some(wgpu::util::make_spirv_raw(spirv)),
-            ..Default::default()
-        })
-    }
-}
-
 fn raw_instance_buffer<T>(
-    device: &wgpu::Device,
-    label: &'static str,
+    device: &gpu::Device,
+    _label: &'static str,
     instances: usize,
-) -> wgpu::Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some(label),
-        size: (instances.max(1) * size_of::<T>()) as u64,
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    })
+) -> gpu::Buffer {
+    device.buffer(instances.max(1) * size_of::<T>(), false)
 }
-
-fn transform_buffer(device: &wgpu::Device, label: &'static str) -> wgpu::Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some(label),
-        size: size_of::<TransformUniform>() as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    })
+fn transform_buffer(device: &gpu::Device, _label: &'static str) -> gpu::Buffer {
+    device.buffer(size_of::<TransformUniform>(), true)
 }
-
-fn transform_bind_group(
-    device: &wgpu::Device,
-    layout: &wgpu::BindGroupLayout,
-    buffer: &wgpu::Buffer,
-    label: &'static str,
-) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(label),
-        layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: buffer.as_entire_binding(),
-        }],
-    })
-}
-
 fn quad_instances(scene: &Scene, scrolling: bool) -> Vec<QuadInstance> {
     let mut instances = Vec::with_capacity(scene.quads.len());
     for quad in scene
@@ -1870,7 +1395,7 @@ fn push_scrollbar_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {
     }
 }
 
-fn set_scroll_scissor(pass: &mut wgpu::RenderPass<'_>, scene: &Scene) {
+fn set_scroll_scissor(pass: &mut gpu::RenderPass<'_>, scene: &Scene) {
     let Some(clip) = scene.scroll_clip else {
         return;
     };
@@ -1887,7 +1412,7 @@ fn set_scroll_scissor(pass: &mut wgpu::RenderPass<'_>, scene: &Scene) {
     pass.set_scissor_rect(x, y, right - x, bottom - y);
 }
 
-fn reset_scissor(pass: &mut wgpu::RenderPass<'_>, scene: &Scene) {
+fn reset_scissor(pass: &mut gpu::RenderPass<'_>, scene: &Scene) {
     pass.set_scissor_rect(0, 0, scene.width, scene.height);
 }
 
