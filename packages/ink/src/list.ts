@@ -1,7 +1,7 @@
 import { createElement, Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAction } from "./action";
-import { ErrorState } from "./patterns";
+import { EmptyState } from "./patterns";
 
 export type ListProps<T> = {
   items: readonly T[];
@@ -17,7 +17,7 @@ export type ListProps<T> = {
   initialEnd?: boolean;
 };
 
-export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = false, measurementKey, onLoadMore, hasMore = true, onLoadOlder, hasOlder = false, initialEnd = false }: ListProps<T>) {
+export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd = false, measurementKey, onLoadMore, hasMore = true, onLoadOlder, hasOlder = false, initialEnd = false }: ListProps<T>) {
   if (!Number.isFinite(gap) || gap < 0) {
     throw new Error("List gap must be finite and non-negative");
   }
@@ -93,8 +93,8 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 0, followEnd = 
     },
   };
   const list = createElement("List", props, children);
-  return createElement(Fragment, null, older.status === "error" && createElement(ErrorState, { message: older.error.message, onRetry: older.run }), list, load.status === "error" && createElement(ErrorState, {
-    message: load.error.message,
-    onRetry: load.run,
+  return createElement(Fragment, null, older.status === "error" && createElement(EmptyState, { title: older.error.message, action: { label: "Try again", onPress: older.run } }), list, load.status === "error" && createElement(EmptyState, {
+    title: load.error.message,
+    action: { label: "Try again", onPress: load.run },
   }));
 }

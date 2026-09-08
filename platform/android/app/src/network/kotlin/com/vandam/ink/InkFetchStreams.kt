@@ -190,17 +190,22 @@ internal class InkFetchStreams(
         }
         fun deliver(result: NativeResult) {
             val callback = reader
-            readerId?.let(pending::remove)
+            val id = readerId
             readerId = null
             reader = null
-            callback?.invoke(result)
+            // The bridge can hold its own lock while calling into this adapter.
+            // Deliver outside the stream lock to avoid reversing that lock order.
+            if (callback != null && id != null) handler.post {
+                synchronized(this@InkFetchStreams) { pending.remove(id) }
+                callback(result)
+            }
         }
         fun close() {
             closed = true
             request?.cancel()
             fileInput?.close()
             upload?.delete()
-            readerId?.let(pending::remove)
+            pending.entries.removeAll { it.value === this }
             readerId = null
             reader = null
         }

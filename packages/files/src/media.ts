@@ -3,7 +3,7 @@ import { Button, EmptyState, ErrorState, List, LoadingState, Screen, Text } from
 import { callNative, NativeError } from "ink/native";
 import { files, type FileRef } from "./index";
 import { decodeFileRef } from "./decode";
-import icons from "./media.ink-icons";
+import { check, checkCircleFilled, videoFileFilled } from "ink/icons";
 
 type MediaItem = { id: string; src: string; name: string; mimeType: string; width: number; height: number };
 type MediaPage = { items: MediaItem[]; nextCursor: string | null };
@@ -128,13 +128,13 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
     permission === "blocked" && createElement(Button, { onPress: () => { void callNative("files", "media-settings", {}).catch(reason => setError(reason instanceof Error ? reason : new Error(String(reason)))); } }, "Open settings"),
     createElement(Button, { onPress: () => { void refresh(permission !== "blocked"); } }, permission === "blocked" ? "Refresh access" : "Allow access"));
   if (importing) return createElement(Screen, { title }, createElement(LoadingState, { label: "Preparing attachments…" }));
-  return createElement("MediaPickerScreen", { title, rightIcon: selected.size ? icons.check : undefined, onRightPress: selected.size ? confirm : undefined },
+  return createElement("MediaPickerScreen", { title, rightIcon: selected.size ? check : undefined, onRightPress: selected.size ? confirm : undefined },
     items.length === 0 ? createElement(EmptyState, { title: kind === "video" ? "No videos" : kind === "image" ? "No photos" : "No photos or videos" }) :
       createElement(List<MediaItem[]>, {
         items: rows, keyExtractor: row => row[0].id, gap: 0, hasMore,
         onLoadMore: async () => { if (active.current) await loadPage(active.current.signal); },
         renderItem: row => createElement("MediaGridRow", null, row.map(item => createElement("MediaCell", {
-          key: item.id, src: item.src, selected: selected.has(item.id), video: item.mimeType.startsWith("video/"), checkIcon: icons.check_circle, videoIcon: icons.video_file,
+          key: item.id, src: item.src, selected: selected.has(item.id), video: item.mimeType.startsWith("video/"), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
           onPress: () => setSelected(previous => { const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; }),
         }))),
       }));

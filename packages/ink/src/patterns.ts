@@ -22,8 +22,8 @@ export function SettingsChoices<Value extends string>({ options, value, onChange
   }, option.label)));
 }
 
-export function LoadingState({ label = "Loading…", align = "start" }: { label?: string; align?: "start" | "center" | "end" }) {
-  return createElement(Text, { size: 18, align }, label);
+export function LoadingState({ label = "Loading…" }: { label?: string }) {
+  return createElement("ScreenState", { message: label });
 }
 
 type StateAction = { label: string; onPress: () => void; disabled?: boolean };
@@ -50,10 +50,7 @@ export type ErrorStateProps = {
 };
 
 export function ErrorState({ message, onRetry, retryLabel = "Try again", disabled }: ErrorStateProps) {
-  return createElement(EmptyState, {
-    title: message,
-    action: { label: retryLabel, onPress: onRetry, disabled },
-  });
+  return createElement("ScreenState", { message, retryLabel: retryLabel.toUpperCase(), onRetry, disabled });
 }
 
 export type ConfirmationProps = {

@@ -11,7 +11,7 @@ export default function Pagination() {
     setItems(current => [...current, ...Array.from({ length: Math.min(pageSize, itemCount - current.length) }, (_, index) => current.length + index)]);
   }
   return <Screen title="Pagination">
-    <List items={items} gap={47} onLoadMore={loadMore} hasMore={items.length < itemCount}
+    <List items={items} onLoadMore={loadMore} hasMore={items.length < itemCount}
       keyExtractor={item => String(item)} renderItem={item => <Text>Item {item}</Text>} />
   </Screen>;
 }

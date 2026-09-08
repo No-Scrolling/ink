@@ -16,7 +16,6 @@ export default function VirtualisedList() {
     <Text>Updates: {updates}</Text>
     <List
       items={rows}
-      gap={47}
       keyExtractor={row => row.id}
       renderItem={row => <Text>Row {row.id}</Text>}
     />

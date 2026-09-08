@@ -47,37 +47,25 @@ import track from './track.mp3';
 
 ## Import icons
 
-Import icon collections as `.ink-icons` files containing JSON:
-
-```json
-{
-  "version": 2,
-  "resolution": 52,
-  "icons": {
-    "settings": "settings",
-    "heart": "favorite",
-    "heartFilled": { "name": "favorite", "filled": true }
-  }
-}
-```
+Import Material Symbols directly from `ink/icons`:
 
 ```tsx
-import { settings, heart, heartFilled } from './navigation.ink-icons';
-import { Icon, Button } from 'ink';
+import { settings, favorite, favoriteFilled } from "ink/icons";
+import { Icon, Button } from "ink";
 
 <Button icon={settings}>Settings</Button>
-<Icon name={active ? heartFilled : heart} size={28} />
+<Icon name={active ? favoriteFilled : favorite} size={28} />
 ```
 
-A string declares an outlined icon. Use `{ "name": "favorite", "filled": true }` for a filled icon. The object key becomes its export name. Each reference includes its variant: `Icon`, buttons, tabs and screen actions display the reference you supply. To change appearance at runtime, switch references.
+Names use camel case: `more_horiz` becomes `moreHoriz`. The plain export is outlined; the `Filled` suffix selects the filled variant. TypeScript provides completion and catches unknown exports without a separate collection file or generation step.
 
-Prefer named imports: unused exports and their raster assets can be removed from release builds. Pass references through props, arrays or objects as ordinary TypeScript values. Both variants are retained when your code can select either one.
+Use named imports. Release builds remove unused exports and generate assets only for icon references remaining in the bundle. Importing only `favoriteFilled` includes only that variant. Switching between `favorite` and `favoriteFilled` retains both. References work through props, arrays and objects as ordinary TypeScript values.
 
-For dynamic lookups, use the default collection import and `findIcon(collection, externalName)` from `ink`. It returns `undefined` for an unknown key. A collection used dynamically retains all its possible icons. Unknown Material Symbols names fail the build.
+For dynamic lookups, build a small object from the icons your app supports and use `findIcon(collection, externalName)` from `ink`. It returns `undefined` for an unknown key. Avoid a namespace import used dynamically: it can retain the entire catalogue.
 
-`ink check`, `ink build` and `ink dev` generate `.ink-icons.d.ts` files beside imported collections for TypeScript completion. Ignore these generated declarations in version control. Run `ink check` after adding or changing a collection to refresh its types.
+Ink owns raster resolution and generates icons at 56 logical units, covering its standard controls. The `Icon` component's `size` controls display size; larger sizes can soften edges. Icons use weight 400; the native keyboard uses its separate weight-300 assets. Back and input-clear icons are always included.
 
-`resolution` sets the raster size in logical units, from 16 to 128. Ink applies its 2.55 pixel scale and native display scaling. Rendering above the declared resolution can soften edges. Back and input-clear icons are always included.
+Names starting with a digit have an `icon` prefix, such as `icon360`. JavaScript reserved names and catalogue names already ending in `Filled` have an `Icon` suffix, such as `deleteIcon`, to keep exports valid and unambiguous.
 
 ## Native engine
 

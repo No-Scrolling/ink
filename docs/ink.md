@@ -17,7 +17,7 @@ cargo run -p ink-cli -- -C examples/light-template check
 cargo run -p ink-cli -- -C examples/light-template dev --device emulator-5554 --once
 ```
 
-Use `ink devices` to find the serial of a connected LP3 or emulator. The template contains `App.tsx`, `ink.toml` and TypeScript configuration. `ink dev` installs the development host and launches the app; omit `--once` to watch for changes. Compatible edits use JavaScript reload or refresh, while native changes rebuild the APK. See [the development loop](/development) and [standalone setup](/standalone).
+Use `ink devices` to find the serial of a connected LP3 or emulator. New apps contain `app/index.tsx`, `ink.toml` and TypeScript configuration. `ink dev` installs the development host and launches the app; omit `--once` to watch for changes. Compatible edits use JavaScript reload or refresh, while native changes rebuild the APK. See [the development loop](/development) and [standalone setup](/standalone).
 
 ```tsx
 import { useState } from "react";
@@ -57,11 +57,11 @@ export default function Settings() {
 
 `Screen` provides the title bar, back button, content padding and space above tabs. It scrolls when content overflows. `Stack` arranges children vertically; use `axis="horizontal"` for a row. Set `gap`, `align` and `justify` to control the layout.
 
-Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. General icons are imported Material Symbol collections. `Icon.name`, `Button.icon` and `Tab.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](/build-contracts) for formats and migration.
+Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. Import Material Symbols from `ink/icons`. `Icon.name`, `Button.icon` and `Tab.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](/build-contracts) for formats and migration.
 
 | Component | Use |
 | --- | --- |
-| `Text` | Wrapping text; `size`, `align`, `maxLines` and `tabularNumbers` control presentation. |
+| `Text` | Wrapping text; `size`, `width`, `align`, `maxLines` and `tabularNumbers` control presentation. |
 | `Button` | A text action, optional icon, selected or disabled state, or `href`. Only selected buttons are underlined. |
 | `Field` | A single-line label and wrapping value, optionally actionable. The field grows with its value and keeps the whole area tappable. |
 | `Toggle` | A labelled boolean input. |
@@ -74,6 +74,10 @@ Ink uses Public Sans, strong contrast, clear text and a small set of familiar co
 | `ConversationScreen`, `Message` | Conversation presentation and interaction, or a standalone message. |
 
 Keep button labels and important values readable without relying on truncation. `Text`, `Button`, `Field` values and `Confirmation` messages accept text content, including components that produce text. Nested `Text` is flattened: the outer text style applies, so nested size/alignment props do not create styled spans. Layout controls and inputs must be siblings rather than text children.
+
+Use `width` to give text a fixed column width, such as day labels beside a forecast. Text wraps within that width, limited by the available space.
+
+Use `maxLines={1}` for a label beside controls in a horizontal `Stack`. Without an explicit `width`, the label shrinks to leave room for the controls and truncates with an ellipsis.
 
 Use `tabularNumbers` for changing readings, timers or counters. It gives digits `0`–`9` equal-width spaces, so changing `340` to `350` doesn't shift the text. Other characters keep their usual spacing, and adding another digit still increases the width.
 
@@ -90,14 +94,24 @@ Compose the state and settings patterns inside a `Screen`; `Confirmation` owns i
 | Component | Interface |
 | --- | --- |
 | `SettingsChoices` | `options` with stable `value` and `label`, current `value`, `onChange`, and optional `disabled`. The selected choice is underlined. |
-| `LoadingState` | Optional `label`, defaulting to “Loading…”, and `align` (`start`, `center` or `end`). |
+| `LoadingState` | A centred message; optional `label` defaults to “Loading…”. |
 | `EmptyState` | `title`, optional `description`, and optional `action` containing a label and press handler. |
-| `ErrorState` | `message`, `onRetry`, optional `retryLabel` and `disabled`. |
+| `ErrorState` | A centred `message` and bottom retry action: `onRetry`, optional `retryLabel` (default “Try again”) and `disabled`. |
 | `Confirmation` | A complete screen: `title`, small text children, `confirmLabel`, `onConfirm`, optional `centered` message layout, and optional pending state and label. One uppercase action is anchored at the bottom; Back cancels. |
 
 Supply callbacks to fetch data, save choices or navigate. Use `useAction` to track asynchronous work and show errors. Confirmation labels should name the action, such as “Delete list”.
 
-The template includes separate loading, error and confirmation examples.
+Place `LoadingState` or `ErrorState` directly inside `Screen`. Function components and fragments can wrap them; don't put them inside a layout such as `Stack`. A state replaces the screen's content while keeping its title and navigation. Render one state at a time. For an inline status alongside existing content, use `Text` or `EmptyState` instead.
+
+```tsx
+<Screen title="Weather">
+  {loading ? <LoadingState /> : error ? (
+    <ErrorState message="Could not load the weather." onRetry={reload} />
+  ) : <Forecast data={weather} />}
+</Screen>
+```
+
+These components only display state. They don't fetch data or add delays. Keep useful content visible during background refreshes. The template includes separate loading, error and confirmation examples.
 
 `Confirmation` owns its screen; do not wrap it in another `Screen`. Its message can scroll when necessary while the action stays at the bottom. Pending state disables the action and displays `pendingLabel` (default “Working…”).
 
@@ -147,9 +161,11 @@ Placeholders use muted grey. Back dismisses the keyboard, which has a 20-unit bo
 
 Remote images use HTTPS. Images require explicit positive `width` and `height`, can use `fit="contain"` or `"cover"`, and currently have no fallback prop. `bleed` extends an image to the viewport width while preserving the declared aspect ratio. `zoomable` enables gestures; it defaults to false. Arbitrary `file://` images are not accepted by `Image`. Decoding, downsampling, texture caching, pinch zoom and panning stay native. Large media bytes need not pass through JavaScript. For a zoomable image, double-tap cycles through 2×, 3× and 4× magnification, then resets to the fitted image; drag to pan while zoomed. Pinch interaction still needs device verification.
 
+Ink keeps recently displayed decoded images in memory, so returning to a page can reuse them without loading them again. The cache targets 8 MiB and 256 entries, evicting the least recently used off-screen images first. Visible images are protected and can exceed that budget. Images are cached by source, rendered size and fit; use a new source URL when its content changes. The cache ends with the app session.
+
 ## Collections
 
-Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Row heights are measured automatically; `gap` adds spacing and `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor.
+Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Row heights are measured automatically. The default `gap` is 47, matching the spacing between `Screen` children. Set `gap={0}` for rows without gaps, or provide another value for a compact layout. `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor.
 
 For example:
 
@@ -185,33 +201,97 @@ Use compact item keys and limit loaded history. List keys and content versions h
 
 ## Navigation
 
-```tsx
-import { Navigator, Route, Tab, Tabs } from "ink";
-import Home from "./screens/Home";
-import Settings from "./screens/Settings";
-import Forecast from "./screens/Forecast";
-import icons from "./navigation.ink-icons";
+Ink discovers pages in `app/` and generates the entry point inside `.ink/`. Each page exports a React component as its default export. No `App.tsx` or manual route registration is needed.
 
-export default function App() {
-  return (
-    <Navigator>
-      <Route path="/">
-        <Tabs>
-          <Tab id="home" icon={icons.home}><Home /></Tab>
-          <Tab id="settings" icon={icons.settings}><Settings /></Tab>
-        </Tabs>
-      </Route>
-      <Route path="/forecast"><Forecast /></Route>
-    </Navigator>
-  );
+```text
+app/
+├── _layout.tsx             # Optional shared providers
+├── (tabs)/
+│   ├── _layout.tsx         # Tab order and icons
+│   ├── index.tsx           # /
+│   ├── locations.tsx       # /locations
+│   └── settings.tsx        # /settings
+├── search.tsx              # /search
+└── settings/
+    └── units.tsx           # /settings/units
+```
+
+`index.tsx` uses its directory's path. Parenthesised directories group pages without adding a path segment. Supporting folders are your choice: `components/`, `hooks/` and `lib/` work well for small apps; feature folders can keep related UI and logic together as an app grows. Files beginning with `_` are ignored except `_layout.tsx`.
+
+Use `[id]` for a dynamic path segment, such as `app/album/[id].tsx` or `app/playlist/[id]/edit.tsx`:
+
+```tsx
+navigate({ path: "/album/[id]", params: { id: album.id } });
+
+// app/album/[id].tsx
+const { id } = useRouteParams("/album/[id]"); // id is a string
+```
+
+TypeScript infers parameter names from the path literal and checks required parameters in `navigate()` and `replace()`. Ink also checks them at runtime and converts numeric IDs to strings. Incoming paths such as `/album/123` match the same page; encoded segments are decoded. Static pages win over dynamic ones, so `/playlist/new` opens `new.tsx`. Duplicate route patterns and repeated parameter names are errors. Catch-all and optional segments are not supported. The app handles IDs that refer to missing data.
+
+A layout wraps the pages beneath it. Use `Slot` to render them:
+
+```tsx
+// app/_layout.tsx
+import { Slot } from "ink";
+import { AccountProvider } from "../components/AccountProvider";
+
+export default function Layout() {
+  return <AccountProvider><Slot /></AccountProvider>;
 }
 ```
 
-`navigate({ path: "/forecast", params: { placeId } })` or an equivalent `href` opens a screen. Use `back()` to return and `replace()` to replace the current screen. The title-bar button, edge gesture and hardware Back first dismiss the keyboard, then navigate back. Pass IDs and small JSON values as route parameters.
+The root layout stays mounted while navigating. Nested layouts share state across their pages and are removed when no page beneath them remains on the back stack. Covered layouts keep their state and pause effects, just like covered pages. Omit a layout when there is no shared behaviour; Ink already handles navigation, fonts and page backgrounds.
 
-`useRouteParams<T>()` reads route parameters. For external links, supply a `decode(unknown)` function to validate them; a TypeScript generic does not validate runtime data. Unknown notification routes open “Page unavailable” with a back action.
+A tab layout declares neighbouring pages by name:
+
+```tsx
+// app/(tabs)/_layout.tsx
+import { Tabs } from "ink";
+import { homeFilled, settingsFilled } from "ink/icons";
+
+export default function Layout() {
+  return <Tabs>
+    <Tabs.Screen name="index" icon={homeFilled} />
+    <Tabs.Screen name="settings" icon={settingsFilled} />
+  </Tabs>;
+}
+```
+
+Tab layouts contain neighbouring page files only; nested directories and nested tab navigation are not supported. Put detail pages outside the tab group so they open above the tab bar. Ink reports unsupported directories when the layout renders.
+
+Declare the tabs you want to show, using ordinary React conditions or array mapping. A neighbouring page omitted from `Tabs.Screen` is still reachable: navigating to it opens a separate page without the tab bar, and Back returns to the previous screen. Keep at least one visible tab. Removing the selected tab selects the first remaining tab; reordering tabs preserves the selection and page state. Removing a tab unmounts its tab content.
+
+At startup, if the index page belongs to a tab layout but is omitted from its visible tabs, Ink opens the first visible tab directly. It does not mount the hidden index page or add a redirect to the back stack. Explicit navigation and incoming links to a hidden page still open that page normally. Load saved tab preferences before rendering `Tabs` if they determine the initial selection.
+
+Tab order follows the declarations. A tab group has one place on the back stack. Tab presses, `navigate()` and `replace()` targeting an existing tab group select that tab, preserve its state, and dismiss any pages above the group. They do not create duplicate tab screens. Ordinary pages still create separate instances with `navigate()` and replace the current instance with `replace()`.
+
+Use `Tabs.Action` for a navigation-bar button that runs an action instead of switching tabs:
+
+```tsx
+import { Tabs, navigate } from "ink";
+import { wallet, photoCamera, settings } from "ink/icons";
+
+export default function Layout() {
+  return <Tabs>
+    <Tabs.Screen name="index" icon={wallet} />
+    <Tabs.Action icon={photoCamera} onPress={() => navigate("/scan")} />
+    <Tabs.Screen name="settings" icon={settings} />
+  </Tabs>;
+}
+```
+
+Here, `app/scan.tsx` sits outside the tab group. Scan opens above the tabs; Back returns to the previously selected tab. Actions follow the JSX order, use the unselected icon colour and never become selected. They do not count towards the requirement for at least one tab or affect the startup selection. `Tabs.Action` also works alongside explicit `Tab` components. Give mapped actions stable React keys.
+
+Existing apps can continue using `App.tsx` with explicit `Navigator`, `Route`, `Tabs` and `Tab` components. Choose either `app/` or `App.tsx`; having both is an error.
+
+`navigate({ path: "/forecast", params: { placeId } })` or an equivalent `href` opens a screen. Use `back()` to return and `replace()` to replace the current screen. The title-bar button and a left-edge swipe above the keyboard navigate back directly. Hardware Back dismisses the keyboard first. Pass IDs and small JSON values as route parameters.
+
+`useRouteParams("/album/[id]")` reads named path parameters as strings. The path literal supplies the types without a generated type file; it does not check whether that filename exists. For other parameters, supply a `decode(unknown)` function to validate them. Existing `useRouteParams<T>()` calls remain supported, but a TypeScript generic does not validate runtime data. Unknown or malformed notification routes open “Page unavailable” with a back action.
 
 Covered screens keep their React state. Tabs also keep separate scroll positions. Ink pauses screen-owned work while hidden and disposes popped screens. Save data in Store if it must survive an app restart.
+
+To save a setting and return, await the store update, then call `back()`. Ink applies the returning screen’s current store snapshot before presenting it, so the previous value doesn't briefly appear.
 
 ## External actions
 
@@ -265,8 +345,10 @@ Use `Screen`'s optional `header` for content that stays below the navigation tit
 `Row` provides a whole-row press target with `title`, optional `subtitle` and optional `image` source. Text wraps, and image rows reserve a 50-unit square before loading. Supply `onPress` or `href` for interaction, as with Button. A row without either is display-only.
 
 ```tsx
+import { moreHoriz } from "ink/icons";
+
 <Row image={artwork} title="Album title" subtitle="Artist name" href="/album" />
-<Screen title="Albums" rightAction={{ icon: icons.more_horiz, onPress: openActions }}>
+<Screen title="Albums" rightAction={{ icon: moreHoriz, onPress: openActions }}>
   {/* content */}
 </Screen>
 ```

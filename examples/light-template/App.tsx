@@ -6,7 +6,7 @@ import Actions from "./screens/Actions";
 import ActionResult from "./screens/ActionResult";
 import Pagination from "./screens/Pagination";
 import CodeGeneration, { GeneratedCode } from "./screens/CodeGeneration";
-import icons from "./assets/navigation.ink-icons";
+import { homeFilled, paletteFilled, settingsFilled, widgetsFilled } from "ink/icons";
 import { Navigator, Route, Tab, Tabs } from "ink";
 import { AppearanceSettings } from "./data/appearance";
 import Confirm from "./screens/Confirm";
@@ -82,16 +82,16 @@ export default function LightTemplate() {
         <Route path="/examples/playing/no-image"><PlayingExample /></Route>
         <Route path="/">
           <Tabs>
-            <Tab icon={icons.home}>
+            <Tab icon={homeFilled}>
               <Home />
             </Tab>
-            <Tab icon={icons.widgets}>
+            <Tab icon={widgetsFilled}>
               <Modules />
             </Tab>
-            <Tab icon={icons.palette}>
+            <Tab icon={paletteFilled}>
               <Examples />
             </Tab>
-            <Tab icon={icons.settings}>
+            <Tab icon={settingsFilled}>
               <Settings />
             </Tab>
           </Tabs>

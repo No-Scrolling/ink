@@ -1,5 +1,5 @@
 import { createElement, useRef, useState } from "react";
-import icons from "./conversation.ink-icons";
+import { addFilled, closeFilled, sendFilled } from "./icons";
 import { Button, Image, List, Screen, Stack, Text, TextInput } from "./index";
 import { back, presentPage } from "./navigation";
 
@@ -138,10 +138,10 @@ export function ConversationScreen<T extends ConversationMessage>({ title, group
     !loading && messages.length === 0 && createElement(Text, { size: 18, align: "center" }, "No messages yet"),
     createElement(Stack, { gap: 8, align: "stretch" },
       reply && createElement("ConversationComposer", null,
-        createElement(Reply, replyPreview(reply)), iconButton(icons.close, () => setReply(undefined))),
+        createElement(Reply, replyPreview(reply)), iconButton(closeFilled, () => setReply(undefined))),
       createElement("ConversationComposer", null,
-        onAttach ? iconButton(icons.add, onAttach) : createElement(Stack),
+        onAttach ? iconButton(addFilled, onAttach) : createElement(Stack),
         createElement(TextInput, { value: draft, onChange: onDraftChange, placeholder: "Message…", action: "return" }),
-        iconButton(icons.send, text && !sending ? send : undefined)),
+        iconButton(sendFilled, text && !sending ? send : undefined)),
     ));
 }

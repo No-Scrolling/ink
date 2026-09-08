@@ -1,9 +1,9 @@
-import icons from "../assets/navigation.ink-icons";
+import { moreHoriz } from "ink/icons";
 import { Button, navigate, Screen } from "ink";
 
 export default function Examples() {
   return (
-    <Screen title="Examples" rightAction={{ icon: icons["more_horiz"], onPress: () => navigate("/actions") }}>
+    <Screen title="Examples" rightAction={{ icon: moreHoriz, onPress: () => navigate("/actions") }}>
       <Button href="/examples/inputs">Inputs</Button>
       <Button href="/display/typography">Typography</Button>
       <Button href="/display/emoji">Emoji</Button>

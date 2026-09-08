@@ -50,6 +50,7 @@ enum HostKind {
     Tabs,
     Confirmation,
     Screen,
+    ScreenState,
     Stack,
     Text,
     TextInput,
@@ -101,6 +102,7 @@ impl ListProps {
 enum HostProps {
     RawText(Box<str>),
     Text {
+        width: Option<f32>,
         size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
@@ -146,6 +148,7 @@ impl HostProps {
                 })
                 .transpose()?;
             return Ok(Self::Text {
+                width: number(&props, "width")?,
                 size: number(&props, "size")?,
                 align,
                 max_lines,
@@ -288,7 +291,7 @@ impl ReactTree {
         self.icons.get(name).and_then(|variants| {
             if filled { variants.filled.as_ref() } else { variants.outlined.as_ref() }
         }).cloned()
-            .with_context(|| format!("icon {name:?} was not bundled; use a reference from an imported .ink-icons collection"))
+            .with_context(|| format!("icon {name:?} was not bundled; import its reference from ink/icons"))
     }
 
     pub fn apply(&mut self, operations: Json, engine: &mut Engine) -> Result<()> {
@@ -625,6 +628,7 @@ impl ReactTree {
             return Ok(None);
         }
         if let HostProps::Text {
+            width,
             size,
             align,
             max_lines,
@@ -632,6 +636,9 @@ impl ReactTree {
         } = &host.props
         {
             let mut node = Node::text(self.text(id, depth)?, *size, *align, *max_lines, *tabular_numbers);
+            if let NodeKind::Text { width: node_width, .. } = &mut node.kind {
+                *node_width = *width;
+            }
             node.identity = NodeIdentity(id);
             return Ok(Some(node));
         }
@@ -761,15 +768,41 @@ impl ReactTree {
                 }).transpose()?;
                 let props = props.object().context("invalid Screen properties")?;
                 let props: ScreenProps = serde_json::from_value(Json::Object(props.clone()))?;
-                let mut screen = Node::screen(self.children(host, depth)?, props.title, props.centered);
+                let mut state = None;
+                for child_id in &host.children {
+                    let child = self.node(*child_id)?;
+                    if !child.hidden && child.kind == HostKind::ScreenState {
+                        state = Some((*child_id, child));
+                        break;
+                    }
+                }
+                let mut screen = if let Some((state_id, state)) = state {
+                    let message = string(&state.props, "message").context("Screen state requires a message")?;
+                    let mut screen = Node::screen(
+                        vec![Node::text(message.to_owned(), Some(18.0), TextAlign::Centre, None, false)],
+                        props.title,
+                        true,
+                    );
+                    if let Some(label) = string(&state.props, "retryLabel") {
+                        ensure!(state.props.get("onRetry") == Some(&Json::Bool(true)), "Error state requires onRetry");
+                        if let NodeKind::Screen { footer, .. } = &mut screen.kind {
+                            *footer = Some((label.to_owned(), (state.props.get("disabled") != Some(&Json::Bool(true)))
+                                .then(|| event(state_id, "onRetry", vec![]))));
+                        }
+                    }
+                    screen
+                } else {
+                    Node::screen(self.children(host, depth)?, props.title, props.centered)
+                };
                 if let NodeKind::Screen { pinned_header, pinned_footer, right_action: action, media_picker, .. } = &mut screen.kind {
-                    *pinned_header = props.pinned_header;
-                    *pinned_footer = props.pinned_footer;
+                    *pinned_header = state.is_none() && props.pinned_header;
+                    *pinned_footer = state.is_none() && props.pinned_footer;
                     *action = right_action;
                     *media_picker = host.kind == HostKind::MediaPickerScreen;
                 }
                 screen
             }
+            HostKind::ScreenState => bail!("LoadingState and ErrorState must be direct children of Screen"),
             HostKind::Stack => {
                 let axis = match string(props, "axis").unwrap_or("vertical") {
                     "vertical" => Axis::Vertical,

@@ -1,7 +1,12 @@
 import { dirname, resolve, relative, extname } from "node:path";
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 const [root, entry, output, profile = "release"] = Bun.argv.slice(2);
 const development = profile === "development";
+if (entry.endsWith("/entry.tsx") && (await stat(resolve(root, "app")).catch(() => null))?.isDirectory()) {
+  if (await Bun.file(resolve(root, "App.tsx")).exists()) throw new Error("Use app/ or App.tsx, not both");
+  const { generateFileRoutes } = await import("./file-routes.js");
+  await generateFileRoutes(root);
+}
 const splitWeb = !development && process.env.INK_SPLIT_WEB !== "0" && output.endsWith("/app.js");
 const inputs = new Set();
 const capabilities = new Set();
@@ -89,27 +94,6 @@ function buildOptions(bootstrap = false) { return {
   metafile: true,
   define: { "process.env.NODE_ENV": JSON.stringify(development ? "development" : "production") },
   plugins: [{ name: "ink-resolved-inputs", setup(build) {
-    build.onLoad({ filter: /\.ink-icons$/ }, async ({ path }) => {
-      await inspect(path);
-      const descriptor = await Bun.file(path).json();
-      if (descriptor.version !== 2 || !descriptor.icons || typeof descriptor.icons !== "object" || Array.isArray(descriptor.icons) || !Number.isInteger(descriptor.resolution) || descriptor.resolution < 16 || descriptor.resolution > 128) throw new Error(`Invalid icon collection ${path}: version 2, icons and resolution 16–128 required`);
-      const keys = Object.keys(descriptor.icons);
-      const exports = [];
-      for (const [key, value] of Object.entries(descriptor.icons)) {
-        if (!/^[A-Za-z_$][\w$]*$/.test(key) || key === "default") throw new Error(`Invalid icon export ${key} in ${path}`);
-        const name = typeof value === "string" ? value : value?.name;
-        const filled = typeof value === "string" ? false : value?.filled ?? false;
-        if (typeof name !== "string" || typeof filled !== "boolean") throw new Error(`Invalid icon ${key} in ${path}`);
-        const reference = `${filled ? "filled" : "outlined"}:${name}`;
-        icons.set(reference, { name, filled, reference, size: Math.max(icons.get(reference)?.size ?? 0, descriptor.resolution) });
-        exports.push(`export const ${key} = ${JSON.stringify(reference)};`);
-      }
-      const declarations = keys.map(key => `export const ${key}: import("ink").IconAsset;`).join("\n")
-        + `\ndeclare const icons: { readonly [Key in ${keys.map(key => JSON.stringify(key)).join(" | ") || "never"}]: import("ink").IconAsset };\nexport default icons;\n`;
-      const declarationPath = path + ".d.ts";
-      if (!await Bun.file(declarationPath).exists() || await Bun.file(declarationPath).text() !== declarations) await Bun.write(declarationPath, declarations);
-      return { contents: exports.join("\n") + `\nexport default {${keys.join(",")}};`, loader: "js" };
-    });
     build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3|db)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
     build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
       const resolved = await realpath(Bun.resolveSync(path, /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
@@ -241,4 +225,14 @@ if (development) {
   if (!usedIcons.success) throw new AggregateError(usedIcons.logs, "Could not determine application icons");
   bundledCode = await usedIcons.outputs[0].text();
 }
-await Bun.write(`${output}.metadata.json`, JSON.stringify({ devRuntimeHash, refreshCompatibilityHash: development ? new Bun.CryptoHasher("sha256").update(JSON.stringify([...persistentModules].sort())).digest("hex") : undefined, inputs: [...inputs].sort(), capabilities: [...capabilities].sort(), assets: [...assets].map(([name,path])=>({name,path})), icons: [...icons.values()].filter(icon => bundledCode.includes(JSON.stringify(icon.reference))) }));
+// Read references after tree-shaking, including those passed through props or collections.
+function collectIcons(node) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    const reference = node.text;
+    const match = /^(outlined|filled):([a-z0-9_]+)$/.exec(reference);
+    if (match) icons.set(reference, { name: match[2], filled: match[1] === "filled", reference, size: 56 });
+  }
+  ts.forEachChild(node, collectIcons);
+}
+collectIcons(ts.createSourceFile(output, bundledCode, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS));
+await Bun.write(`${output}.metadata.json`, JSON.stringify({ devRuntimeHash, refreshCompatibilityHash: development ? new Bun.CryptoHasher("sha256").update(JSON.stringify([...persistentModules].sort())).digest("hex") : undefined, inputs: [...inputs].sort(), capabilities: [...capabilities].sort(), assets: [...assets].map(([name,path])=>({name,path})), icons: [...icons.values()] }));

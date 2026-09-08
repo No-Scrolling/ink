@@ -71,6 +71,21 @@
         "react": "19.2.8",
       },
     },
+    "examples/weather": {
+      "name": "ink-weather-example",
+      "dependencies": {
+        "@ink/location": "workspace:*",
+        "@ink/network": "workspace:*",
+        "@ink/store": "workspace:*",
+        "ink": "workspace:*",
+        "react": "19.2.8",
+      },
+      "devDependencies": {
+        "@types/react": "19.2.18",
+        "@types/react-reconciler": "0.33.0",
+        "typescript": "5.9.3",
+      },
+    },
     "packages/audio": {
       "name": "@ink/audio",
       "version": "0.1.0",
@@ -342,6 +357,8 @@
     "ink-scroll-benchmark": ["ink-scroll-benchmark@workspace:benchmarks/apps/ink-scroll"],
 
     "ink-tuner-example": ["ink-tuner-example@workspace:examples/tuner"],
+
+    "ink-weather-example": ["ink-weather-example@workspace:examples/weather"],
 
     "js-tokens": ["js-tokens@10.0.0", "", {}, "sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q=="],
 

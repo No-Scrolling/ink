@@ -1,0 +1,9 @@
+name = "Weather"
+package = "com.vandam.ink.weather"
+version = "0.1.0"
+version_code = 1
+
+capabilities = ["network", "location"]
+
+[lightos]
+enabled = true

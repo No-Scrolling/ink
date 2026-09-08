@@ -6,7 +6,7 @@ import {
 } from "ink";
 import { TextInput } from "ink/input/numeric";
 import { preferences, type Preferences } from "./settings";
-import { settings } from "./navigation.ink-icons";
+import { settings } from "ink/icons";
 
 const flatNames: Record<string, string> = {
   "C#": "D♭", "D#": "E♭", "F#": "G♭", "G#": "A♭", "A#": "B♭",

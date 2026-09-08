@@ -18,6 +18,7 @@ type Operation =
 
 const mounted = new Map<number, Instance>();
 let operations: Operation[] = [];
+let commitScheduled = false;
 let nextId = 1;
 let priority = DefaultEventPriority;
 const hostContext = {};
@@ -101,10 +102,18 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
   getPublicInstance: instance => instance,
   prepareForCommit: () => null,
   resetAfterCommit: () => {
-    if (operations.length) {
-      __inkPost(JSON.stringify({ type: "commit", operations }));
+    if (!operations.length || commitScheduled) return;
+    commitScheduled = true;
+    queueMicrotask(() => {
+      // Revealing an Activity reconnects store subscriptions in passive effects.
+      // Include their synchronous corrections before presenting the page.
+      while (reconciler.flushPassiveEffects()) {}
+      reconciler.flushSyncWork();
+      const committed = operations;
       operations = [];
-    }
+      commitScheduled = false;
+      if (committed.length) __inkPost(JSON.stringify({ type: "commit", operations: committed }));
+    });
   },
   preparePortalMount: () => {},
   scheduleTimeout: setTimeout,

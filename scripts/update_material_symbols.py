@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.request import urlopen
+import subprocess
 import zlib
 
 from fontTools.ttLib import TTFont
@@ -75,6 +76,7 @@ def main() -> None:
             (output / filename).write_bytes(compressed_font)
 
     (output / "MaterialSymbolsOutlined.codepoints").write_bytes(download("codepoints"))
+    subprocess.run(["bun", str(output.parents[1] / "scripts/generate-icons.ts")], check=True)
 
     keyboard_output = (
         Path(__file__).resolve().parents[1]

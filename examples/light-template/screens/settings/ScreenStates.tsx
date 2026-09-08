@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Confirmation, LoadingState, Screen, Text } from "ink";
+import { Button, ErrorState, LoadingState, Screen, Text } from "ink";
 
 export default function ScreenStates() {
   return (
@@ -26,20 +26,20 @@ export function ScreenStateExample({ result, loadingMessage = "Loading..." }: {
 
   if (status === "loading") {
     return (
-      <Screen title={title} centered>
-        <LoadingState label={loadingMessage} align="center" />
+      <Screen title={title}>
+        <LoadingState label={loadingMessage} />
       </Screen>
     );
   }
 
   if (status === "error") {
     return (
-      <Confirmation title={title} centered confirmLabel="Try again" onConfirm={() => {
-        setRetrying(true);
-        setStatus("loading");
-      }}>
-        The example could not load.
-      </Confirmation>
+      <Screen title={title}>
+        <ErrorState message="The example could not load." onRetry={() => {
+          setRetrying(true);
+          setStatus("loading");
+        }} />
+      </Screen>
     );
   }
 

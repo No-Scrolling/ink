@@ -22,8 +22,3 @@ declare module "*.mp3" {
   const source: string;
   export default source;
 }
-
-declare module "*.ink-icons" {
-  const icons: Readonly<Record<string, import("./assets").IconAsset>>;
-  export default icons;
-}

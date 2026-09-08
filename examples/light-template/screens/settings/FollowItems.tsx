@@ -8,7 +8,7 @@ export default function FollowItems() {
       <Button onPress={() => setItems(current => [...current, current.length])}>Add new item</Button>
       <Button onPress={() => setItems([])}>Clear items</Button>
     </>}>
-      <List items={items} gap={47} followEnd
+      <List items={items} followEnd
         keyExtractor={item => String(item)}
         renderItem={item => <Text>Item {item}</Text>} />
     </Screen>

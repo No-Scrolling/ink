@@ -92,6 +92,8 @@ const CONTENT_INSET_END: f32 = CONTENT_INSET_START;
 const CONTENT_TOP: f32 = 14.0;
 const CONTENT_BOTTOM: f32 = 20.0;
 const CONTENT_GAP: f32 = 47.0;
+const DECODED_IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
+const DECODED_IMAGE_CACHE_ENTRIES: usize = 256;
 const HEADER_HEIGHT: f32 = 50.0;
 const HEADER_TEXT_SIZE: f32 = 20.0;
 const HEADER_HORIZONTAL_INSET: f32 = 22.0;
@@ -587,6 +589,7 @@ enum NodeKind {
         justify: Justification,
     },
     Text {
+        width: Option<f32>,
         text: String,
         font_size: Option<f32>,
         align: TextAlign,
@@ -695,6 +698,7 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Text {
+                width: None,
                 text,
                 font_size,
                 align,
@@ -1170,7 +1174,7 @@ struct RemoteImageKey {
 #[derive(Clone)]
 enum RemoteImageState {
     Loading { request_id: u64 },
-    Ready(RemoteImage),
+    Ready { image: RemoteImage, last_used: u64 },
     Failed,
 }
 
@@ -1351,13 +1355,10 @@ impl Engine {
         self.next_image_generation = self.next_image_generation.wrapping_add(1).max(1);
         self.remote_images.insert(
             key,
-            RemoteImageState::Ready(RemoteImage {
-                id,
-                generation,
-                width,
-                height,
-                pixels: pixels.into(),
-            }),
+            RemoteImageState::Ready {
+                image: RemoteImage { id, generation, width, height, pixels: pixels.into() },
+                last_used: self.scene.revision,
+            },
         );
         self.rebuild_scene();
         true
@@ -1479,21 +1480,44 @@ impl Engine {
     }
 
     fn sync_visible_images(&mut self) {
-        let stale = self
-            .remote_images
-            .iter()
-            .filter_map(|(key, state)| {
-                (!self.visible_images.contains(key)).then(|| match state {
-                    RemoteImageState::Loading { request_id } => Some((key.clone(), *request_id)),
-                    RemoteImageState::Ready(_) | RemoteImageState::Failed => Some((key.clone(), 0)),
-                })?
-            })
-            .collect::<Vec<_>>();
-        for (key, request_id) in stale {
-            self.remote_images.remove(&key);
-            if request_id != 0 {
-                self.cancel_request(request_id);
+        let mut cancelled = Vec::new();
+        let mut bytes = 0;
+        let mut ready_count = 0;
+        let mut unused = Vec::new();
+        self.remote_images.retain(|key, state| {
+            let visible = self.visible_images.contains(key);
+            match state {
+                RemoteImageState::Ready { image, last_used } => {
+                    bytes += image.pixels.len();
+                    ready_count += 1;
+                    if visible {
+                        *last_used = self.scene.revision;
+                    } else {
+                        unused.push((key.clone(), *last_used, image.pixels.len()));
+                    }
+                    true
+                }
+                RemoteImageState::Loading { request_id } => {
+                    if !visible { cancelled.push(*request_id); }
+                    visible
+                }
+                RemoteImageState::Failed => visible,
             }
+        });
+        for request_id in cancelled {
+            self.cancel_request(request_id);
+        }
+        if bytes <= DECODED_IMAGE_CACHE_BYTES && ready_count <= DECODED_IMAGE_CACHE_ENTRIES {
+            return;
+        }
+        unused.sort_unstable_by_key(|(_, last_used, _)| *last_used);
+        for (key, _, size) in unused {
+            if bytes <= DECODED_IMAGE_CACHE_BYTES && ready_count <= DECODED_IMAGE_CACHE_ENTRIES {
+                break;
+            }
+            self.remote_images.remove(&key);
+            bytes -= size;
+            ready_count -= 1;
         }
     }
 
@@ -2180,7 +2204,7 @@ impl Engine {
             && vertical_distance <= horizontal * BACK_SWIPE_VERTICAL_RATIO
         {
             self.pointer = None;
-            return PointerOutcome::activated(self.back()).captured();
+            return PointerOutcome::activated(self.pop_route()).captured();
         }
 
         self.pointer = Some(Pointer::EdgeBack(EdgeBackPointer {
@@ -2633,10 +2657,7 @@ impl Engine {
                         }
                     }
                     Axis::Horizontal => {
-                        let measured: Vec<_> = children
-                            .iter()
-                            .map(|child| self.measure(child, available))
-                            .collect();
+                        let measured = self.measure_horizontal_children(children, gap, available);
                         MeasuredSize {
                             width: (measured.iter().map(|size| size.width).sum::<f32>()
                                 + gap * children.len().saturating_sub(1) as f32)
@@ -2651,6 +2672,7 @@ impl Engine {
                 }
             }
             NodeKind::Text {
+                width,
                 text,
                 font_size,
                 align,
@@ -2659,16 +2681,17 @@ impl Engine {
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font_size = self.scaled_font(size);
-                let lines = self.wrap_text(text, font_size, available.width, *max_lines, *tabular_numbers);
+                let fixed_width = width.map(|width| self.scaled(width.max(0.0)).min(available.width));
+                let lines = self.wrap_text(text, font_size, fixed_width.unwrap_or(available.width), *max_lines, *tabular_numbers);
                 let line_height = self.text_line_height(size, lines.len());
                 MeasuredSize {
-                    width: if *align == TextAlign::Justify && lines.iter().any(|line| line.wrapped)
-                    {
-                        available.width
-                    } else {
-                        lines.iter().map(|line| line.width).fold(0.0, f32::max)
-                    }
-                    .min(available.width),
+                    width: fixed_width.unwrap_or_else(|| {
+                        if *align == TextAlign::Justify && lines.iter().any(|line| line.wrapped) {
+                            available.width
+                        } else {
+                            lines.iter().map(|line| line.width).fold(0.0, f32::max)
+                        }
+                    }).min(available.width),
                     height: (line_height * lines.len() as f32).min(available.height),
                 }
             }
@@ -2732,7 +2755,7 @@ impl Engine {
                         let pixels = measured_width.ceil().max(1.0) as u32;
                         let key = RemoteImageKey { module: module.clone(), url: url.clone(), width: pixels, height: pixels, fit: *fit };
                         match self.remote_images.get(&key) {
-                            Some(RemoteImageState::Ready(image)) => Some(measured_width * image.height as f32 / image.width as f32),
+                            Some(RemoteImageState::Ready { image, .. }) => Some(measured_width * image.height as f32 / image.width as f32),
                             _ => None,
                         }
                     }
@@ -3008,6 +3031,7 @@ impl Engine {
                 align,
                 max_lines,
                 tabular_numbers,
+                ..
             } => {
                 self.layout_text(text, *font_size, *align, *max_lines, *tabular_numbers, rect);
             }
@@ -3451,8 +3475,9 @@ impl Engine {
             } else {
                 size.width.min(rect.width)
             };
-            let page_centred_image = matches!(child.kind, NodeKind::Image { .. })
+            let page_centred_child = (matches!(child.kind, NodeKind::Image { .. })
                 && matches!(align, Alignment::Centre | Alignment::Stretch)
+                || matches!(child.kind, NodeKind::Stack { axis: Axis::Vertical, align: Alignment::Centre, .. }))
                 && self.scroll_max > 0.0
                 && (rect.x - self.scaled(CONTENT_INSET_START)).abs() < 1.0
                 && (rect.width
@@ -3463,7 +3488,7 @@ impl Engine {
                     < 1.0;
             let x = if bleed {
                 0.0
-            } else if page_centred_image {
+            } else if page_centred_child {
                 (self.viewport.width as f32 - width) / 2.0
             } else {
                 cross_position(rect.x, rect.width, width, align)
@@ -3481,6 +3506,24 @@ impl Engine {
         }
     }
 
+    fn measure_horizontal_children(&mut self, children: &[Node], gap: f32, rect: Rect) -> Vec<MeasuredSize> {
+        let mut sizes: Vec<_> = children.iter().map(|child| self.measure(child, rect)).collect();
+        let shrinkable = |child: &Node| matches!(child.kind, NodeKind::Text { width: None, max_lines: Some(1), .. });
+        let label_width: f32 = children.iter().zip(&sizes)
+            .filter(|(child, _)| shrinkable(child)).map(|(_, size)| size.width).sum();
+        let total = sizes.iter().map(|size| size.width).sum::<f32>()
+            + gap * children.len().saturating_sub(1) as f32;
+        if total > rect.width && label_width > 0.0 {
+            let remaining = (label_width - (total - rect.width)).max(0.0);
+            for (child, size) in children.iter().zip(&mut sizes) {
+                if shrinkable(child) {
+                    size.width *= remaining / label_width;
+                }
+            }
+        }
+        sizes
+    }
+
     fn layout_horizontal_children(
         &mut self,
         children: &[Node],
@@ -3489,10 +3532,7 @@ impl Engine {
         justify: Justification,
         rect: Rect,
     ) {
-        let sizes: Vec<_> = children
-            .iter()
-            .map(|child| self.measure(child, rect))
-            .collect();
+        let sizes = self.measure_horizontal_children(children, gap, rect);
         let content_width = sizes.iter().map(|size| size.width).sum::<f32>()
             + gap * children.len().saturating_sub(1) as f32;
         let (mut cursor, actual_gap) = distribution(
@@ -4111,7 +4151,7 @@ impl Engine {
                     };
                     self.visible_images.insert(key.clone());
                     let loaded = match self.remote_images.get(&key) {
-                        Some(RemoteImageState::Ready(image)) => {
+                        Some(RemoteImageState::Ready { image, .. }) => {
                             Some(ImageData::Remote(image.clone()))
                         }
                         _ => None,

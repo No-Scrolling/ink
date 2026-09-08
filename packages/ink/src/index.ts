@@ -5,7 +5,7 @@ import { createElement } from "./react";
 import { navigate, type Destination } from "./navigation";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
 export { useAction, type Action } from "./action";
-export { Navigator, Route, Tabs, Tab, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
+export { Navigator, Route, Tabs, Tab, Slot, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
 
 export function Screen({ header, children, rightAction, ...props }: {
   children?: ReactNode;
@@ -31,6 +31,7 @@ export function Stack(props: {
 }
 
 export function Text(props: {
+  width?: number;
   children?: ReactNode;
   size?: number;
   align?: "start" | "center" | "end" | "justify";

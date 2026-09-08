@@ -1,6 +1,6 @@
-Do not write tests unless told so.
-Use British English.
-If using Python, use uv.
+## Rules
+
+- Use `emulator -avd Light_Phone_III -writable-system` for the emulator
 
 ## Agent Tools
 

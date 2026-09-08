@@ -48,13 +48,14 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
         directory.join("tsconfig.json"),
         "{\n  \"extends\": \"ink/tsconfig\",\n  \"include\": [\"**/*.ts\", \"**/*.tsx\"]\n}\n",
     )?;
+    fs::create_dir_all(directory.join("app"))?;
     fs::write(
-        directory.join("App.tsx"),
+        directory.join("app/index.tsx"),
         "import { Screen, Text } from \"ink\";\n\nexport default function App() {\n  return <Screen title=\"Home\"><Text>Welcome to Ink!</Text></Screen>;\n}\n",
     )?;
     fs::write(
         directory.join(".gitignore"),
-        "node_modules/\n.ink/\n*.ink-icons.d.ts\ndist/\n*.jks\n*.keystore\n",
+        "node_modules/\n.ink/\ndist/\n*.jks\n*.keystore\n",
     )?;
     fs::write(
         directory.join("README.md"),

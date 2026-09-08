@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { Image, Screen, Stack, Text, type IconAsset } from "./index";
-import icons from "./playing.ink-icons";
+import { forward10Filled, forward30Filled, forward5Filled, pauseFilled, playArrowFilled, replay10Filled, replay30Filled, replay5Filled, skipNextFilled, skipPreviousFilled } from "./icons";
 
 type TransportAction = { seconds?: 5 | 10 | 30; onPress: () => void; onLongPress?: () => void; disabled?: boolean };
 export type PlayingScreenProps = {
@@ -22,6 +22,9 @@ function time(milliseconds: number) {
   const seconds = Math.floor(milliseconds / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
+
+const replayIcons = { 5: replay5Filled, 10: replay10Filled, 30: replay30Filled };
+const forwardIcons = { 5: forward5Filled, 10: forward10Filled, 30: forward30Filled };
 
 export function PlayingScreen({ image, title, onTitlePress, artists, playing, onPlayPause, position, duration, onSeek, previous, next, actions = [] }: PlayingScreenProps) {
   if (!Number.isFinite(position) || !Number.isFinite(duration) || position < 0 || duration < 0) {
@@ -47,9 +50,9 @@ export function PlayingScreen({ image, title, onTitlePress, artists, playing, on
             createElement(Text, { size: 12 }, time(duration))),
         ),
         createElement("PlayingTransport", null,
-          control(previous.seconds ? icons[`replay_${previous.seconds}`] : icons.skip_previous, previous),
-          control(playing ? icons.pause : icons.play_arrow, { onPress: onPlayPause }),
-          control(next.seconds ? icons[`forward_${next.seconds}`] : icons.skip_next, next)),
+          control(previous.seconds ? replayIcons[previous.seconds] : skipPreviousFilled, previous),
+          control(playing ? pauseFilled : playArrowFilled, { onPress: onPlayPause }),
+          control(next.seconds ? forwardIcons[next.seconds] : skipNextFilled, next)),
       ),
       createElement(Stack, { axis: "horizontal", align: "center", justify: actions.length === 1 ? "center" : "space-between" },
         actions.map((action, index) => createElement("PlayingPressable", { key: index, selected: action.selected, onPress: action.disabled ? undefined : action.onPress },

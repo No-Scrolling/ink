@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, navigate, PlayingScreen, Screen } from "ink";
 import wallsocket from "../assets/images/wallsocket.jpg";
-import icons from "../assets/navigation.ink-icons";
+import { repeatFilled, repeatOneFilled, shuffleFilled } from "ink/icons";
 
 export default function Playing() {
   return <Screen title="Playing screen">
@@ -46,8 +46,8 @@ export function PlayingExample({ image = false }: { image?: boolean }) {
       onLongPress: () => seekBy(15000),
     }}
     actions={[
-      { icon: icons.shuffle, selected: shuffle, onPress: () => setShuffle(current => !current) },
-      { icon: repeat === "one" ? icons.repeat_one : icons.repeat, selected: repeat !== "off",
+      { icon: shuffleFilled, selected: shuffle, onPress: () => setShuffle(current => !current) },
+      { icon: repeat === "one" ? repeatOneFilled : repeatFilled, selected: repeat !== "off",
         onPress: () => setRepeat(current => current === "off" ? "all" : current === "all" ? "one" : "off") },
     ]} />;
 }

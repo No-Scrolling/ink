@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Screen, Stack, Text } from "ink";
-import icons from "../assets/navigation.ink-icons";
+import { keyboardArrowDown, keyboardArrowUp } from "ink/icons";
 
 export default function Reordering() {
   const [items, setItems] = useState(() => Array.from({ length: 8 }, (_, index) => index));
@@ -20,11 +20,11 @@ export default function Reordering() {
     <Screen title="Reordering">
       {items.map((item, index) => (
         <Stack key={item} axis="horizontal" align="center" justify="space-between">
-          <Text>Item {item}</Text>
+          <Text maxLines={1}>Item {item}</Text>
           <Stack axis="horizontal" align="center" gap={4}>
-            <Button icon={icons.keyboard_arrow_down} disabled={index === items.length - 1}
+            <Button icon={keyboardArrowDown} disabled={index === items.length - 1}
               onPress={() => move(item, 1)} />
-            <Button icon={icons.keyboard_arrow_up} disabled={index === 0}
+            <Button icon={keyboardArrowUp} disabled={index === 0}
               onPress={() => move(item, -1)} />
           </Stack>
         </Stack>

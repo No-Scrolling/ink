@@ -6,6 +6,7 @@
     "examples/light-template",
     "examples/counter",
     "examples/tuner",
+    "examples/weather",
     "benchmarks/apps/ink-counter",
     "benchmarks/apps/ink-scroll"
   ],

@@ -9,6 +9,8 @@
     "./native": "./src/native.ts",
     "./native/controller": "./src/controller.ts",
     "./assets": "./src/assets.ts",
+    "./icons": "./src/icons.ts",
+    "./file-router": "./src/file-router.tsx",
     "./runtime-types": "./runtime.d.ts",
     "./tsconfig": "./tsconfig.app.json",
     "./input/numeric": "./src/input-numeric.ts"

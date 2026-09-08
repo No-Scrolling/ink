@@ -5,7 +5,7 @@ const items = Array.from({ length: 500 }, (_, id) => ({ id, title: `Album ${id +
 
 export default function ScrollBenchmark() {
   return <Screen title="Scroll benchmark">
-    <List items={items} keyExtractor={item => String(item.id)}
+    <List items={items} gap={0} keyExtractor={item => String(item.id)}
       renderItem={item => <Row image={artwork} title={item.title} subtitle="Artist • A thumbnail and two lines of text" />} />
   </Screen>;
 }

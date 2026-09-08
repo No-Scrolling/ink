@@ -1,4 +1,4 @@
-/** Reference from an imported .ink-icons collection. */
+/** Reference imported from ink/icons. */
 export type IconAsset = string & { readonly __inkIcon: unique symbol };
 
 /** Unknown names in external data return undefined. */
