@@ -14,13 +14,12 @@
     "check": "tsc -p packages/ink/tsconfig.json"
   },
   "devDependencies": {
+    "@jridgewell/remapping": "2.3.5",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
-    "typescript": "5.9.3",
-    "@babel/core": "8.0.1",
-    "@babel/plugin-transform-modules-commonjs": "8.0.1",
-    "@babel/plugin-transform-typescript": "8.0.1",
-    "@jridgewell/remapping": "2.3.5",
-    "react-refresh": "0.18.0"
+    "oxc-parser": "0.149.0",
+    "oxc-transform-react": "0.149.0",
+    "react-refresh": "0.18.0",
+    "typescript": "5.9.3"
   }
 }

@@ -13,6 +13,14 @@ Include native functionality by explicit package entry point, never by inspectin
 
 Networking follows the same rule: `@ink/network` installs web globals, while `/connectivity` and `/downloads` include only their respective native features. UI imports from `ink` do not install web globals. Development compiler tools live in the SDK workspace’s development dependencies, separate from app runtime dependencies.
 
+## React compilation
+
+Ink uses Oxc's React Compiler for app source in development and release builds. It automatically memoises eligible components and hooks; no app configuration is needed. Dependencies and generated entry points are excluded.
+
+Oxc runs React compilation, TypeScript removal, Fast Refresh instrumentation, JSX transformation and export analysis. Bun bundles the result and minifies release builds. During development, Bun also converts persistent modules so their state survives component updates. These builds reuse transformations across passes and compose source maps back to the original source. Only imported files are processed. The compiler runs on your computer, not on the phone; its generated caching code runs with React in the app.
+
+Write components and hooks using the Rules of React. Compilation does not replace TypeScript checking or guarantee that every function is optimised. Ink pins the Oxc version because its React Compiler integration is experimental.
+
 ## Declare native requirements
 
 The bundler follows resolved imports, including re-exports, aliases, linked packages and worker code. Renaming an imported component does not change its native requirements. Release builds use the bundler’s output metadata to select retained modules; they do not inspect JSX props. Use `ink info` to inspect the result.

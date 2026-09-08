@@ -38,12 +38,16 @@ for (let directory = root; ; directory = dirname(directory)) {
   if (dirname(directory) === directory) break;
 }
 const frameworkDirectory = dirname(Bun.resolveSync("ink", root));
+const oxc = await import(Bun.resolveSync("oxc-transform-react", frameworkDirectory));
+const parser = development ? await import(Bun.resolveSync("oxc-parser", frameworkDirectory)) : null;
 let networkEntry;
 const remapping = development ? (await import(Bun.resolveSync("@jridgewell/remapping", frameworkDirectory))).default : null;
-const babel = development ? await import(Bun.resolveSync("@babel/core", frameworkDirectory)) : null;
-const refreshPlugin = development ? (await import(Bun.resolveSync("react-refresh/babel", frameworkDirectory))).default : null;
-const commonjsPlugin = development ? (await import(Bun.resolveSync("@babel/plugin-transform-modules-commonjs", frameworkDirectory))).default : null;
-const typescriptPlugin = development ? (await import(Bun.resolveSync("@babel/plugin-transform-typescript", frameworkDirectory))).default : null;
+
+const compiledModules = new Map();
+const mixedExportsByPath = new Map();
+const pendingConversions = new Map();
+const convertedModules = new Map();
+let discovering = development;
 async function inspect(path) {
   path = await realpath(path);
   inputs.add(path);
@@ -107,36 +111,57 @@ function buildOptions(bootstrap = false) { return {
       await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
+      let compilerMap;
+      const appSource = path.startsWith(root + "/") && !path.includes("/node_modules/") && !path.includes("/.ink/");
+      const refresh = development && !bootstrap && !path.includes("/node_modules/");
+      if (appSource || refresh) {
+        const cacheKey = path + ":" + refresh;
+        const compiled = compiledModules.get(cacheKey) ?? await oxc.transform(path, contents, {
+          reactCompiler: appSource ? { target: "19" } : false,
+          jsx: { runtime: "automatic", development, refresh }, sourcemap: development,
+        });
+        if (compiled.fatal || compiled.errors.length) throw new Error(`Oxc could not compile ${path}: ${JSON.stringify(compiled.errors)}`);
+        compiledModules.set(cacheKey, compiled);
+        contents = compiled.code;
+        compilerMap = compiled.map;
+      }
       if (splitWeb && path === networkEntry) {
         contents = 'import * as native from "ink/native";\nlet web;\nfunction loadWeb() { if (!web) { __inkLoadWeb(); web = globalThis.__inkWebFactory(native); delete globalThis.__inkWebFactory; } return web; }\n' + contents.replace('require("./web-globals")[name]', 'loadWeb()[name]');
       }
-      if (development && !bootstrap && !path.includes("/node_modules/")) {
-        const original = contents;
-        let transformed = await babel.transformAsync(contents, {
-          filename: path, babelrc: false, configFile: false, sourceMaps: true, ast: true,
-          plugins: [[typescriptPlugin, { isTSX: extension === "tsx", allExtensions: true }], [refreshPlugin, { skipEnvCheck: true }]],
-          parserOpts: { plugins: ["tsx", "jsx"].includes(extension) ? ["jsx"] : [] },
-        });
+      if (refresh) {
+        let mixedExports = mixedExportsByPath.get(path);
+        if (mixedExports === undefined) {
+          const parsed = parser.parseSync(path, contents, { lang: "js" });
+          if (parsed.errors.length) throw new Error(`Could not analyse ${path}: ${JSON.stringify(parsed.errors)}`);
+          mixedExports = parsed.program.body.some(node => {
+            if (node.type === "ExportAllDeclaration") return true;
+            if (node.type !== "ExportNamedDeclaration") return false;
+            if (node.specifiers.length) return true;
+            const declaration = node.declaration;
+            if (declaration?.type === "FunctionDeclaration") return !/^[A-Z]/.test(declaration.id?.name ?? "");
+            if (declaration?.type === "VariableDeclaration") return declaration.declarations.some(item => item.id.type !== "Identifier" || !/^[A-Z]/.test(item.id.name));
+            return !!declaration;
+          });
+          mixedExportsByPath.set(path, mixedExports);
+        }
+        let transformed = { code: contents, map: compilerMap };
         let prefix = 'const $RefreshReg$ = (type, id) => globalThis.__inkFramework.refresh.register(type, ' + JSON.stringify(path + ' ') + ' + id);\nconst $RefreshSig$ = globalThis.__inkFramework.refresh.createSignatureFunctionForTransform;\n';
         let suffix = "";
-        const mixedExports = transformed.ast.program.body.some(node => {
-          if (node.type === "ExportAllDeclaration") return true;
-          if (node.type !== "ExportNamedDeclaration") return false;
-          if (node.specifiers.length) return true;
-          const declaration = node.declaration;
-          if (declaration?.type === "FunctionDeclaration") return !/^[A-Z]/.test(declaration.id?.name ?? "");
-          if (declaration?.type === "VariableDeclaration") return declaration.declarations.some(item => item.id.type !== "Identifier" || !/^[A-Z]/.test(item.id.name));
-          return !!declaration;
-        });
         if (transformed.code.includes("$RefreshReg$(") && !mixedExports) {
           components.add(path);
         } else if (!path.includes("/.ink/")) {
-          persistentModules.set(path, new Bun.CryptoHasher("sha256").update(original).digest("hex"));
-          transformed = await babel.transformAsync(transformed.code, { filename: path, babelrc: false, configFile: false, sourceMaps: true, inputSourceMap: transformed.map, plugins: [commonjsPlugin], parserOpts: { plugins: ["jsx"] } });
+          persistentModules.set(path, new Bun.CryptoHasher("sha256").update(contents).digest("hex"));
+          if (discovering) {
+            pendingConversions.set(path, transformed);
+            return { contents: transformed.code, loader: "js" };
+          }
+          transformed = convertedModules.get(path);
+          if (!transformed) throw new Error("Missing prepared module: " + path);
           const key = JSON.stringify(path);
           prefix = 'if (globalThis.__inkFramework.appModules[' + key + ']) { module.exports = globalThis.__inkFramework.appModules[' + key + ']; } else {\n' + prefix;
           suffix = '\nglobalThis.__inkFramework.appModules[' + key + '] = module.exports;\n}';
         }
+        transformed = { ...transformed, map: structuredClone(transformed.map) };
         transformed.map.mappings = ";".repeat(prefix.split("\n").length - 1) + transformed.map.mappings;
         transformed.map.sources = [path];
         sourceMaps.set(path, transformed.map);
@@ -150,7 +175,29 @@ function buildOptions(bootstrap = false) { return {
     });
   }}],
 }; }
+
 let result = await Bun.build(buildOptions());
+if (development && result.success) {
+  // Bun builds cannot be nested inside onLoad. Convert discovered modules between passes.
+  for (const [path, prepared] of pendingConversions) {
+    const converted = await Bun.build({
+      entrypoints: [path], files: { [path]: prepared.code }, target: "browser", format: "cjs",
+      external: ["*"], sourcemap: "external", minify: false,
+    });
+    if (!converted.success) throw new AggregateError(converted.logs, `Could not convert ${path}`);
+    const code = await converted.outputs.find(item => item.kind !== "sourcemap").text();
+    const map = JSON.parse(await converted.outputs.find(item => item.kind === "sourcemap").text());
+    convertedModules.set(path, { code, map: remapping([map, prepared.map], () => null) });
+  }
+  discovering = false;
+  const options = buildOptions();
+  if (components.size) {
+    const refreshEntry = resolve(dirname(output), "refresh-entry.js");
+    await Bun.write(refreshEntry, [...components].sort().map(path => "import " + JSON.stringify(path) + ";").join("\n") + "\nimport " + JSON.stringify(entry) + ";\n");
+    options.entrypoints = [refreshEntry];
+  }
+  result = await Bun.build(options);
+}
 if (splitWeb && networkEntry) {
   const web = await Bun.build({
     entrypoints: [resolve(dirname(networkEntry), "web-globals.ts")],
@@ -173,13 +220,6 @@ if (splitWeb && networkEntry) {
   await Bun.write(path, 'globalThis.__inkWebFactory = function(inkNative) { const module = {exports:{}}; const exports = module.exports;\n' + await web.outputs[0].text() + '\nreturn module.exports; };');
   assets.set("ink-web.js", path);
   for (const name of moduleCapabilities.get(networkEntry) ?? []) capabilities.add(name);
-}
-if (development && result.success && components.size) {
-  const refreshEntry = resolve(dirname(output), "refresh-entry.js");
-  await Bun.write(refreshEntry, [...components].sort().map(path => "import " + JSON.stringify(path) + ";").join("\n") + "\nimport " + JSON.stringify(entry) + ";\n");
-  const options = buildOptions();
-  options.entrypoints = [refreshEntry];
-  result = await Bun.build(options);
 }
 if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1); }
 if (!development) {
