@@ -1296,16 +1296,26 @@ impl Renderer {
         scrolling: bool,
     ) -> Result<(Vec<TextInstance>, Vec<ImageDraw>)> {
         let mut instances = Vec::with_capacity(scene.images.len());
-        let mut draws = Vec::with_capacity(scene.images.len());
+        let mut draws: Vec<ImageDraw> = Vec::with_capacity(scene.images.len());
         for run in scene.images.iter().filter(|run| run.scrolling == scrolling) {
             let image = self
                 .image_cache
                 .prepare(&self.device, &self.queue, &run.image)?;
             let start = instances.len() as u32;
             push_image_quad(&mut instances, scene, run, image.width, image.height);
+            let end = instances.len() as u32;
+            if start == end {
+                continue;
+            }
+            if let Some(previous) = draws.last_mut()
+                && previous.id == run.image.id()
+            {
+                previous.instances.end = end;
+                continue;
+            }
             draws.push(ImageDraw {
                 id: run.image.id(),
-                instances: start..instances.len() as u32,
+                instances: start..end,
                 scrolling,
             });
         }

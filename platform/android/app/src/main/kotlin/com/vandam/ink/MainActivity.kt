@@ -323,7 +323,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val drainJavaScript = Runnable {
         javascriptPending.set(false)
         if (engineHandle != 0L) {
-if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
+            if (nativeDrainJavaScript(engineHandle)) inkView.requestCommitFrame()
             if (BuildConfig.DEBUG) {
                 val error = nativeTakeJavaScriptError(engineHandle)
                 if (error.isNotEmpty()) {
@@ -1025,6 +1025,8 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
 
         override fun onDetachedFromWindow() {
             removeCallbacks(longPress)
+            removeCallbacks(commitFrame)
+            commitFramePosted = false
             super.onDetachedFromWindow()
         }
 
@@ -1082,6 +1084,20 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
         private var downY = 0f
         private var framePosted = false
         private var renderPending = false
+        private var commitFramePosted = false
+        private var touchActive = false
+        private var lastFrameNanos = 0L
+        private val commitFrame = Runnable {
+            commitFramePosted = false
+            if (engineHandle != 0L && surfaceAttached && renderPending) {
+                if (canPresentCommit()) {
+                    renderPending = false
+                    presentFrame()
+                } else {
+                    postFrame()
+                }
+            }
+        }
         private var pendingMoveX = 0f
         private var pendingMoveY = 0f
         private var hasPendingMove = false
@@ -1118,7 +1134,7 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             // Present a completed React window before the next thumb movement
             // can move the viewport beyond it again.
             val presentBeforeMove = renderPending && hasPendingMove
-            if (presentBeforeMove) renderFrame()
+            if (presentBeforeMove) presentFrame()
             var changed = renderPending && !presentBeforeMove
             renderPending = false
             if (hasPendingMove) {
@@ -1145,12 +1161,16 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
                 }
             }
             if (changed) {
-                if (presentBeforeMove) renderPending = true else renderFrame()
+                if (presentBeforeMove) renderPending = true else presentFrame()
             }
             postFrame()
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> touchActive = true
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touchActive = false
+            }
             scaleGestureDetector.onTouchEvent(event)
             if (pinchActive || event.pointerCount > 1) {
                 removeCallbacks(longPress)
@@ -1319,6 +1339,30 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             }
             renderPending = true
             postFrame()
+        }
+
+        fun requestCommitFrame() {
+            renderPending = true
+            if (commitFramePosted) return
+            val frameInterval = (1_000_000_000L / (display?.refreshRate ?: 60f)).toLong()
+            // Avoid waiting for a new vsync after an idle commit. Ongoing work stays paced.
+            if (
+                surfaceAttached && canPresentCommit() &&
+                System.nanoTime() - lastFrameNanos >= frameInterval
+            ) {
+                commitFramePosted = true
+                post(commitFrame)
+            } else {
+                postFrame()
+            }
+        }
+
+        private fun canPresentCommit(): Boolean =
+            !framePosted && !touchActive && !pinchActive && !hasPendingMove && scroller.isFinished
+
+        private fun presentFrame() {
+            lastFrameNanos = System.nanoTime()
+            renderFrame()
         }
 
         fun isTextCursorVisible(): Boolean = textCursorVisible

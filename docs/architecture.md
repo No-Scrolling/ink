@@ -52,9 +52,11 @@ Apps ship bundled JavaScript, prepared icons, assets and native capability metad
 
 The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScript thread. Ink pumps promise jobs and native completions, hosts timers and networking, and schedules component updates. Native calls return promises instead of blocking that thread on I/O.
 
-Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches changes across the native seam and applies consistent updates at frame boundaries. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
+Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches and applies completed React updates before rendering. When idle, it can present an update without waiting for a new display callback. Gestures and ongoing frames use Android's frame scheduler. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
 
 Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](/ink#collections).
+
+The renderer reuses prepared geometry between changes and combines adjacent draws of the same image. It preserves image order and clipping.
 
 A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 
