@@ -57,7 +57,7 @@ export default function Settings() {
 
 `Screen` provides the title bar, back button, content padding and space above tabs. It scrolls when content overflows. `Stack` arranges children vertically; use `axis="horizontal"` for a row. Set `gap`, `align` and `justify` to control the layout.
 
-Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. Import Material Symbols from `ink/icons`. `Icon.name`, `Button.icon` and `Tab.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](/build-contracts) for formats and migration.
+Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. Import Material Symbols from `ink/icons`. `Icon.name`, `Button.icon` and `Tabs.Screen.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](/build-contracts) for formats and migration.
 
 | Component | Use |
 | --- | --- |
@@ -201,7 +201,7 @@ Use compact item keys and limit loaded history. List keys and content versions h
 
 ## Navigation
 
-Ink discovers pages in `app/` and generates the entry point inside `.ink/`. Each page exports a React component as its default export. No `App.tsx` or manual route registration is needed.
+Ink discovers pages in `app/` and generates the entry point inside `.ink/`. Each page exports a React component as its default export. File-based routing is the only supported entry point.
 
 ```text
 app/
@@ -281,9 +281,9 @@ export default function Layout() {
 }
 ```
 
-Here, `app/scan.tsx` sits outside the tab group. Scan opens above the tabs; Back returns to the previously selected tab. Actions follow the JSX order, use the unselected icon colour and never become selected. They do not count towards the requirement for at least one tab or affect the startup selection. `Tabs.Action` also works alongside explicit `Tab` components. Give mapped actions stable React keys.
+Here, `app/scan.tsx` sits outside the tab group. Scan opens above the tabs; Back returns to the previously selected tab. Actions follow the JSX order, use the unselected icon colour and never become selected. They do not count towards the requirement for at least one tab or affect the startup selection. Give mapped actions stable React keys.
 
-Existing apps can continue using `App.tsx` with explicit `Navigator`, `Route`, `Tabs` and `Tab` components. Choose either `app/` or `App.tsx`; having both is an error.
+Move existing `App.tsx` screens into `app/` and remove manual route registration. Use an optional `_layout.tsx` for shared providers, `Slot` for its pages and `Tabs.Screen` for tabs.
 
 `navigate({ path: "/forecast", params: { placeId } })` or an equivalent `href` opens a screen. Use `back()` to return and `replace()` to replace the current screen. The title-bar button and a left-edge swipe above the keyboard navigate back directly. Hardware Back dismisses the keyboard first. Pass IDs and small JSON values as route parameters.
 
@@ -378,7 +378,7 @@ A long press calls `onLongPress` once and suppresses the tap on release. Moving 
 
 ## Conversations
 
-`ConversationScreen` owns message presentation, the list, composer and message actions page. Use it in an `app/` page, or inside an explicit `Navigator`; no extra route or provider is needed for message actions. Supply `ConversationMessage` objects with an `id`, `timestamp` and text or an image. Ink handles keys, rendering and reply previews.
+`ConversationScreen` owns message presentation, the list, composer and message actions page. Use it in an `app/` page; no extra route or provider is needed for message actions. Supply `ConversationMessage` objects with an `id`, `timestamp` and text or an image. Ink handles keys, rendering and reply previews.
 
 ```tsx
 <ConversationScreen

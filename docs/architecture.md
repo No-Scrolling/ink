@@ -10,7 +10,7 @@ Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler
 See [product design](/product-design) for scope.
 
 ```text
-app/ pages (or App.tsx) + TypeScript + npm dependencies
+app/ pages + TypeScript + npm dependencies
                     ↓
        JavaScript bundle + assets
                     ↓

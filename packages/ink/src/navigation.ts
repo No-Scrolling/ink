@@ -26,7 +26,7 @@ export const RouteContext = createContext<Params | undefined>(undefined);
 const TabRoutesContext = createContext<((group: object, paths: readonly string[], ownsStart: boolean) => void) | null>(null);
 
 function send(action: NavigationAction) {
-  if (!dispatch) throw new Error("Navigation requires a mounted Navigator");
+  if (!dispatch) throw new Error("Navigation is unavailable before the app mounts");
   dispatch(action);
 }
 
@@ -46,7 +46,7 @@ export function useRouteParams<Path extends string>(path: Path): PathParams<Path
 export function useRouteParams<T extends object = Params>(decode?: (value: unknown) => T): T;
 export function useRouteParams(decode?: string | ((value: unknown) => object)): object {
   const params = useContext(RouteContext);
-  if (!params) throw new Error("useRouteParams requires a Route");
+  if (!params) throw new Error("useRouteParams must be used inside a page");
   if (typeof decode === "function") return decode(params);
   if (typeof decode === "string") {
     for (const name of parameterNames(decode)) {
@@ -56,30 +56,9 @@ export function useRouteParams(decode?: string | ((value: unknown) => object)): 
   return params;
 }
 
-type RouteProps = { path: string; children: ReactNode };
-export function Route(_props: RouteProps): ReactNode {
-  throw new Error("Route must be a direct child of Navigator");
-}
-
-export function Navigator({ children }: { children: ReactNode }) {
-  const routes = useMemo(() => {
-    const routes = new Map<string, ReactNode>();
-    Children.forEach(children, child => {
-      if (!isValidElement<RouteProps>(child) || child.type !== Route) {
-        throw new Error("Navigator children must be Routes");
-      }
-      if (routes.has(child.props.path)) throw new Error(`Duplicate route: ${child.props.path}`);
-      routes.set(child.props.path, child.props.children);
-    });
-    if (!routes.has("/")) throw new Error("Navigator requires a / route");
-    return routes;
-  }, [children]);
-  return createElement(NavigationStack, { routes });
-}
-
 export function NavigationStack({ routes, renderEntries }: {
-  routes: ReadonlyMap<string, ReactNode>;
-  renderEntries?: (entries: Entry[], selectTab: (path: string) => void) => ReactNode;
+  routes: ReadonlySet<string>;
+  renderEntries: (entries: Entry[], selectTab: (path: string) => void) => ReactNode;
 }) {
   const [entries, setEntries] = useState<Entry[]>([{ key: 0, path: "/", params: {} }]);
   const nextKey = useRef(1);
@@ -125,7 +104,7 @@ export function NavigationStack({ routes, renderEntries }: {
     throw new Error(`Unknown route: ${target.path}`);
   }, [routes]);
   useLayoutEffect(() => {
-    if (dispatch) throw new Error("An Ink app can mount one Navigator");
+    if (dispatch) throw new Error("An Ink app can mount one router");
     dispatch = action => {
       if (action.type === "back") {
         setEntries(current => current.length > 1 ? current.slice(0, -1) : current);
@@ -165,54 +144,8 @@ export function NavigationStack({ routes, renderEntries }: {
   }, [routes, tabGroups, resolve]);
   const nativeProps = { onBack: entries.length > 1 ? back : undefined };
   return createElement(TabRoutesContext.Provider, { value: registerTabs }, createElement("Navigator", nativeProps,
-    renderEntries ? renderEntries(entries, navigate) : entries.map((entry, index) => createElement(Activity, {
-      key: entry.key,
-      mode: index === entries.length - 1 ? "visible" : "hidden",
-      children: createElement(RouteContext.Provider, { value: entry.params }, entry.unavailable
-        ? createElement("Screen", { title: "Page unavailable" },
-          createElement("Text", null, "This notification links to a page that is no longer available."),
-          createElement("Button", { onPress: back }, "Go back"))
-        : entry.page ?? routes.get(entry.path)),
-    })),
+    renderEntries(entries, navigate),
   ));
-}
-
-type TabProps = { id?: string; icon: IconAsset; children: ReactNode };
-export function Tab(_props: TabProps): ReactNode {
-  throw new Error("Tab must be a direct child of Tabs");
-}
-
-function ManualTabs({ children }: { children: ReactNode }) {
-  const items: ({ action: ReactElement<TabActionProps> } | { id: string; icon: IconAsset; page: ReactNode })[] = [];
-  const ids = new Set<string>();
-  Children.toArray(children).forEach(child => {
-    if (isValidElement<TabActionProps>(child) && child.type === TabAction) {
-      items.push({ action: child });
-      return;
-    }
-    if (!isValidElement<TabProps>(child) || child.type !== Tab) throw new Error("Tabs children must be Tab or Tabs.Action components");
-    const id = child.props.id ?? child.props.icon;
-    if (ids.has(id)) throw new Error(`Duplicate tab: ${id}`);
-    ids.add(id);
-    items.push({ id, icon: child.props.icon, page: child.props.children });
-  });
-  const tabs = items.filter(item => "id" in item);
-  if (!tabs.length) throw new Error("Tabs requires at least one Tab");
-  const first = tabs[0].id;
-  const [selected, setSelected] = useState(first);
-  const selectedIndex = tabs.findIndex(tab => tab.id === selected);
-  const selectedTab = tabs[Math.max(0, selectedIndex)];
-  const active = items.indexOf(selectedTab);
-  useLayoutEffect(() => {
-    if (selectedIndex < 0) setSelected(first);
-  }, [first, selectedIndex]);
-  const nativeProps = { active };
-  return createElement("Tabs", nativeProps, items.map((item, index) => {
-    if ("action" in item) return actionItem(item.action);
-    const nativeProps = { key: item.id, icon: item.icon, onPress: () => setSelected(item.id) };
-    return createElement("Tab", nativeProps,
-      createElement(Activity, { mode: index === active ? "visible" : "hidden", children: item.page }));
-  }));
 }
 
 export const LayoutContext = createContext<{
@@ -248,7 +181,7 @@ function actionItem(action: ReactElement<TabActionProps>) {
   });
 }
 
-function FileTabs({ children }: { children: ReactNode }) {
+export function Tabs({ children }: { children: ReactNode }) {
   const layout = useContext(LayoutContext);
   const registerTabs = useContext(TabRoutesContext);
   if (!layout) throw new Error("Tabs.Screen belongs in an app/_layout.tsx file");
@@ -290,11 +223,5 @@ function FileTabs({ children }: { children: ReactNode }) {
     layout.ordinaryPages(paths));
 }
 
-export function Tabs({ children }: { children: ReactNode }) {
-  const layout = useContext(LayoutContext);
-  const manual = Children.toArray(children).some(child => isValidElement(child) && child.type === Tab);
-  const fileBased = layout !== null && !manual;
-  return createElement(fileBased ? FileTabs : ManualTabs, null, children);
-}
 Tabs.Screen = TabScreen;
 Tabs.Action = TabAction;

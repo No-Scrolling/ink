@@ -67,7 +67,7 @@ function LayoutBranch({ group, entries, active, selectTab, root = false }: {
 }
 
 export function FileNavigator({ tree }: { tree: FileLayout }) {
-  const routes = useMemo(() => new Map<string, ReactNode>(paths(tree).map(path => [path, null])), [tree]);
+  const routes = useMemo(() => new Set(paths(tree)), [tree]);
   return <NavigationStack routes={routes} renderEntries={(entries, selectTab) => (
     <LayoutBranch group={tree} entries={entries} active={entries[entries.length - 1]} selectTab={selectTab} root />
   )} />;

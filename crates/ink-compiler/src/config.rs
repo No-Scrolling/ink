@@ -95,7 +95,7 @@ impl ResolvedConfig {
             worker_entry: config
                 .background
                 .map(|background| directory.join(background.entry)),
-            source: directory.join(if directory.join("app").is_dir() { "app" } else { "App.tsx" }),
+            source: directory.join("app"),
             android_resources: directory.join(".ink/android/res"),
             signing: config.signing.map(|signing| ReleaseSigning {
                 keystore: directory.join(signing.keystore),

@@ -32,7 +32,7 @@ When finished, remove the forwarding:
 adb -s SERIAL reverse --remove tcp:8788
 ```
 
-Debug OAuth permits local HTTP endpoints. Release OAuth requires HTTPS. To use a real provider, update `screens/modules/Accounts.tsx` and register the same redirect in `ink.toml` and with the provider.
+Debug OAuth permits local HTTP endpoints. Release OAuth requires HTTPS. To use a real provider, update `app/modules/accounts.tsx` and register the same redirect in `ink.toml` and with the provider.
 
 ## Try transfers
 

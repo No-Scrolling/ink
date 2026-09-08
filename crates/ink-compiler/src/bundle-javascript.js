@@ -1,9 +1,8 @@
 import { dirname, resolve, relative, extname } from "node:path";
-import { realpath, stat } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 const [root, entry, output, profile = "release"] = Bun.argv.slice(2);
 const development = profile === "development";
-if (entry.endsWith("/entry.tsx") && (await stat(resolve(root, "app")).catch(() => null))?.isDirectory()) {
-  if (await Bun.file(resolve(root, "App.tsx")).exists()) throw new Error("Use app/ or App.tsx, not both");
+if (entry.endsWith("/entry.tsx")) {
   const { generateFileRoutes } = await import("./file-routes.js");
   await generateFileRoutes(root);
 }

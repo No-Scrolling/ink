@@ -48,11 +48,7 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
     let output = project.root().join(".ink/bundle/app.js");
     let source = format!(
         "import {{ createElement }} from 'react';\nimport {{ render }} from 'ink/renderer';\nimport App from {};\nrender(createElement(App));\n",
-        serde_json::to_string(&if project.source_path().is_dir() {
-            project.root().join(".ink/routes.tsx")
-        } else {
-            project.source_path().to_path_buf()
-        })?,
+        serde_json::to_string(&project.root().join(".ink/routes.tsx"))?,
     );
     write_if_changed(&entry, source.as_bytes())?;
     let builder = project.root().join(".ink/build.js");
