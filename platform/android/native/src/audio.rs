@@ -19,7 +19,7 @@ impl AudioRuntime {
         let inner: Box<dyn AudioProcessor> = match kind {
             "level" => Box::new(LevelProcessor::new()),
             "pitch" => {
-                let reference_hz = serde_json::from_str::<serde_json::Value>(config)
+                let reference_hz = serde_json::from_slice::<serde_json::Value>(config.as_bytes())
                     .ok()
                     .and_then(|value| value.get("referenceHz")?.as_f64())
                     .unwrap_or(440.0);

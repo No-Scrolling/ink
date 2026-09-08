@@ -79,9 +79,11 @@ For dynamic lookups, use the default collection import and `findIcon(collection,
 
 `resolution` sets the raster size in logical units, from 16 to 128. Ink applies its 2.55 pixel scale and native display scaling. Rendering above the declared resolution can soften edges. Back and input-clear icons are always included.
 
-## Native shaders
+## Native engine
 
 Ink renders directly through Vulkan. Naga compiles its shaders to SPIR-V on the build machine; apps do not bundle a runtime shader compiler. The renderer requires Vulkan 1.1 and an sRGB presentation format.
+
+The Android build uses compact RELR relocation tables to reduce native library size.
 
 ## Build metadata
 

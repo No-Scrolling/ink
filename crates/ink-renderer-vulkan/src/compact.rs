@@ -1156,13 +1156,49 @@ impl Renderer {
     }
 
     fn prepare_text_runs(&mut self, scene: &Scene) -> Result<Vec<PreparedTextRun>> {
-        let mut previous = std::mem::take(&mut self.prepared.text_runs).into_iter();
+        let mut previous = HashMap::<String, Vec<PreparedTextRun>>::new();
+        for prepared in std::mem::take(&mut self.prepared.text_runs) {
+            previous
+                .entry(prepared.run.text.clone())
+                .or_default()
+                .push(prepared);
+        }
         scene
             .text
             .iter()
-            .map(|run| match previous.next() {
-                Some(prepared) if prepared.run == *run => Ok(prepared),
-                _ => self.prepare_text_run(scene, run),
+            .map(|run| {
+                if let Some(candidates) = previous.get_mut(&run.text)
+                    && let Some(index) = candidates.iter().position(|prepared| {
+                        let old = &prepared.run;
+                        old == run
+                            || (old.font_size == run.font_size
+                                && old.colour == run.colour
+                                && old.align == run.align
+                                && old.tabular_numbers == run.tabular_numbers
+                                && old.rect.width == run.rect.width
+                                && old.rect.height == run.rect.height
+                                && contains(old.clip, old.rect)
+                                && contains(run.clip, run.rect))
+                    })
+                {
+                    let mut prepared = candidates.swap_remove(index);
+                    let dx = (run.rect.x - prepared.run.rect.x) * 2.0 / scene.width as f32;
+                    let dy = (prepared.run.rect.y - run.rect.y) * 2.0 / scene.height as f32;
+                    for instance in prepared.text.iter_mut().chain(
+                        prepared
+                            .system_glyphs
+                            .iter_mut()
+                            .flat_map(|glyphs| &mut glyphs.instances),
+                    ) {
+                        instance.rect[0] += dx;
+                        instance.rect[2] += dx;
+                        instance.rect[1] += dy;
+                        instance.rect[3] += dy;
+                    }
+                    prepared.run.clone_from(run);
+                    return Ok(prepared);
+                }
+                self.prepare_text_run(scene, run)
             })
             .collect()
     }
@@ -1595,6 +1631,13 @@ fn position(scene: &Scene, x: f32, y: f32) -> [f32; 2] {
         x / scene.width as f32 * 2.0 - 1.0,
         1.0 - y / scene.height as f32 * 2.0,
     ]
+}
+
+fn contains(outer: Rect, inner: Rect) -> bool {
+    inner.x >= outer.x
+        && inner.y >= outer.y
+        && inner.x + inner.width <= outer.x + outer.width
+        && inner.y + inner.height <= outer.y + outer.height
 }
 
 fn intersect(first: Rect, second: Rect) -> Rect {

@@ -1443,7 +1443,8 @@ impl Engine {
                 serde_json::to_string(&key.url).expect("a Rust string is valid JSON"),
             )
         } else if key.module == "barcode" {
-            let source: serde_json::Value = serde_json::from_str(&key.url).unwrap_or_default();
+            let source: serde_json::Value =
+                serde_json::from_slice(key.url.as_bytes()).unwrap_or_default();
             let size = source["size"].as_f64().unwrap_or_default();
             serde_json::json!({
                 "source": key.url,

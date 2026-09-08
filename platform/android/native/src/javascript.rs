@@ -81,7 +81,7 @@ impl ScriptRuntime {
                 Event::Stopped => {}
                 Event::Error(message) => bail!(message),
                 Event::Message(message) => {
-                    let mut message: Value = serde_json::from_str(&message)?;
+                    let mut message: Value = serde_json::from_slice(message.as_bytes())?;
                     match message["type"].as_str() {
                         Some("call" | "cancel") => self.calls.push(message),
                         Some("appearance") => {
