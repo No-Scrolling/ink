@@ -7,6 +7,29 @@ plugins {
     alias(libs.plugins.light.sdk)
 }
 
+// The benchmark measures startup work, without the SDK's minimum splash duration.
+val removeSplashDelay = tasks.register("removeSplashDelay") {
+    doLast {
+        val activity = project(":sdk:client").file(
+            "src/main/kotlin/com/thelightphone/sdk/LightActivity.kt",
+        )
+        val source = activity.readText()
+        val delay = "!contentReady || android.os.SystemClock.elapsedRealtime() - createdAt < 1000"
+        check(source.contains(delay) || source.contains("setKeepOnScreenCondition {\n            !contentReady\n")) {
+            "LightActivity's splash condition changed; review the benchmark startup setup."
+        }
+        val updated = source.replace(delay, "!contentReady").replace(
+            "    private val createdAt = android.os.SystemClock.elapsedRealtime()\n",
+            "",
+        )
+        if (updated != source) activity.writeText(updated)
+    }
+}
+
+project(":sdk:client").tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    dependsOn(removeSplashDelay)
+}
+
 android {
     compileSdk = rootProject.ext["compileSdk"] as Int
 

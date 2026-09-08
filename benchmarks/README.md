@@ -17,7 +17,7 @@ Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to new paths to keep earlier
 ## Compare all three counters
 
 1. Overlay `apps/expo-counter` on a copy of light-template. Keep its components, hooks, utilities and locked dependencies, then build its ARM64 release APK.
-2. Add `apps/light-sdk-counter` as `benchmark-counter` in a temporary Light SDK checkout.
+2. Add `apps/light-sdk-counter` as `benchmark-counter` in a temporary Light SDK checkout. The benchmark build automatically removes the SDK's minimum one-second splash delay from that checkout, keeping the content-ready check. Use a disposable checkout because this changes `LightActivity.kt`. Build a fresh APK rather than reusing one with the delay.
 3. Set `EXPO_COUNTER_DIR` and `LIGHT_SDK_DIR`, then run `./benchmarks/measure-builds.sh` for clean and unchanged builds.
 4. Create a JSON file mapping `ink`, `expo` and `light-sdk` to their absolute release APK paths.
 5. Run the comparison:
@@ -27,6 +27,8 @@ scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SER
 ```
 
 The tool reserves the device, saves results and screenshots, removes its benchmark apps and restores settings. It refuses to replace existing benchmark installations. See [agent tools](../docs/agent-tools.md) to read progress and results.
+
+The device harness measures the supplied APKs; the delay removal happens when building the Light SDK benchmark app.
 
 To run the harness directly, set `EXPO_COUNTER_APK` and `BENCHMARK_DEVICE`, then run `bun benchmarks/measure.ts`. Set `INK_COUNTER_APK` to use an isolated build. Direct runs require a manual reservation and cleanup. No scrolling APK is needed.
 
