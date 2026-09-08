@@ -378,7 +378,7 @@ A long press calls `onLongPress` once and suppresses the tap on release. Moving 
 
 ## Conversations
 
-`ConversationScreen` owns message presentation, the list, composer and message actions page. Use it inside a `Navigator`; no extra route or provider is needed. Supply `ConversationMessage` objects with an `id`, `timestamp` and text or an image. Ink handles keys, rendering and reply previews.
+`ConversationScreen` owns message presentation, the list, composer and message actions page. Use it in an `app/` page, or inside an explicit `Navigator`; no extra route or provider is needed for message actions. Supply `ConversationMessage` objects with an `id`, `timestamp` and text or an image. Ink handles keys, rendering and reply previews.
 
 ```tsx
 <ConversationScreen

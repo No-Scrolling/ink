@@ -25,13 +25,15 @@ Use `ink devices` to find another device serial. Creation requires a new directo
 
 Generated apps use local package paths and a compatible React version. Add other `@ink/*` packages from the SDK’s package directories. Extend `ink/tsconfig` so TypeScript uses Ink’s runtime types.
 
+Start editing `app/index.tsx`. Add pages under `app/` and an optional `_layout.tsx` for shared providers or tabs. Ink generates the entry point inside `.ink/`; you do not need an `App.tsx`. See [pages and navigation](/ink#navigation) for dynamic routes and tab layouts.
+
 ## Add features
 
 Use `ink` for components and navigation. Add optional packages for the features your app needs:
 
 | Package | Features |
 | --- | --- |
-| `@ink/audio` | Playback; recording through `/capture` |
+| `@ink/audio` | Playback; microphone analysis through `/microphone` and recording through `/recording` |
 | `@ink/auth` | Sign-in and account tokens |
 | `@ink/background` | Background jobs |
 | `@ink/barcode` | Generated codes; scanning through `/scan` |

@@ -11,6 +11,8 @@ Module guides describe current APIs.
 
 Functions, hooks, context, composition, conditional rendering and array mapping use ordinary React semantics. Native requirements come from imported modules, not special rules about application expressions. Use standard networking and compatible JavaScript libraries.
 
+Pages live in `app/`; optional `_layout.tsx` files provide shared providers or tabs. Dynamic files such as `[id].tsx` receive route parameters. Apps choose visible tabs and their order with React; Ink owns selection, state retention and startup behaviour. `Tabs.Action` adds a bar action without creating another tab. Supporting folders such as `components/`, `hooks/` and `lib/` are conventions, not requirements.
+
 Ink does not promise React Native native-module, DOM or Node compatibility. Its runtime facilities are listed in [runtime compatibility](/runtime-compatibility).
 
 ## Screens and behaviour
