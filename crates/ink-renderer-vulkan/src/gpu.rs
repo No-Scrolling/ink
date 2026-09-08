@@ -772,6 +772,10 @@ pub struct Surface {
     timing: Option<GpuTiming>,
     #[cfg(feature = "perf")]
     pub gpu_ns: Option<u64>,
+    #[cfg(feature = "presentation-timing")]
+    display_timing: Option<ash::google::display_timing::Device>,
+    #[cfg(feature = "presentation-timing")]
+    pub present_id: u32,
 }
 impl Surface {
     pub unsafe fn new(window: *mut c_void, width: u32, height: u32) -> Result<Self> {
@@ -825,13 +829,29 @@ impl Surface {
                 }
             }
             let (physical, family) = choice.context("no Vulkan presentation queue")?;
+            let extensions = [ash::khr::swapchain::NAME.as_ptr()];
+            #[cfg(feature = "presentation-timing")]
+            let (extensions, has_display_timing) = {
+                let supported = instance
+                    .enumerate_device_extension_properties(physical)?
+                    .iter()
+                    .any(|extension| {
+                        extension.extension_name_as_c_str().ok()
+                            == Some(ash::google::display_timing::NAME)
+                    });
+                let mut extensions = extensions.to_vec();
+                if supported {
+                    extensions.push(ash::google::display_timing::NAME.as_ptr());
+                }
+                (extensions, supported)
+            };
             let device = instance.create_device(
                 physical,
                 &vk::DeviceCreateInfo::default()
                     .queue_create_infos(&[vk::DeviceQueueCreateInfo::default()
                         .queue_family_index(family)
                         .queue_priorities(&[1.])])
-                    .enabled_extension_names(&[ash::khr::swapchain::NAME.as_ptr()]),
+                    .enabled_extension_names(&extensions),
                 None,
             )?;
             let cleanup_device = Cleanup(Some(|| device.destroy_device(None)));
@@ -929,6 +949,9 @@ impl Surface {
             )?;
             let cleanup_fence = Cleanup(Some(|| device.destroy_fence(fence, None)));
             let swap = ash::khr::swapchain::Device::new(&instance, &device);
+            #[cfg(feature = "presentation-timing")]
+            let display_timing = has_display_timing
+                .then(|| ash::google::display_timing::Device::new(&instance, &device));
             let formats = loader.get_physical_device_surface_formats(physical, surface)?;
             let format = formats
                 .iter()
@@ -991,6 +1014,10 @@ impl Surface {
                 timing: None,
                 #[cfg(feature = "perf")]
                 gpu_ns: None,
+                #[cfg(feature = "presentation-timing")]
+                display_timing,
+                #[cfg(feature = "presentation-timing")]
+                present_id: 0,
             };
             #[cfg(feature = "perf")]
             {
@@ -1002,6 +1029,19 @@ impl Surface {
     }
     pub fn device(&self) -> Device {
         Device(self.core.clone(), Arc::default())
+    }
+    #[cfg(feature = "presentation-timing")]
+    pub fn presentation_times(&self) -> Result<Option<Vec<(u32, u64)>>> {
+        let Some(timing) = &self.display_timing else {
+            return Ok(None);
+        };
+        let times = unsafe { timing.get_past_presentation_timing(self.chain)? };
+        Ok(Some(
+            times
+                .into_iter()
+                .map(|time| (time.present_id, time.actual_present_time))
+                .collect(),
+        ))
     }
     pub fn format(&self) -> vk::Format {
         self.format
@@ -1297,6 +1337,8 @@ impl RenderPass<'_> {
             }
             d.end_command_buffer(s.command)?;
             d.reset_fences(&[s.fence])?;
+            #[cfg(feature = "perf")]
+            let submit_trace = ink_core::PerfTraceSection::new(b"Ink vkQueueSubmit\0");
             d.queue_submit(
                 s.core.queue,
                 &[vk::SubmitInfo::default()
@@ -1306,14 +1348,37 @@ impl RenderPass<'_> {
                     .signal_semaphores(&[s.rendered[self.index as usize]])],
                 s.fence,
             )?;
+            #[cfg(feature = "perf")]
+            drop(submit_trace);
             s.submitted = true;
-            let result = s.swap.queue_present(
-                s.core.queue,
-                &vk::PresentInfoKHR::default()
-                    .wait_semaphores(&[s.rendered[self.index as usize]])
-                    .swapchains(&[s.chain])
-                    .image_indices(&[self.index]),
-            );
+            let semaphores = [s.rendered[self.index as usize]];
+            let chains = [s.chain];
+            let indices = [self.index];
+            let info = vk::PresentInfoKHR::default()
+                .wait_semaphores(&semaphores)
+                .swapchains(&chains)
+                .image_indices(&indices);
+            #[cfg(feature = "presentation-timing")]
+            let times = {
+                s.present_id = s.present_id.wrapping_add(1);
+                [vk::PresentTimeGOOGLE {
+                    present_id: s.present_id,
+                    desired_present_time: 0,
+                }]
+            };
+            #[cfg(feature = "presentation-timing")]
+            let mut timing_info = vk::PresentTimesInfoGOOGLE::default().times(&times);
+            #[cfg(feature = "presentation-timing")]
+            let info = if s.display_timing.is_some() {
+                info.push_next(&mut timing_info)
+            } else {
+                info
+            };
+            #[cfg(feature = "perf")]
+            let present_trace = ink_core::PerfTraceSection::new(b"Ink vkQueuePresent\0");
+            let result = s.swap.queue_present(s.core.queue, &info);
+            #[cfg(feature = "perf")]
+            drop(present_trace);
             match result {
                 Ok(suboptimal) => {
                     s.dirty |= suboptimal;

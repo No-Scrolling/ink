@@ -562,8 +562,7 @@ pub struct RenderPerfMetrics {
     pub upload_ns: u64,
     pub acquire_ns: u64,
     pub encode_ns: u64,
-    pub queue_submit_cpu_ns: u64,
-    pub queue_present_cpu_ns: u64,
+    pub submit_present_ns: u64,
     pub frame_ns: u64,
     pub instances: u64,
     pub uploaded_bytes: u64,
@@ -936,24 +935,14 @@ impl Renderer {
             perf_trace_counter(b"Ink cache misses\0", self.perf.cache_misses);
         }
         #[cfg(feature = "perf")]
-        let queue_submit_started = Instant::now();
+        let submit_present_started = Instant::now();
         #[cfg(feature = "perf")]
-        let queue_submit_trace = PerfTraceSection::new(b"Ink queue submit\0");
+        let submit_present_trace = PerfTraceSection::new(b"Ink submit and present\0");
         pass.finish()?;
         #[cfg(feature = "perf")]
         {
-            drop(queue_submit_trace);
-            self.perf.queue_submit_cpu_ns += elapsed_ns(queue_submit_started);
-        }
-        #[cfg(feature = "perf")]
-        let queue_present_started = Instant::now();
-        #[cfg(feature = "perf")]
-        let queue_present_trace = PerfTraceSection::new(b"Ink queue present\0");
-
-        #[cfg(feature = "perf")]
-        {
-            drop(queue_present_trace);
-            self.perf.queue_present_cpu_ns += elapsed_ns(queue_present_started);
+            drop(submit_present_trace);
+            self.perf.submit_present_ns += elapsed_ns(submit_present_started);
             self.perf.frame_ns += elapsed_ns(frame_started);
             drop(frame_trace);
         }
@@ -964,6 +953,16 @@ impl Renderer {
     pub fn take_perf_metrics(&mut self) -> RenderPerfMetrics {
         self.perf.gpu_ns = self.surface.gpu_ns.take();
         std::mem::take(&mut self.perf)
+    }
+
+    #[cfg(feature = "presentation-timing")]
+    pub fn presentation_times(&self) -> Result<Option<Vec<(u32, u64)>>> {
+        self.surface.presentation_times()
+    }
+
+    #[cfg(feature = "presentation-timing")]
+    pub fn present_id(&self) -> u32 {
+        self.surface.present_id
     }
 
     #[cfg(feature = "perf")]

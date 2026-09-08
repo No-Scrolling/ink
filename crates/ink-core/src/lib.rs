@@ -327,6 +327,15 @@ pub enum Action {
     Back,
 }
 
+impl Action {
+    fn changes_layout(&self) -> bool {
+        match self {
+            Self::ClearInput { .. } | Self::FocusTextInput { .. } => true,
+            Self::Native { .. } | Self::Back | Self::Seek { .. } => false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Axis {
     #[default]
@@ -1214,6 +1223,7 @@ pub struct Engine {
     back_icon: Option<Mask>,
     navigation_handler: Option<(Mask, NativeOperation)>,
     font: FontRef<'static>,
+    wrapped_text: HashMap<TextWrapKey, (Vec<WrappedLine>, bool)>,
     #[cfg(feature = "perf")]
     perf: CorePerfMetrics,
     #[cfg(feature = "perf")]
@@ -1263,6 +1273,7 @@ impl Engine {
             back_icon: None,
             navigation_handler: None,
             font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
+            wrapped_text: HashMap::new(),
             #[cfg(feature = "perf")]
             perf: CorePerfMetrics::default(),
             #[cfg(feature = "perf")]
@@ -1580,12 +1591,16 @@ impl Engine {
             self.focused_input = None;
         }
 
+        let changes_layout = action.as_ref().is_some_and(Action::changes_layout);
         let changed = action.is_some_and(|action| self.apply(action));
         if !changed && !blurred {
             return false;
         }
 
-        self.relayout_scene();
+        // Native callbacks update the scene when their result arrives.
+        if changes_layout || blurred {
+            self.relayout_scene();
+        }
         true
     }
 
@@ -1711,7 +1726,19 @@ impl Engine {
                 dragging: false,
                 cancelled: false,
                 ..
-            }) => PointerOutcome::activated(self.tap(x, y)),
+            })
+            | Pointer::EdgeBack(EdgeBackPointer {
+                state: EdgeBackState::Pending,
+                ..
+            }) => {
+                let revision = self.scene.revision;
+                let activated = self.tap(x, y);
+                PointerOutcome {
+                    changed: self.scene.revision != revision,
+                    activated,
+                    captured: false,
+                }
+            }
             Pointer::ScrollTrack { cancelled, .. } if !cancelled => {
                 let Some(scroll_bar) = self
                     .scene
@@ -1723,10 +1750,6 @@ impl Engine {
                 let next = scroll_bar.scroll_offset_for_track_tap(y, self.scroll_max);
                 PointerOutcome::activated(self.set_scroll_offset(next)).captured()
             }
-            Pointer::EdgeBack(EdgeBackPointer {
-                state: EdgeBackState::Pending,
-                ..
-            }) => PointerOutcome::activated(self.tap(x, y)),
             Pointer::TextInput(pointer) if !pointer.dragging => {
                 PointerOutcome::activated(self.focus_text_input(pointer.input, x, y))
             }
@@ -1752,9 +1775,12 @@ impl Engine {
         }).and_then(|region| region.long_action.clone());
         let Some(action) = action else { return PointerOutcome::default(); };
         self.pointer_cancel();
-        let changed = self.apply(action);
-        self.relayout_scene();
-        PointerOutcome::activated(changed).captured()
+        let changes_layout = action.changes_layout();
+        let activated = self.apply(action);
+        if changes_layout {
+            self.relayout_scene();
+        }
+        PointerOutcome { changed: changes_layout && activated, activated, captured: true }
     }
 
     pub fn pointer_cancel(&mut self) {
@@ -2395,6 +2421,9 @@ impl Engine {
             Some(Pointer::TextInput(pointer)) => pointer.content_offset += adjustment,
             _ => {}
         }
+
+        // Keep only text used by this layout, ready for the next update.
+        self.wrapped_text.retain(|_, (_, used)| std::mem::take(used));
 
         #[cfg(feature = "perf")]
         {
@@ -4144,13 +4173,24 @@ impl Engine {
     }
 
     fn wrap_text(
-        &self,
+        &mut self,
         text: &str,
         font_size: f32,
         available_width: f32,
         max_lines: Option<u32>,
         tabular_numbers: bool,
     ) -> Vec<WrappedLine> {
+        let key = TextWrapKey {
+            text: text.to_owned(),
+            font_size: font_size.to_bits(),
+            width: available_width.to_bits(),
+            max_lines,
+            tabular_numbers,
+        };
+        if let Some((lines, used)) = self.wrapped_text.get_mut(&key) {
+            *used = true;
+            return lines.clone();
+        }
         let mut lines = Vec::new();
         for paragraph in text.split('\n') {
             if paragraph.is_empty() {
@@ -4201,6 +4241,7 @@ impl Engine {
                 line.wrapped = false;
             }
         }
+        self.wrapped_text.insert(key, (lines.clone(), true));
         lines
     }
 
@@ -4375,6 +4416,16 @@ struct MeasuredSize {
     height: f32,
 }
 
+#[derive(Hash, PartialEq, Eq)]
+struct TextWrapKey {
+    text: String,
+    font_size: u32,
+    width: u32,
+    max_lines: Option<u32>,
+    tabular_numbers: bool,
+}
+
+#[derive(Clone)]
 struct WrappedLine {
     text: String,
     width: f32,

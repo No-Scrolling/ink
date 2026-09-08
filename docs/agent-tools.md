@@ -46,7 +46,11 @@ scripts/agent-tools experiment --working-tree --app benchmarks/apps/ink-counter 
   --env INK_MEMORY_DIAGNOSTICS=1 --background
 ```
 
-The supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1` and `INK_MEMORY_DIAGNOSTICS=0|1`. Memory diagnostics are separate from the existing performance instrumentation. Instrumented builds perform extra accounting and logging: use them for diagnosis, and compare ordinary release builds for production memory and performance.
+The supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1`, `INK_PRESENTATION_TIMING=0|1` and `INK_MEMORY_DIAGNOSTICS=0|1`. Instrumented builds perform extra accounting and logging: use them for diagnosis, and compare ordinary release builds for production memory and performance.
+
+`INK_PRESENTATION_TIMING=1` includes benchmark instrumentation and enables driver presentation timestamps where `VK_GOOGLE_display_timing` is supported. Logs connect native input handling, React scene revisions and presentation IDs to actual display times. Timing feedback arrives on later frames; allow extra interactions to collect the final measured frames. This measures software response, not touch sensing or physical panel response. Use ordinary `INK_BENCHMARK=1` builds for CPU profiling because presentation timing can add driver overhead. The `submit_present_ns` field measures combined submission and presentation wall time; scheduler traces separate CPU work from waiting.
+
+`ReactDispatch` records native event dispatch, `ReactReady` records an outgoing JavaScript message, and `ReactApply` starts applying a commit on the UI thread. A ready notification isn't necessarily a commit: match these stages within an isolated interaction.
 
 ## Paired benchmarks
 

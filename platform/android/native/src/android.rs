@@ -161,6 +161,13 @@ impl AndroidEngine {
     }
 
     fn pointer(&mut self, action: i32, x: f32, y: f32) -> jint {
+        #[cfg(feature = "presentation-timing")]
+        if action == 1 {
+            android_log(
+                ANDROID_LOG_INFO,
+                &format!("InputUp ns={}", benchmark_time_ns()),
+            );
+        }
         #[cfg(feature = "benchmark")]
         let update_trace = (action == 1).then(|| PerfTraceSection::new(b"Ink pointer update\0"));
         #[cfg(feature = "benchmark")]
@@ -302,7 +309,35 @@ impl AndroidEngine {
             .renderer
             .render(self.engine.scene(), text_cursor_visible)
         {
-            Ok(RenderOutcome::Presented) => {}
+            Ok(RenderOutcome::Presented) => {
+                #[cfg(feature = "presentation-timing")]
+                {
+                    android_log(
+                        ANDROID_LOG_INFO,
+                        &format!(
+                            "Presented id={} scene={}",
+                            surface.renderer.present_id(),
+                            self.engine.scene().revision
+                        ),
+                    );
+                    match surface.renderer.presentation_times() {
+                        Ok(Some(times)) => {
+                            for (id, actual_ns) in times {
+                                android_log(
+                                    ANDROID_LOG_INFO,
+                                    &format!("Presentation id={id} actual_ns={actual_ns}"),
+                                );
+                            }
+                        }
+                        Ok(None) => {
+                            android_log(ANDROID_LOG_INFO, "Presentation timing unavailable")
+                        }
+                        Err(error) => {
+                            android_log(ANDROID_LOG_WARN, &format!("Presentation timing: {error}"))
+                        }
+                    }
+                }
+            }
             Ok(RenderOutcome::Skipped) => {
                 android_log(ANDROID_LOG_WARN, "surface skipped dirty frame");
             }
@@ -348,7 +383,7 @@ impl AndroidEngine {
             android_log(
                 ANDROID_LOG_INFO,
                 &format!(
-                    "Perf revision={} update_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} queue_submit_cpu_ns={} queue_present_cpu_ns={} frame_ns={} instances={} uploaded_bytes={} draw_calls={} cache_misses={}",
+                    "Perf revision={} update_ns={} measure_ns={} relayout_ns={} nodes_measured={} full_rebuilds={} incremental_rebuilds={} prepare_ns={} upload_ns={} acquire_ns={} encode_ns={} submit_present_ns={} frame_ns={} instances={} uploaded_bytes={} draw_calls={} cache_misses={}",
                     option_env!("INK_BENCHMARK_REVISION").unwrap_or("unknown"),
                     self.update_ns,
                     core.measure_ns,
@@ -360,8 +395,7 @@ impl AndroidEngine {
                     renderer.upload_ns,
                     renderer.acquire_ns,
                     renderer.encode_ns,
-                    renderer.queue_submit_cpu_ns,
-                    renderer.queue_present_cpu_ns,
+                    renderer.submit_present_ns,
                     renderer.frame_ns,
                     renderer.instances,
                     renderer.uploaded_bytes,
@@ -785,6 +819,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest(
             loop {
                 let request = engine.engine.take_native_request()?;
                 if request.module() == "ink" && request.operation() == "event" {
+                    #[cfg(feature = "presentation-timing")]
+                    android_log(
+                        ANDROID_LOG_INFO,
+                        &format!("ReactDispatch ns={}", benchmark_time_ns()),
+                    );
                     if let Some(script) = &engine.script
                         && let Err(error) = script.send(request.payload().to_owned())
                     {
@@ -1244,6 +1283,19 @@ fn android_log(priority: c_int, message: &str) {
     unsafe {
         __android_log_write(priority, LOG_TAG.as_ptr().cast(), message.as_ptr());
     }
+}
+
+#[cfg(feature = "presentation-timing")]
+fn benchmark_time_ns() -> u64 {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    assert_eq!(
+        unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time) },
+        0
+    );
+    time.tv_sec as u64 * 1_000_000_000 + time.tv_nsec as u64
 }
 
 #[cfg(feature = "benchmark")]

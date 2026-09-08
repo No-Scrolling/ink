@@ -93,7 +93,21 @@ impl ScriptRuntime {
                             changed |= engine.set_colour_scheme(light);
                         }
                         Some("commit") => {
+                            #[cfg(feature = "presentation-timing")]
+                            android_log(
+                                ANDROID_LOG_INFO,
+                                &format!("ReactApply ns={}", super::benchmark_time_ns()),
+                            );
                             self.tree.apply(message["operations"].take(), engine)?;
+                            #[cfg(feature = "presentation-timing")]
+                            android_log(
+                                ANDROID_LOG_INFO,
+                                &format!(
+                                    "ReactCommit scene={} ns={}",
+                                    engine.scene().revision,
+                                    super::benchmark_time_ns(),
+                                ),
+                            );
                             changed = true;
                         }
                         Some("log") => android_log(
@@ -172,6 +186,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
     let runtime = AppRuntime::spawn_with_web_loader(
         source,
         move || {
+            #[cfg(feature = "presentation-timing")]
+            android_log(
+                ANDROID_LOG_INFO,
+                &format!("ReactReady ns={}", super::benchmark_time_ns()),
+            );
             let result: jni::errors::Result<()> = vm.attach_current_thread(|env| {
                 env.call_method(
                     activity.as_ref(),

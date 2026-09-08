@@ -1105,6 +1105,11 @@ if (nativeDrainJavaScript(engineHandle)) inkView.requestFrame()
             }
         }
         private val frameCallback = Choreographer.FrameCallback {
+            // Include completed React work even if its handler is queued behind this frame.
+            if (engineHandle != 0L && javascriptPending.get()) {
+                nativeRequestHandler.removeCallbacks(drainJavaScript)
+                drainJavaScript.run()
+            }
             framePosted = false
             if (!surfaceAttached || engineHandle == 0L) {
                 return@FrameCallback

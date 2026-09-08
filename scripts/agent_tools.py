@@ -461,10 +461,11 @@ def build(op, args):
         if key not in {
             "INK_SPLIT_WEB",
             "INK_BENCHMARK",
+            "INK_PRESENTATION_TIMING",
             "INK_MEMORY_DIAGNOSTICS",
         } or value not in {"0", "1"}:
             raise ValueError(
-                "Build flags support INK_SPLIT_WEB, INK_BENCHMARK and INK_MEMORY_DIAGNOSTICS, each 0 or 1"
+                "Build flags support INK_SPLIT_WEB, INK_BENCHMARK, INK_PRESENTATION_TIMING and INK_MEMORY_DIAGNOSTICS, each 0 or 1"
             )
         flags[key] = value
     environment = {k: v for k, v in os.environ.items() if not k.startswith("INK_")}
@@ -1089,7 +1090,7 @@ def parser():
         "--env",
         action="append",
         default=[],
-        help="INK_SPLIT_WEB, INK_BENCHMARK or INK_MEMORY_DIAGNOSTICS, each 0 or 1",
+        help="INK_SPLIT_WEB, INK_BENCHMARK, INK_PRESENTATION_TIMING or INK_MEMORY_DIAGNOSTICS, each 0 or 1",
     )
     bench = commands.add_parser(
         "bench", help="Alternate baseline/candidate APKs on a reserved device"

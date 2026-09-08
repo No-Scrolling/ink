@@ -20,3 +20,4 @@ naga = { version = "30.0.1", features = ["spv-out", "wgsl-in"] }
 [features]
 image = []
 perf = ["ink-core/perf"]
+presentation-timing = ["perf"]

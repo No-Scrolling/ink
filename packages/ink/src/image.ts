@@ -1,8 +1,8 @@
 import { Stack, Text } from "./index";
-import { createElement } from "./react";
+import { createElement, memo } from "./react";
 import { navigate, type Destination } from "./navigation";
 
-export function Row({ image, title, subtitle, href, onPress }: {
+export const Row = /* @__PURE__ */ memo(function Row({ image, title, subtitle, href, onPress }: {
   image?: string;
   title: string;
   subtitle?: string;
@@ -17,7 +17,7 @@ export function Row({ image, title, subtitle, href, onPress }: {
       subtitle !== undefined && createElement(Text, { size: 16 }, subtitle),
     ),
   );
-}
+});
 
 export function Image(props: {
   src: string;

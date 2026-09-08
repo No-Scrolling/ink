@@ -14,6 +14,7 @@ path = "src/lib.rs"
 audio = ["dep:ink-audio"]
 background = []
 benchmark = ["ink-core/perf", "ink-renderer-vulkan/perf"]
+presentation-timing = ["benchmark", "ink-renderer-vulkan/presentation-timing", "dep:libc"]
 memory-diagnostics = ["ink-core/perf", "ink-renderer-vulkan/perf"]
 image = ["ink-renderer-vulkan/image"]
 network = []
@@ -28,5 +29,6 @@ serde_json.workspace = true
 ink-renderer-vulkan = { path = "../../../crates/ink-renderer-vulkan" }
 
 [target.'cfg(target_os = "android")'.dependencies]
+libc = { version = "0.2", optional = true }
 jni.workspace = true
 ndk = { workspace = true, features = ["rwh_06"] }

@@ -513,6 +513,7 @@ dependencies = [
  "ink-renderer-vulkan",
  "ink-runtime",
  "jni",
+ "libc",
  "ndk",
  "serde_json",
 ]
