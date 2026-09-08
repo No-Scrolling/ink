@@ -41,7 +41,7 @@ internal class PermissionsAdapter(
         }
         val request = Pending(id, permission, complete)
         pending = request
-        if (usesLightOs && permission.name != "notifications") {
+        if (usesLightPermission(permission)) {
             lightSdk.execute(id, "request-permission", permission.name) { result ->
                 if (result is NativeResult.Failure) activity.runOnUiThread {
                     if (pending === request) finish(result)
@@ -62,8 +62,15 @@ internal class PermissionsAdapter(
         }
     }
 
+    private fun usesLightPermission(permission: Permission): Boolean {
+        if (!usesLightOs || permission.name == "notifications") return false
+        // The emulator SDK cannot grant location permissions.
+        return BuildConfig.INK_LIGHT_SERVER_PACKAGE != "com.thelightphone.sdk.emulator" ||
+            Manifest.permission.ACCESS_COARSE_LOCATION !in permission.android
+    }
+
     private fun status(id: Long, permission: Permission, complete: NativeResultHandler) {
-        if (usesLightOs && permission.name != "notifications") {
+        if (usesLightPermission(permission)) {
             lightSdk.execute(id, "permission-status", permission.name, complete)
             return
         }

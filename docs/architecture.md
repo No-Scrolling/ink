@@ -58,6 +58,8 @@ Non-structural React commits patch changed native subtrees. Structural and navig
 
 The renderer reuses prepared geometry between changes, including text that moves without changing its appearance or clipping. It combines adjacent draws of the same image while preserving image order.
 
+The text and icon atlas starts at 1 MiB. When full, it clears cached entries and rebuilds the current scene, including texture coordinates. It grows to 4 MiB, then 16 MiB only if that scene needs more space. Scenes exceeding the limit report a rendering error. Images use a separate cache.
+
 A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
 
 ## Ownership

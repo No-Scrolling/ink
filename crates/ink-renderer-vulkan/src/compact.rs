@@ -26,6 +26,7 @@ use crate::system_glyph::{
 const MAX_QUADS: usize = 64;
 const MAX_GLYPHS: usize = 512;
 const ATLAS_SIZE: u32 = 1024;
+const MAX_ATLAS_SIZE: u32 = 4096;
 const ATLAS_PADDING: u32 = 1;
 const IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
 
@@ -387,7 +388,19 @@ struct SystemGlyphDraw {
     scrolling: bool,
 }
 
+#[derive(Debug)]
+struct AtlasFull;
+
+impl std::fmt::Display for AtlasFull {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the Ink glyph atlas is full")
+    }
+}
+
+impl std::error::Error for AtlasFull {}
+
 struct GlyphAtlas {
+    size: u32,
     font: FontRef<'static>,
     texture: gpu::Texture,
     bind_group: gpu::BindGroup,
@@ -403,12 +416,13 @@ struct GlyphAtlas {
 }
 
 impl GlyphAtlas {
-    fn new(device: &gpu::Device) -> Result<Self> {
+    fn new(device: &gpu::Device, size: u32) -> Result<Self> {
         let font = FontRef::try_from_slice(PUBLIC_SANS).context("Public Sans is invalid")?;
-        let texture = device.texture(ATLAS_SIZE, ATLAS_SIZE, true);
+        let texture = device.texture(size, size, true);
         let bind_group = texture.bind_group();
 
         Ok(Self {
+            size,
             font,
             texture,
             bind_group,
@@ -447,16 +461,16 @@ impl GlyphAtlas {
         }
         let width = glyph_width + ATLAS_PADDING * 2;
         let height = glyph_height + ATLAS_PADDING * 2;
-        if width > ATLAS_SIZE || height > ATLAS_SIZE {
-            return Err(anyhow!("a font glyph exceeds the Ink atlas dimensions"));
+        if width > self.size || height > self.size {
+            return Err(AtlasFull.into());
         }
-        if self.cursor_x + width > ATLAS_SIZE {
+        if self.cursor_x + width > self.size {
             self.cursor_x = 0;
             self.cursor_y += self.row_height;
             self.row_height = 0;
         }
-        if self.cursor_y + height > ATLAS_SIZE {
-            return Err(anyhow!("the Ink glyph atlas is full"));
+        if self.cursor_y + height > self.size {
+            return Err(AtlasFull.into());
         }
 
         let mut pixels = vec![0; (glyph_width * glyph_height) as usize];
@@ -501,16 +515,16 @@ impl GlyphAtlas {
         }
         let padded_width = width + ATLAS_PADDING * 2;
         let padded_height = height + ATLAS_PADDING * 2;
-        if padded_width > ATLAS_SIZE || padded_height > ATLAS_SIZE {
-            return Err(anyhow!("an Ink mask exceeds the atlas dimensions"));
+        if padded_width > self.size || padded_height > self.size {
+            return Err(AtlasFull.into());
         }
-        if self.cursor_x + padded_width > ATLAS_SIZE {
+        if self.cursor_x + padded_width > self.size {
             self.cursor_x = 0;
             self.cursor_y += self.row_height;
             self.row_height = 0;
         }
-        if self.cursor_y + padded_height > ATLAS_SIZE {
-            return Err(anyhow!("the Ink glyph atlas is full"));
+        if self.cursor_y + padded_height > self.size {
+            return Err(AtlasFull.into());
         }
 
         queue.write_texture(
@@ -635,7 +649,7 @@ impl Renderer {
         let system_glyph_atlas = SystemGlyphAtlas::new();
         let image_cache = ImageCache::new();
         let system_glyph_buffer = InstanceBuffer::lazy("Ink system glyph instances");
-        let glyph_atlas = GlyphAtlas::new(&device)?;
+        let glyph_atlas = GlyphAtlas::new(&device, ATLAS_SIZE)?;
 
         Ok(Self {
             surface,
@@ -704,7 +718,7 @@ impl Renderer {
             let prepare_started = Instant::now();
             #[cfg(feature = "perf")]
             let prepare_trace = PerfTraceSection::new(b"Ink prepare\0");
-            self.prepare(scene)?;
+            self.prepare_with_atlas_recovery(scene)?;
             #[cfg(feature = "perf")]
             {
                 drop(prepare_trace);
@@ -980,7 +994,7 @@ impl Renderer {
                     + self.image_buffer.instances.capacity()
                     + self.system_glyph_buffer.instances.capacity())
                     * size_of::<TextInstance>(),
-            font_texture_bytes: ATLAS_SIZE as usize * ATLAS_SIZE as usize,
+            font_texture_bytes: self.glyph_atlas.size as usize * self.glyph_atlas.size as usize,
             image_texture_bytes: self
                 .image_cache
                 .images
@@ -1001,6 +1015,41 @@ impl Renderer {
     fn prepare_image_pipeline(&mut self) {
         if self.image_pipeline.is_none() {
             self.image_pipeline = Some(image_pipeline(&self.device, self.config.format));
+        }
+    }
+
+    fn prepare_with_atlas_recovery(&mut self, scene: &Scene) -> Result<()> {
+        let mut reclaimed = false;
+        loop {
+            match self.prepare(scene) {
+                Ok(()) => return Ok(()),
+                Err(error) if error.is::<AtlasFull>() => {
+                    // The previous GPU frame has finished. Rebuild every cached UV before drawing.
+                    self.prepared = PreparedScene::default();
+                    if !reclaimed {
+                        self.glyph_atlas.glyphs.clear();
+                        self.glyph_atlas.masks.clear();
+                        self.glyph_atlas.cursor_x = 0;
+                        self.glyph_atlas.cursor_y = 0;
+                        self.glyph_atlas.row_height = 0;
+                        let size = self.glyph_atlas.size;
+                        self.queue.write_texture(
+                            &self.glyph_atlas.texture,
+                            [0, 0],
+                            [size, size],
+                            &vec![0; size as usize * size as usize],
+                        );
+                        reclaimed = true;
+                    } else if self.glyph_atlas.size < MAX_ATLAS_SIZE {
+                        self.glyph_atlas = GlyphAtlas::new(&self.device, self.glyph_atlas.size * 2)?;
+                    } else {
+                        return Err(
+                            error.context("current scene exceeds the 16 MiB glyph atlas limit")
+                        );
+                    }
+                }
+                Err(error) => return Err(error),
+            }
         }
     }
 
@@ -1293,6 +1342,7 @@ impl Renderer {
                             },
                             glyph,
                             run.colour,
+                            self.glyph_atlas.size,
                         );
                     }
                     pen_x += advance;
@@ -1321,7 +1371,15 @@ impl Renderer {
         let mut instances = Vec::with_capacity(scene.masks.len());
         for run in scene.masks.iter().filter(|run| run.scrolling == scrolling) {
             let mask = self.glyph_atlas.mask(&self.queue, &run.mask)?;
-            push_mask_quad(&mut instances, scene, run.rect, run.clip, mask, run.colour);
+            push_mask_quad(
+                &mut instances,
+                scene,
+                run.rect,
+                run.clip,
+                mask,
+                run.colour,
+                self.glyph_atlas.size,
+            );
         }
         Ok(instances)
     }
@@ -1468,6 +1526,7 @@ fn push_text_quad(
     rect: Rect,
     glyph: CachedGlyph,
     glyph_colour: Colour,
+    atlas_size: u32,
 ) {
     let left = rect.x.max(clip.x);
     let top = rect.y.max(clip.y);
@@ -1477,10 +1536,10 @@ fn push_text_quad(
         return;
     }
 
-    let atlas_left = glyph.atlas_x as f32 / ATLAS_SIZE as f32;
-    let atlas_top = glyph.atlas_y as f32 / ATLAS_SIZE as f32;
-    let atlas_width = glyph.width as f32 / ATLAS_SIZE as f32;
-    let atlas_height = glyph.height as f32 / ATLAS_SIZE as f32;
+    let atlas_left = glyph.atlas_x as f32 / atlas_size as f32;
+    let atlas_top = glyph.atlas_y as f32 / atlas_size as f32;
+    let atlas_width = glyph.width as f32 / atlas_size as f32;
+    let atlas_height = glyph.height as f32 / atlas_size as f32;
     let u0 = atlas_left + (left - rect.x) / rect.width * atlas_width;
     let v0 = atlas_top + (top - rect.y) / rect.height * atlas_height;
     let u1 = atlas_left + (right - rect.x) / rect.width * atlas_width;
@@ -1504,15 +1563,16 @@ fn push_mask_quad(
     clip: Rect,
     mask: CachedMask,
     mask_colour: Colour,
+    atlas_size: u32,
 ) {
     let visible = intersect(rect, clip);
     if visible.width <= 0.0 || visible.height <= 0.0 || rect.width <= 0.0 || rect.height <= 0.0 {
         return;
     }
-    let atlas_left = mask.atlas_x as f32 / ATLAS_SIZE as f32;
-    let atlas_top = mask.atlas_y as f32 / ATLAS_SIZE as f32;
-    let atlas_width = mask.width as f32 / ATLAS_SIZE as f32;
-    let atlas_height = mask.height as f32 / ATLAS_SIZE as f32;
+    let atlas_left = mask.atlas_x as f32 / atlas_size as f32;
+    let atlas_top = mask.atlas_y as f32 / atlas_size as f32;
+    let atlas_width = mask.width as f32 / atlas_size as f32;
+    let atlas_height = mask.height as f32 / atlas_size as f32;
     let u0 = atlas_left + (visible.x - rect.x) / rect.width * atlas_width;
     let v0 = atlas_top + (visible.y - rect.y) / rect.height * atlas_height;
     let u1 = atlas_left + (visible.x + visible.width - rect.x) / rect.width * atlas_width;

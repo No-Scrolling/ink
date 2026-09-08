@@ -41,7 +41,7 @@ for await (const fix of location.watch({
 
 Balanced requests prefer Android's built-in fused provider when available and otherwise use its network provider. This does not require Google Play Services. High-accuracy requests retain the GPS/network path.
 
-Permissions are requested from an explicit user action. Denied permission, disabled location services, timeout and unavailable providers are separate states. A manual saved-place choice is a useful fallback for weather and transit apps.
+Location permission uses the LightOS prompt on the phone and Android's native prompt on the emulator. Denied permission, disabled location services, timeout and unavailable providers are separate states. A manual saved-place choice is a useful fallback for weather and transit apps.
 
 To continue tracking while the app is in the background, start the native tracking service from an explicit action while the app is visible:
 
