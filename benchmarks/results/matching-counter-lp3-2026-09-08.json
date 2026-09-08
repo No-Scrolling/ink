@@ -1,0 +1,560 @@
+{
+  "environment": {
+    "capturedAt": "2026-09-08T10:10:09.326Z",
+    "device": "LightPhoneIII",
+    "model": "TLP301",
+    "android": "14",
+    "sdk": 34,
+    "abi": "arm64-v8a",
+    "resolution": "Physical size: 1080x1240",
+    "density": "Physical density: 480",
+    "refreshRate": 60,
+    "clockTicksPerSecond": 100,
+    "thermalStatusStart": 0,
+    "thermalStatusEnd": 0
+  },
+  "protocol": {
+    "harnessRevision": "ed5330699c64280b357e92a42f2ae60c22fc1f26",
+    "dirtyWorkingTree": true,
+    "stacks": [
+      "ink",
+      "expo",
+      "light-sdk"
+    ],
+    "scenarios": [
+      "Counter"
+    ],
+    "startupRuns": 15,
+    "idleRuns": 5,
+    "workloadRuns": 5,
+    "counterTaps": 100
+  },
+  "results": [
+    {
+      "key": "ink",
+      "stack": "Ink",
+      "scenario": "Counter",
+      "packageName": "com.vandam.benchmark.ink.counter",
+      "component": "com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity",
+      "apk": {
+        "bytes": 1947973,
+        "sha256": "302487300ee48f9defccff580a6a8937d7e746ac48fd3bbccbd1f0bff9724835",
+        "uncompressedBytes": 2106092,
+        "dex": 106408,
+        "native": 1776696,
+        "resources": 6276,
+        "assets": 212883,
+        "other": 3829
+      },
+      "counterTapY": 760,
+      "startup": {
+        "samplesMs": [
+          230,
+          225,
+          238,
+          239,
+          219,
+          223,
+          222,
+          215,
+          200,
+          232,
+          209,
+          207,
+          207,
+          225,
+          216
+        ],
+        "medianMs": 222,
+        "p95Ms": 239
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 16150,
+            "rssKb": 126296,
+            "threads": 23
+          },
+          {
+            "pssKb": 16300,
+            "rssKb": 126420,
+            "threads": 23
+          },
+          {
+            "pssKb": 16199,
+            "rssKb": 126236,
+            "threads": 22
+          },
+          {
+            "pssKb": 16220,
+            "rssKb": 126264,
+            "threads": 21
+          },
+          {
+            "pssKb": 16029,
+            "rssKb": 126236,
+            "threads": 22
+          }
+        ],
+        "medianPssKb": 16199,
+        "medianRssKb": 126264,
+        "medianThreads": 22
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 1060,
+            "elapsedMs": 13399.414208000002,
+            "cpuPercent": 7.910793588029665,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 98,
+            "averageFps": 7.845,
+            "presentP95Ms": 150,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 16563,
+            "rssKb": 129008,
+            "threads": 17
+          },
+          {
+            "cpuMs": 1040,
+            "elapsedMs": 10820.537542000005,
+            "cpuPercent": 9.611352448648983,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 98,
+            "averageFps": 9.745,
+            "presentP95Ms": 118,
+            "presentP99Ms": 134,
+            "acquireP95Ms": 31,
+            "compositorP95Ms": 15,
+            "pssKb": 16619,
+            "rssKb": 128888,
+            "threads": 18
+          },
+          {
+            "cpuMs": 1050,
+            "elapsedMs": 12373.053707999992,
+            "cpuPercent": 8.486183158819605,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 98,
+            "averageFps": 8.475,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 31,
+            "compositorP95Ms": 15,
+            "pssKb": 16454,
+            "rssKb": 128676,
+            "threads": 17
+          },
+          {
+            "cpuMs": 1050,
+            "elapsedMs": 12786.793375000008,
+            "cpuPercent": 8.21159746002386,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 98,
+            "averageFps": 8.224,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 31,
+            "compositorP95Ms": 15,
+            "pssKb": 16609,
+            "rssKb": 128936,
+            "threads": 19
+          },
+          {
+            "cpuMs": 1060,
+            "elapsedMs": 12902.218249999976,
+            "cpuPercent": 8.215641523503153,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 0,
+            "longPresentIntervals": 98,
+            "averageFps": 8.148,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 31,
+            "compositorP95Ms": 15,
+            "pssKb": 16491,
+            "rssKb": 128696,
+            "threads": 18
+          }
+        ],
+        "medianCpuMs": 1050,
+        "medianCpuPercent": 8.215641523503153,
+        "medianFrames": 98,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 8.224,
+        "medianPresentP95Ms": 134,
+        "medianCompositorP95Ms": 15,
+        "medianPssKb": 16563,
+        "medianRssKb": 128888
+      }
+    },
+    {
+      "key": "expo",
+      "stack": "Expo",
+      "scenario": "Counter",
+      "packageName": "com.vandam.benchmark.expo.counter",
+      "component": "com.vandam.benchmark.expo.counter/.MainActivity",
+      "apk": {
+        "bytes": 28720782,
+        "sha256": "0a46e326d2d27ad3b96302135d32c5f4fc60fe592f9e80808a909e12937a017a",
+        "uncompressedBytes": 39153277,
+        "dex": 7856768,
+        "native": 16319344,
+        "resources": 12569076,
+        "assets": 2079554,
+        "other": 328535
+      },
+      "counterTapY": 760,
+      "startup": {
+        "samplesMs": [
+          418,
+          523,
+          405,
+          404,
+          501,
+          437,
+          436,
+          539,
+          432,
+          561,
+          434,
+          415,
+          551,
+          537,
+          580
+        ],
+        "medianMs": 437,
+        "p95Ms": 580
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 62326,
+            "rssKb": 184192,
+            "threads": 35
+          },
+          {
+            "pssKb": 61986,
+            "rssKb": 183732,
+            "threads": 35
+          },
+          {
+            "pssKb": 62006,
+            "rssKb": 183828,
+            "threads": 34
+          },
+          {
+            "pssKb": 61988,
+            "rssKb": 183928,
+            "threads": 34
+          },
+          {
+            "pssKb": 62078,
+            "rssKb": 183968,
+            "threads": 35
+          }
+        ],
+        "medianPssKb": 62006,
+        "medianRssKb": 183928,
+        "medianThreads": 35
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 4740,
+            "elapsedMs": 12805.242499999993,
+            "cpuPercent": 37.016089308734315,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 10,
+            "longPresentIntervals": 98,
+            "averageFps": 8.271,
+            "presentP95Ms": 150,
+            "presentP99Ms": 200,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 62430,
+            "rssKb": 186004,
+            "threads": 29
+          },
+          {
+            "cpuMs": 4220,
+            "elapsedMs": 10945.703416000004,
+            "cpuPercent": 38.55394066160579,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 1,
+            "longPresentIntervals": 98,
+            "averageFps": 9.711,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 24,
+            "compositorP95Ms": 15,
+            "pssKb": 59753,
+            "rssKb": 173520,
+            "threads": 29
+          },
+          {
+            "cpuMs": 4510,
+            "elapsedMs": 12548.536124999984,
+            "cpuPercent": 35.94044719698335,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 5,
+            "longPresentIntervals": 98,
+            "averageFps": 8.431,
+            "presentP95Ms": 150,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 26,
+            "compositorP95Ms": 15,
+            "pssKb": 59405,
+            "rssKb": 173220,
+            "threads": 29
+          },
+          {
+            "cpuMs": 4320,
+            "elapsedMs": 11526.932082999963,
+            "cpuPercent": 37.47744819604845,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 2,
+            "longPresentIntervals": 98,
+            "averageFps": 9.222,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 24,
+            "compositorP95Ms": 15,
+            "pssKb": 59662,
+            "rssKb": 173536,
+            "threads": 28
+          },
+          {
+            "cpuMs": 4530,
+            "elapsedMs": 12701.677041999996,
+            "cpuPercent": 35.66458181089692,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 12,
+            "longPresentIntervals": 98,
+            "averageFps": 8.224,
+            "presentP95Ms": 150,
+            "presentP99Ms": 200,
+            "acquireP95Ms": 29,
+            "compositorP95Ms": 15,
+            "pssKb": 59326,
+            "rssKb": 173108,
+            "threads": 29
+          }
+        ],
+        "medianCpuMs": 4510,
+        "medianCpuPercent": 37.016089308734315,
+        "medianFrames": 98,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 8.431,
+        "medianPresentP95Ms": 150,
+        "medianCompositorP95Ms": 15,
+        "medianPssKb": 59662,
+        "medianRssKb": 173520
+      }
+    },
+    {
+      "key": "light-sdk",
+      "stack": "Light SDK",
+      "scenario": "Counter",
+      "packageName": "com.vandam.benchmark.lightsdk.counter",
+      "component": "com.vandam.benchmark.lightsdk.counter/com.thelightphone.sdk.LightActivity",
+      "apk": {
+        "bytes": 10268033,
+        "sha256": "44346e69eaae15fd56fe402755e8f8d5fe7be517db6c25f047a1f49e245558f1",
+        "uncompressedBytes": 10712057,
+        "dex": 2897996,
+        "native": 5004616,
+        "resources": 1509688,
+        "assets": 1017731,
+        "other": 282026
+      },
+      "counterTapY": 760,
+      "startup": {
+        "samplesMs": [
+          1211,
+          1194,
+          1216,
+          1203,
+          1199,
+          1206,
+          1219,
+          1209,
+          1177,
+          1193,
+          1203,
+          1188,
+          1209,
+          1202,
+          1209
+        ],
+        "medianMs": 1203,
+        "p95Ms": 1219
+      },
+      "idleMemory": {
+        "samples": [
+          {
+            "pssKb": 22864,
+            "rssKb": 144844,
+            "threads": 35
+          },
+          {
+            "pssKb": 22915,
+            "rssKb": 144928,
+            "threads": 33
+          },
+          {
+            "pssKb": 22869,
+            "rssKb": 144884,
+            "threads": 35
+          },
+          {
+            "pssKb": 22774,
+            "rssKb": 144772,
+            "threads": 35
+          },
+          {
+            "pssKb": 23000,
+            "rssKb": 145116,
+            "threads": 35
+          }
+        ],
+        "medianPssKb": 22869,
+        "medianRssKb": 144884,
+        "medianThreads": 35
+      },
+      "workload": {
+        "samples": [
+          {
+            "cpuMs": 3760,
+            "elapsedMs": 12573.432792000007,
+            "cpuPercent": 29.904323363404334,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 54,
+            "longPresentIntervals": 98,
+            "averageFps": 8.333,
+            "presentP95Ms": 150,
+            "presentP99Ms": 200,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 26017,
+            "rssKb": 149740,
+            "threads": 30
+          },
+          {
+            "cpuMs": 3770,
+            "elapsedMs": 10972.12950000001,
+            "cpuPercent": 34.35978403280782,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 63,
+            "longPresentIntervals": 98,
+            "averageFps": 9.653,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 31,
+            "compositorP95Ms": 15,
+            "pssKb": 25137,
+            "rssKb": 138092,
+            "threads": 30
+          },
+          {
+            "cpuMs": 3630,
+            "elapsedMs": 12073.122457999969,
+            "cpuPercent": 30.066786886557807,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 48,
+            "longPresentIntervals": 98,
+            "averageFps": 8.693,
+            "presentP95Ms": 150,
+            "presentP99Ms": 200,
+            "acquireP95Ms": 29,
+            "compositorP95Ms": 15,
+            "pssKb": 25082,
+            "rssKb": 138124,
+            "threads": 32
+          },
+          {
+            "cpuMs": 3540,
+            "elapsedMs": 12051.762624999974,
+            "cpuPercent": 29.373296754589933,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 46,
+            "longPresentIntervals": 98,
+            "averageFps": 8.728,
+            "presentP95Ms": 134,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 29,
+            "compositorP95Ms": 15,
+            "pssKb": 25077,
+            "rssKb": 138052,
+            "threads": 31
+          },
+          {
+            "cpuMs": 3620,
+            "elapsedMs": 12116.355458999984,
+            "cpuPercent": 29.87697094435338,
+            "frames": 98,
+            "droppedFrames": 0,
+            "lateAcquireFrames": 0,
+            "jankyFrames": 55,
+            "longPresentIntervals": 98,
+            "averageFps": 8.697,
+            "presentP95Ms": 150,
+            "presentP99Ms": 150,
+            "acquireP95Ms": 30,
+            "compositorP95Ms": 15,
+            "pssKb": 25120,
+            "rssKb": 138088,
+            "threads": 30
+          }
+        ],
+        "medianCpuMs": 3630,
+        "medianCpuPercent": 29.904323363404334,
+        "medianFrames": 98,
+        "medianDroppedFrames": 0,
+        "medianAverageFps": 8.697,
+        "medianPresentP95Ms": 150,
+        "medianCompositorP95Ms": 15,
+        "medianPssKb": 25120,
+        "medianRssKb": 138092
+      }
+    }
+  ],
+  "summary": {
+    "apps": 3,
+    "workloads": 15
+  }
+}

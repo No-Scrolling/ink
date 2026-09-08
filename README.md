@@ -63,16 +63,16 @@ Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`.
 
 ## Benchmarks
 
-Physical Light Phone III measurements from 6 September 2026 using the three matching counter apps. All ARM64 release builds were measured in one interleaved run on the same phone. Values are medians unless stated.
+Physical Light Phone III measurements from 8 September 2026 using the three matching counter apps. All ARM64 release builds were measured in one interleaved run on the same phone. Values are medians unless stated.
 
 | Counter | Ink | Expo | Light SDK |
 | --- | ---: | ---: | ---: |
-| APK size | 4.34 MB | 28.72 MB | 10.27 MB |
-| Activity launch, median / p95 | 306 / 332 ms | 466 / 587 ms | 1,213 / 1,231 ms |
-| Idle memory (PSS) | 17.9 MiB | 59.4 MiB | 21.7 MiB |
-| CPU time for 100 taps | 1,420 ms | 4,280 ms | 3,490 ms |
-| Clean app build, warm caches | 1.78 s | 58.40 s | 47.87 s |
+| APK size | 1.95 MB | 28.72 MB | 10.27 MB |
+| Clean app build, warm caches | 1.77 s | 59.66 s | 48.82 s |
+| Activity launch, median / p95 | 222 / 239 ms | 437 / 580 ms | 1,203 / 1,219 ms |
+| Idle memory (PSS) | 15.8 MiB | 60.6 MiB | 22.3 MiB |
+| CPU time for 100 taps | 1,050 ms | 4,510 ms | 3,630 ms |
 
-Each app has a standard header, Public Sans count and Increase action, with the same 100-tap workload. Minor framework rendering differences remain. Clean builds retain compiler and dependency caches. Activity launch is Android's timing, not time to interactive; idle PSS is sampled after two seconds and is not peak memory.
+Each app has a standard header, Public Sans count and Increase action, with the same 100-tap workload. Minor framework rendering differences remain. Activity launch is Android's timing, not time to interactive; idle PSS is sampled after two seconds and is not peak memory.
 
-See [the full counter comparison](benchmarks/results/matching-counter-lp3-2026-09-06.md) for raw samples, versions, screenshots, build timings and verified device cleanup.
+Build times are medians of three runs on an Apple M4 Pro, with app outputs cleaned and dependency and compiler caches retained. See [the full counter comparison](benchmarks/results/matching-counter-lp3-2026-09-08.md) for raw samples, versions, screenshots and verified device cleanup.
