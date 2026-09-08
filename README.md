@@ -65,13 +65,16 @@ Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`.
 
 Physical Light Phone III measurements from 8 September 2026 using the three matching ARM64 release counter apps. Values are medians unless stated.
 
-| Counter | Ink | Expo | Light SDK |
-| --- | ---: | ---: | ---: |
-| APK size | 1.95 MB | 28.72 MB | 10.27 MB |
-| Clean app build, warm caches | 1.77 s | 59.66 s | 48.82 s |
-| Activity launch, median / p95 | 232 / 243 ms | 445.5 / 555 ms | 328 / 374 ms |
-| Idle memory (PSS) | 15.8 MiB | 60.6 MiB | 22.3 MiB |
-| CPU time for 100 taps | 1,050 ms | 4,510 ms | 3,630 ms |
+| Counter | Ink | Expo | Light SDK | Ink delta vs closest |
+| --- | ---: | ---: | ---: | ---: |
+| APK size | 1.95 MB | 28.72 MB | 10.27 MB | −8.32 MB (−81.0%) |
+| Clean app build, warm caches | 1.77 s | 59.66 s | 48.82 s | −47.05 s (−96.4%) |
+| Activity launch, median | 232 ms | 445.5 ms | 328 ms | −96 ms (−29.3%) |
+| Activity launch, p95 | 243 ms | 555 ms | 374 ms | −131 ms (−35.0%) |
+| Idle memory (PSS) | 15.8 MiB | 60.6 MiB | 22.3 MiB | −6.5 MiB (−29.1%) |
+| CPU time for 100 taps | 1,050 ms | 4,510 ms | 3,630 ms | −2,580 ms (−71.1%) |
+
+Lower is better for every metric. The closest alternative is Light SDK in every row. Deltas use the displayed values: `Ink − closest`, with percentages relative to the closest alternative. Negative values favour Ink.
 
 Each app has a standard header, Public Sans count and Increase action, with the same 100-tap workload. Minor framework rendering differences remain. Activity launch is Android's timing, not time to interactive; idle PSS is sampled after two seconds and is not peak memory.
 
