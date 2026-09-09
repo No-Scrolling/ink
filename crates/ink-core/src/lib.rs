@@ -21,6 +21,7 @@ pub use fonts::{font_for_character, tabular_digit_width, text_width, text_width_
 mod list;
 mod masks;
 mod react;
+mod text_assistance;
 
 pub use react::{ReactIcon, ReactTree};
 
@@ -303,6 +304,7 @@ impl NativeRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextEdit {
     Insert(String),
+    Assistance(String),
     Backspace,
     Submit,
     Dismiss,
@@ -605,6 +607,8 @@ enum NodeKind {
         action: TextInputAction,
         auto_focus: bool,
         numeric: bool,
+        auto_correct: bool,
+        spell_check: bool,
         prefix: String,
         suffix: String,
         clear: Mask,
@@ -729,6 +733,8 @@ impl Node {
                 action,
                 auto_focus,
                 numeric,
+                auto_correct: false,
+                spell_check: false,
                 prefix,
                 suffix,
                 clear,
@@ -1238,6 +1244,7 @@ pub struct Engine {
     focused_input: Option<StateId>,
     focused_input_action: TextInputAction,
     focused_input_cursor: usize,
+    assistance: text_assistance::Assistance,
     auto_focus_node: Option<NodeIdentity>,
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
@@ -1290,6 +1297,7 @@ impl Engine {
             focused_input: None,
             focused_input_action: TextInputAction::default(),
             focused_input_cursor: 0,
+            assistance: text_assistance::Assistance::default(),
             auto_focus_node: None,
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
@@ -1818,6 +1826,23 @@ impl Engine {
     }
 
     pub fn pointer_long_press(&mut self, id: i32, x: f32, y: f32) -> PointerOutcome {
+        if let Some(Pointer::TextInput(pointer)) = self.pointers.get(&id) {
+            if !pointer.dragging {
+                let input = pointer.input;
+                let dismiss = self.assistance.menu || self.assistance.selected.is_some();
+                if dismiss {
+                    self.assistance.menu = false;
+                    self.assistance.selected = None;
+                } else if self.focused_input != Some(input.state) || !self.select_spelling(x, y) {
+                    self.focus_text_input(input, x, y);
+                    self.assistance.menu = !self.select_spelling(x, y);
+                }
+                self.pointers.clear();
+                self.gesture_owner = Some(id);
+                return PointerOutcome { changed: true, activated: true, captured: true };
+            }
+            return PointerOutcome::default();
+        }
         let Some(Pointer::Content(ContentPointer { dragging: false, cancelled: false, target: Some(target), .. })) = self.pointers.get(&id) else {
             return PointerOutcome::default();
         };
@@ -2017,6 +2042,8 @@ impl Engine {
     }
 
     fn focus_text_input(&mut self, input: TextInputLayout, x: f32, y: f32) -> bool {
+        let dismissed = self.assistance.selected.take().is_some();
+        let dismissed = std::mem::take(&mut self.assistance.menu) || dismissed;
         let Some(StateValue::String(value)) = self.state.get(input.state.0) else {
             return false;
         };
@@ -2032,7 +2059,7 @@ impl Engine {
                 .clamp(0.0, self.text_width(value, font_size));
             self.text_cursor_for_offset(value, font_size, target)
         };
-        let changed = self.focused_input != Some(input.state)
+        let changed = dismissed || self.focused_input != Some(input.state)
             || self.focused_input_action != input.action
             || self.focused_input_cursor != cursor;
         if !changed {
@@ -2127,7 +2154,7 @@ impl Engine {
             return false;
         }
         self.text_input_scroll_offsets.insert(state, offset);
-        if self.text_inputs.iter().any(|input| input.state == state && input.action == TextInputAction::Return) {
+        if !self.assistance.ranges.is_empty() || self.text_inputs.iter().any(|input| input.state == state && input.action == TextInputAction::Return) {
             self.relayout_scene();
             return true;
         }
@@ -2238,7 +2265,8 @@ impl Engine {
             && vertical_distance > horizontal_distance * BACK_SWIPE_VERTICAL_RATIO
         {
             let content_pointer = ContentPointer {
-                target: pointer.target,                start_x: pointer.start_x,
+                target: pointer.target,
+                start_x: pointer.start_x,
                 start_y: pointer.start_y,
                 start_offset: pointer.start_offset,
                 dragging: false,
@@ -2296,9 +2324,16 @@ impl Engine {
     }
 
     pub fn text_input_numeric(&self) -> bool {
-        fn find(node: &Node, target: StateId) -> bool {
+        self.focused_input
+            .and_then(|state| self.text_input_options(state))
+            .is_some_and(|(numeric, _, _)| numeric)
+    }
+
+    fn text_input_options(&self, state: StateId) -> Option<(bool, bool, bool)> {
+        fn find(node: &Node, target: StateId) -> Option<(bool, bool, bool)> {
             match &node.kind {
-                NodeKind::TextInput { state, numeric, .. } => *state == target && *numeric,
+                NodeKind::TextInput { state, numeric, auto_correct, spell_check, .. } if *state == target =>
+                    Some((*numeric, !*numeric && *auto_correct, !*numeric && *spell_check)),
                 NodeKind::ConversationComposer { children, .. }
                 | NodeKind::Message { children, .. }
                 | NodeKind::MessageQuote { children, .. }
@@ -2309,12 +2344,12 @@ impl Engine {
                 | NodeKind::MediaGridRow { children }
                 | NodeKind::Row { children, .. }
                 | NodeKind::Stack { children, .. }
-                | NodeKind::ReactList { children, .. } => children.iter().any(|child| find(child, target)),
-                NodeKind::Tabs { tabs, .. } => tabs.iter().any(|tab| find(&tab.screen, target)),
-                _ => false,
+                | NodeKind::ReactList { children, .. } => children.iter().find_map(|child| find(child, target)),
+                NodeKind::Tabs { tabs, .. } => tabs.iter().find_map(|tab| find(&tab.screen, target)),
+                _ => None,
             }
         }
-        self.focused_input.is_some_and(|state| find(&self.root, state))
+        find(&self.root, state)
     }
 
     pub fn edit_text(&mut self, edit: TextEdit) -> bool {
@@ -2326,6 +2361,11 @@ impl Engine {
                 return false;
             }
         }
+        if let TextEdit::Assistance(payload) = edit {
+            return self.apply_text_assistance(&payload);
+        }
+        self.assistance.selected = None;
+        self.assistance.menu = false;
         let mut mutated = false;
         let changed = match edit {
             TextEdit::Insert(text) if !text.chars().any(|c| c.is_control() && !(c == '\n' && self.focused_input_action == TextInputAction::Return)) => {
@@ -2361,10 +2401,11 @@ impl Engine {
                 self.focused_input = None;
                 true
             }
-            TextEdit::Insert(_) => false,
+            TextEdit::Insert(_) | TextEdit::Assistance(_) => false,
         };
         if changed {
             if mutated {
+                self.rebase_spelling(state);
                 self.reveal_text_cursor(state);
             }
             self.relayout_scene();
@@ -2587,6 +2628,7 @@ impl Engine {
             },
         );
         self.root = root;
+        self.layout_spelling();
         self.sync_visible_images();
         self.image_zooms
             .retain(|identity, _| self.visible_zoom_images.contains(identity));

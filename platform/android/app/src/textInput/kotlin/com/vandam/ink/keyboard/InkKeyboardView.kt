@@ -45,6 +45,28 @@ internal class InkKeyboardView @JvmOverloads constructor(
             invalidate()
         }
     var listener: KeyboardListener? = null
+    var suggestions: List<String> = emptyList()
+        set(value) {
+            if (field == value) return
+            field = value
+            suggestionPressed = -1
+            cancelPress()
+        }
+    var onSuggestion: ((String) -> Unit)? = null
+    var onDismissSuggestions: (() -> Unit)? = null
+    var editActions: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            suggestionPressed = -1
+            cancelPress()
+        }
+    var onEditAction: ((String) -> Unit)? = null
+    var onDismissActions: (() -> Unit)? = null
+    private val menuItems: List<String>
+        get() = if (editActions) listOf("Copy", "Paste", "Clear") else suggestions
+    private var suggestionPressed = -1
+    private val suggestionBounds = mutableListOf<RectF>()
     var action: KeyboardAction = KeyboardAction.Return
         set(value) {
             field = value
@@ -127,10 +149,43 @@ internal class InkKeyboardView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         keys.clear()
+        if (menuItems.isNotEmpty()) {
+            suggestionBounds.clear()
+            menuItems.forEachIndexed { index, label ->
+                val row = RectF(dp(20f), dp(12f + index * 52f), width - dp(20f), dp(64f + index * 52f))
+                suggestionBounds += row
+                canvas.save()
+                canvas.clipRect(row)
+                drawLabel(canvas, label, row.centerX(), row.centerY(), 23f)
+                canvas.restore()
+            }
+            return
+        }
         drawLayout(canvas, KeyboardLayouts.forMode(mode, emojiKeys))
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (menuItems.isNotEmpty()) {
+            val row = suggestionBounds.indexOfFirst { it.contains(event.x, event.y) }
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> suggestionPressed = row
+                MotionEvent.ACTION_MOVE -> if (row != suggestionPressed) suggestionPressed = -1
+                MotionEvent.ACTION_UP -> {
+                    if (row >= 0 && row == suggestionPressed) {
+                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        if (editActions) onEditAction?.invoke(menuItems[row])
+                        else onSuggestion?.invoke(menuItems[row])
+                        performClick()
+                    } else if (row == -1 && suggestionPressed == -1) {
+                        if (editActions) onDismissActions?.invoke()
+                        else onDismissSuggestions?.invoke()
+                    }
+                    suggestionPressed = -1
+                }
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> suggestionPressed = -1
+            }
+            return true
+        }
         val index = event.actionIndex
         val id = event.getPointerId(index)
         when (event.actionMasked) {

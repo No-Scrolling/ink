@@ -2,6 +2,7 @@ package com.vandam.ink
 
 internal sealed interface TextEdit {
     data class Insert(val text: String) : TextEdit
+    data class Assistance(val payload: String) : TextEdit
     data object Backspace : TextEdit
     data object Submit : TextEdit
     data object Dismiss : TextEdit
@@ -12,6 +13,8 @@ internal interface TextInputAdapter {
     fun setLightAppearance(light: Boolean)
     fun dismiss(): Boolean
     fun applyPreferences(preferences: KeyboardPreferences)
+    fun syncContext(context: String) {}
+    fun close() {}
 }
 
 internal typealias TextEditHandler = (TextEdit) -> Unit

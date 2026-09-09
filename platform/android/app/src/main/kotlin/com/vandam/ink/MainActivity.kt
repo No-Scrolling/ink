@@ -555,7 +555,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
-
+        textInputAdapter.close()
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         if (usesPermissions) permissionsAdapter.stop()
         lightSdkAdapter.stop()
@@ -593,6 +593,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onPause() {
+        textInputAdapter.close()
         externalAdapter.onPause()
         connectivityAdapter.stop()
         mapsAdapter.pause()
@@ -626,6 +627,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         val (action, value) = when (edit) {
             is TextEdit.Insert -> TEXT_INPUT_INSERT to edit.text
+            is TextEdit.Assistance -> TEXT_INPUT_ASSISTANCE to edit.payload
             TextEdit.Backspace -> TEXT_INPUT_BACKSPACE to null
             TextEdit.Submit -> TEXT_INPUT_SUBMIT to null
             TextEdit.Dismiss -> TEXT_INPUT_DISMISS to null
@@ -647,6 +649,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun syncTextInput() {
         val active = nativeTextInputActive(engineHandle)
         textInputAdapter.sync(active, nativeTextInputAction(engineHandle), nativeTextInputNumeric(engineHandle))
+        textInputAdapter.syncContext(nativeTextInputContext(engineHandle))
         inkView.setTextCursorActive(active)
     }
 
@@ -1427,6 +1430,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val TEXT_INPUT_BACKSPACE = 1
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
+        private const val TEXT_INPUT_ASSISTANCE = 4
         private const val POINTER_LONG_PRESS = 4
         private const val POINTER_CHANGED = 1
         private const val POINTER_ACTIVATED = 1 shl 1
@@ -1571,6 +1575,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeTextInputNumeric(handle: Long): Boolean
+
+        @JvmStatic
+        private external fun nativeTextInputContext(handle: Long): String
 
         @JvmStatic
         private external fun nativeTextInput(handle: Long, action: Int, value: String?): Boolean

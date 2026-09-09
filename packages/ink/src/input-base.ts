@@ -6,6 +6,8 @@ export function TextInput(props: {
   onSubmit?: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  autoCorrect?: boolean;
+  spellCheck?: boolean;
   action?: "return" | "search" | "done";
   inputMode?: "text" | "numeric";
   prefix?: string;
@@ -22,4 +24,3 @@ export function TextInput(props: {
   };
   return createElement("TextInput", nativeProps);
 }
-

@@ -756,6 +756,20 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputActive(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputContext<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JString<'local> {
+    let value = engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.engine.text_input_context())
+        .unwrap_or_default();
+    env.with_env(|env| env.new_string(value))
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputNumeric(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -798,6 +812,10 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
         1 => Some(TextEdit::Backspace),
         2 => Some(TextEdit::Submit),
         3 => Some(TextEdit::Dismiss),
+        4 if !value.is_null() => Some(TextEdit::Assistance(
+            env.with_env(|env| value.try_to_string(env))
+                .resolve::<jni::errors::LogErrorAndDefault>(),
+        )),
         _ => None,
     };
     let Some(edit) = edit else {

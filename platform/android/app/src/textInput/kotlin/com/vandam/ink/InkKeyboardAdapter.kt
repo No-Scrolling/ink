@@ -48,6 +48,18 @@ private class InkKeyboardAdapter(
         }
     }
     private val keyboard by keyboardView
+    private val spelling = lazy { createSpelling(activity, onEdit, keyboard) }
+    private val inputActions = lazy { InputActions(activity, keyboard, onEdit) }
+
+    override fun syncContext(context: String) {
+        if (context.isNotEmpty() || spelling.isInitialized()) spelling.value.sync(context)
+        if (context.isNotEmpty() || inputActions.isInitialized()) inputActions.value.sync(context)
+    }
+
+    override fun close() {
+        if (spelling.isInitialized()) spelling.value.close()
+        if (inputActions.isInitialized()) inputActions.value.close()
+    }
 
     private fun resizeContent() {
         val inset = if (keyboard.visibility == View.VISIBLE) keyboard.height else 0
@@ -78,6 +90,8 @@ private class InkKeyboardAdapter(
     }
 
     override fun dismiss(): Boolean {
+        if (inputActions.isInitialized() && inputActions.value.dismiss()) return true
+        if (spelling.isInitialized() && spelling.value.dismiss()) return true
         if (!keyboardView.isInitialized() || keyboard.visibility != View.VISIBLE) {
             return false
         }
@@ -95,16 +109,19 @@ private class InkKeyboardAdapter(
     }
 
     override fun onText(text: String) {
-        onEdit(TextEdit.Insert(text))
+        if (inputActions.isInitialized()) inputActions.value.dismiss()
+        spelling.value.insert(text)
     }
 
     override fun onBackspace() {
-        onEdit(TextEdit.Backspace)
+        if (inputActions.isInitialized()) inputActions.value.dismiss()
+        spelling.value.backspace()
     }
 
     override fun onAction() {
+        if (inputActions.isInitialized()) inputActions.value.dismiss()
         if (keyboard.action == KeyboardAction.Return) {
-            onEdit(TextEdit.Insert("\n"))
+            spelling.value.insert("\n")
         } else {
             onEdit(TextEdit.Submit)
         }

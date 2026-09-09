@@ -181,6 +181,14 @@ export function Search() {
 
 Update `value` synchronously in `onChange`. Debounce network requests rather than input updates. Ink rejects stale native edits, but cannot decide which delayed app updates you intended to keep.
 
+Use `spellCheck` to underline misspelt words that have suggestions. Long-press an underlined word to show up to three replacements in the keyboard area without moving the cursor. Tap a replacement to use it, or press Back to return to typing.
+
+Long-press elsewhere in the input to show Copy, Paste and Clear in the keyboard area. Long-press the input again to return to the keyboard, from either actions or spelling suggestions. Copy copies all the input's text. Paste inserts plain text at the cursor; single-line inputs replace line breaks with spaces, and numeric inputs keep only digits. Clear empties the input. These actions work without spellchecking. Ink reads the clipboard only when you tap Paste.
+
+Use `autoCorrect` to correct likely typos after a space or punctuation. Ink leaves ambiguous suggestions unchanged. Press backspace immediately after a correction to restore the original word and remove the separator. Ink leaves that word alone for the rest of the editing session.
+
+Both options default to false on `TextInput` and are enabled by `ConversationScreen`. Numeric inputs ignore them. Ink uses the device's enabled spellchecker and language settings; it does not bundle a dictionary. If the service is unavailable, typing continues without spelling assistance.
+
 Use `prefix` and `suffix` for fixed text above the input underline, such as `prefix="£"` and `suffix="GBP"`. They stay visible while the editable text scrolls and are not included in the value. Tap either to focus the input. Keep them short; each is clipped to at most a third of the input width.
 
 Use `inputMode="numeric"` for a digits-only keypad with backspace and a Search or Done action. Values remain strings, preserving leading zeros. Numeric mode rejects non-digit edits and cannot use `action="return"`.
