@@ -25,16 +25,37 @@
   "navigation": {
     "groups": [
       {
-        "group": "Get started",
+        "group": "Start building",
         "pages": [
           "standalone",
-          "development"
+          "setup",
+          "first-screen",
+          "project-structure",
+          "second-screen",
+          "saving-data",
+          "release"
         ]
       },
       {
         "group": "Guides",
         "pages": [
+          "development",
+          "settings-guide",
+          "permissions-guide",
+          "assets-guide"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
           "ink",
+          "components",
+          "inputs",
+          "lists",
+          "navigation",
+          "data",
+          "playing-screen",
+          "conversations",
           "runtime-compatibility"
         ]
       },
@@ -66,7 +87,7 @@
         ]
       },
       {
-        "group": "Framework",
+        "group": "Contributing and internals",
         "pages": [
           "product-design",
           "architecture",

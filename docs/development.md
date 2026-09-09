@@ -26,7 +26,11 @@ A runtime restart clears React state but keeps saved app data. The watcher inclu
 
 A build error leaves the current app running. Fix the source and save to try again.
 
-Runtime errors appear in a development dialog with a **Reload** action and in Logcat. Source maps point to your original code when a mapping is available. You can fix JavaScript and native build errors without restarting the command.
+Uncaught runtime errors appear in a development dialog with a **Reload** action and in Logcat. Source maps point to your original code when a mapping is available. You can fix JavaScript and native build errors without restarting the command.
+
+Errors caught by a React error boundary, and errors React recovers from, are logged without stopping the app. Your boundary can show a fallback and offer a retry. Use `useAction` for rejected save or send commands; render boundaries do not catch asynchronous event-handler failures.
+
+In a release, an uncaught runtime error ends the JavaScript session, releases its attached native controllers and shows a close action. Detached playback retains its service lifetime.
 
 ## Background work
 

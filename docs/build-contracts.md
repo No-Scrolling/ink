@@ -45,35 +45,11 @@ Paths are relative to the resolved package directory. `*` applies to each contri
 
 ## Import assets
 
-Import local images and MP3 audio. Use HTTPS or managed-file URLs for runtime sources.
-
-```tsx
-import photo from './photo.jpg';
-import track from './track.mp3';
-<Image src={photo} width={200} height={200} />
-```
+See [images and icons](/assets-guide#import-assets) for app usage.
 
 ## Import icons
 
-Import Material Symbols directly from `ink/icons`:
-
-```tsx
-import { settings, favorite, favoriteFilled } from "ink/icons";
-import { Icon, Button } from "ink";
-
-<Button icon={settings}>Settings</Button>
-<Icon name={active ? favoriteFilled : favorite} size={28} />
-```
-
-Names use camel case: `more_horiz` becomes `moreHoriz`. The plain export is outlined; the `Filled` suffix selects the filled variant. TypeScript provides completion and catches unknown exports without a separate collection file or generation step.
-
-Use named imports. Release builds remove unused exports and generate assets only for icon references remaining in the bundle. Importing only `favoriteFilled` includes only that variant. Switching between `favorite` and `favoriteFilled` retains both. References work through props, arrays and objects as ordinary TypeScript values.
-
-For dynamic lookups, build a small object from the icons your app supports and use `findIcon(collection, externalName)` from `ink`. It returns `undefined` for an unknown key. Avoid a namespace import used dynamically: it can retain the entire catalogue.
-
-Ink owns raster resolution and generates icons at 56 logical units, covering its standard controls. The `Icon` component's `size` controls display size; larger sizes can soften edges. Icons use weight 400; the native keyboard uses its separate weight-300 assets. Back and input-clear icons are always included.
-
-Names starting with a digit have an `icon` prefix, such as `icon360`. JavaScript reserved names and catalogue names already ending in `Filled` have an `Icon` suffix, such as `deleteIcon`, to keep exports valid and unambiguous.
+See [icon imports and bundling](/assets-guide#import-icons).
 
 ## Native engine
 

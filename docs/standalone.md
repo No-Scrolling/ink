@@ -1,64 +1,56 @@
 ---
-title: "Create an app"
-description: "Create, configure and build your first Ink app."
+title: "Make an app for your Light Phone"
+description: "Start with one screen, then build something useful."
 ---
 
-Ink currently uses a local SDK checkout, not a published npm release. Keep the checkout: it contains the compiler, Android project, native code, fonts and packages.
+Ink lets you build Light Phone III apps with TypeScript and React. You combine components such as text, buttons and lists; Ink handles their appearance, navigation and keyboard interactions.
 
-## Prerequisites
+You can build a personal tool, a weather app, a music player or something entirely your own. You do not need to design every screen from scratch.
 
-Install Bun, Rust, JDK 17, the Android SDK and the NDK. Run `scripts/ink doctor` from the SDK checkout to check your setup.
+## Before you start
 
-## Create and run
+You need a Mac or Linux computer and a Light Phone III connected by USB, or an Android emulator. You will also need a text editor and a terminal: the app where you enter the commands in this guide.
 
-Replace `/path/to/ink` with your SDK checkout:
+Ink currently runs from a local SDK checkout—a folder containing the tools used to build your app. There is no published Ink installer or npm release yet. Keep this folder separate from the apps you create.
+
+[Set up your computer and phone](/setup) first. It establishes the `ink` command used throughout these docs.
+
+## Create an app
+
+In your terminal, run:
 
 ```sh
-/path/to/ink/scripts/ink create ~/Developer/my-app --name "My App" --package com.example.myapp
+ink create ~/Developer/my-app --name "My App" --package com.example.myapp
 cd ~/Developer/my-app
 bun install
-/path/to/ink/scripts/ink check
-/path/to/ink/scripts/ink dev --device emulator-5554
+ink check
+ink devices
 ```
 
-Use `ink devices` to find another device serial. Creation requires a new directory and will not overwrite an existing one.
+The folder must not already exist. `com.example.myapp` is the app's unique Android identifier; choose your own before distributing it.
 
-Generated apps use local package paths and a compatible React version. Add other `@ink/*` packages from the SDK’s package directories. Extend `ink/tsconfig` so TypeScript uses Ink’s runtime types.
+`ink devices` lists connected devices. Copy the serial from the device you want to use:
 
-Start editing `app/index.tsx`. Add pages under `app/` and an optional `_layout.tsx` for shared providers or tabs. Ink generates the entry point inside `.ink/`; you do not need an `App.tsx`. See [pages and navigation](/ink#navigation) for dynamic routes and tab layouts.
+```sh
+ink dev --device emulator-5554
+```
 
-## Add features
+Replace `emulator-5554` with your phone's serial when using a phone. Keep this command running. The first build takes longer while build dependencies are downloaded and compiled.
 
-Use `ink` for components and navigation. Add optional packages for the features your app needs:
+You should see **Home** and **Welcome to Ink!** on your device. If you do not, read the terminal error and run `ink doctor` to check the toolchain.
 
-| Package | Features |
-| --- | --- |
-| `@ink/audio` | Playback; microphone analysis through `/microphone` and recording through `/recording` |
-| `@ink/auth` | Sign-in and account tokens |
-| `@ink/background` | Background jobs |
-| `@ink/barcode` | Generated codes; scanning through `/scan` |
-| `@ink/camera` | Camera preview and photos |
-| `@ink/clipboard` | Clipboard access |
-| `@ink/files` | File operations; photo/video picker through `/media` |
-| `@ink/lightos` | LightOS services |
-| `@ink/location` | Location fixes and tracking |
-| `@ink/maps` | Maps |
-| `@ink/network` | Web globals; `/connectivity` and `/downloads` for native network features |
-| `@ink/nfc` | NFC tags |
-| `@ink/notifications` | Notifications |
-| `@ink/secure-store` | Encrypted secrets |
-| `@ink/store` | Persisted app data and read-only databases |
+**Next:** [edit your first screen](/first-screen).
 
-Related features share a package, but their entry points select native capabilities independently. For example, generating a barcode does not include the camera or scanner.
+## Add a device feature
 
-## Choose the SDK
+From your app folder, add the package you need. For example:
 
-`scripts/ink` selects its own checkout. If you use a separately compiled CLI, set `INK_SDK_ROOT` or install the SDK at `$XDG_CONFIG_HOME/ink/sdk/current` (default `~/.config/ink/sdk/current`).
+```sh
+bun add @ink/store@0.1.0
+```
 
-When moving an app to another machine, update its local package paths and SDK location. `sdk.json` records the SDK’s framework, protocol and React versions.
+New projects include package overrides that resolve Ink modules from your SDK checkout, including their dependencies. Overrides do not install every module or add unused features to your APK. Use the package's documented import, such as `@ink/audio/microphone` for pitch analysis.
 
-## Build a release
+Keep the generated overrides when editing `package.json`. If you move the SDK, update its local paths. Projects created before these overrides were added can copy the `overrides` object from a newly created app using the same SDK. Keep your existing dependencies and app code.
 
-Configure a keystore in `ink.toml`, set `INK_KEYSTORE_PASSWORD` and run `ink build`. If the key has a separate password, set `INK_KEY_PASSWORD` too. See [release signing](/ink#build-and-inspect).
-
-Each app keeps its generated files, Gradle cache and Android output in `.ink`. The SDK shares its Cargo cache and locks native builds to prevent conflicting writes. Generated `.gitignore` rules exclude build output, dependencies and signing keys.
+See the **Modules** section for available features and [runtime compatibility](/runtime-compatibility) before adding other JavaScript libraries.

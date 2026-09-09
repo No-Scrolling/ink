@@ -7,6 +7,8 @@ Use `@ink/audio` to play audio, manage queues and connect to native media contro
 
 Ink handles decoding, buffering, audio focus and routing natively. Your app sends commands and observes playback state.
 
+This screen controls an existing queue. Call `setQueue` with your tracks before expecting Play to start audio; mounting a player does not load tracks for you.
+
 ```tsx
 import { Button, Screen, Text, useAction } from "ink";
 import { usePlayer } from "@ink/audio";
@@ -30,6 +32,8 @@ export function NowPlaying() {
 
 ## Choose a playback lifetime
 
+`mode` defaults to `attached`; `usage` defaults to `music`. Set `mode: "detached"` explicitly when playback should continue after leaving its screen. Use `usage: "speech"` for spoken audio.
+
 An **attached** player is useful for a short voice-note preview. Releasing its last owner stops it. A **detached** session supports music, podcasts and audiobooks: releasing a screen attachment leaves playback under a native media service. `stop()` explicitly stops playback; closing a screen does not.
 
 Android can stop a detached session. Ink saves its queue, index, speed and progress, then restores it paused when you reconnect. Queue changes, seeks and pauses save immediately; progress saves every five seconds. `stop()` clears the queue and saved state. Deleted files and unavailable URLs report playback errors. Background workers cannot attach audio controllers.
@@ -43,6 +47,8 @@ Snapshots include readiness, current item, position, duration, buffering, playin
 Native media sessions coordinate hardware keys, lock-screen controls and focus interruptions. State reflects changes made outside the app. Commands issued before readiness reject rather than silently overwriting restored state.
 
 ## Recording and analysis
+
+Start with the complete [microphone permission and lifecycle example](/permissions-guide). The reference below describes the individual APIs.
 
 `@ink/audio/microphone` exports `useLevelMeter`, `usePitchDetector` and `PitchIndicator`. `@ink/audio/recording` exports `useRecorder`. Both entry points export `microphone` for permission checks. Request access when the user opens a feature that needs it using `microphone.requestPermission()`; `getPermission()` reads the existing grant. Permission results are `granted`, `denied` or `blocked`.
 

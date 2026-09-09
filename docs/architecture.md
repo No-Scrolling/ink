@@ -54,7 +54,7 @@ The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScri
 
 Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches and applies completed React updates before rendering. When idle, it can present an update without waiting for a new display callback. Gestures and ongoing frames use Android's frame scheduler. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
 
-Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](/ink#collections).
+Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](/lists#collections).
 
 The renderer reuses prepared geometry between changes, including text that moves without changing its appearance or clipping. It combines adjacent draws of the same image while preserving image order.
 
@@ -67,10 +67,13 @@ A visually idle app requests no rendering frames. This is not a promise of zero 
 | Owner | Examples | End of lifetime |
 | --- | --- | --- |
 | Component | Form state, actions, memoised calculations | Unmount |
-| Visible screen | Resource observations, camera, foreground location | Hidden screen or backgrounded app |
+| Visible React screen | Resource observations and hook effects | Screen hidden or removed |
+| Foreground native controller | Camera, microphone, foreground location | Native controller lifecycle, including app backgrounding |
 | App runtime | Account module, shared in-memory store | Process/runtime disposal |
 | Native service | Detached audio | Explicit stop or Android termination |
 | Durable storage | Store preferences, queued jobs | Explicit deletion or app-data removal |
+
+Hiding a route is different from putting the app in the background. Resource polling follows React subscriptions; app backgrounding alone does not unsubscribe them. Native controllers apply their own Android lifecycle rules.
 
 Hooks release native resources when their effects end. For explicit handles, call `close()` or unsubscribe. Garbage collection does not close a camera, socket or player. Reconnecting creates fresh handles; use saved IDs, not handles, to reopen durable resources.
 
