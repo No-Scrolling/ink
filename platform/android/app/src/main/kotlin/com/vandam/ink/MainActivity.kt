@@ -1016,17 +1016,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
-        private val longPress = Runnable {
-            if (engineHandle != 0L && surfaceAttached) {
-                if (processPointerResult(nativePointer(engineHandle, POINTER_LONG_PRESS, imageTapDownX, imageTapDownY))) requestFrame()
-                postFrame()
-            }
-        }
+        private val longPresses = mutableMapOf<Int, Runnable>()
+        private val touchStarts = mutableMapOf<Int, Pair<Float, Float>>()
 
         override fun onDetachedFromWindow() {
-            removeCallbacks(longPress)
+            cancelLongPresses()
             removeCallbacks(commitFrame)
             commitFramePosted = false
+            if (engineHandle != 0L) nativePointer(engineHandle, MotionEvent.ACTION_CANCEL, 0, 0f, 0f)
             super.onDetachedFromWindow()
         }
 
@@ -1050,8 +1047,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     )
                     pinchActive = (result and POINTER_CAPTURED) != 0
                     if (pinchActive) {
-                        hasPendingMove = false
-                        nativePointer(engineHandle, MotionEvent.ACTION_CANCEL, 0f, 0f)
+                        pendingMoves.clear()
+                        nativePointer(engineHandle, MotionEvent.ACTION_CANCEL, 0, 0f, 0f)
                         capturedGesture = true
                         stopFling()
                     }
@@ -1098,9 +1095,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
             }
         }
-        private var pendingMoveX = 0f
-        private var pendingMoveY = 0f
-        private var hasPendingMove = false
+        private val pendingMoves = mutableMapOf<Int, Pair<Float, Float>>()
+        private val hasPendingMove: Boolean get() = pendingMoves.isNotEmpty()
         private var lastFlingY = 0
         private var capturedGesture = false
         private var pinchActive = false
@@ -1137,17 +1133,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             if (presentBeforeMove) presentFrame()
             var changed = renderPending && !presentBeforeMove
             renderPending = false
-            if (hasPendingMove) {
-                hasPendingMove = false
-                changed = processPointerResult(
-                    nativePointer(
-                        engineHandle,
-                        MotionEvent.ACTION_MOVE,
-                        pendingMoveX,
-                        pendingMoveY,
-                    ),
-                ) || changed
-            }
+            if (hasPendingMove) changed = flushPointerMoves() || changed
             if (scroller.computeScrollOffset()) {
                 val y = scroller.currY
                 val delta = y - lastFlingY
@@ -1167,140 +1153,154 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            when (event.actionMasked) {
+            val action = event.actionMasked
+            val index = event.actionIndex
+            val id = event.getPointerId(index)
+            val x = event.getX(index)
+            val y = event.getY(index)
+            when (action) {
                 MotionEvent.ACTION_DOWN -> touchActive = true
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touchActive = false
             }
+            val wasPinching = pinchActive
             scaleGestureDetector.onTouchEvent(event)
-            if (pinchActive || event.pointerCount > 1) {
-                removeCallbacks(longPress)
+            if (event.pointerCount > 1) {
                 resetImageTap()
                 velocityTracker?.recycle()
                 velocityTracker = null
+            }
+            if (wasPinching || pinchActive) {
+                cancelLongPresses()
+                pendingMoves.clear()
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) capturedGesture = false
                 postFrame()
                 return true
             }
             var flingVelocity = 0
             var imageDoubleTap = 0
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    removeCallbacks(longPress)
-                    postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
-                    stopFling()
-                    downY = event.y
-                    imageTapDownX = event.x
-                    imageTapDownY = event.y
-                    imageTapTarget = if (engineHandle != 0L && surfaceAttached) {
-                        nativeImageZoomTarget(engineHandle, event.x, event.y)
-                    } else {
-                        0L
+            when (action) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                    if (action == MotionEvent.ACTION_DOWN) {
+                        cancelLongPresses()
+                        stopFling()
+                        downY = y
+                        imageTapDownX = x
+                        imageTapDownY = y
+                        imageTapTarget = if (engineHandle != 0L && surfaceAttached) {
+                            nativeImageZoomTarget(engineHandle, x, y)
+                        } else {
+                            0L
+                        }
+                        if (imageTapTarget == 0L) resetImageTap()
+                        velocityTracker?.recycle()
+                        velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
                     }
-                    if (imageTapTarget == 0L) resetImageTap()
-                    velocityTracker?.recycle()
-                    velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
+                    touchStarts[id] = x to y
+                    val longPress = Runnable {
+                        if (engineHandle != 0L && surfaceAttached) {
+                            if (processPointerResult(nativePointer(engineHandle, POINTER_LONG_PRESS, id, x, y))) requestFrame()
+                            postFrame()
+                        }
+                    }
+                    longPresses[id] = longPress
+                    postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
                 }
                 MotionEvent.ACTION_MOVE -> {
                     velocityTracker?.addMovement(event)
-                    if (movedBeyond(event.x, event.y, imageTapDownX, imageTapDownY, touchSlop)) {
-                        removeCallbacks(longPress)
-                        resetImageTap()
+                    for (pointerIndex in 0 until event.pointerCount) {
+                        val pointerId = event.getPointerId(pointerIndex)
+                        val start = touchStarts[pointerId] ?: continue
+                        if (movedBeyond(event.getX(pointerIndex), event.getY(pointerIndex), start.first, start.second, touchSlop)) {
+                            longPresses.remove(pointerId)?.let(::removeCallbacks)
+                            resetImageTap()
+                        }
                     }
                 }
-                MotionEvent.ACTION_UP -> {
-                    removeCallbacks(longPress)
-                    if (imageTapTarget != 0L) {
-                        val isSecondTap = previousImageTapTime != 0L &&
-                            previousImageTapTarget == imageTapTarget &&
-                            event.eventTime - previousImageTapTime <= doubleTapTimeout &&
-                            !movedBeyond(
-                                event.x,
-                                event.y,
-                                previousImageTapX,
-                                previousImageTapY,
-                                doubleTapSlop,
-                            )
-                        if (isSecondTap) {
-                            imageDoubleTap = nativeImageDoubleTap(engineHandle, event.x, event.y)
-                            resetImageTap()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                    longPresses.remove(id)?.let(::removeCallbacks)
+                    touchStarts.remove(id)
+                    if (action == MotionEvent.ACTION_UP) {
+                        if (imageTapTarget != 0L) {
+                            val isSecondTap = previousImageTapTime != 0L &&
+                                previousImageTapTarget == imageTapTarget &&
+                                event.eventTime - previousImageTapTime <= doubleTapTimeout &&
+                                !movedBeyond(x, y, previousImageTapX, previousImageTapY, doubleTapSlop)
+                            if (isSecondTap) {
+                                imageDoubleTap = nativeImageDoubleTap(engineHandle, x, y)
+                                resetImageTap()
+                            } else {
+                                previousImageTapTime = event.eventTime
+                                previousImageTapTarget = imageTapTarget
+                                previousImageTapX = x
+                                previousImageTapY = y
+                                imageTapTarget = 0L
+                            }
                         } else {
-                            previousImageTapTime = event.eventTime
-                            previousImageTapTarget = imageTapTarget
-                            previousImageTapX = event.x
-                            previousImageTapY = event.y
-                            imageTapTarget = 0L
+                            resetImageTap()
                         }
-                    } else {
-                        resetImageTap()
-                    }
-                    velocityTracker?.apply {
-                        addMovement(event)
-                        computeCurrentVelocity(1000, maximumFlingVelocity.toFloat())
-                        if (
-                            abs(event.y - downY) > touchSlop &&
-                            abs(yVelocity) >= minimumFlingVelocity
-                        ) {
-                            flingVelocity = -yVelocity.toInt()
+                        velocityTracker?.apply {
+                            addMovement(event)
+                            computeCurrentVelocity(1000, maximumFlingVelocity.toFloat())
+                            if (abs(y - downY) > touchSlop && abs(yVelocity) >= minimumFlingVelocity) {
+                                flingVelocity = -yVelocity.toInt()
+                            }
+                            recycle()
                         }
-                        recycle()
+                        velocityTracker = null
                     }
-                    velocityTracker = null
                 }
                 MotionEvent.ACTION_CANCEL -> {
-                    removeCallbacks(longPress)
+                    cancelLongPresses()
                     resetImageTap()
                     velocityTracker?.recycle()
                     velocityTracker = null
                 }
             }
             if (engineHandle != 0L && surfaceAttached) {
-                var changed = false
-                if ((imageDoubleTap and POINTER_CAPTURED) != 0) {
-                    hasPendingMove = false
-                    changed = processPointerResult(imageDoubleTap)
-                } else if (event.actionMasked == MotionEvent.ACTION_MOVE) {
-                    pendingMoveX = event.x
-                    pendingMoveY = event.y
-                    hasPendingMove = true
-                    postFrame()
-                } else {
-                    if (hasPendingMove) {
-                        hasPendingMove = false
-                        changed = processPointerResult(
-                            nativePointer(
-                                engineHandle,
-                                MotionEvent.ACTION_MOVE,
-                                pendingMoveX,
-                                pendingMoveY,
-                            ),
-                        )
+                val changed = if ((imageDoubleTap and POINTER_CAPTURED) != 0) {
+                    pendingMoves.clear()
+                    processPointerResult(imageDoubleTap)
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    for (pointerIndex in 0 until event.pointerCount) {
+                        pendingMoves[event.getPointerId(pointerIndex)] = event.getX(pointerIndex) to event.getY(pointerIndex)
                     }
-                    changed = processPointerResult(
-                        nativePointer(
-                            engineHandle,
-                            event.actionMasked,
-                            event.x,
-                            event.y,
-                        ),
-                    ) || changed
+                    false
+                } else {
+                    val moved = flushPointerMoves()
+                    val nativeAction = when (action) {
+                        MotionEvent.ACTION_POINTER_DOWN -> MotionEvent.ACTION_DOWN
+                        MotionEvent.ACTION_POINTER_UP -> MotionEvent.ACTION_UP
+                        else -> action
+                    }
+                    processPointerResult(nativePointer(engineHandle, nativeAction, id, x, y)) || moved
                 }
-                if (changed) {
-                    requestFrame()
-                }
+                if (changed) requestFrame()
                 postFrame()
             }
-            if (flingVelocity != 0 && !capturedGesture) {
-                startFling(flingVelocity)
-            }
-            if (
-                event.actionMasked == MotionEvent.ACTION_UP ||
-                event.actionMasked == MotionEvent.ACTION_CANCEL
-            ) {
+            if (flingVelocity != 0 && !capturedGesture) startFling(flingVelocity)
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 capturedGesture = false
             }
-            if (event.actionMasked == MotionEvent.ACTION_UP) {
-                performClick()
-            }
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) performClick()
             return true
+        }
+
+        private fun flushPointerMoves(): Boolean {
+            var changed = false
+            val moves = pendingMoves.toList()
+            pendingMoves.clear()
+            for ((id, position) in moves) {
+                changed = processPointerResult(nativePointer(
+                    engineHandle, MotionEvent.ACTION_MOVE, id, position.first, position.second,
+                )) || changed
+            }
+            return changed
+        }
+
+        private fun cancelLongPresses() {
+            longPresses.values.forEach(::removeCallbacks)
+            longPresses.clear()
+            touchStarts.clear()
         }
 
         private fun movedBeyond(
@@ -1409,7 +1409,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         private fun stopFling() {
             scroller.abortAnimation()
-            hasPendingMove = false
+            pendingMoves.clear()
             if (framePosted) {
                 choreographer.removeFrameCallback(frameCallback)
                 framePosted = false
@@ -1500,6 +1500,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativePointer(
             handle: Long,
             action: Int,
+            id: Int,
             x: Float,
             y: Float,
         ): Int

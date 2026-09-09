@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { createElement } from "./react";
 import { navigate, type Destination } from "./navigation";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
+export { resource, type ResourceSnapshot, type ResourceSource } from "./resource";
 export { useAction, type Action } from "./action";
 export { Tabs, Slot, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
 

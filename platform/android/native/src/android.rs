@@ -160,7 +160,7 @@ impl AndroidEngine {
         }
     }
 
-    fn pointer(&mut self, action: i32, x: f32, y: f32) -> jint {
+    fn pointer(&mut self, action: i32, id: i32, x: f32, y: f32) -> jint {
         #[cfg(feature = "presentation-timing")]
         if action == 1 {
             android_log(
@@ -173,10 +173,10 @@ impl AndroidEngine {
         #[cfg(feature = "benchmark")]
         let started = Instant::now();
         let outcome = match action {
-            0 => self.engine.pointer_down(x, y),
-            1 => self.engine.pointer_up(x, y),
-            2 => self.engine.pointer_move(x, y),
-            4 => self.engine.pointer_long_press(x, y), // POINTER_LONG_PRESS in MainActivity.
+            0 => self.engine.pointer_down(id, x, y),
+            1 => self.engine.pointer_up(id, x, y),
+            2 => self.engine.pointer_move(id, x, y),
+            4 => self.engine.pointer_long_press(id, x, y), // POINTER_LONG_PRESS in MainActivity.
             3 => {
                 self.engine.pointer_cancel();
                 PointerOutcome::default()
@@ -581,12 +581,13 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePointer(
     _class: JClass<'_>,
     handle: jlong,
     action: jint,
+    id: jint,
     x: jfloat,
     y: jfloat,
 ) -> jint {
     engine(handle)
         .and_then(|engine| engine.lock().ok())
-        .map_or(0, |mut engine| engine.pointer(action, x, y))
+        .map_or(0, |mut engine| engine.pointer(action, id, x, y))
 }
 
 #[unsafe(no_mangle)]

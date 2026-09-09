@@ -431,7 +431,7 @@ impl ReactTree {
                 .copied()
                 .unwrap_or_else(|| if self.nodes.get(&screen_id).is_some_and(|node| node.props.get("initialEnd") == Some(&Json::Bool(true))) { f32::MAX } else { 0.0 });
             engine.react_list_positions.clear();
-            engine.pointer = None;
+            engine.pointer_screen_changed();
             engine.focused_input = None;
             engine.auto_focus_node = None;
             self.active_screen = Some(screen_id);
@@ -1046,19 +1046,21 @@ fn empty_screen() -> Node {
     Node::screen(vec![], None, false)
 }
 
-pub(super) fn event(id: usize, name: &str, args: Vec<Json>) -> Action {
+pub(super) fn event(id: usize, name: &'static str, args: Vec<Json>) -> Action {
     Action::Native {
         operation: event_operation(id, name, args),
     }
 }
 
-fn event_operation(id: usize, name: &str, args: Vec<Json>) -> NativeOperation {
-    NativeOperation::new(
+fn event_operation(id: usize, name: &'static str, args: Vec<Json>) -> NativeOperation {
+    let mut operation = NativeOperation::new(
         "ink",
         "event",
         json!({ "type": "event", "id": id, "name": name, "args": args }).to_string(),
         0,
-    )
+    );
+    operation.event_target = Some((id, name));
+    operation
 }
 
 fn find_node(node: &Node, id: usize) -> Option<&Node> {

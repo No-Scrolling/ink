@@ -99,10 +99,10 @@ internal class InkKeyboardView @JvmOverloads constructor(
     private val repeatHandler = Handler(Looper.getMainLooper())
     private var mode = KeyboardMode.Letters
     private var shifted = false
-    private var pressed: PlacedKey? = null
+    private val pressed = mutableMapOf<Int, PlacedKey>()
     private val repeatBackspace = object : Runnable {
         override fun run() {
-            if (pressed?.key?.command != KeyboardCommand.Backspace) {
+            if (pressed.values.none { it.key.command == KeyboardCommand.Backspace }) {
                 return
             }
             listener?.onBackspace()
@@ -131,34 +131,41 @@ internal class InkKeyboardView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        val index = event.actionIndex
+        val id = event.getPointerId(index)
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                pressed = keys.lastOrNull { it.hitTest(event.x, event.y) }
-                pressed?.let { key ->
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) cancelPress()
+                keys.lastOrNull { it.hitTest(event.getX(index), event.getY(index)) }?.let { key ->
+                    val repeating = pressed.values.any { it.key.command == KeyboardCommand.Backspace }
+                    pressed[id] = key
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     if (key.key.command == KeyboardCommand.Backspace) {
                         listener?.onBackspace()
-                        repeatHandler.postDelayed(repeatBackspace, BACKSPACE_DELAY_MS)
+                        if (!repeating) repeatHandler.postDelayed(repeatBackspace, BACKSPACE_DELAY_MS)
                     }
                 }
-                invalidate()
             }
             MotionEvent.ACTION_MOVE -> {
-                val current = keys.lastOrNull { it.hitTest(event.x, event.y) }
-                if (current != pressed) {
-                    cancelPress()
+                for (pointerIndex in 0 until event.pointerCount) {
+                    val pointerId = event.getPointerId(pointerIndex)
+                    val key = pressed[pointerId] ?: continue
+                    if (!key.hitTest(event.getX(pointerIndex), event.getY(pointerIndex))) {
+                        pressed.remove(pointerId)
+                    }
                 }
             }
-            MotionEvent.ACTION_UP -> {
-                val released = pressed?.takeIf { it.hitTest(event.x, event.y) }
-                repeatHandler.removeCallbacks(repeatBackspace)
-                pressed = null
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                val released = pressed.remove(id)?.takeIf { it.hitTest(event.getX(index), event.getY(index)) }
                 released?.key?.let(::release)
-                invalidate()
                 performClick()
             }
             MotionEvent.ACTION_CANCEL -> cancelPress()
         }
+        if (pressed.values.none { it.key.command == KeyboardCommand.Backspace }) {
+            repeatHandler.removeCallbacks(repeatBackspace)
+        }
+        invalidate()
         return true
     }
 
@@ -188,13 +195,12 @@ internal class InkKeyboardView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
-        repeatHandler.removeCallbacks(repeatBackspace)
+        cancelPress()
         super.onDetachedFromWindow()
     }
 
     fun reset() {
         show(if (numeric) KeyboardMode.Numeric else KeyboardMode.Letters)
-        cancelPress()
     }
 
     private fun drawLayout(canvas: Canvas, layout: KeyboardLayout) {
@@ -253,7 +259,7 @@ internal class InkKeyboardView @JvmOverloads constructor(
         isSpace: Boolean = false,
         draw: (x: Float, y: Float) -> Unit,
     ) {
-        val isPressed = keyAnimationEnabled && pressed == placed
+        val isPressed = keyAnimationEnabled && pressed.containsValue(placed)
         val lift = if (isPressed) dp(if (isSpace) -8f else -12f) else 0f
         val scale = if (isPressed) if (isSpace) 1.1f else 1.25f else 1f
         val centreX = placed.contentX()
@@ -326,13 +332,14 @@ internal class InkKeyboardView @JvmOverloads constructor(
     }
 
     private fun show(newMode: KeyboardMode) {
+        cancelPress()
         mode = newMode
         shifted = false
     }
 
     private fun cancelPress() {
         repeatHandler.removeCallbacks(repeatBackspace)
-        pressed = null
+        pressed.clear()
         invalidate()
     }
 

@@ -7,3 +7,7 @@ capabilities = ["network", "location"]
 
 [lightos]
 enabled = true
+
+[signing]
+keystore = "/Users/vandam/.keystores/weather-release.jks"
+key_alias = "weather"

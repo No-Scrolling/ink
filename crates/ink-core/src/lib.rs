@@ -181,6 +181,8 @@ pub struct NativeOperation {
     operation: String,
     payload: String,
     timeout_ms: u64,
+    // Event arguments can change while the same control is held.
+    event_target: Option<(usize, &'static str)>,
 }
 
 impl NativeOperation {
@@ -195,6 +197,7 @@ impl NativeOperation {
             operation: operation.into(),
             payload: payload.into(),
             timeout_ms,
+            event_target: None,
         }
     }
 }
@@ -1033,10 +1036,28 @@ struct HitRegion {
     long_action: Option<Action>,
     scrolling: bool,
     preserve_input: bool,
+    target: PressTarget,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PressTarget {
+    node: NodeIdentity,
+    role: PressRole,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PressRole {
+    Event(&'static str),
+    Native,
+    Seek,
+    Focus,
+    Clear,
+    Back,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct TextInputLayout {
+    node: NodeIdentity,
     state: StateId,
     action: TextInputAction,
     text_run: usize,
@@ -1086,6 +1107,7 @@ enum EdgeBackState {
 
 #[derive(Clone, Copy, Debug)]
 struct EdgeBackPointer {
+    target: Option<PressTarget>,
     start_x: f32,
     start_y: f32,
     start_offset: f32,
@@ -1094,6 +1116,7 @@ struct EdgeBackPointer {
 
 #[derive(Clone, Copy, Debug)]
 struct ContentPointer {
+    target: Option<PressTarget>,
     start_x: f32,
     start_y: f32,
     start_offset: f32,
@@ -1209,7 +1232,9 @@ pub struct Engine {
     scroll_origin: f32,
     scroll_offset: f32,
     scroll_max: f32,
-    pointer: Option<Pointer>,
+    pointers: HashMap<i32, Pointer>,
+    gesture_owner: Option<i32>,
+    layout_owner: NodeIdentity,
     focused_input: Option<StateId>,
     focused_input_action: TextInputAction,
     focused_input_cursor: usize,
@@ -1259,7 +1284,9 @@ impl Engine {
             scroll_origin: 0.0,
             scroll_offset: 0.0,
             scroll_max: 0.0,
-            pointer: None,
+            pointers: HashMap::new(),
+            gesture_owner: None,
+            layout_owner: NodeIdentity(0),
             focused_input: None,
             focused_input_action: TextInputAction::default(),
             focused_input_cursor: 0,
@@ -1580,26 +1607,7 @@ impl Engine {
     }
 
     pub fn tap(&mut self, x: f32, y: f32) -> bool {
-        let action = self
-            .hit_regions
-            .iter()
-            .rev()
-            .find(|region| {
-                if region.scrolling
-                    && !self
-                        .scene
-                        .scroll_clip
-                        .is_some_and(|clip| clip.contains(x, y))
-                {
-                    return false;
-                }
-                let y = if region.scrolling {
-                    y + self.scroll_offset - self.scroll_origin
-                } else {
-                    y
-                };
-                region.rect.contains(x, y)
-            })
+        let action = self.hit_region_at(x, y)
             .map(|region| (match region.action.clone() {
                 Action::Seek { id, left, width, duration } => react::event(id, "onSeek", vec![serde_json::json!(((x - left) / width).clamp(0.0, 1.0) * duration)]),
                 action => action,
@@ -1629,14 +1637,18 @@ impl Engine {
         true
     }
 
-    pub fn pointer_down(&mut self, x: f32, y: f32) -> PointerOutcome {
+    pub fn pointer_down(&mut self, id: i32, x: f32, y: f32) -> PointerOutcome {
+        if self.gesture_owner.is_some() || self.image_pinch.is_some() {
+            return PointerOutcome::default();
+        }
+        let target = self.hit_region_at(x, y).map(|region| region.target);
         if let Some(scroll_bar) = self
             .scene
             .scroll_bar
             .filter(|scroll_bar| scroll_bar.contains_touch(x, y))
         {
             let thumb = scroll_bar.thumb_rect(self.scroll_offset, self.scroll_max);
-            self.pointer = Some(if y >= thumb.y && y <= thumb.y + thumb.height {
+            self.pointers.insert(id, if y >= thumb.y && y <= thumb.y + thumb.height {
                 Pointer::ScrollThumb {
                     grab_offset: y - thumb.y,
                 }
@@ -1647,11 +1659,13 @@ impl Engine {
                     cancelled: false,
                 }
             });
+            self.claim_pointer(id);
             return PointerOutcome::default().captured();
         }
 
         if self.navigation_handler.is_some() && x <= self.scaled(BACK_SWIPE_EDGE_WIDTH) {
-            self.pointer = Some(Pointer::EdgeBack(EdgeBackPointer {
+            self.pointers.insert(id, Pointer::EdgeBack(EdgeBackPointer {
+                target,
                 start_x: x,
                 start_y: y,
                 start_offset: self.scroll_offset,
@@ -1664,7 +1678,7 @@ impl Engine {
             && let Some(zoom) = self.image_zooms.get(&image).copied()
             && zoom.transform.scale > 1.0
         {
-            self.pointer = Some(Pointer::ImagePan(ImagePanPointer {
+            self.pointers.insert(id, Pointer::ImagePan(ImagePanPointer {
                 image,
                 start_x: x,
                 start_y: y,
@@ -1675,7 +1689,7 @@ impl Engine {
         }
 
         if let Some(input) = self.text_input_at(x, y) {
-            self.pointer = Some(Pointer::TextInput(TextInputPointer {
+            self.pointers.insert(id, Pointer::TextInput(TextInputPointer {
                 input,
                 start_x: x,
                 start_y: y,
@@ -1685,7 +1699,8 @@ impl Engine {
             return PointerOutcome::default();
         }
 
-        self.pointer = Some(Pointer::Content(ContentPointer {
+        self.pointers.insert(id, Pointer::Content(ContentPointer {
+            target,
             start_x: x,
             start_y: y,
             start_offset: self.scroll_offset,
@@ -1695,16 +1710,17 @@ impl Engine {
         PointerOutcome::default()
     }
 
-    pub fn pointer_move(&mut self, x: f32, y: f32) -> PointerOutcome {
+    pub fn pointer_move(&mut self, id: i32, x: f32, y: f32) -> PointerOutcome {
         let tap_slop = self.scaled(TAP_SLOP);
-        let Some(pointer) = self.pointer else {
+        let Some(pointer) = self.pointers.get(&id).copied() else {
             return PointerOutcome::default();
         };
 
         match pointer {
-            Pointer::Content(pointer) => self.move_content_pointer(pointer, x, y, tap_slop),
-            Pointer::TextInput(pointer) => self.move_text_input_pointer(pointer, x, y, tap_slop),
+            Pointer::Content(pointer) => self.move_content_pointer(id, pointer, x, y, tap_slop),
+            Pointer::TextInput(pointer) => self.move_text_input_pointer(id, pointer, x, y, tap_slop),
             Pointer::ImagePan(pointer) => {
+                self.claim_pointer(id);
                 let Some(zoom) = self.image_zooms.get(&pointer.image).copied() else {
                     return PointerOutcome::default();
                 };
@@ -1728,7 +1744,7 @@ impl Engine {
                 start_y,
                 cancelled,
             } => {
-                self.pointer = Some(Pointer::ScrollTrack {
+                self.pointers.insert(id, Pointer::ScrollTrack {
                     start_x,
                     start_y,
                     cancelled: cancelled
@@ -1737,25 +1753,31 @@ impl Engine {
                 });
                 PointerOutcome::default().captured()
             }
-            Pointer::EdgeBack(pointer) => self.move_edge_back_pointer(pointer, x, y, tap_slop),
+            Pointer::EdgeBack(pointer) => self.move_edge_back_pointer(id, pointer, x, y, tap_slop),
         }
     }
 
-    pub fn pointer_up(&mut self, x: f32, y: f32) -> PointerOutcome {
-        let Some(pointer) = self.pointer.take() else {
-            return PointerOutcome::default();
+    pub fn pointer_up(&mut self, id: i32, x: f32, y: f32) -> PointerOutcome {
+        if self.gesture_owner == Some(id) { self.gesture_owner = None; }
+        let Some(pointer) = self.pointers.remove(&id) else {
+            return PointerOutcome::default().captured();
         };
 
         match pointer {
             Pointer::Content(ContentPointer {
                 dragging: false,
                 cancelled: false,
+                target,
                 ..
             })
             | Pointer::EdgeBack(EdgeBackPointer {
                 state: EdgeBackState::Pending,
+                target,
                 ..
             }) => {
+                if self.hit_region_at(x, y).map(|region| region.target) != target {
+                    return PointerOutcome::default();
+                }
                 let revision = self.scene.revision;
                 let activated = self.tap(x, y);
                 PointerOutcome {
@@ -1776,7 +1798,12 @@ impl Engine {
                 PointerOutcome::activated(self.set_scroll_offset(next)).captured()
             }
             Pointer::TextInput(pointer) if !pointer.dragging => {
-                PointerOutcome::activated(self.focus_text_input(pointer.input, x, y))
+                let input = self.text_inputs.iter().find(|input| input.node == pointer.input.node).copied();
+                PointerOutcome::activated(input.is_some_and(|input| {
+                    self.hit_region_at(x, y).is_some_and(|region| {
+                        region.target == PressTarget { node: input.node, role: PressRole::Focus }
+                    }) && self.focus_text_input(input, x, y)
+                }))
             }
             Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
@@ -1790,33 +1817,52 @@ impl Engine {
         }
     }
 
-    pub fn pointer_long_press(&mut self, x: f32, y: f32) -> PointerOutcome {
-        if !matches!(self.pointer, Some(Pointer::Content(ContentPointer { dragging: false, cancelled: false, .. }))) {
+    pub fn pointer_long_press(&mut self, id: i32, x: f32, y: f32) -> PointerOutcome {
+        let Some(Pointer::Content(ContentPointer { dragging: false, cancelled: false, target: Some(target), .. })) = self.pointers.get(&id) else {
             return PointerOutcome::default();
-        }
-        let action = self.hit_regions.iter().rev().find(|region| {
-            let local_y = if region.scrolling { y + self.scroll_offset - self.scroll_origin } else { y };
-            region.rect.contains(x, local_y)
-        }).and_then(|region| region.long_action.clone());
+        };
+        let action = self.hit_region_at(x, y)
+            .filter(|region| region.target == *target)
+            .and_then(|region| region.long_action.clone());
         let Some(action) = action else { return PointerOutcome::default(); };
-        self.pointer_cancel();
+        self.pointers.clear();
+        self.gesture_owner = Some(id);
         let changes_layout = action.changes_layout();
         let activated = self.apply(action);
-        if changes_layout {
-            self.relayout_scene();
-        }
+        if changes_layout { self.relayout_scene(); }
         PointerOutcome { changed: changes_layout && activated, activated, captured: true }
     }
 
     pub fn pointer_cancel(&mut self) {
-        self.pointer = None;
+        self.pointers.clear();
+        self.gesture_owner = None;
+    }
+
+    fn claim_pointer(&mut self, id: i32) {
+        self.pointers.retain(|pointer_id, _| *pointer_id == id);
+        self.gesture_owner = Some(id);
+    }
+
+    fn pointer_screen_changed(&mut self) {
+        self.pointers.retain(|_, pointer| match *pointer {
+            Pointer::Content(ContentPointer { dragging: false, cancelled: false, target: Some(_), .. })
+            | Pointer::TextInput(TextInputPointer { dragging: false, .. }) => true,
+            Pointer::EdgeBack(EdgeBackPointer { state: EdgeBackState::Pending, target: Some(target), start_x, start_y, start_offset }) => {
+                *pointer = Pointer::Content(ContentPointer {
+                    target: Some(target), start_x, start_y, start_offset, dragging: false, cancelled: false,
+                });
+                true
+            }
+            _ => false,
+        });
+        self.gesture_owner = None;
     }
 
     pub fn image_pinch_begin(&mut self, x: f32, y: f32) -> bool {
         let Some(image) = self.zoomable_image_at(x, y) else {
             return false;
         };
-        self.pointer = None;
+        self.pointer_cancel();
         self.image_pinch = Some(ImagePinch {
             image,
             focus_x: x,
@@ -1875,7 +1921,7 @@ impl Engine {
         let Some(zoom) = self.image_zooms.get(&image).copied() else {
             return PointerOutcome::default();
         };
-        self.pointer = None;
+        self.pointer_cancel();
         self.image_pinch = None;
         let next_scale = if zoom.transform.scale >= IMAGE_MAX_SCALE {
             1.0
@@ -2013,6 +2059,7 @@ impl Engine {
 
     fn move_text_input_pointer(
         &mut self,
+        id: i32,
         mut pointer: TextInputPointer,
         x: f32,
         y: f32,
@@ -2027,19 +2074,22 @@ impl Engine {
                 pointer.start_y -= vertical.signum() * tap_slop;
                 pointer.dragging = true;
             }
-            self.pointer = Some(Pointer::TextInput(pointer));
+            self.pointers.insert(id, Pointer::TextInput(pointer));
+            self.claim_pointer(id);
             let next = (pointer.input.scroll_offset + pointer.start_y - y)
                 .clamp(0.0, pointer.input.scroll_max);
             return PointerOutcome::changed(self.set_text_input_scroll(pointer.input.state, next)).captured();
         }
         if !pointer.dragging {
             if horizontal.abs() <= tap_slop && vertical.abs() <= tap_slop {
-                self.pointer = Some(Pointer::TextInput(pointer));
+                self.pointers.insert(id, Pointer::TextInput(pointer));
                 return PointerOutcome::default();
             }
             if vertical.abs() > horizontal.abs() {
                 return self.move_content_pointer(
+                    id,
                     ContentPointer {
+                        target: Some(PressTarget { node: pointer.input.node, role: PressRole::Focus }),
                         start_x: pointer.start_x,
                         start_y: pointer.start_y,
                         start_offset: pointer.content_offset,
@@ -2054,7 +2104,8 @@ impl Engine {
             pointer.start_x -= horizontal.signum() * tap_slop;
             pointer.dragging = true;
         }
-        self.pointer = Some(Pointer::TextInput(pointer));
+        self.pointers.insert(id, Pointer::TextInput(pointer));
+        self.claim_pointer(id);
         let next = (pointer.input.scroll_offset + pointer.start_x - x)
             .clamp(0.0, pointer.input.scroll_max);
         PointerOutcome::changed(self.set_text_input_scroll(pointer.input.state, next)).captured()
@@ -2147,6 +2198,7 @@ impl Engine {
 
     fn move_content_pointer(
         &mut self,
+        id: i32,
         mut pointer: ContentPointer,
         x: f32,
         y: f32,
@@ -2156,20 +2208,22 @@ impl Engine {
         if !pointer.dragging {
             if delta.abs() <= tap_slop {
                 pointer.cancelled |= (x - pointer.start_x).abs() > tap_slop;
-                self.pointer = Some(Pointer::Content(pointer));
+                self.pointers.insert(id, Pointer::Content(pointer));
                 return PointerOutcome::default();
             }
             pointer.start_y -= delta.signum() * tap_slop;
             pointer.dragging = true;
             pointer.cancelled = true;
         }
-        self.pointer = Some(Pointer::Content(pointer));
+        self.pointers.insert(id, Pointer::Content(pointer));
+        self.claim_pointer(id);
         let next = (pointer.start_offset + pointer.start_y - y).clamp(0.0, self.scroll_max);
         PointerOutcome::changed(self.set_scroll_offset(next))
     }
 
     fn move_edge_back_pointer(
         &mut self,
+        id: i32,
         pointer: EdgeBackPointer,
         x: f32,
         y: f32,
@@ -2184,13 +2238,13 @@ impl Engine {
             && vertical_distance > horizontal_distance * BACK_SWIPE_VERTICAL_RATIO
         {
             let content_pointer = ContentPointer {
-                start_x: pointer.start_x,
+                target: pointer.target,                start_x: pointer.start_x,
                 start_y: pointer.start_y,
                 start_offset: pointer.start_offset,
                 dragging: false,
                 cancelled: false,
             };
-            return self.move_content_pointer(content_pointer, x, y, tap_slop);
+            return self.move_content_pointer(id, content_pointer, x, y, tap_slop);
         }
 
         let claimed = pointer.state == EdgeBackState::Claimed
@@ -2200,14 +2254,16 @@ impl Engine {
             return PointerOutcome::default();
         }
 
+        self.claim_pointer(id);
         if horizontal > self.scaled(BACK_SWIPE_TRIGGER_DISTANCE)
             && vertical_distance <= horizontal * BACK_SWIPE_VERTICAL_RATIO
         {
-            self.pointer = None;
+            self.pointers.remove(&id);
             return PointerOutcome::activated(self.pop_route()).captured();
         }
 
-        self.pointer = Some(Pointer::EdgeBack(EdgeBackPointer {
+        self.pointers.insert(id, Pointer::EdgeBack(EdgeBackPointer {
+            target: pointer.target,
             start_x: pointer.start_x,
             start_y: pointer.start_y,
             start_offset: pointer.start_offset,
@@ -2416,7 +2472,7 @@ impl Engine {
             let index = metrics.index_at(self.scroll_offset + clip.y - top);
             Some((*id, metrics.keys.get(index)?.clone(), index,
                 top + metrics.offset(index) - self.scroll_offset,
-                metrics.follow_end && self.pointer.is_none()
+                metrics.follow_end && self.pointers.is_empty()
                     && self.scroll_max - self.scroll_offset <= self.scaled(64.0)))
         }).collect();
         let clip_top = self.scene.scroll_clip.map_or(0.0, |clip| clip.y);
@@ -2440,12 +2496,30 @@ impl Engine {
         }
         // Layout corrections must move the drag origin too, or the next motion undoes them.
         let adjustment = self.scroll_offset - previous_offset;
-        match &mut self.pointer {
-            Some(Pointer::Content(pointer)) => pointer.start_offset += adjustment,
-            Some(Pointer::EdgeBack(pointer)) => pointer.start_offset += adjustment,
-            Some(Pointer::TextInput(pointer)) => pointer.content_offset += adjustment,
-            _ => {}
+        for pointer in self.pointers.values_mut() {
+            match pointer {
+                Pointer::Content(pointer) => pointer.start_offset += adjustment,
+                Pointer::EdgeBack(pointer) => pointer.start_offset += adjustment,
+                Pointer::TextInput(pointer) => pointer.content_offset += adjustment,
+                _ => {}
+            }
         }
+
+        // Validate against the final layout, after virtualised-list anchor corrections.
+        self.pointers.retain(|_, pointer| match pointer {
+            Pointer::Content(ContentPointer { dragging: true, .. }) => true,
+            Pointer::Content(ContentPointer { target: Some(target), .. })
+            | Pointer::EdgeBack(EdgeBackPointer { target: Some(target), .. }) =>
+                self.hit_regions.iter().any(|region| region.target == *target),
+            Pointer::TextInput(pointer) => {
+                let input = self.text_inputs.iter().find(|input| input.node == pointer.input.node);
+                if let Some(input) = input && !pointer.dragging { pointer.input = *input; }
+                input.is_some()
+            },
+            Pointer::ImagePan(pointer) => self.visible_zoom_images.contains(&pointer.image),
+            Pointer::ScrollThumb { .. } | Pointer::ScrollTrack { .. } => self.scene.scroll_bar.is_some(),
+            _ => true,
+        });
 
         // Keep only text used by this layout, ready for the next update.
         self.wrapped_text.retain(|_, (_, used)| std::mem::take(used));
@@ -2483,6 +2557,7 @@ impl Engine {
         self.scrolling = false;
 
         if self.viewport.width == 0 || self.viewport.height == 0 {
+            self.pointer_cancel();
             return;
         }
 
@@ -2803,6 +2878,12 @@ impl Engine {
     }
 
     fn layout_node(&mut self, node: &Node, rect: Rect, screen_bottom_inset: bool) {
+        let previous = std::mem::replace(&mut self.layout_owner, node.identity);
+        self.layout_node_inner(node, rect, screen_bottom_inset);
+        self.layout_owner = previous;
+    }
+
+    fn layout_node_inner(&mut self, node: &Node, rect: Rect, screen_bottom_inset: bool) {
         let visible = rect.intersection(self.clip);
         if self.scrolling
             && !matches!(
@@ -3763,6 +3844,7 @@ impl Engine {
             clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
         });
         self.text_inputs.push(TextInputLayout {
+            node: self.layout_owner,
             state, action: TextInputAction::Return, text_run, rect, text_rect: viewport,
             hit_rect: Rect { width: (rect.width - trailing_width).max(0.0), ..rect }.intersection(self.clip),
             scroll_offset, scroll_max, scrolling: self.scrolling,
@@ -3903,6 +3985,7 @@ impl Engine {
             scrolling: self.scrolling,
         });
         self.text_inputs.push(TextInputLayout {
+            node: self.layout_owner,
             state,
             action,
             text_run,
@@ -4388,6 +4471,30 @@ impl Engine {
         self.scaled(CONTROL_LINE_HEIGHT).ceil().max(1.0)
     }
 
+    fn press_target(&self, action: &Action) -> PressTarget {
+        let (node, role) = match action {
+            Action::Native { operation } => match operation.event_target {
+                Some((id, name)) => (NodeIdentity(id), PressRole::Event(name)),
+                None => (self.layout_owner, PressRole::Native),
+            },
+            Action::Seek { id, .. } => (NodeIdentity(*id), PressRole::Seek),
+            Action::FocusTextInput { .. } => (self.layout_owner, PressRole::Focus),
+            Action::ClearInput { .. } => (self.layout_owner, PressRole::Clear),
+            Action::Back => (self.layout_owner, PressRole::Back),
+        };
+        PressTarget { node, role }
+    }
+
+    fn hit_region_at(&self, x: f32, y: f32) -> Option<&HitRegion> {
+        self.hit_regions.iter().rev().find(|region| {
+            if region.scrolling && !self.scene.scroll_clip.is_some_and(|clip| clip.contains(x, y)) {
+                return false;
+            }
+            let local_y = if region.scrolling { y + self.scroll_offset - self.scroll_origin } else { y };
+            region.rect.contains(x, local_y)
+        })
+    }
+
     fn push_hit_region(&mut self, rect: Rect, action: Action) {
         self.push_press_region(rect, action, None);
     }
@@ -4395,12 +4502,14 @@ impl Engine {
     fn push_press_region(&mut self, rect: Rect, action: Action, long_action: Option<Action>) {
         let rect = rect.intersection(self.clip);
         if rect.width > 0.0 && rect.height > 0.0 {
+            let target = self.press_target(&action);
             self.hit_regions.push(HitRegion {
                 rect,
                 action,
                 long_action,
                 scrolling: self.scrolling,
                 preserve_input: false,
+                target,
             });
         }
     }

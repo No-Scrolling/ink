@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { ErrorState, List, LoadingState, Screen, Stack, Text, type IconAsset } from "ink";
 import { formatNumber, formatTime, formatWeekday, getWeatherDescription, type AirQualityData, type WeatherData } from "../lib/weather";
 import { DETAIL_LABELS, type WeatherDetail, type WeatherPreferences } from "../lib/preferences";
@@ -99,6 +100,20 @@ export function Forecast({
   const title = place.label;
   const expectedKey = `${place.key}:${prefs.temperatureUnit}:${prefs.windSpeedUnit}:${prefs.precipitationUnit}`;
   const dataForPlace = state.key === expectedKey ? state.data : null;
+  const rows = useMemo(() => {
+    if (!dataForPlace) return [];
+    const hours = dataForPlace.hourly.time.slice(0, 24);
+    const rows: Array<{ time: string; index: number; event?: "sunrise" | "sunset" }> = hours.map((time, index) => ({ time, index }));
+    for (const event of ["sunrise", "sunset"] as const) {
+      for (const time of dataForPlace.daily[event]) {
+        if (time >= hours[0] && time.slice(0, 13) <= hours[hours.length - 1]?.slice(0, 13)) {
+          rows.push({ time, index: -1, event });
+        }
+      }
+    }
+    rows.sort((a, b) => a.time.localeCompare(b.time));
+    return rows;
+  }, [dataForPlace]);
   if (!dataForPlace && (state.loading || state.key !== expectedKey)) return <Screen title={title}><LoadingState label="Loading weather…" /></Screen>;
   if (!dataForPlace && state.error) return <Screen title={title}><ErrorState message={state.error} onRetry={state.retry} /></Screen>;
   if (!dataForPlace) return <Screen title={title} rightAction={rightAction}><Text align="center">Weather is unavailable.</Text></Screen>;
@@ -106,16 +121,6 @@ export function Forecast({
   const data = dataForPlace;
   const current = data.current;
   const details = prefs.selectedDetails;
-  const hours = data.hourly.time.slice(0, 24);
-  const rows: Array<{ time: string; index: number; event?: "sunrise" | "sunset" }> = hours.map((time, index) => ({ time, index }));
-  for (const event of ["sunrise", "sunset"] as const) {
-    for (const time of data.daily[event]) {
-      if (time >= hours[0] && time.slice(0, 13) <= hours[hours.length - 1]?.slice(0, 13)) {
-        rows.push({ time, index: -1, event });
-      }
-    }
-  }
-  rows.sort((a, b) => a.time.localeCompare(b.time));
   return (
     <Screen title={title} rightAction={rightAction}>
       <Stack gap={24}>

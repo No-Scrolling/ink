@@ -1,43 +1,43 @@
-import { useEffect, useState } from "react";
+import { resource, useSnapshot, type SnapshotSource } from "ink";
 import { getAirQualityData, getWeatherData, type AirQualityData, type WeatherData } from "../lib/weather";
 import type { Place } from "../lib/place";
 import type { WeatherPreferences } from "../lib/preferences";
 
-interface ForecastState {
+export interface ForecastResult {
   key: string | null;
   data: WeatherData | null;
   airQuality: AirQualityData | null;
   loading: boolean;
   error: string | null;
+  retry: () => void;
 }
 
-export type ForecastResult = ForecastState & { retry: () => void };
+const forecast = resource({
+  key: (latitude: number, longitude: number, temperature: WeatherPreferences["temperatureUnit"], wind: WeatherPreferences["windSpeedUnit"], precipitation: WeatherPreferences["precipitationUnit"]) =>
+    [latitude, longitude, temperature, wind, precipitation],
+  load: async (latitude, longitude, temperature, wind, precipitation) => {
+    const [data, airQuality] = await Promise.all([
+      getWeatherData(latitude, longitude, temperature, wind, precipitation),
+      getAirQualityData(latitude, longitude),
+    ]);
+    return { data, airQuality };
+  },
+  staleTime: 60_000,
+  refreshInterval: 60_000,
+});
+const emptyState = { status: "ready", data: null } as const;
+const empty: SnapshotSource<null> = { getSnapshot: () => emptyState, subscribe: () => () => {} };
 
 export function useForecast(place: Place | null, prefs: WeatherPreferences): ForecastResult {
-  const [state, setState] = useState<ForecastState>({ key: null, data: null, airQuality: null, loading: false, error: null });
-  const [attempt, setAttempt] = useState(0);
-  const unitKey = `${prefs.temperatureUnit}:${prefs.windSpeedUnit}:${prefs.precipitationUnit}`;
-  const requestKey = place ? `${place.key}:${unitKey}` : null;
-  useEffect(() => {
-    if (!place || !requestKey) {
-      setState({ key: null, data: null, airQuality: null, loading: false, error: null });
-      return;
-    }
-    let active = true;
-    setState(current => current.key === requestKey
-      ? { ...current, loading: true, error: null }
-      : { key: requestKey, data: null, airQuality: null, loading: true, error: null });
-    void Promise.all([
-      getWeatherData(place.latitude, place.longitude, prefs.temperatureUnit, prefs.windSpeedUnit, prefs.precipitationUnit),
-      getAirQualityData(place.latitude, place.longitude),
-    ]).then(([data, airQuality]) => {
-      if (active) setState({ key: requestKey, data, airQuality, loading: false, error: null });
-    }).catch(cause => {
-      if (active) setState(current => ({ ...current, key: requestKey, loading: false, error: cause instanceof Error ? cause.message : "Could not fetch weather." }));
-    });
-    const refresh = setInterval(() => setAttempt(value => value + 1), 60_000);
-
-    return () => { active = false; clearInterval(refresh); };
-  }, [attempt, place?.key, place?.latitude, place?.longitude, requestKey, unitKey]);
-  return { ...state, retry: () => setAttempt(value => value + 1) };
+  const { temperatureUnit, windSpeedUnit, precipitationUnit } = prefs;
+  const source = place ? forecast(place.latitude, place.longitude, temperatureUnit, windSpeedUnit, precipitationUnit) : null;
+  const state = useSnapshot<{ data: WeatherData; airQuality: AirQualityData | null } | null>(source ?? empty);
+  return {
+    key: place ? `${place.key}:${temperatureUnit}:${windSpeedUnit}:${precipitationUnit}` : null,
+    data: state.status === "ready" ? state.data?.data ?? null : null,
+    airQuality: state.status === "ready" ? state.data?.airQuality ?? null : null,
+    loading: state.status === "loading",
+    error: state.status === "error" ? state.error.message : null,
+    retry: () => { void source?.refresh(); },
+  };
 }

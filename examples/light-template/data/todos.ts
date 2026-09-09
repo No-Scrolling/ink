@@ -1,5 +1,5 @@
 import "@ink/network";
-import { createStore } from "@ink/store";
+import { resource } from "ink";
 
 export interface Todo {
   userId: number;
@@ -21,25 +21,24 @@ export function decodeTodo(value: unknown): Todo {
   }
   return todo;
 }
-export const cachedTodo = createStore<Todo | null>({
-  key: "template.cached-todo", version: 1, initial: null,
-  decode: value => value === null ? null : decodeTodo(value),
-});
 async function readTodo(id: number, signal?: AbortSignal) {
   const response = await fetch(`https://jsonplaceholder.typicode.com/todos/${id}`, { signal });
   if (!response.ok) throw new Error(`Todo ${id}: HTTP ${response.status}`);
   return decodeTodo(await response.json());
 }
-export async function loadPage(signal: AbortSignal) {
-  const [first, second] = await Promise.all([readTodo(1, signal), readTodo(2, signal)]);
-  return { first, second };
-}
-export async function refreshCache(signal: AbortSignal) {
-  const todo = await readTodo(3, signal);
-  signal.throwIfAborted();
-  await cachedTodo.set(todo);
-  return todo;
-}
+export const todo = resource({
+  key: (id: number) => [id],
+  load: id => readTodo(id),
+  staleTime: 60_000,
+});
+export const page = resource({
+  key: () => [],
+  load: async () => {
+    const [first, second] = await Promise.all([readTodo(1), readTodo(2)]);
+    return { first, second };
+  },
+  staleTime: 60_000,
+});
 export async function saveTodo(userId: number, signal?: AbortSignal) {
   const response = await fetch("https://jsonplaceholder.typicode.com/todos", {
     method: "POST", headers: { "content-type": "application/json" },
