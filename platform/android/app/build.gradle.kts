@@ -256,6 +256,7 @@ android {
             "\"${inkLightServerPackage.get()}\"",
         )
         buildConfigField("String", "INK_LIGHT_SDK_VERSION", "\"$inkLightSdkVersion\"")
+        buildConfigField("boolean", "INK_LIGHT_SDK_ENABLED", inkUsesLightSdk.get().toString())
     }
 
     signingConfigs {

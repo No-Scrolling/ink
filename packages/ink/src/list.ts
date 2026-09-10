@@ -1,4 +1,4 @@
-import { createElement, Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAction } from "./action";
 import { EmptyState } from "./patterns";
@@ -58,9 +58,9 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
       if (start !== window.start || end !== window.end) setWindow({ start, end, revision: window.revision });
     }
     data = { items, keys, keyExtractor, contentVersions, revision, records, measurementKey };
-    previous.current = data;
   }
-  data.keyExtractor = keyExtractor;
+  if (data.keyExtractor !== keyExtractor) data = { ...data, keyExtractor };
+  useLayoutEffect(() => { previous.current = data; });
   const { revision, contentVersions } = data;
   const boundary = JSON.stringify([keys.length, keys.at(-1)]);
   useEffect(() => {
@@ -88,7 +88,7 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
     followEnd,
     start,
     onWindow(start: number, end: number, eventRevision: number) {
-      if (eventRevision !== previous.current?.revision) return;
+      if (eventRevision !== revision) return;
       setWindow(previous => previous.start === start && previous.end === end && previous.revision === eventRevision ? previous : { start, end, revision: eventRevision });
     },
   };

@@ -63,7 +63,7 @@ internal class PermissionsAdapter(
     }
 
     private fun usesLightPermission(permission: Permission): Boolean {
-        if (!usesLightOs || permission.name == "notifications") return false
+        if (!BuildConfig.INK_LIGHT_SDK_ENABLED || !usesLightOs || permission.name == "notifications") return false
         // The emulator SDK cannot grant location permissions.
         return BuildConfig.INK_LIGHT_SERVER_PACKAGE != "com.thelightphone.sdk.emulator" ||
             Manifest.permission.ACCESS_COARSE_LOCATION !in permission.android

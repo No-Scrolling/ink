@@ -81,8 +81,17 @@ function hide(instance: Instance, value: boolean) {
   operations.push({ op: "hidden", id: instance.id, value });
 }
 
-function report(error: unknown) {
-  __inkPost(JSON.stringify({ type: "error", message: error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ""}` : String(error) }));
+function errorMessage(error: unknown, info: { componentStack?: string | null }) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ""}` : String(error);
+  return info.componentStack ? `${message}\n${info.componentStack}` : message;
+}
+
+function report(error: unknown, info: { componentStack?: string | null }) {
+  __inkPost(JSON.stringify({ type: "error", message: errorMessage(error, info) }));
+}
+
+function reportRecovered(error: unknown, info: { componentStack?: string | null }) {
+  __inkPost(JSON.stringify({ type: "log", level: "error", message: errorMessage(error, info) }));
 }
 
 const reconciler = Reconciler<string, Props, Container, Instance, Instance, never, never, never,
@@ -192,7 +201,7 @@ export function render(element: ReactNode) {
     dispatchEvent(message.id, message.name, message.args);
   });
   const container: Container = { id: 0, children: [] };
-  const root = reconciler.createContainer(container, ConcurrentRoot, null, false, null, "", report, report, report, () => {});
+  const root = reconciler.createContainer(container, ConcurrentRoot, null, false, null, "", report, reportRecovered, reportRecovered, () => {});
   if (process.env.NODE_ENV === "development") developmentRoot = root;
   reconciler.updateContainer(element, root, null, null);
   return () => reconciler.updateContainer(null, root, null, null);

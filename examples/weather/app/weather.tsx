@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import { star, starFilled } from "ink/icons";
 import { PreferencesGate } from "../components/PreferencesGate";
 import { Forecast } from "../components/Forecast";
-import { useForecast } from "../hooks/useForecast";
 import { useSettingsUpdate } from "../hooks/useSettingsUpdate";
 import { weatherPlace } from "../lib/place";
 import { decodeWeatherRoute } from "../lib/routeParams";
@@ -16,7 +15,6 @@ export default function SearchWeatherScreen() {
 function SearchWeather({ prefs }: { prefs: WeatherPreferences }) {
   const { location } = useRouteParams(decodeWeatherRoute);
   const place = useMemo(() => location ? weatherPlace(location) : null, [location?.id, location?.latitude, location?.longitude, location?.name, location?.country, location?.admin1]);
-  const forecast = useForecast(place, prefs);
   const isSaved = location !== null && prefs.savedLocations.some(saved => saved.id === location.id && saved.latitude === location.latitude && saved.longitude === location.longitude);
   const save = useSettingsUpdate();
   if (!place) return <Screen title="Weather"><Text>Invalid location coordinates.</Text></Screen>;
@@ -31,7 +29,6 @@ function SearchWeather({ prefs }: { prefs: WeatherPreferences }) {
   return <Forecast
     place={place}
     prefs={prefs}
-    state={forecast}
     rightAction={{ icon: isSaved ? starFilled : star, onPress: toggleSaved }}
   />;
 }

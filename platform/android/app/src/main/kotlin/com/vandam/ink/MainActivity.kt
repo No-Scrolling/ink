@@ -324,16 +324,25 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         javascriptPending.set(false)
         if (engineHandle != 0L) {
             if (nativeDrainJavaScript(engineHandle)) inkView.requestCommitFrame()
-            if (BuildConfig.DEBUG) {
-                val error = nativeTakeJavaScriptError(engineHandle)
-                if (error.isNotEmpty()) {
-                    stopJavaScriptSession()
+            val error = nativeTakeJavaScriptError(engineHandle)
+            if (error.isNotEmpty()) {
+                stopJavaScriptSession()
+                if (BuildConfig.DEBUG) {
                     val mapped = DevelopmentErrors.map(error) { openBundleAsset("app.js.map").bufferedReader().use { it.readText() } }
                     android.util.Log.e("Ink", mapped)
                     developmentError = android.app.AlertDialog.Builder(this).setTitle("Ink development error")
                         .setMessage(mapped).setPositiveButton("Reload") { _, _ -> startDevelopmentBundle(developmentBundle) }
                         .setNegativeButton("Close", null).show()
+                } else {
+                    android.util.Log.e("Ink", error)
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("App stopped")
+                        .setMessage("Close the app and open it again to try again.")
+                        .setPositiveButton("Close") { _, _ -> finish() }
+                        .setCancelable(false)
+                        .show()
                 }
+                return@Runnable
             }
             val light = nativeIsLightAppearance(engineHandle)
             textInputAdapter.setLightAppearance(light)

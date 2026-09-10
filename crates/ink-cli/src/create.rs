@@ -30,9 +30,22 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
             serde_json::to_string(package)?
         ),
     )?;
+    let mut overrides = serde_json::Map::new();
+    for entry in fs::read_dir(sdk.join("packages"))? {
+        let path = entry?.path();
+        let manifest = path.join("package.json");
+        if !manifest.is_file() {
+            continue;
+        }
+        let package: serde_json::Value = serde_json::from_slice(&fs::read(manifest)?)?;
+        if let Some(name) = package["name"].as_str() {
+            overrides.insert(name.to_owned(), json!(format!("file:{}", path.display())));
+        }
+    }
     let metadata = json!({
         "name": package.replace('.', "-"),
         "private": true,
+        "overrides": overrides,
         "scripts": { "check": "tsc --noEmit" },
         "dependencies": {
             "ink": format!("file:{}", sdk.join("packages/ink").display()),
@@ -60,8 +73,8 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
     fs::write(
         directory.join("README.md"),
         format!(
-            "# {title}\n\nRun `bun install`, then `ink check` and `ink dev --device <serial>`.\n\nThis app uses the explicit local SDK at `{}`. Set `INK_SDK_ROOT` to that directory when running a standalone Ink CLI.\n\nFor release builds configure your own signing keystore in ink.toml and supply INK_KEYSTORE_PASSWORD. Never commit signing secrets.\n",
-            sdk.display()
+            "# {title}\n\nFrom this directory:\n\n```sh\nbun install\n{0}/scripts/ink check\n{0}/scripts/ink devices\n{0}/scripts/ink dev --device <serial>\n```\n\nReplace `<serial>` with a device listed by `devices`. Edit `app/index.tsx` while `dev` runs.\n\nThis app uses the local SDK at `{0}`. Package overrides keep added Ink modules on that checkout. Add modules with `bun add @ink/store@0.1.0`.\n\nWhen adding `app/(tabs)/index.tsx`, move or remove `app/index.tsx`: both name the home route.\n\nSee the SDK’s `docs/installation.md` for setup and `docs/release.md` for signing and installation. Keep signing keys and passwords out of version control.\n",
+            sdk.display(),
         ),
     )?;
     super::output::success(format!(

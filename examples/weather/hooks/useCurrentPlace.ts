@@ -1,9 +1,7 @@
 import { location } from "@ink/location";
 import { NativeError } from "ink/native";
-import { useMemo } from "react";
-import { resource, useSnapshot, type SnapshotSource } from "ink";
-import { weatherPlace, type Place } from "../lib/place";
-import type { SavedLocation } from "../lib/preferences";
+import { resource, useSnapshot } from "ink";
+import type { Place } from "../lib/place";
 
 const LOCATION_STALE_TIME = 900_000;
 const currentLocation = resource({
@@ -30,17 +28,14 @@ const currentLocation = resource({
   staleTime: LOCATION_STALE_TIME,
   refreshInterval: LOCATION_STALE_TIME,
 });
-const emptyState = { status: "ready", data: null } as const;
-const empty: SnapshotSource<null> = { getSnapshot: () => emptyState, subscribe: () => () => {} };
 
-export function useCurrentPlace(mainLocation: SavedLocation | null) {
-  const selectedMainPlace = useMemo(() => mainLocation ? weatherPlace(mainLocation) : null, [mainLocation]);
-  const source = selectedMainPlace ? null : currentLocation();
-  const state = useSnapshot<Place | null>(source ?? empty);
+export function useCurrentPlace() {
+  const source = currentLocation();
+  const state = useSnapshot(source);
   return {
-    place: selectedMainPlace ?? (state.status === "ready" ? state.data : null),
-    error: state.status === "error" ? state.error.message : null,
+    place: state.status === "ready" ? state.data : null,
+    error: state.status === "error" ? state.error.message : state.status === "ready" ? state.refreshError?.message ?? null : null,
     loading: state.status === "loading",
-    retry: () => { void source?.refresh(); },
+    retry: source.refresh,
   };
 }

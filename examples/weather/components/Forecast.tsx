@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { ErrorState, List, LoadingState, Screen, Stack, Text, type IconAsset } from "ink";
+import { Button, ErrorState, List, LoadingState, Screen, Stack, Text, type IconAsset } from "ink";
 import { formatNumber, formatTime, formatWeekday, getWeatherDescription, type AirQualityData, type WeatherData } from "../lib/weather";
 import { DETAIL_LABELS, type WeatherDetail, type WeatherPreferences } from "../lib/preferences";
 import type { Place } from "../lib/place";
-import type { ForecastResult } from "../hooks/useForecast";
+import { useForecast } from "../hooks/useForecast";
 import { WeatherSymbol } from "./WeatherSymbol";
 
 function qualityValue(airQuality: AirQualityData | null, time: string, key: "usAqi" | "europeanAqi" | "pm25" | "pm10"): number | null {
@@ -87,25 +87,25 @@ function DetailsLines({ values }: { values: string[] }) {
 export function Forecast({
   place,
   prefs,
-  state,
   rightAction,
   notice,
+  onRetryNotice,
 }: {
   place: Place;
   prefs: WeatherPreferences;
-  state: ForecastResult;
   rightAction?: { icon: IconAsset; onPress: () => void };
   notice?: string;
+  onRetryNotice?: () => void;
 }) {
+  const state = useForecast(place, prefs);
   const title = place.label;
-  const expectedKey = `${place.key}:${prefs.temperatureUnit}:${prefs.windSpeedUnit}:${prefs.precipitationUnit}`;
-  const dataForPlace = state.key === expectedKey ? state.data : null;
+  const data = state.data;
   const rows = useMemo(() => {
-    if (!dataForPlace) return [];
-    const hours = dataForPlace.hourly.time.slice(0, 24);
+    if (!data) return [];
+    const hours = data.hourly.time.slice(0, 24);
     const rows: Array<{ time: string; index: number; event?: "sunrise" | "sunset" }> = hours.map((time, index) => ({ time, index }));
     for (const event of ["sunrise", "sunset"] as const) {
-      for (const time of dataForPlace.daily[event]) {
+      for (const time of data.daily[event]) {
         if (time >= hours[0] && time.slice(0, 13) <= hours[hours.length - 1]?.slice(0, 13)) {
           rows.push({ time, index: -1, event });
         }
@@ -113,12 +113,11 @@ export function Forecast({
     }
     rows.sort((a, b) => a.time.localeCompare(b.time));
     return rows;
-  }, [dataForPlace]);
-  if (!dataForPlace && (state.loading || state.key !== expectedKey)) return <Screen title={title}><LoadingState label="Loading weather…" /></Screen>;
-  if (!dataForPlace && state.error) return <Screen title={title}><ErrorState message={state.error} onRetry={state.retry} /></Screen>;
-  if (!dataForPlace) return <Screen title={title} rightAction={rightAction}><Text align="center">Weather is unavailable.</Text></Screen>;
+  }, [data]);
+  if (state.loading) return <Screen title={title}><LoadingState label="Loading weather…" /></Screen>;
+  if (!data && state.error) return <Screen title={title}><ErrorState message={state.error} onRetry={state.retry} /></Screen>;
+  if (!data) return <Screen title={title} rightAction={rightAction}><Text align="center">Weather is unavailable.</Text></Screen>;
 
-  const data = dataForPlace;
   const current = data.current;
   const details = prefs.selectedDetails;
   return (
@@ -133,7 +132,9 @@ export function Forecast({
             Feels like {formatNumber(current.apparentTemperature)}°, L: {formatNumber(data.daily.temperatureMin[0])}° H: {formatNumber(data.daily.temperatureMax[0])}°
           </Text>
           {state.error && <Text size={16}>Weather may be out of date.</Text>}
+          {state.error && <Button onPress={state.retry}>Try again</Button>}
           {notice && <Text size={16}>{notice}</Text>}
+          {notice && onRetryNotice && <Button onPress={onRetryNotice}>Try location again</Button>}
         </Stack>
         <Stack gap={0}>
           <Text size={16}>Hourly Forecast</Text>
