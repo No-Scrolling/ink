@@ -1,65 +1,34 @@
 ---
 title: "Request a permission"
-description: "Ask when a feature opens and handle the answer."
+description: "Request access when a feature opens."
 ---
 
-Request permission when a feature opens. A tuner asks on its first screen; an optional camera asks when the camera opens. Start the request automatically instead of requiring a separate tap.
+Request access when someone opens the feature that needs it. A tuner asks on its first screen; a camera asks when opened. Do not add a separate permission button.
 
-Install `@ink/audio` to use this complete microphone screen:
+## Request access
 
-```tsx
-import { useEffect, useState } from "react";
-import { microphone, PitchIndicator, usePitchDetector } from "@ink/audio/microphone";
-import { ErrorState, Screen, Stack, Text } from "ink";
+With `@ink/audio` installed, call this from the feature’s asynchronous setup:
 
-export default function Tuner() {
-  const pitch = usePitchDetector({ referenceHz: 440 });
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    if (!pitch.ready) return;
-    let cancelled = false;
-    setError(null);
-    void (async () => {
-      try {
-        let permission = await microphone.getPermission();
-        if (cancelled) return;
-        if (permission === "denied") permission = await microphone.requestPermission();
-        if (cancelled) return;
-        if (permission !== "granted") {
-          setError(permission === "blocked"
-            ? "Allow microphone access in your phone’s app settings, then try again."
-            : "Microphone access is needed to hear a note.");
-          return;
-        }
-        await pitch.start();
-      } catch (cause) {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [pitch.ready, pitch.start, attempt]);
-  const failure = error ?? pitch.state.error?.message;
-  if (failure) return <Screen title="Tuner">
-    <ErrorState message={failure} onRetry={() => setAttempt(value => value + 1)} />
-  </Screen>;
-  return <Screen title="Tuner" centered>
-    <Stack align="center" gap={14}>
-      <Text size={100}>{pitch.state.status === "active" ? pitch.state.note : "—"}</Text>
-      <PitchIndicator cents={pitch.state.status === "active" ? pitch.state.cents : null} />
-    </Stack>
-  </Screen>;
-}
+```ts
+import { microphone } from "@ink/audio/microphone";
+
+const permission = await microphone.requestPermission();
 ```
 
-Wait for the controller's `ready` value before starting it. Ignore permission results after the effect ends. The hook releases the controller when its screen is hidden or removed.
+| Result | What to do |
+| --- | --- |
+| `granted` | Start the feature. |
+| `denied` | Explain why access is needed and offer a retry. |
+| `blocked` | Ask the user to allow access in the phone’s app settings. |
 
-## Android and LightOS
+Use [ErrorState](/screen-states#error) for a failure that prevents the screen from working. A request can also reject if the native service fails; handle that as an error, not a denial.
 
-An app without LightOS support uses Android permission prompts, even if a LightOS emulator host is installed. An app with LightOS support uses host permissions when that host is available. The LightOS emulator's location permission is handled by Android because the host does not provide it.
+## Check access
 
-Host permissions and controller readiness are different things. If a host configuration fails, do not describe it as a microphone hardware failure. See [LightOS setup](/light-sdk) for host-specific requirements.
+`getPermission()` returns the same three values without showing a prompt:
 
-## Check each outcome
+```ts
+const permission = await microphone.getPermission();
+```
 
-Try granting permission, denying it, returning from another screen, and closing the app while a request is pending. A passing `ink check` validates code and configuration; it cannot grant permission or verify a sensor.
+[Camera](/camera) and [Location](/location) provide their own permission methods. Permission grants access; it does not start a sensor or recording.
