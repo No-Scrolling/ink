@@ -3,9 +3,7 @@ title: "How Ink works"
 description: "TypeScript app behaviour, QuickJS-ng execution and retained native rendering."
 ---
 
-Ink runs React in QuickJS-ng, with native layout and Vulkan rendering. The compiler checks TypeScript, bundles JavaScript, prepares assets and selects native integrations. For app development, start with [Create an app](/standalone).
-
-See [product design](/product-design) for scope.
+Ink runs React in QuickJS-ng, with native layout and Vulkan rendering. The compiler checks TypeScript, bundles JavaScript, prepares assets and selects native integrations. For app development, start with [Create an app](/installation).
 
 ```text
 app/ pages + TypeScript + npm dependencies
@@ -36,7 +34,7 @@ version_code = 1
 enabled = true
 ```
 
-`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The build reads versioned `ink-native.json` requirements from resolved package modules. Explicit app capabilities are additive. See [build contracts](/build-contracts).
+`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The build reads versioned `ink-native.json` requirements from resolved package modules. Explicit app capabilities are additive.
 
 ## Build responsibilities
 

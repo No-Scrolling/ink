@@ -3,7 +3,7 @@ title: "Ink reference"
 description: "Find the components and APIs for your app."
 ---
 
-For setup instructions, see [Create an app](/standalone). Use these pages to look up components and APIs:
+For setup instructions, see [Create an app](/installation). Use these pages to look up components and APIs:
 
 | Page | What it covers |
 | --- | --- |

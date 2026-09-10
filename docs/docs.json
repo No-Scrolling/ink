@@ -27,22 +27,20 @@
       {
         "group": "Get started",
         "pages": [
-          "standalone",
-          "setup",
-          "first-screen",
+          "installation",
           "project-structure",
-          "second-screen",
-          "saving-data",
-          "release"
+          "development"
         ]
       },
       {
         "group": "Guides",
         "pages": [
-          "development",
+          "second-screen",
+          "saving-data",
           "settings-guide",
           "permissions-guide",
           "assets-guide",
+          "release",
           "troubleshooting"
         ]
       },
@@ -90,10 +88,7 @@
       {
         "group": "Contributing and internals",
         "pages": [
-          "product-design",
           "architecture",
-          "build-contracts",
-          "runtime-contracts",
           "agent-tools"
         ]
       }

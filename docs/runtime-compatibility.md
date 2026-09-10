@@ -52,4 +52,4 @@ No `window`, `document`, `navigator`, DOM nodes, localStorage, IndexedDB, servic
 
 The template and framework pass type-checking without `lib.dom.d.ts` or `@types/node`. Check resolved declarations when adding dependencies: a package can include DOM types even when your app excludes them.
 
-See [native lifetimes](/runtime-contracts) for cancellation, ownership and runtime restart behaviour.
+Native hooks release their handles when their effects end. Dispose explicit controllers and close streams or sockets when finished. A runtime restart cancels its native requests and releases attached controllers; detached playback follows its service lifetime. See [Audio](/audio) and [Background work](/background).

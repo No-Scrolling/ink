@@ -5,7 +5,7 @@ description: "Resolve setup, local package and LightOS emulator problems."
 
 ## Missing build tools
 
-Run `ink doctor` to identify missing tools. Follow [setup](/setup) to install them. If `ink` is not found, check that the SDK's `scripts/` directory is in your shell's `PATH`.
+Run `ink doctor` to identify missing tools. Follow [setup](/installation) to install them. If `ink` is not found, check that the SDK's `scripts/` directory is in your shell's `PATH`.
 
 ## Local packages
 

@@ -1,7 +1,9 @@
 ---
-title: "Set up your computer and phone"
-description: "Install the tools and check your device connection."
+title: "Installation"
+description: "Install Ink and create an app."
 ---
+
+Ink is a framework for building Light Phone III apps with React and TypeScript. It currently runs from a local SDK checkout; there is no published installer or npm release yet.
 
 Requires macOS or Linux.
 
@@ -75,4 +77,27 @@ A standard Android emulator supports basic Ink screens and Android permissions. 
 
 Check microphone accuracy, battery use and performance on a physical phone.
 
-**Next:** [create your app](/standalone#create-an-app).
+
+## Create an app
+
+```sh
+ink create ~/Developer/my-app --name "My App" --package com.example.myapp
+cd ~/Developer/my-app
+bun install
+ink check
+ink devices
+```
+
+The folder must not already exist. `com.example.myapp` is the app's unique Android identifier; choose your own before distributing it.
+
+Use the device serial listed by `ink devices`:
+
+```sh
+ink dev --device emulator-5554
+```
+
+Replace `emulator-5554` with your device’s serial. Keep `ink dev` running while editing.
+
+The app opens to **Home**, displaying **Welcome to Ink!**.
+
+**Next:** [project structure](/project-structure).

@@ -66,7 +66,7 @@ Recorder status is idle, recording, stopping, ready or error. A completed record
 
 Completing another recording retains earlier accepted recordings. Persist their IDs alongside app data and reopen them with `files.open(id)`. They survive screen disposal and app restarts until `files.remove(id)`, recorder deletion of the current recording, or app-data removal. The recorder exposes its most recent recording; the app owns its library and retention policy.
 
-The microphone entry point includes analysis without recording, managed files or image decoding. The recording entry point includes file storage without the pitch and level analysis engine. Apps using both share the audio adapter, which prevents recording and analysis from taking the microphone at the same time. Playback-only apps omit both input engines and microphone permission. See the [build contract](/build-contracts#product-contract).
+The microphone entry point includes analysis without recording, managed files or image decoding. The recording entry point includes file storage without the pitch and level analysis engine. Apps using both share the audio adapter, which prevents recording and analysis from taking the microphone at the same time. Playback-only apps omit both input engines and microphone permission.
 
 ## Providers and offline media
 
