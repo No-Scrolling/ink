@@ -1,0 +1,73 @@
+---
+title: "Maps"
+description: "Display a full-screen map."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+<p>Install <code>@ink/maps</code>. The map fills the content area; place it as the only child of <code>Screen</code>.</p>
+
+```tsx app/index.tsx
+import { Screen } from "ink";
+import { MapView } from "@ink/maps";
+
+export default function BusMap() {
+  return <Screen title="Bus location">
+    <MapView
+      initialCentre={{ latitude: 51.5074, longitude: -0.1278 }}
+      initialZoom={14}
+      markers={[{
+        id: "bus", latitude: 51.5074,
+        longitude: -0.1278, label: "Bus",
+      }]}
+    />
+  </Screen>;
+}
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/map-dark.png" alt="A map of central London with a bus marker." width="1080" height="1240" />
+</div>
+</div>
+
+## Appearance
+
+<div className="pattern-example">
+<div>
+
+<p>The default map follows Ink’s colour scheme and keeps the screen background while loading.</p>
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Dark">
+<img src="/images/patterns/map-dark.png" alt="The map using its dark style." width="1080" height="1240" />
+</Tab>
+<Tab title="Light">
+<img src="/images/patterns/map-light.png" alt="The same map using its light style." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Markers and movement
+
+Markers have a stable `id`, `latitude`, `longitude` and optional `label`. `onMarkerPress(id)` handles taps. Updating markers does not reset the camera.
+
+`initialCentre` and `initialZoom` apply on mount. Use `useMap()` and pass its result as `controller` to move the camera later:
+
+```tsx
+await map.moveTo({ centre: { latitude, longitude }, zoom: 14 });
+```
+
+`onCameraIdle({ centre, zoom })` reports the settled view. Zoom ranges from 0 to 22 and defaults to 14.
+
+## Map sources
+
+The default OpenFreeMap styles need no credentials. Use an HTTPS MapLibre `styleURL` for another source. Attribution stays visible.
+
+Markers, gestures and camera movement are supported. Offline regions, routing, geocoding, clustering and React content inside markers are not. Cached tiles do not guarantee offline access. Location permission is only needed when reading the device’s position.

@@ -75,4 +75,17 @@ Import `@ink/network` when the loader uses `fetch`. A resource manages fetched d
 
 ## Save and send actions
 
-Use `useAction` to track commands such as saving or sending and display their errors. See [Save a setting](/settings-guide) for an example. Use React effects for live subscriptions such as [microphone capture](/permissions-guide).
+Use `useAction` to track commands such as saving or sending and display their errors. Use React effects for live subscriptions such as [microphone capture](/permissions-guide).
+
+For a setting, save the value before calling `back()` so the previous page shows the change. Here, `preferences` is a [Store](/store) with a `units` setting:
+
+```tsx
+import { back, useAction } from "ink";
+
+const save = useAction(async (units: string) => {
+  await preferences.update(current => ({ ...current, units }));
+  back();
+});
+```
+
+Pass `save.run` to the input or selection handler. `useAction` ignores repeated submissions while pending; display `save.error.message` when `save.status === "error"`. Keep inputs visible while saving, with errors underneath.

@@ -41,7 +41,7 @@ Save, then tap **Add one**. The count increases.
 
 `count` is state, a value React remembers. `setCount` changes it and updates the screen. The braces in `{count}` insert its value into the text.
 
-The count resets to zero when the app restarts. Follow [Save and load data](/saving-data) to keep it between sessions.
+The count resets to zero when the app restarts. Use [Store](/store) to keep it between sessions.
 
 ## Save and refresh
 
@@ -59,9 +59,19 @@ Add packages from your app folder:
 bun add @ink/store@0.1.0
 ```
 
-Keep the generated `package.json` overrides. They point to your local SDK; see [package troubleshooting](/troubleshooting#local-packages).
+Keep the generated `package.json` overrides: they point to your local SDK.
 
-Find packages under **Modules**. Check [runtime compatibility](/runtime-compatibility) before adding third-party libraries.
+Find packages under **Modules**.
+
+## Using JavaScript packages
+
+Ink runs JavaScript in QuickJS-ng, rather than a browser or Node.js. React hooks and pure JavaScript libraries can work; packages that need browser elements, Node.js APIs or React Native native modules cannot run unchanged.
+
+Import `@ink/network` to use `fetch`, URLs, WebSockets, blobs and streams. See [Network](/network) for supported APIs and limits. Background workers need their own import.
+
+Extend `ink/tsconfig` to get Ink’s runtime types. Timers, promises, `console`, UTF-8 text encoding and abort signals are available. Browser storage, Web Crypto, `Intl`, `atob`/`btoa` and Node globals such as `Buffer` are not built in. Use [Store](/store) for saved data and [Files](/files) for files.
+
+Check a package’s requirements and try the operations your app uses on a device or emulator. Installing and type-checking a package does not establish compatibility. Each JavaScript runtime has a 64 MiB heap and a 512 KiB stack; keep large media in native files rather than JavaScript arrays.
 
 ## Fix errors
 
@@ -83,4 +93,4 @@ Release builds use minified code and exclude the development reload command.
 
 Use `ink check` to check your app and `ink info` to inspect its build configuration. See [release builds](/release) for signing and installation.
 
-For another page, follow [Add another screen](/second-screen).
+See [Navigation](/navigation) to add pages and tabs.

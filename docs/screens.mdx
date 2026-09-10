@@ -1,0 +1,150 @@
+---
+title: "Screens and layout"
+description: "Arrange content, headers and tabs."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+```tsx
+import { navigate, Screen, Text } from "ink";
+import { moreHoriz } from "ink/icons";
+
+export default function Home() {
+  return <Screen
+    title="Home"
+    rightAction={{
+      icon: moreHoriz,
+      onPress: () => navigate("/actions"),
+    }}
+  >
+    <Text>Welcome to Ink!</Text>
+  </Screen>;
+}
+```
+<p>Create <code>app/actions.tsx</code> for the header button’s destination. <code>Screen</code> provides padding, navigation and scrolling.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/screen.png" alt="Home screen with a right header action." width="1080" height="1240" />
+</div>
+</div>
+
+## Centred content
+
+<div className="pattern-example">
+<div>
+
+```tsx
+<Screen title="Home" centered>
+  <Text>Welcome to Ink!</Text>
+</Screen>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/screen-centered.png" alt="Welcome to Ink! centred on the page." width="1080" height="1240" />
+</div>
+</div>
+
+## Stacks
+
+<div className="pattern-example">
+<div>
+
+<p>Use <code>Stack</code> to group content. Set <code>axis="horizontal"</code> for a row.</p>
+
+```tsx
+<Stack gap={8}>
+  <Text>London</Text>
+  <Text size={18}>United Kingdom</Text>
+</Stack>
+<Stack axis="horizontal" justify="space-between">
+  <Text>Low</Text>
+  <Text>High</Text>
+</Stack>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/stack.png" alt="A location grouped vertically above two horizontally spaced labels." width="1080" height="1240" />
+</div>
+</div>
+
+## Pinned content
+
+<div className="pattern-example">
+<div>
+
+<p><code>header</code> keeps content above a scrolling list.</p>
+
+```tsx
+<Screen title="Items" header={<Button onPress={addItem}>Add item</Button>}>
+  <List items={items} keyExtractor={item => item.id}
+    renderItem={item => <Text>{item.name}</Text>} />
+</Screen>
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Start">
+<img src="/images/patterns/screen-header.png" alt="An Add item button above a list." width="1080" height="1240" />
+</Tab>
+<Tab title="Scrolled">
+<img src="/images/patterns/screen-header-scrolled.png" alt="The Add item button remains visible after scrolling." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Tabs
+
+<div className="pattern-example">
+<div>
+
+<p>Declare tabs in <code>_layout.tsx</code>. Each name refers to a neighbouring page.</p>
+
+```tsx app/(tabs)/_layout.tsx
+import { Tabs } from "ink";
+import { homeFilled, settingsFilled } from "ink/icons";
+
+export default function Layout() {
+  return <Tabs>
+    <Tabs.Screen name="index" icon={homeFilled} />
+    <Tabs.Screen name="settings" icon={settingsFilled} />
+  </Tabs>;
+}
+```
+<p>See <a href="/navigation#tabs">Navigation</a> for tab actions, page structure and history.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/screen-tabs.png" alt="Home and settings icons in the bottom navigation bar." width="1080" height="1240" />
+</div>
+</div>
+
+## Spacing and appearance
+
+Screens and lists share a default gap of 47 logical units. `Stack` accepts `gap`, `align` and `justify`. Use `gap={0}` for compact groups; avoid adding padding around the screen’s own padding.
+
+### Colour scheme
+
+Use a [toggle](/toggles) to switch between light and dark mode.
+
+```tsx
+import { Screen, Toggle, setColourScheme, useColourScheme } from "ink";
+
+export default function Appearance() {
+  const scheme = useColourScheme();
+
+  return <Screen title="Appearance">
+    <Toggle label="Light mode" value={scheme === "light"}
+      onChange={light => setColourScheme(light ? "light" : "dark")} />
+  </Screen>;
+}
+```
+
+The choice lasts for the app session. Use [Store](/store) to save it between sessions. Photos and codes retain their original colours.

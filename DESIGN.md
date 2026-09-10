@@ -22,7 +22,7 @@ Build small, focused apps that feel at home on the Light Phone III. The user sho
 - Inputs always belong on their own page. Only hints or errors may appear underneath; do not mix inputs with lists, results or other content.
 - Use the appropriate keyboard; its action submits or saves. Do not add a duplicate Save button.
 - Use prefix and suffix text for units. Keep instructions only where the input's purpose or constraints would otherwise be unclear.
-- Search submits to a results page. Multiline composition keeps Return for new lines and uses a separate send action.
+- Search submits to a results page. Multiline inputs keep Return for new lines and use a header action to save or continue. Conversations use their separate send action.
 - Use the header's Back action to leave a page. Do not add a second Cancel action to an ordinary action page.
 - Header Back leaves the page in one tap, even with the keyboard open. Dismiss the keyboard as part of navigation.
 - Check permissions when a feature needs them. If opening the feature clearly expresses intent, request access directly rather than adding a redundant permission button.
@@ -43,4 +43,4 @@ Try the app with the keyboard open, long content, missing data and a return from
 
 Before finishing, ask: what can disappear without making the app harder to use?
 
-See [the component guide](docs/ink.md) for APIs and [Tuner](examples/tuner) for a focused app example.
+See [Screens and layout](docs/screens.mdx) for components and [Tuner](examples/tuner) for a focused app example.

@@ -35,11 +35,12 @@ export type EmptyStateProps = {
 };
 
 export function EmptyState({ title, description, action }: EmptyStateProps) {
-  return createElement(Stack, { gap: 24 },
-    createElement(Text, { size: 18 }, title),
-    description && createElement(Text, { size: 18 }, description),
-    action && createElement(Button, { onPress: action.onPress, disabled: action.disabled }, action.label),
-  );
+  return createElement("ScreenState", {
+    message: description ? `${title}\n\n${description}` : title,
+    retryLabel: action?.label.toUpperCase(),
+    onRetry: action?.onPress,
+    disabled: action?.disabled,
+  });
 }
 
 export type ErrorStateProps = {
@@ -56,19 +57,17 @@ export function ErrorState({ message, onRetry, retryLabel = "Try again", disable
 export type ConfirmationProps = {
   title: string;
   children: ReactNode;
-  centered?: boolean;
   confirmLabel: string;
   onConfirm: () => void;
   pending?: boolean;
   pendingLabel?: string;
 };
 
-export function Confirmation({ title, children, centered = false, confirmLabel, onConfirm, pending = false, pendingLabel = "Working…" }: ConfirmationProps) {
+export function Confirmation({ title, children, confirmLabel, onConfirm, pending = false, pendingLabel = "Working…" }: ConfirmationProps) {
   return createElement("Confirmation", {
     title,
-    centered,
     confirmLabel: (pending ? pendingLabel : confirmLabel).toUpperCase(),
     onConfirm,
     pending,
-  }, createElement(Text, { size: 18, align: centered ? "center" : "start" }, children));
+  }, createElement(Text, { size: 18, align: "start" }, children));
 }

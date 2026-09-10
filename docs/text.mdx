@@ -1,0 +1,105 @@
+---
+title: "Text"
+description: "Display and format text."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+```tsx app/index.tsx
+import { Screen, Text } from "ink";
+
+export default function Example() {
+  return <Screen title="Text">
+    <Text>Hello, Ink!</Text>
+  </Screen>;
+}
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/text.png" alt="Hello, Ink! below the Text header." width="1080" height="1240" />
+</div>
+</div>
+
+## Wrapping and truncation
+
+<div className="pattern-example">
+<div>
+
+<p>Text wraps automatically. Set <code>maxLines</code> to limit the number of lines.</p>
+
+```tsx
+<Text maxLines={1}>
+  Take the coastal path past the harbour and follow the signs to the lighthouse.
+</Text>
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Wrapping">
+<img src="/images/patterns/text-wrap.png" alt="A paragraph wrapping onto several lines." width="1080" height="1240" />
+</Tab>
+<Tab title="Truncation">
+<img src="/images/patterns/text-truncate.png" alt="The paragraph limited to one line with an ellipsis." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Alignment
+
+<div className="pattern-example">
+<div>
+
+```tsx
+<Text align="start">Start</Text>
+<Text align="center">Centre</Text>
+<Text align="end">End</Text>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/text-align.png" alt="Text aligned to the start, centre and end." width="1080" height="1240" />
+</div>
+</div>
+
+## Size
+
+<div className="pattern-example">
+<div>
+
+<p><code>size</code> uses logical layout units.</p>
+
+```tsx
+<Text size={18}>Small text</Text>
+<Text size={24}>Larger text</Text>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/text-size.png" alt="Text displayed at two sizes." width="1080" height="1240" />
+</div>
+</div>
+
+## Tabular numbers
+
+<div className="pattern-example">
+<div>
+
+<p><code>tabularNumbers</code> gives digits equal widths, keeping changing readings steady.</p>
+
+```tsx
+<Text tabularNumbers>{frequency.toFixed(2)} Hz</Text>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/text-numbers.png" alt="340.00 Hz and 350.00 Hz with aligned digits." width="1080" height="1240" />
+</div>
+</div>
+
+Use `width` for fixed columns. In a horizontal `Stack`, text without a fixed width shrinks to leave room for neighbouring controls. Nested `Text` uses the outer text style.

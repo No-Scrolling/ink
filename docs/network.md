@@ -92,7 +92,7 @@ Retry selected reads with bounded backoff. Writes need an idempotency key or a w
 
 Persist small results explicitly with [Store](/store); its read-only SQLite interface queries imported database assets. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
 
-Use [Downloads](/downloads) for durable transfers and [Auth](/auth) for account flows. You can use an npm HTTP client if it supports [Ink’s runtime](/runtime-compatibility).
+Use [Downloads](/downloads) for durable transfers and [Auth](/auth) for account flows. You can use an npm HTTP client if it supports [Ink’s runtime](/development#using-javascript-packages).
 
 ## Template server
 

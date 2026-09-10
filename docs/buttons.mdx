@@ -1,0 +1,135 @@
+---
+title: "Buttons"
+description: "Run an action or open a page."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+```tsx app/index.tsx
+import { useState } from "react";
+import { Button, Screen } from "ink";
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+
+  return <Screen title="Counter">
+    <Button onPress={() => setCount(count + 1)}>
+      Count: {count}
+    </Button>
+  </Screen>;
+}
+```
+
+<p>Use <code>onPress</code> for an action, or <code>href</code> to open a page.</p>
+
+```tsx
+<Button href="/settings">Settings</Button>
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Before">
+<img src="/images/patterns/button-before.png" alt="Counter button showing Count: 0." width="1080" height="1240" />
+</Tab>
+<Tab title="After">
+<img src="/images/patterns/button-after.png" alt="Counter button showing Count: 1 after a tap." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Icons
+
+<div className="pattern-example">
+<div>
+
+<p>Add an <code>icon</code>, with or without a label.</p>
+
+```tsx
+import { add, playArrowFilled, replayFilled, shuffleFilled, skipNextFilled, skipPreviousFilled } from "ink/icons";
+
+<Button icon={add} onPress={addItem}>
+  Add item
+</Button>
+<Stack axis="horizontal" justify="space-between" align="center">
+  <Button icon={shuffleFilled} onPress={shuffle} />
+  <Button icon={skipPreviousFilled} onPress={previous} />
+  <Button icon={playArrowFilled} onPress={play} />
+  <Button icon={skipNextFilled} onPress={next} />
+  <Button icon={replayFilled} onPress={replay} />
+</Stack>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/button-icons.png" alt="Add item button with a plus icon, above a row of shuffle, previous, play, next and replay buttons." width="1080" height="1240" />
+</div>
+</div>
+
+## Selected
+
+<div className="pattern-example">
+<div>
+
+<p><code>selected</code> underlines the button.</p>
+
+```tsx
+<Button
+  selected={selected}
+  onPress={() => setSelected(!selected)}
+>
+  Option 1
+</Button>
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Selected">
+<img src="/images/patterns/button-selected.png" alt="Option 1 button with an underline." width="1080" height="1240" />
+</Tab>
+<Tab title="Unselected">
+<img src="/images/patterns/button-unselected.png" alt="Option 1 button without an underline." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Disabled
+
+<div className="pattern-example">
+<div>
+
+<p><code>disabled</code> greys out the button and prevents presses.</p>
+
+```tsx
+<Button onPress={continueToNextPage}>
+  Continue
+</Button>
+<Button disabled onPress={continueToNextPage}>
+  Continue
+</Button>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/button-disabled.png" alt="An enabled Continue button above a grey disabled Continue button." width="1080" height="1240" />
+</div>
+</div>
+
+## Long labels
+
+<div className="pattern-example">
+<div>
+
+<p>Long labels end with an ellipsis.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/button-long.png" alt="A long button label truncated with an ellipsis." width="1080" height="1240" />
+</div>
+</div>

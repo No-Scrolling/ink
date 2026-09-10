@@ -3631,7 +3631,7 @@ impl Engine {
 
     fn measure_horizontal_children(&mut self, children: &[Node], gap: f32, rect: Rect) -> Vec<MeasuredSize> {
         let mut sizes: Vec<_> = children.iter().map(|child| self.measure(child, rect)).collect();
-        let shrinkable = |child: &Node| matches!(child.kind, NodeKind::Text { width: None, max_lines: Some(1), .. });
+        let shrinkable = |child: &Node| matches!(child.kind, NodeKind::Text { width: None, .. });
         let label_width: f32 = children.iter().zip(&sizes)
             .filter(|(child, _)| shrinkable(child)).map(|(_, size)| size.width).sum();
         let total = sizes.iter().map(|size| size.width).sum::<f32>()
@@ -3640,7 +3640,8 @@ impl Engine {
             let remaining = (label_width - (total - rect.width)).max(0.0);
             for (child, size) in children.iter().zip(&mut sizes) {
                 if shrinkable(child) {
-                    size.width *= remaining / label_width;
+                    let width = size.width * remaining / label_width;
+                    *size = self.measure(child, Rect { width, ..rect });
                 }
             }
         }
@@ -4076,6 +4077,7 @@ impl Engine {
         on: Mask,
         rect: Rect,
     ) {
+        let colour = self.scene.colour(if action.is_some() { Colour::WHITE } else { Colour::MUTED });
         let icon_size = self.scaled(TOGGLE_ICON_SIZE);
         let mask_padding = self.scaled(TOGGLE_MASK_PADDING);
         let mask_size = icon_size + mask_padding * 2.0;
@@ -4093,7 +4095,7 @@ impl Engine {
                     height: line_height,
                 },
                 clip: self.clip,
-                colour: self.scene.colour(Colour::WHITE),
+                colour,
                 scrolling: self.scrolling,
             });
             x += line_width;
@@ -4106,7 +4108,7 @@ impl Engine {
                     height: mask_size,
                 },
                 clip: self.clip,
-                colour: self.scene.colour(Colour::WHITE),
+                colour,
                 scrolling: self.scrolling,
             });
         } else {
@@ -4119,7 +4121,7 @@ impl Engine {
                     height: mask_size,
                 },
                 clip: self.clip,
-                colour: self.scene.colour(Colour::WHITE),
+                colour,
                 scrolling: self.scrolling,
             });
             x += icon_size;
@@ -4131,7 +4133,7 @@ impl Engine {
                     height: line_height,
                 },
                 clip: self.clip,
-                colour: self.scene.colour(Colour::WHITE),
+                colour,
                 scrolling: self.scrolling,
             });
         }
@@ -4151,7 +4153,7 @@ impl Engine {
             rect: label_rect,
             clip: self.clip,
             font_size: label_font_size,
-            colour: self.scene.colour(Colour::WHITE),
+            colour,
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });

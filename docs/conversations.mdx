@@ -1,0 +1,143 @@
+---
+title: "Conversations"
+description: "Display messages, replies and a composer."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+<p><code>ConversationScreen</code> provides the message list, composer and actions page.</p>
+
+```tsx app/index.tsx
+import { useState } from "react";
+import { ConversationScreen, type ConversationMessage } from "ink";
+
+export default function Chat() {
+  const [messages, setMessages] = useState<ConversationMessage[]>([
+    { id: "1", text: "Have you listened to this album yet?",
+      timestamp: Date.now() },
+  ]);
+  const [draft, setDraft] = useState("");
+
+  return <ConversationScreen
+    title="Alex"
+    messages={messages}
+    draft={draft}
+    onDraftChange={setDraft}
+    onSend={({ text, replyTo }) => {
+      setMessages(current => [...current, {
+        id: String(Date.now()), text, timestamp: Date.now(),
+        outgoing: true,
+        reply: replyTo ? {
+          author: replyTo.outgoing ? "You" : "Alex",
+          text: replyTo.text || "Photo",
+        } : undefined,
+      }]);
+      setDraft("");
+    }}
+  />;
+}
+```
+<p>This example adds messages locally. Connect <code>onSend</code> to your messaging service to send them.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/conversation.png" alt="An incoming message and an outgoing reply above the composer." width="1080" height="1240" />
+</div>
+</div>
+
+## Group chats
+
+<div className="pattern-example">
+<div>
+
+<p>Set <code>group</code> and include <code>author</code> on incoming messages. Outgoing messages omit the author.</p>
+
+```tsx
+<ConversationScreen group title="Music club"
+  messages={messages} draft={draft}
+  onDraftChange={setDraft} onSend={send} />
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/conversation-group.png" alt="A group chat showing Alex beside an incoming message." width="1080" height="1240" />
+</div>
+</div>
+
+## Replies
+
+<div className="pattern-example">
+<div>
+
+<p>Long-press a message or image, then choose Reply. Ink returns to the conversation and shows a reply banner.</p>
+<p><code>onSend</code> receives <code>{ text, replyTo }</code>. Add the outgoing message, save its reply preview and clear the draft; Ink dismisses the keyboard and scrolls to the bottom.</p>
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Actions">
+<img src="/images/patterns/conversation-actions.png" alt="A message preview with Reply and a custom reaction action." width="1080" height="1240" />
+</Tab>
+<Tab title="Replying">
+<img src="/images/patterns/conversation-replying.png" alt="The reply banner above the composer." width="1080" height="1240" />
+</Tab>
+<Tab title="Sent reply">
+<img src="/images/patterns/message-reply.png" alt="An outgoing message quoting an earlier message, with reactions in its information line." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Images
+
+<div className="pattern-example">
+<div>
+
+<p>Add <code>image</code> with a source and dimensions. Text is optional.</p>
+
+```tsx
+{
+  id: "photo",
+  timestamp: Date.now(),
+  image: { src: artwork, width: 180, height: 180 },
+}
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/conversation-image.png" alt="An incoming image-only message." width="1080" height="1240" />
+</div>
+</div>
+
+## Message status
+
+<div className="pattern-example">
+<div>
+
+<p><code>status</code> accepts <code>sending</code>, <code>sent</code>, <code>delivered</code>, <code>read</code> or <code>failed</code>. Supply <code>onRetry</code> to offer “Tap to try again”.</p>
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Sending and delivery">
+<img src="/images/patterns/message-status.png" alt="Messages showing sending, sent and delivered states." width="1080" height="1240" />
+</Tab>
+<Tab title="Read and failed">
+<img src="/images/patterns/message-status-end.png" alt="Messages showing read and failed states." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Message details
+
+Every message needs a stable `id` and a `timestamp` in milliseconds since the Unix epoch. Ink shows local time for today and adds the month and day for older messages. `reactions` adds text to the same information line.
+
+Use `actions(message)` for extra message actions, `onAttach` for the plus button, and `onImagePress` or `onDoubleTap` for message interactions. Ink returns to the chat before running a custom action.
+
+`onLoadOlder` returns a promise and prepends older messages; `hasOlder` says whether more remain. Ink preserves the scroll position. `loading` shows initial loading content; `sending` disables the send action.
+
+`Message` is also available separately for custom screens.

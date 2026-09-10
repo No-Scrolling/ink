@@ -9,25 +9,7 @@ To scan codes, use `@ink/barcode/scan`.
 
 QR scanning accepts dark-on-light and inverted light-on-dark codes. Inverted QR detection has been confirmed on the LP3.
 
-```tsx
-import { Screen, Text } from "ink";
-import { Barcode } from "@ink/barcode";
-
-export function Pass({ title, value }: { title: string; value: string }) {
-  return (
-    <Screen title={title}>
-      <Barcode format="qr" value={value} size={280} />
-      <Text>{value}</Text>
-    </Screen>
-  );
-}
-```
-
-Generation happens natively with sharp modules, appropriate contrast and quiet zones. Preserve the source payload exactly; trimming, normalising case or converting a numeric-looking string can invalidate it. The package exposes supported formats and rejects invalid payloads rather than rendering a misleading code.
-
-## Size a code
-
-`size` sets the width. QR codes stay square; PDF417 follows its encoded proportions; linear codes use a compact height. QR codes have a two-module white border. The template’s Code generation page shows all 13 formats, including `Hello World!` as a QR code at size 240.
+See [Codes](/codes) for generation examples, formats and sizing. The package supports 13 formats and rejects invalid payloads.
 
 ## Scan a pass
 

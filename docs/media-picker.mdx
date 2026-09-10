@@ -1,0 +1,58 @@
+---
+title: "Photo and video picker"
+description: "Select photos and videos."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+<p>Install <code>@ink/files</code> and put the picker on its own page.</p>
+
+```tsx
+import { MediaPicker } from "@ink/files/media";
+
+<MediaPicker onSelect={saveAttachments} />
+```
+<p><code>saveAttachments</code> receives an array of managed files. Save their IDs, then navigate back. See <a href="/files">Files and media</a> for storage and uploads.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/media-picker.png" alt="A grid of example photos and a video." width="1080" height="1240" />
+</div>
+</div>
+
+## Selection
+
+<div className="pattern-example">
+<div>
+
+<p>Tap items to select them, then use the header tick.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/media-picker-selected.png" alt="Selected thumbnails dimmed beneath a white check circle." width="1080" height="1240" />
+</div>
+</div>
+
+## Scrolling
+
+<div className="pattern-example">
+<div>
+
+<p>More photos and thumbnails load automatically as the gallery scrolls.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/media-picker-scrolled.png" alt="Later photos visible in the scrolling gallery." width="1080" height="1240" />
+</div>
+</div>
+
+## Photos or videos only
+
+Use `kind="image"` or `kind="video"`. The default shows both. `title` changes the header.
+
+The picker requests full photo-library access on entry. Denied access offers a retry; blocked access offers settings. Selected-photo access alone is not enough.
+
+Selected items are copied into app-owned storage before `onSelect` runs. Back cancels selection. The callback may return a promise and decides when to leave the page. Picking a video does not add video playback.

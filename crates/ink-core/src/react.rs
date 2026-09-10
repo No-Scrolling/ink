@@ -698,7 +698,7 @@ impl ReactTree {
                 let mut screen = Node::screen(
                     self.children(host, depth)?,
                     Some(title.to_owned()),
-                    props.get("centered") == Some(&Json::Bool(true)),
+                    false,
                 );
                 if let NodeKind::Screen { footer, .. } = &mut screen.kind {
                     *footer = Some((label.to_owned(),
@@ -802,7 +802,7 @@ impl ReactTree {
                 }
                 screen
             }
-            HostKind::ScreenState => bail!("LoadingState and ErrorState must be direct children of Screen"),
+            HostKind::ScreenState => bail!("LoadingState, EmptyState and ErrorState must be direct children of Screen"),
             HostKind::Stack => {
                 let axis = match string(props, "axis").unwrap_or("vertical") {
                     "vertical" => Axis::Vertical,

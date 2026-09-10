@@ -1,0 +1,50 @@
+---
+title: "Rows"
+description: "Display a title, subtitle and optional image."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+```tsx app/index.tsx
+import { Row, Screen } from "ink";
+import artwork from "../assets/wallsocket.jpg";
+
+export default function Albums() {
+  return <Screen title="Albums">
+    <Row
+      image={artwork}
+      title="Wallsocket"
+      subtitle="underscores"
+      href="/album"
+    />
+  </Screen>;
+}
+```
+<p>Create <code>app/album.tsx</code> for the destination. Use <code>onPress</code> instead of <code>href</code> to run an action.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/row.png" alt="An album row with artwork, Wallsocket and underscores." width="1080" height="1240" />
+</div>
+</div>
+
+## Text only
+
+<div className="pattern-example">
+<div>
+
+<p>Omit <code>image</code> or <code>subtitle</code> when not needed. Long text wraps.</p>
+
+```tsx
+<Row title="Alex" subtitle="See you at the station." />
+<Row title="Music club" />
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/row-text.png" alt="Rows without images, including a title that wraps." width="1080" height="1240" />
+</div>
+</div>

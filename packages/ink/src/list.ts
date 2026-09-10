@@ -1,7 +1,14 @@
 import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAction } from "./action";
-import { EmptyState } from "./patterns";
+import { Button, Stack, Text } from "./index";
+
+function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return createElement(Stack, { gap: 24 },
+    createElement(Text, { size: 18 }, message),
+    createElement(Button, { onPress: onRetry }, "Try again"),
+  );
+}
 
 export type ListProps<T> = {
   items: readonly T[];
@@ -51,11 +58,11 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
     if (new TextEncoder().encode(JSON.stringify({ keys, contentVersions })).length > 128 * 1024) {
       throw new Error("List metadata exceeds 128 KiB; use shorter keys or a bounded data window");
     }
-    if (old && old.keys[window.start] !== undefined) {
+    if (old && window.revision !== revision && old.keys[window.start] !== undefined) {
       const mapped = keys.indexOf(old.keys[window.start]);
       start = mapped < 0 ? Math.min(window.start, Math.max(0, items.length - 1)) : mapped;
       end = Math.min(start + window.end - window.start, items.length);
-      if (start !== window.start || end !== window.end) setWindow({ start, end, revision: window.revision });
+      if (start !== window.start || end !== window.end) setWindow({ start, end, revision });
     }
     data = { items, keys, keyExtractor, contentVersions, revision, records, measurementKey };
   }
@@ -93,8 +100,9 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
     },
   };
   const list = createElement("List", props, children);
-  return createElement(Fragment, null, older.status === "error" && createElement(EmptyState, { title: older.error.message, action: { label: "Try again", onPress: older.run } }), list, load.status === "error" && createElement(EmptyState, {
-    title: load.error.message,
-    action: { label: "Try again", onPress: load.run },
-  }));
+  return createElement(Fragment, null,
+    older.status === "error" && createElement(LoadError, { message: older.error.message, onRetry: older.run }),
+    list,
+    load.status === "error" && createElement(LoadError, { message: load.error.message, onRetry: load.run }),
+  );
 }

@@ -73,7 +73,7 @@ In Android Studio's Device Manager, create an API 34 or newer virtual device nam
 emulator -avd Light_Phone_III -writable-system
 ```
 
-A standard Android emulator supports basic Ink screens and Android permissions. LightOS services require the [Light SDK emulator host](/light-sdk). For host configuration issues, see [troubleshooting](/troubleshooting#lightos-emulator).
+A standard Android emulator supports basic Ink screens and Android permissions. LightOS services require the [Light SDK emulator host](/light-sdk).
 
 Check microphone accuracy, battery use and performance on a physical phone.
 

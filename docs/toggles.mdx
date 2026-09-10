@@ -1,0 +1,59 @@
+---
+title: "Toggles"
+description: "Turn a setting on or off."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+```tsx app/index.tsx
+import { useState } from "react";
+import { Screen, Toggle } from "ink";
+
+export default function Settings() {
+  const [enabled, setEnabled] = useState(true);
+
+  return <Screen title="Settings">
+    <Toggle
+      label="Notifications"
+      value={enabled}
+      onChange={setEnabled}
+    />
+  </Screen>;
+}
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="On">
+<img src="/images/patterns/toggle-on.png" alt="Notifications enabled." width="1080" height="1240" />
+</Tab>
+<Tab title="Off">
+<img src="/images/patterns/toggle-off.png" alt="Notifications disabled." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Disabled
+
+<div className="pattern-example">
+<div>
+
+<p><code>disabled</code> prevents changes.</p>
+
+```tsx
+<Toggle label="Notifications" value={enabled}
+  onChange={setEnabled} disabled />
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/toggle-disabled.png" alt="Unavailable toggles in their on and off states." width="1080" height="1240" />
+</div>
+</div>
+
+See [Store](/store) to keep the value between sessions.

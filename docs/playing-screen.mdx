@@ -1,0 +1,103 @@
+---
+title: "Playing screen"
+description: "Display artwork and playback controls."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+<p>Pass playback state and callbacks. Times are in milliseconds.</p>
+
+```tsx
+import { PlayingScreen } from "ink";
+import artwork from "../assets/wallsocket.jpg";
+
+<PlayingScreen
+  image={artwork}
+  title="Cops and robbers"
+  artists={[{ name: "underscores" }]}
+  playing={playing}
+  onPlayPause={togglePlayback}
+  position={position}
+  duration={213000}
+  onSeek={seek}
+  previous={{ onPress: previousTrack }}
+  next={{ onPress: nextTrack }}
+  actions={actions}
+/>
+```
+<p>Connect these handlers to your player, such as <a href="/audio">Audio</a>. <code>PlayingScreen</code> provides the whole screen; do not wrap it in <code>Screen</code>.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/playing.png" alt="Artwork, track details, progress and playback controls with bottom actions." width="1080" height="1240" />
+</div>
+</div>
+
+## Without artwork
+
+<div className="pattern-example">
+<div>
+
+<p>Omit <code>image</code> to centre the main controls.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/playing-no-image.png" alt="Playback controls centred without artwork." width="1080" height="1240" />
+</div>
+</div>
+
+## Seek buttons
+
+<div className="pattern-example">
+<div>
+
+<p>Set <code>seconds</code> to 5, 10 or 30 for seek icons.</p>
+
+```tsx
+previous={{ seconds: 10, onPress: () => seek(position - 10000) }}
+next={{ seconds: 30, onPress: () => seek(position + 30000) }}
+```
+<p><code>onLongPress</code> adds a separate long-press action. It runs once and suppresses the tap on release. <code>disabled</code> prevents both actions.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/playing-seek.png" alt="Playback controls with 10-second rewind and 30-second forward icons." width="1080" height="1240" />
+</div>
+</div>
+
+## Bottom actions
+
+<div className="pattern-example">
+<div>
+
+<p>Actions are spaced evenly at the bottom. Use <code>selected</code> for an underline, or change the icon.</p>
+
+```tsx
+import { repeatFilled, repeatOneFilled, shuffleFilled } from "ink/icons";
+
+const actions = [
+  { icon: shuffleFilled, selected: shuffled, onPress: toggleShuffle },
+  { icon: repeatOne ? repeatOneFilled : repeatFilled,
+    selected: repeating, onPress: cycleRepeat },
+];
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Inactive">
+<img src="/images/patterns/playing.png" alt="Shuffle and repeat without underlines." width="1080" height="1240" />
+</Tab>
+<Tab title="Active">
+<img src="/images/patterns/playing-active.png" alt="Underlined shuffle and repeat-one controls." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Title and artists
+
+Use `onTitlePress` for the track title and an `onPress` on each artist to open their pages. An image reserves its space while loading.

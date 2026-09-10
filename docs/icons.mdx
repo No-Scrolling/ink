@@ -1,0 +1,57 @@
+---
+title: "Icons"
+description: "Use Material icons."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+```tsx app/index.tsx
+import { Icon, Screen, Stack } from "ink";
+import { home, homeFilled } from "ink/icons";
+
+export default function Icons() {
+  return <Screen title="Icons">
+    <Stack axis="horizontal" gap={24}>
+      <Icon name={home} />
+      <Icon name={homeFilled} />
+      <Icon name={homeFilled} tone="muted" />
+    </Stack>
+  </Screen>;
+}
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/icons.png" alt="Outlined, filled and muted home icons." width="1080" height="1240" />
+</div>
+</div>
+
+## Size
+
+<div className="pattern-example">
+<div>
+
+```tsx
+<Icon name={homeFilled} size={24} />
+<Icon name={homeFilled} size={36} />
+<Icon name={homeFilled} size={48} />
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/icon-sizes.png" alt="Home icons at three sizes." width="1080" height="1240" />
+</div>
+</div>
+
+Use the `Filled` suffix for filled icons. Release builds include only the variants you import. Use [Buttons](/buttons#icons) for tappable icons.
+
+## Icon names
+
+Find names in the [Material Symbols catalogue](https://fonts.google.com/icons). Convert snake case to camel case: `more_horiz` becomes `moreHoriz`. Names starting with a digit use an `icon` prefix, such as `icon360`; reserved names use an `Icon` suffix, such as `deleteIcon`. Your editor can suggest valid exports.
+
+Use named imports. For dynamic lookups, pass a small object of imported icons to `findIcon(collection, name)`; it returns `undefined` for unknown names. A dynamic namespace import can bundle the whole catalogue.
+
+Icons use weight 400; keyboard icons use 300. Assets are generated at 56 logical units, so larger display sizes can soften edges.

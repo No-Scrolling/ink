@@ -35,27 +35,40 @@
       {
         "group": "Guides",
         "pages": [
-          "second-screen",
-          "saving-data",
-          "settings-guide",
           "permissions-guide",
-          "assets-guide",
-          "release",
-          "troubleshooting"
+          "release"
+        ]
+      },
+      {
+        "group": "Ink Components",
+        "pages": [
+          "screens",
+          "text",
+          "buttons",
+          "text-input",
+          "fields",
+          "toggles",
+          "selection",
+          "images",
+          "icons",
+          "rows",
+          "lists",
+          "reordering",
+          "screen-states",
+          "confirmation",
+          "playing-screen",
+          "conversations",
+          "media-picker",
+          "codes",
+          "maps"
         ]
       },
       {
         "group": "Reference",
         "pages": [
-          "ink",
-          "components",
-          "inputs",
-          "lists",
+          "keyboard",
           "navigation",
-          "data",
-          "playing-screen",
-          "conversations",
-          "runtime-compatibility"
+          "data"
         ]
       },
       {
@@ -70,7 +83,6 @@
           "files",
           "light-sdk",
           "location",
-          "maps",
           {
             "group": "Network",
             "pages": [
@@ -101,5 +113,15 @@
         "label": "GitHub"
       }
     ]
-  }
+  },
+  "redirects": [
+    {
+      "source": "/components",
+      "destination": "/screens"
+    },
+    {
+      "source": "/inputs",
+      "destination": "/text-input"
+    }
+  ]
 }

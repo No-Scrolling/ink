@@ -88,6 +88,7 @@ export function Icon(props: {
 export { TextInput } from "./input";
 
 export { List, type ListProps } from "./list";
+export { ReorderList, type ReorderListProps } from "./reorder";
 export { setColourScheme, useColourScheme, type ColourScheme } from "./appearance";
 export {
   SettingsChoices, LoadingState, EmptyState, ErrorState, Confirmation,
