@@ -1,6 +1,6 @@
 ---
 title: "Edit your first screen"
-description: "Make a button change the text on your phone."
+description: "Add a button and update a value with React state."
 ---
 
 Open your app folder in a text editor. Keep `ink dev --device <serial>` running in the terminal.
@@ -28,8 +28,8 @@ Save the file. You should see **My first app**, a count and an **Add one** butto
 
 `count` is state, a value React remembers. `setCount` changes it and updates the screen. The braces in `{count}` insert its value into the text.
 
-This count is temporary. Compatible development edits can preserve it, but a full restart starts it at zero. Later, [saved data](/saving-data) will let you keep it.
+The count resets to zero when the app restarts. Follow [Save and load data](/saving-data) to keep it between sessions.
 
 Try changing the button label. You should see the new label after saving, without manually rebuilding the app.
 
-**Next:** [understand your project files](/project-structure).
+**Next:** [project structure](/project-structure).

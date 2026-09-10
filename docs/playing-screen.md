@@ -1,6 +1,6 @@
 ---
 title: "Playing screen"
-description: "Build a player with consistent controls."
+description: "Display artwork, track details and playback controls."
 ---
 
 ## Playing screen

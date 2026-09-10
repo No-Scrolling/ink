@@ -1,6 +1,6 @@
 ---
 title: "Secure store"
-description: "Persist credentials using Android-backed protection."
+description: "Store credentials with Android Keystore protection."
 ---
 
 `@ink/secure-store` persists small secret strings with native encryption and Android Keystore-backed key protection. Use it for refresh tokens, provider credentials and account secrets.

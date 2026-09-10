@@ -1,9 +1,9 @@
 ---
 title: "Accounts and sign-in"
-description: "Sign in and keep a session without managing token refresh in screens."
+description: "Sign in with OAuth and manage account sessions."
 ---
 
-`@ink/auth` owns OAuth sign-in, secure token persistence, refresh and sign-out. Apps configure their provider; screens do not store tokens or implement refresh loops.
+`@ink/auth` handles OAuth sign-in, token storage, refresh and sign-out. Configure it with your provider's settings.
 
 
 ```ts

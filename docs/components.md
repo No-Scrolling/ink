@@ -1,6 +1,6 @@
 ---
 title: "Components"
-description: "Choose the right pieces for your screen."
+description: "Screens, text, controls and layout."
 ---
 
 ## An Ink screen
@@ -26,7 +26,19 @@ export default function Settings() {
 
 `Screen` provides the title bar, back button, content padding and space above tabs. It scrolls when content overflows. `Stack` arranges children vertically; use `axis="horizontal"` for a row. Set `gap`, `align` and `justify` to control the layout.
 
-Ink uses Public Sans, strong contrast, clear text and a small set of familiar controls. Sizes are Ink logical units. Colours follow the app's light or dark appearance. Import Material Symbols from `ink/icons`. `Icon.name`, `Button.icon` and `Tabs.Screen.icon` accept imported icon references; `Icon.size` scales the raster mask, and `tone="muted"` uses the app’s muted colour. Local image/audio files must also be imported; see [assets and native requirements](/build-contracts) for formats and migration.
+## Match the layout
+
+`Screen` sets page padding and navigation. Use `centered` to centre its content. Screens and lists use the same default gap; set `gap={0}` for compact content such as forecast rows.
+
+Sizes are logical layout units, not screenshot pixels. A screenshot can be scaled by the device density or emulator window. Begin with Ink’s defaults and check the result on the phone or emulator.
+
+## Appearance and icons
+
+Ink uses Public Sans and the app's light or dark colours. Use `tone="muted"` on an `Icon` for the muted colour.
+
+Import icons from `ink/icons` for `Icon.name`, `Button.icon` and `Tabs.Screen.icon`. `Icon.size` controls their display size. Import local images and audio too; see [images and icons](/assets-guide).
+
+## Choose a component
 
 | Component | Use |
 | --- | --- |
@@ -42,6 +54,8 @@ Ink uses Public Sans, strong contrast, clear text and a small set of familiar co
 | `PlayingScreen` | Player layout; the app supplies playback state and callbacks. |
 | `ConversationScreen`, `Message` | Conversation presentation and interaction, or a standalone message. |
 
+## Text content
+
 Keep button labels and important values readable without relying on truncation. `Text`, `Button`, `Field` values and `Confirmation` messages accept text content, including components that produce text. Nested `Text` is flattened: the outer text style applies, so nested size/alignment props do not create styled spans. Layout controls and inputs must be siblings rather than text children.
 
 Use `width` to give text a fixed column width, such as day labels beside a forecast. Text wraps within that width, limited by the available space.
@@ -54,7 +68,11 @@ Use `tabularNumbers` for changing readings, timers or counters. It gives digits 
 <Text tabularNumbers>{frequency.toFixed(1)} Hz</Text>
 ```
 
-`useAction(operation)` tracks an asynchronous command as `idle`, `pending`, `success` (with `data`) or `error` (with `error`). Call `action.run(...args)` from a control and disable it while pending. Repeated calls while pending are ignored; failures become state rather than unhandled promise rejections. Unmounting the component or hiding it through navigation discards its eventual UI result, but does not cancel the underlying operation.
+## Actions
+
+`useAction(operation)` tracks an asynchronous command as `idle`, `pending`, `success` (with `data`) or `error` (with `error`). Call `action.run(...args)` from a control and disable it while pending. Repeated calls while pending are ignored; failures appear in the action's state.
+
+Unmounting the component or hiding it through navigation discards its eventual UI result, but does not cancel the operation.
 
 
 ## Common screen patterns
@@ -129,4 +147,3 @@ function AppearanceChoice() {
 The palette covers backgrounds, text, icons, controls, navigation and scrollbars. Photos, barcode pixels and camera previews keep their original colours. Ink’s built-in keyboard also follows the chosen palette.
 
 The choice lasts for the JavaScript runtime. Persist it with `@ink/store` if required; the reference template demonstrates loading and applying a saved choice. LightOS does not currently expose its global inversion preference through its SDK, so there is no automatic system mode.
-

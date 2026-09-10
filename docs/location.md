@@ -1,6 +1,6 @@
 ---
 title: "Location"
-description: "One-off fixes and visibility-scoped location updates."
+description: "Read a location or subscribe to updates."
 ---
 
 Use `@ink/location` for a single position, live updates or background tracking. It does not require Google Play Services.

@@ -3,7 +3,7 @@ title: "Request a permission"
 description: "Ask when a feature opens and handle the answer."
 ---
 
-Request permission when the person opens a feature that needs it. A tuner can ask on its first screen; an app with an optional camera should ask when the camera opens. Avoid a separate button whose only purpose is to start the first permission request.
+Request permission when a feature opens. A tuner asks on its first screen; an optional camera asks when the camera opens. Start the request automatically instead of requiring a separate tap.
 
 Install `@ink/audio` to use this complete microphone screen:
 
@@ -52,7 +52,7 @@ export default function Tuner() {
 }
 ```
 
-Wait for controller readiness before starting it. Ignore permission results after the effect ends; the hook owns controller cleanup when its screen is hidden or removed. The example does not retain the last note through silence—that is a separate presentation choice.
+Wait for the controller's `ready` value before starting it. Ignore permission results after the effect ends. The hook releases the controller when its screen is hidden or removed.
 
 ## Android and LightOS
 

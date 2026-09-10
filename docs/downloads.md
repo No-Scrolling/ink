@@ -1,6 +1,6 @@
 ---
 title: "Downloads"
-description: "Durable HTTP downloads with native progress and recovery."
+description: "Download files and track progress after a screen closes."
 ---
 
 `@ink/network/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Your app decides which files to keep.

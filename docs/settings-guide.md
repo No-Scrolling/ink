@@ -1,11 +1,11 @@
 ---
-title: "Save a setting and go back"
-description: "Keep editing local, then finish saving before navigating."
+title: "Save a setting"
+description: "Edit a value, save it and return to the previous page."
 ---
 
-A setting usually has two values: the saved value and the draft the person is editing. Keep the draft in React state. Save it before returning so the previous page immediately shows the new value.
+Keep an unfinished edit in React state. Save it before navigating back so the previous page shows the updated value.
 
-Suppose `lib/preferences.ts` exports a Store with a `referenceHz` number. This page is a complete editing flow using that store:
+This example uses a [store](/store) exported from `lib/preferences.ts` with a `referenceHz` number:
 
 ```tsx
 import { useState } from "react";
@@ -38,10 +38,8 @@ function Editor({ initial }: { initial: number }) {
 }
 ```
 
-The range is this app's policy, not an Ink restriction. Numeric inputs default to a Done action. The keyboard confirms the edit; the header's Back action leaves without saving. Keep inputs on their own screen, with only errors or hints beneath them.
+This example accepts 400–480 Hz. Change the range for your app. The keyboard's **Done** action saves the edit; the header's **Back** action leaves without saving. Keep inputs on their own screen, with only errors or hints beneath them.
 
-`useAction` ignores overlapping runs and handles failures. Do not add a separate saving page or change the input's layout while a save is pending. For toggles that save immediately, use an action around the Store update and disable the toggle while pending.
+`useAction` ignores repeated submissions while saving and makes errors available to display below the input. Keep the input visible while the save is pending. For a toggle that saves immediately, wrap the store update in an action and disable the toggle while pending.
 
-This parent/child split also works when a component needs a non-null location or loaded account before subscribing to a resource. You do not need an artificial empty data source.
-
-See [Store](/store) for defining and validating preferences and [navigation](/navigation) for shared providers.
+`ReferencePitch` loads the saved value before rendering `Editor`. Use the same structure when a component needs loaded data before it can run its hooks.

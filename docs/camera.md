@@ -1,6 +1,6 @@
 ---
 title: "Camera"
-description: "Native preview and capture owned by the visible screen."
+description: "Preview and capture photos."
 ---
 
 Use `@ink/camera` to preview, capture, and review photos. It supports front and rear cameras when the device provides them.

@@ -3,7 +3,7 @@ title: "Save and load data"
 description: "Choose temporary state, saved preferences or fetched data."
 ---
 
-Different values need different lifetimes:
+Choose where to keep data based on how your app uses it:
 
 | Need | Use |
 | --- | --- |
@@ -63,12 +63,10 @@ export default function Home() {
 }
 ```
 
-Tap **Add one**, close the app and reopen it. The count should remain. `useSnapshot` updates the screen when saved data changes; `useAction` tracks a command and handles its rejected promise.
+Tap **Add one**, close the app and reopen it. The count remains. `useSnapshot` updates the screen when saved data changes. `useAction` tracks saving and exposes errors; this example disables the button while a save is pending.
 
 ## Fetch data
 
-Use a [resource](/data) when switching pages should reuse a previous response. It holds data in memory, not permanent storage. A failed refresh can leave useful cached content visible; show its `refreshError` and offer `source.refresh` as a retry.
-
-Import `@ink/network` before using `fetch`. See [network requests](/network) for the supported API and [resources](/data) for a complete screen example.
+Use a [resource](/data) to keep fetched data available when switching pages. Import `@ink/network` before using `fetch`. The [resource example](/data#cached-data) shows how to load data and retry a failed refresh.
 
 **Next:** [build and install a release](/release).

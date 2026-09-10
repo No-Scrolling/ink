@@ -1,6 +1,6 @@
 ---
 title: "Build and install a release"
-description: "Create a signed APK you can keep and share."
+description: "Sign, build and install a release APK."
 ---
 
 An APK is the file you install on an Android phone. A release APK contains your app without the development reload tools.

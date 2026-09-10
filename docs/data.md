@@ -5,9 +5,9 @@ description: "Keep fetched data available across screens."
 
 ## Cached data
 
-This example assumes your `api.ts` exports `getForecast`, which returns a promise containing a temperature.
+Use `resource` to keep fetched data available across tab changes. Define it outside components and read its state with `useSnapshot`.
 
-Use `resource` for asynchronous reads that should survive tab changes. Define resources outside components, then read them with `useSnapshot`:
+This example uses a `getForecast` function from `api.ts` that returns a promise containing a temperature:
 
 ```tsx
 import { resource, useSnapshot, Screen, Text, Button, LoadingState, ErrorState } from "ink";
@@ -41,13 +41,38 @@ function Forecast({ latitude, longitude, unit }: {
 }
 ```
 
-Calling a resource selects a stable cache entry without loading data. Subscribing starts the request. Keys are arrays of strings, finite numbers, booleans or `null`; include every argument that changes the result. Each resource definition has its own cache.
+## Cache keys
 
-`staleTime` is how long a successful result stays fresh, in milliseconds. It defaults to zero. Stale data remains visible while a new subscription refreshes it. `refreshInterval` separately enables polling while subscribed; omit it to disable polling. Both intervals are measured from the last successful load.
+Calling a resource selects a cache entry. `useSnapshot` subscribes to that entry and loads it when needed. Each resource definition has its own cache.
 
-A ready snapshot contains `data`, `refreshing` and `refreshError`. A failed background refresh keeps the data and sets `refreshError`; a failed initial load produces an error snapshot. Failures stop polling and delay subscription-triggered retries for one minute. `source.refresh()` bypasses freshness and retry delays, sharing any pending request. It resolves when the request settles; failures appear in the snapshot.
+Include every argument that changes the result in the key. Keys are arrays of strings, finite numbers, booleans or `null`.
 
-Hidden tabs unsubscribe, stopping polling when no visible consumers remain. Putting the app in the background is not a route change and does not itself unsubscribe the screen. Polling is not a background-job guarantee. Pending requests finish into the cache. Unused entries expire after five minutes without subscribers, or five minutes after pending work finishes. The cache is in memory and does not survive app restarts; use [Store](/store) for persistent data. Resources do not install networking globals—import `@ink/network` when the loader uses `fetch`.
+## Refresh intervals
 
-Use `useAction` for commands such as saving or sending, and normal effects for live subscriptions such as microphone capture.
+`staleTime` sets how long a result stays fresh, in milliseconds. It defaults to zero. Subscribing to stale data starts a refresh and keeps the previous data visible.
 
+`refreshInterval` refreshes data periodically while subscribed. Omit it to disable polling. Both intervals start from the last successful load.
+
+## Errors and retries
+
+A ready snapshot contains `data`, `refreshing` and `refreshError`. If the first load fails, the snapshot has an error status. If a refresh fails, it keeps the previous data and sets `refreshError`.
+
+Failures stop polling. For one minute after a failure, new subscriptions do not trigger a retry.
+
+Call `source.refresh()` to retry immediately, even if the data is fresh or a retry delay is active. It reuses a pending request and resolves when that request finishes. Read failures from the snapshot.
+
+## Cache lifetime
+
+Hidden tabs unsubscribe. Polling stops when no subscribers remain, but pending requests finish and update the cache. Unused entries expire after five minutes without subscribers, or five minutes after pending work finishes.
+
+Putting the app in the background does not unsubscribe the screen. Resource polling does not guarantee background execution; use [background jobs](/background) for scheduled work.
+
+The cache clears when the app restarts. Use [Store](/store) to save data between sessions.
+
+## Network requests
+
+Import `@ink/network` when the loader uses `fetch`. A resource manages fetched data; it does not provide networking APIs.
+
+## Save and send actions
+
+Use `useAction` to track commands such as saving or sending and display their errors. See [Save a setting](/settings-guide) for an example. Use React effects for live subscriptions such as [microphone capture](/permissions-guide).

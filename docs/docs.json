@@ -25,7 +25,7 @@
   "navigation": {
     "groups": [
       {
-        "group": "Start building",
+        "group": "Get started",
         "pages": [
           "standalone",
           "setup",
@@ -42,7 +42,8 @@
           "development",
           "settings-guide",
           "permissions-guide",
-          "assets-guide"
+          "assets-guide",
+          "troubleshooting"
         ]
       },
       {

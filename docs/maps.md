@@ -3,7 +3,7 @@ title: "Maps"
 description: "An optional MapLibre map with markers and native gestures."
 ---
 
-`@ink/maps` integrates MapLibre with Ink's renderer. It owns gestures, tile loading and marker rendering. Apps supply coordinates and actions. The default OpenFreeMap dark and Positron styles match Buses and follow Ink's colour scheme. An optional `styleURL` overrides them; choosing a tile source does not require a separate Ink provider package.
+`@ink/maps` displays a MapLibre map with gestures, tiles and markers. Supply coordinates and callbacks. The default OpenFreeMap dark and Positron styles follow Ink's colour scheme. Set `styleURL` to use another style.
 
 ```tsx
 import { Screen } from "ink";

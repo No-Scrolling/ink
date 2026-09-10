@@ -3,9 +3,7 @@ title: "How Ink works"
 description: "TypeScript app behaviour, QuickJS-ng execution and retained native rendering."
 ---
 
-Ink runs React and TypeScript through QuickJS-ng, with native layout and Vulkan rendering. This page explains the engine; use [Build with Ink](/ink) for app development.
-
-Every Ink app runs React and JavaScript in QuickJS-ng on the phone. The compiler type-checks and bundles the app, prepares its assets and selects native integrations.
+Ink runs React in QuickJS-ng, with native layout and Vulkan rendering. The compiler checks TypeScript, bundles JavaScript, prepares assets and selects native integrations. For app development, start with [Create an app](/standalone).
 
 See [product design](/product-design) for scope.
 

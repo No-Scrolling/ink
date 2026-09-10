@@ -1,23 +1,19 @@
 ---
-title: "Make an app for your Light Phone"
-description: "Start with one screen, then build something useful."
+title: "Create an app"
+description: "Create and run a Light Phone III app."
 ---
 
-Ink lets you build Light Phone III apps with TypeScript and React. You combine components such as text, buttons and lists; Ink handles their appearance, navigation and keyboard interactions.
-
-You can build a personal tool, a weather app, a music player or something entirely your own. You do not need to design every screen from scratch.
+Ink is a framework for building Light Phone III apps with React and TypeScript. It provides components, navigation and a built-in keyboard.
 
 ## Before you start
 
 You need a Mac or Linux computer and a Light Phone III connected by USB, or an Android emulator. You will also need a text editor and a terminal: the app where you enter the commands in this guide.
 
-Ink currently runs from a local SDK checkout—a folder containing the tools used to build your app. There is no published Ink installer or npm release yet. Keep this folder separate from the apps you create.
-
-[Set up your computer and phone](/setup) first. It establishes the `ink` command used throughout these docs.
+[Set up your computer and phone](/setup) to install the `ink` command. Ink currently uses a local SDK checkout: a folder containing its source and build tools. Keep it separate from your app. There is no published installer or npm release yet.
 
 ## Create an app
 
-In your terminal, run:
+Run these commands in your terminal:
 
 ```sh
 ink create ~/Developer/my-app --name "My App" --package com.example.myapp
@@ -37,7 +33,7 @@ ink dev --device emulator-5554
 
 Replace `emulator-5554` with your phone's serial when using a phone. Keep this command running. The first build takes longer while build dependencies are downloaded and compiled.
 
-You should see **Home** and **Welcome to Ink!** on your device. If you do not, read the terminal error and run `ink doctor` to check the toolchain.
+You should see **Home** and **Welcome to Ink!** on your device. If the app does not open, check the terminal for errors and run `ink doctor` to check the build tools.
 
 **Next:** [edit your first screen](/first-screen).
 
@@ -49,8 +45,6 @@ From your app folder, add the package you need. For example:
 bun add @ink/store@0.1.0
 ```
 
-New projects include package overrides that resolve Ink modules from your SDK checkout, including their dependencies. Overrides do not install every module or add unused features to your APK. Use the package's documented import, such as `@ink/audio/microphone` for pitch analysis.
-
-Keep the generated overrides when editing `package.json`. If you move the SDK, update its local paths. Projects created before these overrides were added can copy the `overrides` object from a newly created app using the same SDK. Keep your existing dependencies and app code.
+The generated `package.json` points Ink packages to your local SDK. Keep its `overrides` entries when adding packages. If installation fails or you move the SDK, see [local package troubleshooting](/troubleshooting#local-packages).
 
 See the **Modules** section for available features and [runtime compatibility](/runtime-compatibility) before adding other JavaScript libraries.

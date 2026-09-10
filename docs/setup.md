@@ -3,7 +3,7 @@ title: "Set up your computer and phone"
 description: "Install the tools and check your device connection."
 ---
 
-This is a one-time setup. Ink currently builds Android apps from source on macOS or Linux. The commands below use a POSIX shell, such as zsh or bash.
+Install the build tools on macOS or Linux, then connect a phone or start an emulator. Run the commands below in bash or zsh.
 
 ## Install the tools
 
@@ -53,9 +53,9 @@ export PATH="$HOME/Developer/ink/scripts:$PATH"
 ink doctor
 ```
 
-Add the final PATH export to your shell configuration too. This `ink` wrapper selects its own SDK checkout; you do not need a raw Cargo command or a separate SDK environment variable. Use a checkout you have access to if the repository requires authentication.
+Add the final PATH export to your shell configuration too. The `ink` command uses this SDK checkout to build your apps. The repository is private; you need access to clone it.
 
-Resolve any missing tools reported by `ink doctor` before creating an app. A successful check confirms the local tools, not every hardware feature.
+Install any missing tools reported by `ink doctor` before creating an app.
 
 ## Connect your phone
 
@@ -75,8 +75,8 @@ In Android Studio's Device Manager, create an API 34 or newer virtual device nam
 emulator -avd Light_Phone_III -writable-system
 ```
 
-A standard Android emulator is enough for basic Ink screens and Android permissions. LightOS-specific services require the Light SDK emulator host; see [LightOS](/light-sdk). A user-reported host workaround is to select **Default**, then **All tools**, in Home's Settings if its tool configuration stops responding. This is separate from whether your app includes LightOS support.
+A standard Android emulator supports basic Ink screens and Android permissions. LightOS services require the [Light SDK emulator host](/light-sdk). For host configuration issues, see [troubleshooting](/troubleshooting#lightos-emulator).
 
-An emulator cannot establish real-phone microphone accuracy, battery use or performance. Use it for UI and development checks, then check the relevant hardware on your phone.
+Use the emulator to check screens and interactions. Check microphone accuracy, battery use and performance on a physical phone.
 
 **Next:** [create your app](/standalone#create-an-app).

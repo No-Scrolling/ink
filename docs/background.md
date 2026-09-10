@@ -1,6 +1,6 @@
 ---
 title: "Background work"
-description: "Durable jobs with fresh JavaScript runtimes and recoverable inputs."
+description: "Schedule work to run after the app closes."
 ---
 
 Use `@ink/background` for work that can run later, such as refreshing forecasts, syncing a feed or sending queued messages.
