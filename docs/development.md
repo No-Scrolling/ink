@@ -3,7 +3,7 @@ title: "Develop an app"
 description: "Run your app and refresh it as you edit."
 ---
 
-Run the development command from your app directory:
+From your app directory:
 
 ```sh
 ink dev --device <serial>

@@ -3,8 +3,6 @@ title: "Save and load data"
 description: "Choose temporary state, saved preferences or fetched data."
 ---
 
-Choose where to keep data based on how your app uses it:
-
 | Need | Use |
 | --- | --- |
 | A count or unfinished edit on a screen | React `useState` |

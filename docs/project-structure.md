@@ -3,8 +3,6 @@ title: "Project structure"
 description: "App files, folders and generated output."
 ---
 
-A new app has one screen:
-
 ```text
 my-app/
   app/

@@ -48,7 +48,7 @@ Native media sessions coordinate hardware keys, lock-screen controls and focus i
 
 ## Recording and analysis
 
-Start with the complete [microphone permission and lifecycle example](/permissions-guide). The reference below describes the individual APIs.
+See the [microphone example](/permissions-guide) for permission handling and cleanup.
 
 `@ink/audio/microphone` exports `useLevelMeter`, `usePitchDetector` and `PitchIndicator`. `@ink/audio/recording` exports `useRecorder`. Both entry points export `microphone` for permission checks. Request access when the user opens a feature that needs it using `microphone.requestPermission()`; `getPermission()` reads the existing grant. Permission results are `granted`, `denied` or `blocked`.
 

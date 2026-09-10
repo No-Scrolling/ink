@@ -19,7 +19,7 @@ In `app/index.tsx`, add `navigate` to your Ink import and place this button insi
 <Button onPress={() => navigate("/about")}>About this app</Button>
 ```
 
-Save and tap **About this app**. Ink opens the new page and supplies the header's back action. The path `/about` comes from the filename `app/about.tsx`.
+Tap **About this app** to open the page. Ink adds the header’s back button. `app/about.tsx` defines the path `/about`.
 
 Keep navigation in callbacks such as `onPress`, rather than running it while a component renders.
 
@@ -31,8 +31,8 @@ A results page can receive a search query:
 navigate({ path: "/results", params: { query: "London" } });
 ```
 
-In `app/results.tsx`, read it with `useRouteParams<{ query: string }>()`. Validate external or optional values before using them. For a place preview, you can pass serialisable coordinates and a label as parameters; you do not need to save the place just to open its forecast.
+In `app/results.tsx`, read it with `useRouteParams<{ query: string }>()`. Validate external or optional values before using them.
 
-See [navigation reference](/navigation) for complete parameter decoding, dynamic pages, shared layouts and tabs.
+See [navigation](/navigation) for parameter validation, layouts and tabs.
 
 **Next:** [save and load data](/saving-data).

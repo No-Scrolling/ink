@@ -7,8 +7,6 @@ description: "Display scrolling collections and load more items."
 
 Use `.map()` with stable keys for small collections. For large collections, `List` mounts the visible rows with a viewport of extra rows on either side. Row heights are measured automatically. The default `gap` is 47, matching the spacing between `Screen` children. Set `gap={0}` for rows without gaps, or provide another value for a compact layout. `followEnd` follows additions only near the end. Stable keys preserve the visible scroll anchor.
 
-For example:
-
 ```tsx
 <List
   items={songs}

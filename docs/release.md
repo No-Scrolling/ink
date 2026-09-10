@@ -9,7 +9,7 @@ An APK is the file you install on an Android phone. A release APK contains your 
 
 Android uses a signing key to recognise updates from the same app author. Keep a backup of the key and its password; future updates need them.
 
-Run this once for your app, replacing `my-app` with its name:
+Replace `my-app` with your app’s name:
 
 ```sh
 mkdir -p ~/.keystores
@@ -36,7 +36,7 @@ ink check
 ink build
 ```
 
-For example, in bash you can prompt without displaying the password or writing it in shell history:
+To enter the password privately in bash:
 
 ```bash
 read -r -s -p 'Keystore password: ' INK_KEYSTORE_PASSWORD
@@ -62,4 +62,4 @@ A release key cannot replace a development-signed app with the same identifier. 
 
 For an update, keep the package identifier and signing key, increase `version_code` in `ink.toml`, and update the human-readable `version`.
 
-Before sharing, try a fresh install, an update, permission denial, a failed network request and reopening after the app was stopped. Compilation alone cannot verify those interactions.
+Before sharing, check installation, updates, permission denial, network failures and reopening the app.
