@@ -22,3 +22,4 @@ Follow the [Cloudflare style guide](https://developers.cloudflare.com/style-guid
 - Give useful variations their own sections. Use screenshot tabs for different states of the same example.
 - Add code only when configuration changes. Let screenshots explain visible behaviour; omit redundant captions and instructions.
 - Keep screenshots square-cornered. Use explicit `<p>` elements inside layout containers so paragraphs stay separate.
+- Capture standalone component examples as root screens, without a back icon. Include Back when the example shows navigation, editing or a return flow.
