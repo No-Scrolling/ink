@@ -1,20 +1,42 @@
 # Benchmarks
 
-The current comparison uses three counter apps: Ink, Expo (light-template) and Light SDK. Each has a standard header, a centred count starting at zero and an **Increase** button.
+Ink's benchmark work has two purposes:
 
-## Recorded results
+| Suite | Question |
+| --- | --- |
+| Ink stress test | Does Ink stay responsive and display the right content after repeated use? |
+| Framework comparison | How does the same counter app compare across Ink, Expo and Light SDK? |
 
-The [counter LP3 comparison](results/matching-counter-lp3-2026-09-08.md) contains the README measurements. It includes build and runtime samples, screenshots and device cleanup checks.
+Use `scripts/agent-tools` for builds and device runs. It records build hashes and evidence, reserves the device and restores its settings. See [agent tools](../docs/agent-tools.md).
 
-## Run the Ink counter
+Use the emulator for behaviour checks and the physical Light Phone III for performance results.
+
+## Ink stress test
+
+The [stress app](apps/ink-stress/README.md) repeats navigation, image-heavy scrolling, failed refresh/retry and dataset changes. It checks visible content and collects scrolling, renderer, memory and idle measurements.
+
+The latest [LP3 before/after comparison](results/ink-optimisations-before-after-lp3-2026-09-12.md) passed all 20 stress cycles. Navigation response improved from 49.0 to 39.4 ms median and from 59.4 to 48.4 ms p95. It also records counter CPU, memory and Counter/Weather APK sizes. Brief fast-swipe startup gaps remain a deferred issue; steady scrolling results do not cover them.
+
+Build an instrumented APK, then run it on a reserved device:
 
 ```sh
-BENCHMARK_DEVICE=<serial> ./benchmarks/measure-ink.sh
+scripts/agent-tools experiment --working-tree \
+  --app benchmarks/apps/ink-stress --env INK_BENCHMARK=1 --background
+# After the experiment completes:
+scripts/agent-tools stress --baseline EXPERIMENT_ID --serial SERIAL --background
 ```
 
-Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to new paths to keep earlier results.
+Add `--candidate CANDIDATE_ID --rounds 3` to compare a framework change using identical fixture sources and flags. The runner alternates build order and retains a report, per-cycle samples, screenshots and logs. See the [stress instructions](apps/ink-stress/README.md) for measurement limits and failure evidence.
 
-## Compare all three counters
+The existing [scroll fixture](apps/ink-scroll/README.md) remains available for focused shared-image profiling through `bench --scenario scroll`. It is a supporting fixture rather than a third suite.
+
+## Framework comparison
+
+The comparison uses three counter apps: Ink, Expo (light-template) and Light SDK. Each has a standard header, a centred count starting at zero and an **Increase** button.
+
+The [recorded LP3 comparison](results/matching-counter-lp3-2026-09-08.md) includes build and runtime samples, screenshots and device cleanup checks.
+
+### Prepare and run
 
 1. Overlay `apps/expo-counter` on a copy of light-template. Keep its components, hooks, utilities and locked dependencies, then build its ARM64 release APK.
 2. Add `apps/light-sdk-counter` as `benchmark-counter` in a temporary Light SDK checkout. The benchmark build automatically removes the SDK's minimum one-second splash delay from that checkout, keeping the content-ready check. Use a disposable checkout because this changes `LightActivity.kt`. Build a fresh APK rather than reusing one with the delay.
@@ -26,14 +48,16 @@ Set `BENCHMARK_OUTPUT` and `BUILD_BENCHMARK_OUTPUT` to new paths to keep earlier
 scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SERIAL --background
 ```
 
-The tool reserves the device, saves results and screenshots, removes its benchmark apps and restores settings. It refuses to replace existing benchmark installations. See [agent tools](../docs/agent-tools.md) to read progress and results.
+The tool reserves the device, saves results and screenshots, removes its benchmark apps and restores settings. It refuses to replace existing benchmark installations. The device harness measures the supplied APKs; the delay removal happens when building the Light SDK benchmark app.
 
-The device harness measures the supplied APKs; the delay removal happens when building the Light SDK benchmark app.
+### Measurement limits
 
-To run the harness directly, set `EXPO_COUNTER_APK` and `BENCHMARK_DEVICE`, then run `bun benchmarks/measure.ts`. Set `INK_COUNTER_APK` to use an isolated build. Direct runs require a manual reservation and cleanup. No scrolling APK is needed.
+The harness alternates frameworks across 15 cold launches, five idle-memory samples and five 100-tap workloads. It uses Android activity launch timings, PSS memory, process CPU ticks and SurfaceFlinger frame intervals. Build measurements include APK size and clean and unchanged build times.
 
-## What the measurements mean
+These are not measurements of time to interactive, peak memory, battery drain or GPU usage. Counter frame intervals include pauses between taps and must not be interpreted as scrolling frame rate or input-to-display latency.
 
-The harness alternates frameworks across 15 cold launches, five idle-memory samples and five 100-tap workloads. It uses Android activity launch timings, PSS memory, process CPU ticks and SurfaceFlinger frame intervals.
+### Supporting scripts
 
-These are not measurements of time to interactive, peak memory, battery drain or GPU usage. Use the emulator to check appearance and behaviour; publish performance results from the physical LP3.
+`measure.ts` is the comparison harness invoked by agent-tools. `measure-builds.sh` collects build measurements. `measure-ink.sh` and `verify.ts` are older Ink-only counter helpers, not the stress test; the direct device runner requires manual reservation and cleanup. Prefer the agent-tools entry points above.
+
+Only the latest results for each suite are retained.

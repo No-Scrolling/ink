@@ -89,7 +89,7 @@ def operation_path(identifier):
 
 
 def result_summary(kind, result):
-    if kind == "bench":
+    if kind in {"bench", "stress"}:
         return result.get(
             "summary", {"acceptedSamples": len(result.get("samples", []))}
         )
@@ -1035,9 +1035,12 @@ def worker(path):
     op.update(status="running", pid=os.getpid())
     try:
         args = read_json(op.path / "request.json")
+        from agent_stress import stress
+
         result = {
             "experiment": build,
             "bench": compare,
+            "stress": lambda op, args: stress(sys.modules[__name__], op, args),
             "memory": explain_memory,
             "image": inspect_image,
         }[args["command"]](op, args)
@@ -1103,6 +1106,13 @@ def parser():
     bench.add_argument(
         "--scenario", choices=["idle", "counter", "scroll"], default="idle"
     )
+    stress = commands.add_parser("stress", help="Check repeated Ink journeys and collect renderer benchmarks")
+    stress.add_argument("--baseline", required=True, help="Completed ink-stress experiment ID")
+    stress.add_argument("--candidate", help="Optional experiment to compare in alternating order")
+    stress.add_argument("--serial", required=True)
+    stress.add_argument("--rounds", type=positive, default=1)
+    stress.add_argument("--cycles", type=positive, default=10)
+    stress.add_argument("--idle-seconds", type=positive, default=10)
     memory = commands.add_parser(
         "memory", help="Explain live foreground process memory; read-only"
     )
@@ -1118,7 +1128,7 @@ def parser():
         "--threshold", type=int, choices=range(256), default=0, metavar="0..255"
     )
     image.add_argument("--ocr", action="store_true")
-    for command in [experiment, bench, memory, image]:
+    for command in [experiment, bench, stress, memory, image]:
         command.add_argument(
             "--background",
             action="store_true",

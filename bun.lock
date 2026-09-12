@@ -28,6 +28,13 @@
         "react": "19.2.8",
       },
     },
+    "benchmarks/apps/ink-stress": {
+      "name": "ink-stress-benchmark",
+      "dependencies": {
+        "ink": "workspace:*",
+        "react": "19.2.8",
+      },
+    },
     "examples/counter": {
       "name": "ink-counter-example",
       "dependencies": {
@@ -363,6 +370,8 @@
     "ink-light-template-example": ["ink-light-template-example@workspace:examples/light-template"],
 
     "ink-scroll-benchmark": ["ink-scroll-benchmark@workspace:benchmarks/apps/ink-scroll"],
+
+    "ink-stress-benchmark": ["ink-stress-benchmark@workspace:benchmarks/apps/ink-stress"],
 
     "ink-tuner-example": ["ink-tuner-example@workspace:examples/tuner"],
 

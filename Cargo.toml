@@ -36,7 +36,7 @@ unicode-properties = { version = "0.1.4", default-features = false, features = [
 [profile.release]
 codegen-units = 1
 lto = "fat"
-opt-level = "z"
+opt-level = 3
 panic = "abort"
 strip = "symbols"
 

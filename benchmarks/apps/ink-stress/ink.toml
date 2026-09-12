@@ -1,0 +1,4 @@
+name = "Ink Stress Test"
+package = "com.vandam.benchmark.ink.stress"
+version = "1.0.0"
+version_code = 1

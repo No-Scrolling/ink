@@ -2426,12 +2426,24 @@ impl Engine {
         &self.scene
     }
 
+    pub fn can_present_pointer_move(&self, id: i32, y: f32) -> bool {
+        let Some(Pointer::Content(pointer)) = self.pointers.get(&id) else { return false; };
+        // Before dragging starts this includes touch slop, so checking both
+        // endpoints conservatively covers the viewport the move can produce.
+        let offset = (pointer.start_offset + pointer.start_y - y).clamp(0.0, self.scroll_max);
+        self.list_viewports_ready() && self.list_viewports_ready_at(offset)
+    }
+
     pub fn list_viewports_ready(&self) -> bool {
+        self.list_viewports_ready_at(self.scroll_offset)
+    }
+
+    fn list_viewports_ready_at(&self, offset: f32) -> bool {
         let Some(clip) = self.scene.scroll_clip else { return true; };
         self.react_list_positions.iter().all(|(id, top)| {
             let Some(metrics) = self.list_metrics.get(id) else { return true; };
-            let start = (self.scroll_offset + clip.y - top).max(0.0);
-            let end = (self.scroll_offset + clip.y + clip.height - top).min(metrics.total());
+            let start = (offset + clip.y - top).max(0.0);
+            let end = (offset + clip.y + clip.height - top).min(metrics.total());
             end <= start || (metrics.mounted.contains(&metrics.index_at(start))
                 && metrics.mounted.contains(&metrics.index_at((end - 0.5).max(start))))
         })

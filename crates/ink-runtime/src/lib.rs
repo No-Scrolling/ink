@@ -1,3 +1,6 @@
+mod allocation_pool;
+#[cfg(target_os = "android")]
+mod cpu_affinity;
 mod encoding;
 
 use std::{
@@ -220,7 +223,11 @@ fn run(
     latest_messages: Arc<Mutex<HashMap<u64, String>>>,
     load_web: Option<WebLoader>,
 ) -> Result<()> {
-    let runtime = Runtime::new()?;
+    #[cfg(target_os = "android")]
+    let cpu_preference = cpu_affinity::CpuPreference::discover();
+    #[cfg(target_os = "android")]
+    let mut work_affinity = None;
+    let runtime = Runtime::new_with_alloc(allocation_pool::AllocationPool::new())?;
     runtime.set_memory_limit(64 * 1024 * 1024);
     runtime.set_max_stack_size(512 * 1024);
     let interrupted = stopped.clone();
@@ -311,6 +318,10 @@ fn run(
                 }
             }
         }
+        #[cfg(target_os = "android")]
+        if !runtime.is_job_pending() {
+            work_affinity = None;
+        }
         if !runtime.is_job_pending()
             && let Some(error) = rejections.borrow().values().next()
         {
@@ -375,6 +386,12 @@ fn run(
             Err(RecvTimeoutError::Timeout) => None,
         };
         if let Some(message) = message {
+            #[cfg(target_os = "android")]
+            if work_affinity.is_none() {
+                work_affinity = cpu_preference
+                    .as_ref()
+                    .and_then(|preference| preference.enter());
+            }
             context
                 .with(|ctx| {
                     let receive: Function = ctx.globals().get("__inkReceive")?;

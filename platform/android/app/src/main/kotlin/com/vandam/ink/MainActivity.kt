@@ -347,8 +347,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val light = nativeIsLightAppearance(engineHandle)
             textInputAdapter.setLightAppearance(light)
             externalAdapter.setLightAppearance(light)
-            window.statusBarColor = if (light) Color.WHITE else Color.BLACK
-            window.navigationBarColor = if (light) Color.WHITE else Color.BLACK
+            val barColour = if (light) Color.WHITE else Color.BLACK
+            if (window.statusBarColor != barColour) window.statusBarColor = barColour
+            if (window.navigationBarColor != barColour) window.navigationBarColor = barColour
             syncTextInput()
             syncCameraPortal()
             drainNativeRequests()
@@ -1138,9 +1139,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 return@FrameCallback
             }
 
-            // Present a completed React window before the next thumb movement
-            // can move the viewport beyond it again.
-            val presentBeforeMove = renderPending && hasPendingMove
+            // Use the latest movement when its rows are mounted. Otherwise show
+            // the completed window before moving beyond it and requesting more rows.
+            val presentBeforeMove = renderPending && hasPendingMove && pendingMoves.any { (id, position) ->
+                !nativeCanPresentPointerMove(engineHandle, id, position.second)
+            }
             if (presentBeforeMove) presentFrame()
             var changed = renderPending && !presentBeforeMove
             renderPending = false
@@ -1507,6 +1510,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeResize(handle: Long, width: Int, height: Int)
+
+        @JvmStatic
+        private external fun nativeCanPresentPointerMove(handle: Long, id: Int, y: Float): Boolean
 
         @JvmStatic
         private external fun nativePointer(

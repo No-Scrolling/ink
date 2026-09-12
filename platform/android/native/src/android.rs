@@ -315,9 +315,11 @@ impl AndroidEngine {
                     android_log(
                         ANDROID_LOG_INFO,
                         &format!(
-                            "Presented id={} scene={}",
+                            "Presented id={} scene={} scroll_y={} ns={}",
                             surface.renderer.present_id(),
-                            self.engine.scene().revision
+                            self.engine.scene().revision,
+                            self.engine.scroll_offset(),
+                            benchmark_time_ns()
                         ),
                     );
                     match surface.renderer.presentation_times() {
@@ -573,6 +575,19 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
         return;
     };
     engine.resize(dimension(width), dimension(height));
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCanPresentPointerMove(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    id: jint,
+    y: jfloat,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|engine| engine.engine.can_present_pointer_move(id, y)) as jboolean
 }
 
 #[unsafe(no_mangle)]

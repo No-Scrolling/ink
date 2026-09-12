@@ -1,0 +1,1982 @@
+{
+  "builds": {
+    "builds": {
+      "beforeRelease": {
+        "id": "experiment-20260912-203013-6d381452",
+        "manifest": {
+          "sourceSha256": "a578547ab3ac89104a7ce64c3c4a95285f6881f65ca83ff0e04d4893b10653df",
+          "sourceArchive": {
+            "file": "source.tar.gz",
+            "sha256": "fd07d41a4982e92de69def303c2a6ba492053d98243b6a52cff3b5e2224a975e"
+          },
+          "revision": "7faafe9c3f42df3196b5bad78b05e23ac29ecc68",
+          "flags": {},
+          "signing": "generated Android development key",
+          "artifacts": {
+            "examples/counter": {
+              "file": "0-counter-0.1.0-arm64.apk",
+              "sha256": "a58b416b4c55dc7896f7f0d0d55b1fe5fb226ef4be3c40cff1c5fdae231d1d1a",
+              "bytes": 1983021,
+              "package": "com.vandam.benchmark.ink.counter",
+              "component": "com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity"
+            },
+            "examples/weather": {
+              "file": "1-weather-0.1.0-arm64.apk",
+              "sha256": "8dfbb5cef4f3e56d675ff33081569093044267f86ed7e2617b8c77e9f680f9a1",
+              "bytes": 2726235,
+              "package": "com.vandam.benchmark.ink.weather",
+              "component": "com.vandam.benchmark.ink.weather/com.vandam.ink.MainActivity"
+            }
+          },
+          "tools": {
+            "bun": "1.4.0",
+            "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+          },
+          "compilerEnvironment": {}
+        }
+      },
+      "afterRelease": {
+        "id": "experiment-20260912-202943-24f81f2b",
+        "manifest": {
+          "sourceSha256": "e85060f847f5e331bb384e5a772307083e8584bbbaa84b15922eeed24c8fc882",
+          "sourceArchive": {
+            "file": "source.tar.gz",
+            "sha256": "f5b38415df625310489031a8213d238ca2a89638b3c2b8f5d03fcfc6e7f8f9fc"
+          },
+          "revision": "7faafe9c3f42df3196b5bad78b05e23ac29ecc68",
+          "flags": {},
+          "signing": "generated Android development key",
+          "artifacts": {
+            "examples/counter": {
+              "file": "0-counter-0.1.0-arm64.apk",
+              "sha256": "7bb934c28a742b7eb72cff320c2c7ee896d984ea42957bac2c7d59c813b77380",
+              "bytes": 2699413,
+              "package": "com.vandam.benchmark.ink.counter",
+              "component": "com.vandam.benchmark.ink.counter/com.vandam.ink.MainActivity"
+            },
+            "examples/weather": {
+              "file": "1-weather-0.1.0-arm64.apk",
+              "sha256": "4a4ffd2b149b2e953c9a485476440db2e3d4324322eb2ddb88eded73150291d2",
+              "bytes": 3447883,
+              "package": "com.vandam.benchmark.ink.weather",
+              "component": "com.vandam.benchmark.ink.weather/com.vandam.ink.MainActivity"
+            }
+          },
+          "tools": {
+            "bun": "1.4.0",
+            "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+          },
+          "compilerEnvironment": {}
+        }
+      },
+      "beforeStress": {
+        "id": "experiment-20260912-203021-864b9cb5",
+        "manifest": {
+          "sourceSha256": "a578547ab3ac89104a7ce64c3c4a95285f6881f65ca83ff0e04d4893b10653df",
+          "sourceArchive": {
+            "file": "source.tar.gz",
+            "sha256": "a3971fbb4d80017f38f67c162d8da4e673e16b90c75dde629e1a8ec945f19461"
+          },
+          "revision": "7faafe9c3f42df3196b5bad78b05e23ac29ecc68",
+          "flags": {
+            "INK_BENCHMARK": "1",
+            "INK_PRESENTATION_TIMING": "1"
+          },
+          "signing": "generated Android development key",
+          "artifacts": {
+            "benchmarks/apps/ink-stress": {
+              "file": "0-ink-stress-test-1.0.0-arm64.apk",
+              "sha256": "3c9d41adba1182fb1b81b84f34490ce27499c002cd1c45a573908c293bde3060",
+              "bytes": 3183337,
+              "package": "com.vandam.benchmark.ink.stress",
+              "component": "com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity"
+            }
+          },
+          "tools": {
+            "bun": "1.4.0",
+            "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+          },
+          "compilerEnvironment": {}
+        }
+      },
+      "afterStress": {
+        "id": "experiment-20260912-202954-3ac2090e",
+        "manifest": {
+          "sourceSha256": "e85060f847f5e331bb384e5a772307083e8584bbbaa84b15922eeed24c8fc882",
+          "sourceArchive": {
+            "file": "source.tar.gz",
+            "sha256": "6912acc480d769b89d98bb4b7a22e61176fa5b5b05c65de1e8fc80136b2c0481"
+          },
+          "revision": "7faafe9c3f42df3196b5bad78b05e23ac29ecc68",
+          "flags": {
+            "INK_BENCHMARK": "1",
+            "INK_PRESENTATION_TIMING": "1"
+          },
+          "signing": "generated Android development key",
+          "artifacts": {
+            "benchmarks/apps/ink-stress": {
+              "file": "0-ink-stress-test-1.0.0-arm64.apk",
+              "sha256": "d1a4c38927fd7b894932af94177fee2fa2ded93917068c9f25f04c6a62e988a7",
+              "bytes": 3905137,
+              "package": "com.vandam.benchmark.ink.stress",
+              "component": "com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity"
+            }
+          },
+          "tools": {
+            "bun": "1.4.0",
+            "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+          },
+          "compilerEnvironment": {}
+        }
+      }
+    },
+    "beforeReleaseChangedFiles": [
+      "Cargo.toml",
+      "crates/ink-core/src/lib.rs",
+      "crates/ink-runtime/src/lib.rs",
+      "platform/android/app/src/main/kotlin/com/vandam/ink/MainActivity.kt",
+      "platform/android/native/src/android.rs"
+    ],
+    "beforeStressChangedFiles": [
+      "Cargo.toml",
+      "crates/ink-core/src/lib.rs",
+      "crates/ink-runtime/src/lib.rs",
+      "platform/android/app/src/main/kotlin/com/vandam/ink/MainActivity.kt",
+      "platform/android/native/src/android.rs"
+    ]
+  },
+  "stressOperation": "stress-20260912-203141-cfb60c4b",
+  "counterOperation": "bench-20260912-204456-3640c6db",
+  "apkSizes": {
+    "examples/counter": {
+      "beforeBytes": 1983021,
+      "afterBytes": 2699413,
+      "beforeMiB": 1.8911561965942383,
+      "afterMiB": 2.5743608474731445,
+      "changePercent": 36.1262941743935
+    },
+    "examples/weather": {
+      "beforeBytes": 2726235,
+      "afterBytes": 3447883,
+      "beforeMiB": 2.599940299987793,
+      "afterMiB": 3.2881574630737305,
+      "changePercent": 26.470498691418754
+    }
+  },
+  "navigation": {
+    "baseline": {
+      "records": [
+        {
+          "kind": "detail",
+          "inputNs": 52157201440519,
+          "scene": 17,
+          "presentId": 6,
+          "submitMs": 16.067916,
+          "displayMs": 40.042447
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52174574623168,
+          "scene": 101,
+          "presentId": 540,
+          "submitMs": 31.837292,
+          "displayMs": 50.282812
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52188806698215,
+          "scene": 176,
+          "presentId": 810,
+          "submitMs": 19.266198,
+          "displayMs": 45.40953
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52191929553162,
+          "scene": 179,
+          "presentId": 813,
+          "submitMs": 30.225833,
+          "displayMs": 48.982239
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52194272717223,
+          "scene": 181,
+          "presentId": 815,
+          "submitMs": 30.079531,
+          "displayMs": 50.315677
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52212247581123,
+          "scene": 233,
+          "presentId": 1351,
+          "submitMs": 20.63677,
+          "displayMs": 38.98703
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52226245967628,
+          "scene": 290,
+          "presentId": 1624,
+          "submitMs": 27.060208,
+          "displayMs": 52.263957
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52229305550231,
+          "scene": 293,
+          "presentId": 1627,
+          "submitMs": 32.928645,
+          "displayMs": 52.59953
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52231706724188,
+          "scene": 295,
+          "presentId": 1629,
+          "submitMs": 31.02,
+          "displayMs": 62.529999
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52249646727306,
+          "scene": 366,
+          "presentId": 2167,
+          "submitMs": 32.372396,
+          "displayMs": 53.354374
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52263542092978,
+          "scene": 442,
+          "presentId": 2432,
+          "submitMs": 24.901094,
+          "displayMs": 54.137187
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52266525272664,
+          "scene": 445,
+          "presentId": 2435,
+          "submitMs": 21.766198,
+          "displayMs": 47.717344
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52269310238965,
+          "scene": 447,
+          "presentId": 2437,
+          "submitMs": 21.112344,
+          "displayMs": 39.666562
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52286981684115,
+          "scene": 499,
+          "presentId": 2974,
+          "submitMs": 31.33151,
+          "displayMs": 51.15302
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52300685734422,
+          "scene": 555,
+          "presentId": 3245,
+          "submitMs": 25.500156,
+          "displayMs": 43.448385
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52303705339942,
+          "scene": 558,
+          "presentId": 3248,
+          "submitMs": 10.893906,
+          "displayMs": 33.674166
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52306086004889,
+          "scene": 560,
+          "presentId": 3250,
+          "submitMs": 16.081719,
+          "displayMs": 47.224166
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52323905526549,
+          "scene": 630,
+          "presentId": 3789,
+          "submitMs": 21.266302,
+          "displayMs": 40.882968
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52337945914929,
+          "scene": 704,
+          "presentId": 4056,
+          "submitMs": 29.069843,
+          "displayMs": 56.497134
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52340896152480,
+          "scene": 707,
+          "presentId": 4059,
+          "submitMs": 26.634114,
+          "displayMs": 49.798905
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52343239734562,
+          "scene": 709,
+          "presentId": 4061,
+          "submitMs": 19.872604,
+          "displayMs": 50.790104
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52361112571899,
+          "scene": 761,
+          "presentId": 4595,
+          "submitMs": 14.086042,
+          "displayMs": 43.805885
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52375106018665,
+          "scene": 818,
+          "presentId": 4863,
+          "submitMs": 28.157239,
+          "displayMs": 45.19677
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52378250137361,
+          "scene": 821,
+          "presentId": 4866,
+          "submitMs": 24.337344,
+          "displayMs": 44.079375
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52380786632985,
+          "scene": 823,
+          "presentId": 4868,
+          "submitMs": 20.34224,
+          "displayMs": 51.829635
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52398867093291,
+          "scene": 893,
+          "presentId": 5401,
+          "submitMs": 32.766458,
+          "displayMs": 52.776405
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52412865584744,
+          "scene": 967,
+          "presentId": 5668,
+          "submitMs": 27.385989,
+          "displayMs": 48.676301
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52415770217295,
+          "scene": 970,
+          "presentId": 5671,
+          "submitMs": 25.36026,
+          "displayMs": 54.387708
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52418225908909,
+          "scene": 972,
+          "presentId": 5673,
+          "submitMs": 31.924218,
+          "displayMs": 59.395728
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52436065088173,
+          "scene": 1024,
+          "presentId": 6211,
+          "submitMs": 16.74526,
+          "displayMs": 33.792708
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52449909160563,
+          "scene": 1080,
+          "presentId": 6483,
+          "submitMs": 17.113021,
+          "displayMs": 49.662031
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52452926708583,
+          "scene": 1083,
+          "presentId": 6486,
+          "submitMs": 13.453385,
+          "displayMs": 41.602343
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52455619190353,
+          "scene": 1085,
+          "presentId": 6488,
+          "submitMs": 17.682395,
+          "displayMs": 42.135572
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52473266430658,
+          "scene": 1155,
+          "presentId": 7023,
+          "submitMs": 17.296719,
+          "displayMs": 43.006302
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52487182919247,
+          "scene": 1229,
+          "presentId": 7288,
+          "submitMs": 19.259427,
+          "displayMs": 39.885468
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52490165185600,
+          "scene": 1232,
+          "presentId": 7291,
+          "submitMs": 28.688125,
+          "displayMs": 51.453801
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52492625537474,
+          "scene": 1234,
+          "presentId": 7293,
+          "submitMs": 33.703802,
+          "displayMs": 52.060052
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52510444677988,
+          "scene": 1286,
+          "presentId": 7826,
+          "submitMs": 29.828542,
+          "displayMs": 48.059739
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52524368534337,
+          "scene": 1342,
+          "presentId": 8089,
+          "submitMs": 26.943125,
+          "displayMs": 52.180259
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52527456735117,
+          "scene": 1345,
+          "presentId": 8092,
+          "submitMs": 22.422344,
+          "displayMs": null
+        }
+      ],
+      "samples": 39,
+      "missing": 1,
+      "medianMs": 48.982239,
+      "p95Ms": 59.395728,
+      "maxMs": 62.529999,
+      "over50": 17,
+      "definition": "Native release to first displayed frame at or beyond the first subsequent React commit, for checked navigation taps only; hardware Back excluded."
+    },
+    "candidate": {
+      "records": [
+        {
+          "kind": "detail",
+          "inputNs": 52547995625734,
+          "scene": 17,
+          "presentId": 5,
+          "submitMs": 14.92099,
+          "displayMs": 48.590937
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52566662466300,
+          "scene": 102,
+          "presentId": 540,
+          "submitMs": 15.359427,
+          "displayMs": 41.356666
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52580538168899,
+          "scene": 178,
+          "presentId": 805,
+          "submitMs": 11.772291,
+          "displayMs": 43.22927
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52583539246606,
+          "scene": 181,
+          "presentId": 808,
+          "submitMs": 18.80276,
+          "displayMs": 35.286822
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52585773334990,
+          "scene": 183,
+          "presentId": 810,
+          "submitMs": 11.466771,
+          "displayMs": 29.207552
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52603186706807,
+          "scene": 236,
+          "presentId": 1343,
+          "submitMs": 16.300468,
+          "displayMs": 46.938593
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52616938457479,
+          "scene": 293,
+          "presentId": 1609,
+          "submitMs": 9.114531,
+          "displayMs": 39.759009
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52619944247373,
+          "scene": 296,
+          "presentId": 1612,
+          "submitMs": 20.702656,
+          "displayMs": 43.438177
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52622430381383,
+          "scene": 298,
+          "presentId": 1614,
+          "submitMs": 13.472396,
+          "displayMs": 34.507447
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52640386633876,
+          "scene": 368,
+          "presentId": 2145,
+          "submitMs": 14.156458,
+          "displayMs": 41.168385
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52654306765277,
+          "scene": 442,
+          "presentId": 2412,
+          "submitMs": 10.804219,
+          "displayMs": 34.507291
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52657293487255,
+          "scene": 445,
+          "presentId": 2415,
+          "submitMs": 16.560833,
+          "displayMs": 41.758228
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52659609633191,
+          "scene": 447,
+          "presentId": 2417,
+          "submitMs": 17.885313,
+          "displayMs": 36.826198
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52677243646153,
+          "scene": 499,
+          "presentId": 2953,
+          "submitMs": 15.014532,
+          "displayMs": 33.934739
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52691133231877,
+          "scene": 556,
+          "presentId": 3224,
+          "submitMs": 12.164115,
+          "displayMs": 37.881823
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52694107896251,
+          "scene": 559,
+          "presentId": 3227,
+          "submitMs": 19.881979,
+          "displayMs": 39.407812
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52696666460209,
+          "scene": 561,
+          "presentId": 3229,
+          "submitMs": 17.848229,
+          "displayMs": 40.923697
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52714446004316,
+          "scene": 631,
+          "presentId": 3760,
+          "submitMs": 14.863959,
+          "displayMs": 40.538489
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52728162558582,
+          "scene": 705,
+          "presentId": 4024,
+          "submitMs": 7.912292,
+          "displayMs": 35.716249
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52731185108372,
+          "scene": 708,
+          "presentId": 4027,
+          "submitMs": 19.929792,
+          "displayMs": 40.295365
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52733526219465,
+          "scene": 710,
+          "presentId": 4029,
+          "submitMs": 14.900052,
+          "displayMs": 43.735312
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52751525136177,
+          "scene": 762,
+          "presentId": 4563,
+          "submitMs": 14.733021,
+          "displayMs": 42.288125
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52765485329245,
+          "scene": 818,
+          "presentId": 4832,
+          "submitMs": 8.666146,
+          "displayMs": 28.788593
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52768626297317,
+          "scene": 821,
+          "presentId": 4835,
+          "submitMs": 21.086927,
+          "displayMs": 47.779791
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52771073342211,
+          "scene": 823,
+          "presentId": 4837,
+          "submitMs": 15.297657,
+          "displayMs": 45.25125
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52788837824340,
+          "scene": 893,
+          "presentId": 5368,
+          "submitMs": 11.592813,
+          "displayMs": 45.624531
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52802524798762,
+          "scene": 967,
+          "presentId": 5632,
+          "submitMs": 9.732344,
+          "displayMs": 37.522916
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52805583542927,
+          "scene": 970,
+          "presentId": 5635,
+          "submitMs": 16.967761,
+          "displayMs": 38.486042
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52807913658343,
+          "scene": 972,
+          "presentId": 5637,
+          "submitMs": 13.74599,
+          "displayMs": 36.086771
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52825556434274,
+          "scene": 1024,
+          "presentId": 6167,
+          "submitMs": 11.691771,
+          "displayMs": 39.523802
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52839406372446,
+          "scene": 1080,
+          "presentId": 6438,
+          "submitMs": 11.446354,
+          "displayMs": 34.56875
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52842412292288,
+          "scene": 1083,
+          "presentId": 6441,
+          "submitMs": 16.600834,
+          "displayMs": 38.693854
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52844774358225,
+          "scene": 1085,
+          "presentId": 6443,
+          "submitMs": 14.228542,
+          "displayMs": 37.560572
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52862543924989,
+          "scene": 1155,
+          "presentId": 6974,
+          "submitMs": 14.056875,
+          "displayMs": 48.422916
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52876425738890,
+          "scene": 1229,
+          "presentId": 7242,
+          "submitMs": 10.153802,
+          "displayMs": 27.448697
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52879511484514,
+          "scene": 1232,
+          "presentId": 7245,
+          "submitMs": 17.690573,
+          "displayMs": 34.970416
+        },
+        {
+          "kind": "detail",
+          "inputNs": 52881945122117,
+          "scene": 1234,
+          "presentId": 7247,
+          "submitMs": 15.611146,
+          "displayMs": 45.538906
+        },
+        {
+          "kind": "scrolled-detail",
+          "inputNs": 52899650898881,
+          "scene": 1286,
+          "presentId": 7783,
+          "submitMs": 13.916875,
+          "displayMs": 35.904635
+        },
+        {
+          "kind": "settings",
+          "inputNs": 52913486452834,
+          "scene": 1342,
+          "presentId": 8051,
+          "submitMs": 9.988802,
+          "displayMs": 26.242083
+        },
+        {
+          "kind": "changed-library",
+          "inputNs": 52916454604135,
+          "scene": 1345,
+          "presentId": 8054,
+          "submitMs": 21.282917,
+          "displayMs": null
+        }
+      ],
+      "samples": 39,
+      "missing": 1,
+      "medianMs": 39.407812,
+      "p95Ms": 48.422916,
+      "maxMs": 48.590937,
+      "over50": 0,
+      "definition": "Native release to first displayed frame at or beyond the first subsequent React commit, for checked navigation taps only; hardware Back excluded."
+    }
+  },
+  "stress": {
+    "protocol": 2,
+    "device": {
+      "ro.product.model": "TLP301",
+      "ro.build.version.release": "14",
+      "ro.build.fingerprint": "Light/LightPhoneIII/LightPhoneIII:14/UKQ1.240321.001/00WW_1_440000:user/release-keys"
+    },
+    "serial": "LP3LHMA531900140",
+    "builds": {
+      "baseline": {
+        "id": "experiment-20260912-203021-864b9cb5",
+        "manifest": {
+          "sourceSha256": "a578547ab3ac89104a7ce64c3c4a95285f6881f65ca83ff0e04d4893b10653df",
+          "sourceArchive": {
+            "file": "source.tar.gz",
+            "sha256": "a3971fbb4d80017f38f67c162d8da4e673e16b90c75dde629e1a8ec945f19461"
+          },
+          "revision": "7faafe9c3f42df3196b5bad78b05e23ac29ecc68",
+          "flags": {
+            "INK_BENCHMARK": "1",
+            "INK_PRESENTATION_TIMING": "1"
+          },
+          "signing": "generated Android development key",
+          "artifacts": {
+            "benchmarks/apps/ink-stress": {
+              "file": "0-ink-stress-test-1.0.0-arm64.apk",
+              "sha256": "3c9d41adba1182fb1b81b84f34490ce27499c002cd1c45a573908c293bde3060",
+              "bytes": 3183337,
+              "package": "com.vandam.benchmark.ink.stress",
+              "component": "com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity"
+            }
+          },
+          "tools": {
+            "bun": "1.4.0",
+            "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+          },
+          "compilerEnvironment": {}
+        }
+      },
+      "candidate": {
+        "id": "experiment-20260912-202954-3ac2090e",
+        "manifest": {
+          "sourceSha256": "e85060f847f5e331bb384e5a772307083e8584bbbaa84b15922eeed24c8fc882",
+          "sourceArchive": {
+            "file": "source.tar.gz",
+            "sha256": "6912acc480d769b89d98bb4b7a22e61176fa5b5b05c65de1e8fc80136b2c0481"
+          },
+          "revision": "7faafe9c3f42df3196b5bad78b05e23ac29ecc68",
+          "flags": {
+            "INK_BENCHMARK": "1",
+            "INK_PRESENTATION_TIMING": "1"
+          },
+          "signing": "generated Android development key",
+          "artifacts": {
+            "benchmarks/apps/ink-stress": {
+              "file": "0-ink-stress-test-1.0.0-arm64.apk",
+              "sha256": "d1a4c38927fd7b894932af94177fee2fa2ded93917068c9f25f04c6a62e988a7",
+              "bytes": 3905137,
+              "package": "com.vandam.benchmark.ink.stress",
+              "component": "com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity"
+            }
+          },
+          "tools": {
+            "bun": "1.4.0",
+            "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+          },
+          "compilerEnvironment": {}
+        }
+      }
+    },
+    "cyclesPerRun": 10,
+    "idleSeconds": 10,
+    "rounds": 1,
+    "samples": [
+      {
+        "round": 1,
+        "variant": "baseline",
+        "cycles": [
+          {
+            "cycle": 1,
+            "scrollCpuMs": 1430.0,
+            "scrollElapsedMs": 5902.847457997268,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241545.812905,
+              "pssKiB": 28872,
+              "rssKiB": 144136,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 2112,
+                "Native Heap": 15460,
+                "Code": 3188,
+                "Stack": 560,
+                "Graphics": 0,
+                "Private Other": 1840,
+                "System": 5712
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34328,
+                "Native Heap": 18048,
+                "Code": 86104,
+                "Stack": 568,
+                "Graphics": 4,
+                "Unknown": 5084
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 2,
+            "scrollCpuMs": 1590.0,
+            "scrollElapsedMs": 5897.454416000983,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241583.2132201,
+              "pssKiB": 30663,
+              "rssKiB": 145996,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1988,
+                "Native Heap": 17324,
+                "Code": 3188,
+                "Stack": 568,
+                "Graphics": 0,
+                "Private Other": 1848,
+                "System": 5747
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34204,
+                "Native Heap": 19908,
+                "Code": 86216,
+                "Stack": 576,
+                "Graphics": 4,
+                "Unknown": 5088
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 3,
+            "scrollCpuMs": 1580.0,
+            "scrollElapsedMs": 5879.541458998574,
+            "scroll": {
+              "frames": 290,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241620.432169,
+              "pssKiB": 32234,
+              "rssKiB": 147596,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1972,
+                "Native Heap": 18912,
+                "Code": 3196,
+                "Stack": 568,
+                "Graphics": 0,
+                "Private Other": 1832,
+                "System": 5754
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34188,
+                "Native Heap": 21492,
+                "Code": 86264,
+                "Stack": 576,
+                "Graphics": 4,
+                "Unknown": 5072
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 4,
+            "scrollCpuMs": 1530.0,
+            "scrollElapsedMs": 5940.341958994395,
+            "scroll": {
+              "frames": 290,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241657.634384,
+              "pssKiB": 32234,
+              "rssKiB": 147600,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1960,
+                "Native Heap": 18920,
+                "Code": 3196,
+                "Stack": 568,
+                "Graphics": 0,
+                "Private Other": 1832,
+                "System": 5758
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34176,
+                "Native Heap": 21500,
+                "Code": 86272,
+                "Stack": 576,
+                "Graphics": 4,
+                "Unknown": 5072
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 5,
+            "scrollCpuMs": 1530.0,
+            "scrollElapsedMs": 5913.0574589944445,
+            "scroll": {
+              "frames": 290,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241694.813515,
+              "pssKiB": 32262,
+              "rssKiB": 147628,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1960,
+                "Native Heap": 18948,
+                "Code": 3196,
+                "Stack": 568,
+                "Graphics": 0,
+                "Private Other": 1832,
+                "System": 5758
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34176,
+                "Native Heap": 21528,
+                "Code": 86272,
+                "Stack": 576,
+                "Graphics": 4,
+                "Unknown": 5072
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 6,
+            "scrollCpuMs": 1500.0,
+            "scrollElapsedMs": 5859.216500000912,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241732.299395,
+              "pssKiB": 33690,
+              "rssKiB": 149056,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1968,
+                "Native Heap": 20368,
+                "Code": 3196,
+                "Stack": 568,
+                "Graphics": 0,
+                "Private Other": 1832,
+                "System": 5758
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34184,
+                "Native Heap": 22948,
+                "Code": 86272,
+                "Stack": 576,
+                "Graphics": 4,
+                "Unknown": 5072
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 7,
+            "scrollCpuMs": 1520.0,
+            "scrollElapsedMs": 5926.925082996604,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241769.715159,
+              "pssKiB": 33834,
+              "rssKiB": 149200,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1952,
+                "Native Heap": 20520,
+                "Code": 3196,
+                "Stack": 568,
+                "Graphics": 0,
+                "Private Other": 1840,
+                "System": 5758
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34168,
+                "Native Heap": 23100,
+                "Code": 86272,
+                "Stack": 576,
+                "Graphics": 4,
+                "Unknown": 5080
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 8,
+            "scrollCpuMs": 1520.0,
+            "scrollElapsedMs": 5882.058709001285,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241806.782966,
+              "pssKiB": 33814,
+              "rssKiB": 149180,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1956,
+                "Native Heap": 20492,
+                "Code": 3196,
+                "Stack": 572,
+                "Graphics": 0,
+                "Private Other": 1840,
+                "System": 5758
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34172,
+                "Native Heap": 23072,
+                "Code": 86272,
+                "Stack": 580,
+                "Graphics": 4,
+                "Unknown": 5080
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 9,
+            "scrollCpuMs": 1630.0,
+            "scrollElapsedMs": 5866.641042011906,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241844.191243,
+              "pssKiB": 33870,
+              "rssKiB": 149236,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1952,
+                "Native Heap": 20552,
+                "Code": 3196,
+                "Stack": 572,
+                "Graphics": 0,
+                "Private Other": 1840,
+                "System": 5758
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34168,
+                "Native Heap": 23132,
+                "Code": 86272,
+                "Stack": 580,
+                "Graphics": 4,
+                "Unknown": 5080
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 10,
+            "scrollCpuMs": 1560.0,
+            "scrollElapsedMs": 5892.417540992028,
+            "scroll": {
+              "frames": 290,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241881.4310021,
+              "pssKiB": 33918,
+              "rssKiB": 149284,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1944,
+                "Native Heap": 20596,
+                "Code": 3196,
+                "Stack": 576,
+                "Graphics": 0,
+                "Private Other": 1848,
+                "System": 5758
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34160,
+                "Native Heap": 23176,
+                "Code": 86272,
+                "Stack": 584,
+                "Graphics": 4,
+                "Unknown": 5088
+              },
+              "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          }
+        ],
+        "completedCycles": 10,
+        "before": {
+          "capturedAt": 1789241509.028126,
+          "pssKiB": 21114,
+          "rssKiB": 132632,
+          "swapPssKiB": 49,
+          "categoriesPssKiB": {
+            "Java Heap": 2644,
+            "Native Heap": 7584,
+            "Code": 3196,
+            "Stack": 548,
+            "Graphics": 0,
+            "Private Other": 1696,
+            "System": 5446
+          },
+          "categoriesRssKiB": {
+            "Java Heap": 34772,
+            "Native Heap": 10280,
+            "Code": 82060,
+            "Stack": 556,
+            "Graphics": 4,
+            "Unknown": 4960
+          },
+          "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+        },
+        "idle": {
+          "elapsedSeconds": 10.203813083004206,
+          "cpuMs": 10.0,
+          "renderedFrames": 0
+        },
+        "after": {
+          "capturedAt": 1789241893.991702,
+          "pssKiB": 33194,
+          "rssKiB": 148560,
+          "swapPssKiB": 30,
+          "categoriesPssKiB": {
+            "Java Heap": 1220,
+            "Native Heap": 20596,
+            "Code": 3196,
+            "Stack": 576,
+            "Graphics": 0,
+            "Private Other": 1848,
+            "System": 5758
+          },
+          "categoriesRssKiB": {
+            "Java Heap": 33436,
+            "Native Heap": 23176,
+            "Code": 86272,
+            "Stack": 584,
+            "Graphics": 4,
+            "Unknown": 5088
+          },
+          "foreground": "mCurrentFocus=Window{6dede44 u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+        },
+        "memoryGrowthMiB": 11.796875,
+        "status": "passed",
+        "renderer": {
+          "frames": 8093,
+          "frameMs": {
+            "p95": 3.407448,
+            "maximum": 18.089531
+          },
+          "relayoutMs": {
+            "p95": 0.465989,
+            "maximum": 10.503906
+          },
+          "prepareMs": {
+            "p95": 0.313438,
+            "maximum": 6.111198
+          },
+          "uploadMs": {
+            "p95": 0.021302,
+            "maximum": 5.452864
+          },
+          "submit_presentMs": {
+            "p95": 2.451406,
+            "maximum": 4.783906
+          },
+          "uploadedBytes": 41148897,
+          "cacheMisses": 146
+        }
+      },
+      {
+        "round": 1,
+        "variant": "candidate",
+        "cycles": [
+          {
+            "cycle": 1,
+            "scrollCpuMs": 1380.0,
+            "scrollElapsedMs": 5859.427165996749,
+            "scroll": {
+              "frames": 288,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241937.3947608,
+              "pssKiB": 30146,
+              "rssKiB": 145472,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 2128,
+                "Native Heap": 16036,
+                "Code": 3892,
+                "Stack": 564,
+                "Graphics": 0,
+                "Private Other": 1836,
+                "System": 5690
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34344,
+                "Native Heap": 18632,
+                "Code": 86840,
+                "Stack": 572,
+                "Graphics": 4,
+                "Unknown": 5080
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 2,
+            "scrollCpuMs": 1450.0,
+            "scrollElapsedMs": 5920.9521250013495,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789241973.9148018,
+              "pssKiB": 33489,
+              "rssKiB": 148836,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 2004,
+                "Native Heap": 19452,
+                "Code": 3892,
+                "Stack": 580,
+                "Graphics": 0,
+                "Private Other": 1848,
+                "System": 5713
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34220,
+                "Native Heap": 22048,
+                "Code": 86888,
+                "Stack": 588,
+                "Graphics": 4,
+                "Unknown": 5088
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 3,
+            "scrollCpuMs": 1450.0,
+            "scrollElapsedMs": 5859.970917008468,
+            "scroll": {
+              "frames": 288,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242011.152839,
+              "pssKiB": 33571,
+              "rssKiB": 149004,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1972,
+                "Native Heap": 19560,
+                "Code": 3896,
+                "Stack": 580,
+                "Graphics": 0,
+                "Private Other": 1832,
+                "System": 5731
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34188,
+                "Native Heap": 22156,
+                "Code": 86996,
+                "Stack": 588,
+                "Graphics": 4,
+                "Unknown": 5072
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 4,
+            "scrollCpuMs": 1470.0,
+            "scrollElapsedMs": 5799.576707999222,
+            "scroll": {
+              "frames": 288,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242048.124856,
+              "pssKiB": 35123,
+              "rssKiB": 150556,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1984,
+                "Native Heap": 21100,
+                "Code": 3896,
+                "Stack": 580,
+                "Graphics": 0,
+                "Private Other": 1832,
+                "System": 5731
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34200,
+                "Native Heap": 23696,
+                "Code": 86996,
+                "Stack": 588,
+                "Graphics": 4,
+                "Unknown": 5072
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 5,
+            "scrollCpuMs": 1510.0,
+            "scrollElapsedMs": 5919.214082998224,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242085.029067,
+              "pssKiB": 35143,
+              "rssKiB": 150576,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1968,
+                "Native Heap": 21124,
+                "Code": 3896,
+                "Stack": 584,
+                "Graphics": 0,
+                "Private Other": 1840,
+                "System": 5731
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34184,
+                "Native Heap": 23720,
+                "Code": 86996,
+                "Stack": 592,
+                "Graphics": 4,
+                "Unknown": 5080
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 6,
+            "scrollCpuMs": 1380.0,
+            "scrollElapsedMs": 5914.541749996715,
+            "scroll": {
+              "frames": 288,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242122.5915031,
+              "pssKiB": 35195,
+              "rssKiB": 150632,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1968,
+                "Native Heap": 21160,
+                "Code": 3896,
+                "Stack": 588,
+                "Graphics": 0,
+                "Private Other": 1848,
+                "System": 5735
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34184,
+                "Native Heap": 23756,
+                "Code": 87004,
+                "Stack": 596,
+                "Graphics": 4,
+                "Unknown": 5088
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 7,
+            "scrollCpuMs": 1550.0,
+            "scrollElapsedMs": 5899.089583006571,
+            "scroll": {
+              "frames": 288,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242159.478569,
+              "pssKiB": 35223,
+              "rssKiB": 150660,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1968,
+                "Native Heap": 21188,
+                "Code": 3896,
+                "Stack": 588,
+                "Graphics": 0,
+                "Private Other": 1848,
+                "System": 5735
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34184,
+                "Native Heap": 23784,
+                "Code": 87004,
+                "Stack": 596,
+                "Graphics": 4,
+                "Unknown": 5088
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 8,
+            "scrollCpuMs": 1550.0,
+            "scrollElapsedMs": 5937.959417002276,
+            "scroll": {
+              "frames": 289,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242196.3279018,
+              "pssKiB": 35215,
+              "rssKiB": 150652,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1964,
+                "Native Heap": 21184,
+                "Code": 3896,
+                "Stack": 588,
+                "Graphics": 0,
+                "Private Other": 1848,
+                "System": 5735
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34180,
+                "Native Heap": 23780,
+                "Code": 87004,
+                "Stack": 596,
+                "Graphics": 4,
+                "Unknown": 5088
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 9,
+            "scrollCpuMs": 1400.0,
+            "scrollElapsedMs": 5880.353375003324,
+            "scroll": {
+              "frames": 288,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242233.411401,
+              "pssKiB": 35383,
+              "rssKiB": 150820,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1972,
+                "Native Heap": 21332,
+                "Code": 3896,
+                "Stack": 592,
+                "Graphics": 0,
+                "Private Other": 1856,
+                "System": 5735
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34188,
+                "Native Heap": 23928,
+                "Code": 87004,
+                "Stack": 600,
+                "Graphics": 4,
+                "Unknown": 5096
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          },
+          {
+            "cycle": 10,
+            "scrollCpuMs": 1320.0,
+            "scrollElapsedMs": 5891.286874990328,
+            "scroll": {
+              "frames": 288,
+              "droppedFrames": 0,
+              "presentP95Ms": 16,
+              "presentP99Ms": 16
+            },
+            "memory": {
+              "capturedAt": 1789242270.3546839,
+              "pssKiB": 35719,
+              "rssKiB": 151152,
+              "swapPssKiB": 30,
+              "categoriesPssKiB": {
+                "Java Heap": 1964,
+                "Native Heap": 21680,
+                "Code": 3892,
+                "Stack": 592,
+                "Graphics": 0,
+                "Private Other": 1856,
+                "System": 5735
+              },
+              "categoriesRssKiB": {
+                "Java Heap": 34180,
+                "Native Heap": 24264,
+                "Code": 87008,
+                "Stack": 600,
+                "Graphics": 4,
+                "Unknown": 5096
+              },
+              "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+            }
+          }
+        ],
+        "completedCycles": 10,
+        "before": {
+          "capturedAt": 1789241899.67754,
+          "pssKiB": 22335,
+          "rssKiB": 133972,
+          "swapPssKiB": 56,
+          "categoriesPssKiB": {
+            "Java Heap": 2640,
+            "Native Heap": 8132,
+            "Code": 3892,
+            "Stack": 532,
+            "Graphics": 0,
+            "Private Other": 1704,
+            "System": 5435
+          },
+          "categoriesRssKiB": {
+            "Java Heap": 34768,
+            "Native Heap": 10808,
+            "Code": 82884,
+            "Stack": 540,
+            "Graphics": 4,
+            "Unknown": 4968
+          },
+          "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+        },
+        "idle": {
+          "elapsedSeconds": 10.207591875005164,
+          "cpuMs": 0.0,
+          "renderedFrames": 0
+        },
+        "after": {
+          "capturedAt": 1789242282.9928472,
+          "pssKiB": 34987,
+          "rssKiB": 150420,
+          "swapPssKiB": 30,
+          "categoriesPssKiB": {
+            "Java Heap": 1232,
+            "Native Heap": 21680,
+            "Code": 3892,
+            "Stack": 592,
+            "Graphics": 0,
+            "Private Other": 1856,
+            "System": 5735
+          },
+          "categoriesRssKiB": {
+            "Java Heap": 33448,
+            "Native Heap": 24264,
+            "Code": 87008,
+            "Stack": 600,
+            "Graphics": 4,
+            "Unknown": 5096
+          },
+          "foreground": "mCurrentFocus=Window{718f00b u0 com.vandam.benchmark.ink.stress/com.vandam.ink.MainActivity}"
+        },
+        "memoryGrowthMiB": 12.35546875,
+        "status": "passed",
+        "renderer": {
+          "frames": 8055,
+          "frameMs": {
+            "p95": 3.502447,
+            "maximum": 17.584688
+          },
+          "relayoutMs": {
+            "p95": 0.8275,
+            "maximum": 8.036927
+          },
+          "prepareMs": {
+            "p95": 0.425364,
+            "maximum": 3.806146
+          },
+          "uploadMs": {
+            "p95": 0.012292,
+            "maximum": 7.147552
+          },
+          "submit_presentMs": {
+            "p95": 2.564166,
+            "maximum": 5.461406
+          },
+          "uploadedBytes": 41431249,
+          "cacheMisses": 146
+        }
+      }
+    ],
+    "notes": [
+      "OCR deadlines verify visible states; observedAfterMs includes host/ADB/OCR overhead and is not input-to-display latency.",
+      "SurfaceFlinger droppedFrames is not a complete count of missed display deadlines. Frame histograms have millisecond buckets.",
+      "Renderer timings are instrumented wall times; submit_present includes waiting. PSS growth includes cache warm-up, not just leaks.",
+      "Performance targets must be assessed on a physical LP3; emulator results are behaviour checks."
+    ],
+    "summary": {
+      "status": "passed",
+      "runs": 2,
+      "completedCycles": 20
+    }
+  },
+  "counter": {
+    "baseline": {
+      "samples": 3,
+      "launchMs": [
+        239,
+        222,
+        227
+      ],
+      "launchMedianMs": 227,
+      "idlePssMiB": [
+        16.3212890625,
+        16.37109375,
+        16.423828125
+      ],
+      "idlePssMedianMiB": 16.37109375,
+      "cpuPer100TapsMs": [
+        1290.0,
+        1270.0,
+        1280.0
+      ],
+      "medianCpuPer100TapsMs": 1280.0
+    },
+    "candidate": {
+      "samples": 3,
+      "launchMs": [
+        220,
+        213,
+        221
+      ],
+      "launchMedianMs": 220,
+      "idlePssMiB": [
+        17.513671875,
+        17.390625,
+        17.41015625
+      ],
+      "idlePssMedianMiB": 17.41015625,
+      "cpuPer100TapsMs": [
+        820.0,
+        820.0,
+        830.0
+      ],
+      "medianCpuPer100TapsMs": 820.0
+    }
+  },
+  "counterScreenshots": [
+    {
+      "id": "image-20260912-204847-0f181e34",
+      "status": "complete",
+      "cursor": "1789242527.548223",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "text": [
+          "Counter",
+          "Count: 100",
+          "Increase"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260912-204847-0f181e34"
+    },
+    {
+      "id": "image-20260912-204847-88e830af",
+      "status": "complete",
+      "cursor": "1789242528.048918",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "text": [
+          "Counter",
+          "Count: 100",
+          "Increase"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260912-204847-88e830af"
+    },
+    {
+      "id": "image-20260912-204848-35ba3f6b",
+      "status": "complete",
+      "cursor": "1789242528.547616",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "text": [
+          "Counter",
+          "Count: 100",
+          "Increase"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260912-204848-35ba3f6b"
+    },
+    {
+      "id": "image-20260912-204848-c4f0303d",
+      "status": "complete",
+      "cursor": "1789242529.0438101",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "text": [
+          "Counter",
+          "Count: 100",
+          "Increase"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260912-204848-c4f0303d"
+    },
+    {
+      "id": "image-20260912-204849-b7920683",
+      "status": "complete",
+      "cursor": "1789242529.548099",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "text": [
+          "Counter",
+          "Count: 100",
+          "Increase"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260912-204849-b7920683"
+    },
+    {
+      "id": "image-20260912-204849-7cfbc7ae",
+      "status": "complete",
+      "cursor": "1789242530.044723",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "text": [
+          "Counter",
+          "Count: 100",
+          "Increase"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260912-204849-7cfbc7ae"
+    }
+  ],
+  "excludedAttempts": [
+    {
+      "id": "stress-20260912-203054-b2a7ac9c",
+      "reason": "Unlock screen interfered before any accepted stress cycle; rerun passed."
+    },
+    {
+      "id": "bench-20260912-204825-42799c01",
+      "reason": "Weather location permission activity interrupted launch; no accepted measurement. User subsequently excluded Weather launch measurements."
+    },
+    {
+      "id": "experiment-20260912-205010-a0bc4eb6",
+      "reason": "Unused fixed-location Weather build; never measured, source restored, not used for APK sizes."
+    }
+  ],
+  "verification": [
+    "cargo check -p ink-runtime",
+    "cargo check -p ink-core",
+    "git diff --check",
+    "Android release builds",
+    "20/20 stress cycles",
+    "Six counter screenshots show Count: 100",
+    "Current optimisation source hashes match measured candidate",
+    "Example configuration and Weather preferences restored",
+    "Device reservation released"
+  ]
+}
