@@ -1,0 +1,192 @@
+---
+title: "Audio"
+description: "Play audio, record files and analyse microphone input."
+---
+
+Use `@ink/audio` to play audio and manage queues.
+
+| Import | Use |
+| --- | --- |
+| `@ink/audio` | Playback and native media controls. |
+| `@ink/audio/microphone` | Sound levels and pitch detection. |
+| `@ink/audio/recording` | Record audio files. |
+
+## Permissions
+
+Request microphone access before recording or analysing sound. Playback does not need it.
+
+```ts
+import { microphone } from "@ink/audio/microphone";
+
+const permission = await microphone.requestPermission();
+```
+
+Use `microphone.getPermission()` to check access without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
+
+`@ink/audio/recording` exports the same `microphone` methods. Granting permission does not start recording or analysis. Wait for the hook’s `ready` state, then call `start()`.
+
+## Playback
+
+This screen controls an existing queue. Call `setQueue` with your tracks first; `usePlayer` does not load them automatically.
+
+<div className="pattern-example">
+<div>
+
+```tsx
+import { Button, Screen, Text, useAction } from "ink";
+import { usePlayer } from "@ink/audio";
+
+export function NowPlaying() {
+  const player = usePlayer({ session: "main", mode: "detached" });
+  const toggle = useAction(() => player.toggle());
+  return (
+    <Screen title="Now playing">
+      <Text>{player.state.current?.title ?? "Nothing playing"}</Text>
+      <Button onPress={() => toggle.run()} disabled={!player.state.ready}>
+        {player.state.playing ? "Pause" : "Play"}
+      </Button>
+      {toggle.status === "error" && <Text>{toggle.error.message}</Text>}
+    </Screen>
+  );
+}
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Paused">
+<img src="/images/patterns/audio-paused.png" alt="A loaded track with a Play button." width="1080" height="1240" />
+</Tab>
+<Tab title="Playing">
+<img src="/images/patterns/audio-playing.png" alt="The same track with a Pause button." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+Wait for `state.ready` before sending commands or reading a restored queue. Commands sent before readiness reject.
+
+## Keep playing after leaving a screen
+
+Inside your playback component:
+
+```ts
+const player = usePlayer({ session: "main", mode: "detached" });
+```
+
+Detached playback continues after leaving the screen.
+
+| Option | Behaviour |
+| --- | --- |
+| `mode: "attached"` (default) | Stops when the last screen using the session releases it. |
+| `mode: "detached"` | Keeps playing through a native media service. Call `stop()` to stop it. |
+| `usage: "music"` (default) | Music playback. |
+| `usage: "speech"` | Spoken audio. |
+
+Android can stop a detached session. Ink restores its queue, index, speed and progress in a paused state when you reconnect. Queue changes, seeks and pauses save immediately; progress saves every five seconds. `stop()` clears the queue and saved state.
+
+### Sessions
+
+Players with the same `session` name share playback and must use the same `mode` and `usage`. Different names keep separate queues. Starting one session pauses the others.
+
+`session` defaults to `main`. Names accept 1–64 letters, numbers, dots, underscores or hyphens. Up to eight sessions can be active.
+
+`usePlayer` connects after React commits the screen and disconnects when hidden. Returning to the screen reconnects to the existing queue. Background workers cannot use audio controllers.
+
+## Queue and state
+
+Use the `player` from `usePlayer` in a button action, after `player.state.ready` is true:
+
+```ts
+async function playAlbum() {
+  await player.setQueue([
+    {
+      id: "track-1",
+      src: "https://example.com/music/track-1.mp3",
+      title: "First track",
+      artist: "Artist name",
+    },
+    {
+      id: "track-2",
+      src: "https://example.com/music/track-2.mp3",
+      title: "Second track",
+      artist: "Artist name",
+    },
+  ], { startIndex: 0 });
+  await player.play();
+}
+```
+
+Replace the example URLs with your audio sources. `setQueue` replaces the current queue. Items can also include artwork. `src` accepts bundled audio or a supported URL.
+
+To seek from an action, use milliseconds:
+
+```ts
+await player.seek(30_000);
+```
+
+`setQueue`, `play`, `pause`, `seek`, `next`, `previous` and `stop` return promises.
+
+State includes readiness, current item, position, duration, buffering, playing and errors. It also reflects hardware keys, lock-screen controls and interruptions from other audio. Native code handles decoding, buffering, output routing and progress updates; no JavaScript animation loop is needed.
+
+Playback errors distinguish source, unsupported media and output failures. Deleted files and unavailable URLs produce errors. Ink does not automatically skip a failed item.
+
+## Recording and analysis
+
+`@ink/audio/microphone` exports `useLevelMeter`, `usePitchDetector` and `PitchIndicator`. `@ink/audio/recording` exports `useRecorder`.
+
+Each hook returns `ready`, `state` and commands that return promises. Wait for `ready` before enabling controls.
+
+Inside a recording component, create the recorder and an action to start it:
+
+```ts
+import { useAction } from "ink";
+import { useRecorder } from "@ink/audio/recording";
+
+const recorder = useRecorder();
+const start = useAction(() => recorder.start());
+```
+
+Call `start.run()` from a button after permission is granted and `recorder.ready` is true. Stop it from a separate action:
+
+```ts
+await recorder.stop();
+```
+
+For pitch analysis, use this hook inside your tuning component:
+
+```ts
+import { usePitchDetector } from "@ink/audio/microphone";
+
+const detector = usePitchDetector({ referenceHz: 440 });
+```
+
+Call its `start()` and `stop()` commands from actions, following the same permission and readiness checks.
+
+| Hook | Commands | State |
+| --- | --- | --- |
+| `useRecorder()` | `start()`, `stop()`, `cancel()`, `delete()` | Status, duration in milliseconds, error and the saved recording when available. |
+| `useLevelMeter()` | `start()`, `stop()` | Status, RMS, peak and error. These are signal levels, not calibrated sound-pressure measurements. |
+| `usePitchDetector({ referenceHz })` | `start()`, `stop()` | Status, frequency in Hz, note, octave, cents, confidence and error. Reference defaults to 440 Hz. |
+
+### Tuning indicator
+
+Pass `state.cents` to `PitchIndicator`, or `null` when no note is detected. Its 25-tick scale spans −50 to +50 cents: flat on the left, sharp on the right. Readings within ±5 cents settle on the taller centre tick. The indicator follows Ink’s colour scheme and is not interactive.
+
+### Saved recordings
+
+Recorder status is `idle`, `recording`, `stopping`, `ready` or `error`. Read the completed recording from state; `stop()` does not return it. The recording is a [FileRef](/files#one-file-representation) with a duration in milliseconds. Use its `src` with `usePlayer` or `fetch`.
+
+`cancel()` discards unfinished capture. `delete()` removes the current saved recording. Earlier recordings remain available: save their IDs and reopen them with `files.open(id)`. They survive screen changes and app restarts until removed with `files.remove(id)` or app data is cleared.
+
+### Leaving the app
+
+Pitch and level analysis pause in the background and resume when the app returns. Calling `stop()` or removing the hook prevents resumption. Recordings stop in the background and do not resume automatically. Removing a capture hook releases the microphone.
+
+Recording and analysis cannot use the microphone at the same time. Each import includes only its input engine: analysis omits recording and file storage; recording omits analysis. Playback alone includes neither engine nor microphone permission.
+
+## Providers and offline media
+
+Direct audio files and podcast URLs work with this player. Music services may require their own SDK or playback engine, especially for protected or offline content.
+
+Use [Downloads](/downloads) to save audio files. Reopen the file by ID before playback and handle missing files or expired provider access.

@@ -1,27 +1,13 @@
 ---
 title: "How Ink works"
-description: "TypeScript app behaviour, QuickJS-ng execution and retained native rendering."
+description: "How Ink builds and runs apps."
 ---
 
-Ink runs React in QuickJS-ng, with native layout and Vulkan rendering. The compiler checks TypeScript, bundles JavaScript, prepares assets and selects native integrations. For app development, start with [Create an app](/installation).
+Ink runs React and TypeScript apps on Android. QuickJS-ng runs the JavaScript; Rust handles layout, input and rendering through Vulkan.
 
-```text
-app/ pages + TypeScript + npm dependencies
-                    ↓
-       JavaScript bundle + assets
-                    ↓
-          QuickJS-ng + React
-                    ↕
-    batched UI changes and native calls
-                    ↕
-       Rust layout and retained UI
-                    ↓
-             Vulkan renderer
+## Building an app
 
-Android / LightOS ↔ native packages ↔ JavaScript
-```
-
-## A small app project
+Ink checks TypeScript, transforms JSX, bundles JavaScript and prepares assets. It reads package dependencies from `package.json` and Android settings from `ink.toml`.
 
 ```toml
 # ink.toml
@@ -34,61 +20,77 @@ version_code = 1
 enabled = true
 ```
 
-`package.json` and its lockfile describe JavaScript dependencies. `ink.toml` describes the installed Android app and explicit native integration. Pure JavaScript packages need no Ink-specific registration. The build reads versioned `ink-native.json` requirements from resolved package modules. Explicit app capabilities are additive.
+The APK contains JavaScript source, icons, assets and the required native modules. Apps with background tasks also get a separate worker bundle.
 
-## Build responsibilities
+Release builds load networking runtime code on first use. Set `INK_SPLIT_WEB=0` to disable this split for comparisons. General code splitting and downloading executable code after installation are not supported.
 
-The build resolves normal package exports, removes TypeScript types, compiles JSX, bundles reachable code and includes declared assets. It emits a UI bundle and, when configured, a worker bundle. Release builds also package web runtime code separately for loading on first use; `INK_SPLIT_WEB=0` disables that split for comparisons. General application code splitting and downloading executable code after installation are not supported.
+### Native modules
 
-Supported packages declare module requirements. One versioned capability catalogue supplies dependency closure, permissions and Android source groups to the compiler and Gradle. A general third-party native ABI/build extension contract remains separate. Native modules and required capability groups are linked together into the APK. Tree shaking can remove unused JavaScript; it cannot guarantee that one method can be extracted from an indivisible native SDK.
+Packages declare native requirements in `ink-native.json`. Ink combines these with capabilities configured by the app. A shared catalogue tells the compiler and Gradle which dependencies, permissions and Android sources to include.
 
-Apps ship bundled JavaScript, prepared icons, assets and native capability metadata. The build currently bundles JavaScript source for both development and release.
+Unused JavaScript can be removed from the bundle. Native SDKs may need to be included as a whole. Pure JavaScript packages need no Ink registration; third-party native modules do not yet have a general extension API.
 
-## Runtime responsibilities
+## Running an app
 
-The foreground app has one long-lived QuickJS-ng runtime on a dedicated JavaScript thread. Ink pumps promise jobs and native completions, hosts timers and networking, and schedules component updates. Native calls return promises instead of blocking that thread on I/O.
+React runs on a dedicated JavaScript thread. It manages app state and sends UI changes to Rust. Native API calls return promises so file and network operations do not block that thread.
 
-Rust owns the retained UI tree, layout, text measurement, hit testing, scrolling, image transforms and rendering. JavaScript supplies application state and component descriptions. Ink batches and applies completed React updates before rendering. When idle, it can present an update without waiting for a new display callback. Gestures and ongoing frames use Android's frame scheduler. Native scrolling can continue while JavaScript is busy, although new content, commands and UI state will wait for it.
+Rust measures text, positions components, handles gestures and draws the screen. It keeps the UI tree between updates and applies React changes in batches.
 
-Non-structural React commits patch changed native subtrees. Structural and navigation changes rebuild the tree; layout still recomputes. Lists mount a window of rows based on the native viewport, using cached content measurements and estimates. There is one List interface, without height hints or a separate fixed-height mode. Stable keys preserve the visible anchor; see [list behaviour](/lists#collections).
+```text
+React state changes
+        ↓
+Batched UI updates
+        ↓
+Rust layout and input handling
+        ↓
+Vulkan rendering
+```
 
-The renderer reuses prepared geometry between changes, including text that moves without changing its appearance or clipping. It combines adjacent draws of the same image while preserving image order.
+Scrolling continues natively while JavaScript is busy. New content and actions that need JavaScript must wait for it.
 
-The text and icon atlas starts at 1 MiB. When full, it clears cached entries and rebuilds the current scene, including texture coordinates. It grows to 4 MiB, then 16 MiB only if that scene needs more space. Scenes exceeding the limit report a rendering error. Images use a separate cache.
+### Updating the screen
 
-A visually idle app requests no rendering frames. This is not a promise of zero CPU usage: application timers, sockets, background work and media can still consume power.
+Changes to existing elements update the affected parts of the native tree. Structural and navigation changes rebuild the tree. Both recalculate layout.
 
-## Ownership
+Lists render rows around the visible area and measure their heights automatically. Stable keys keep the scroll position when rows change. See [Lists](/lists).
 
-| Owner | Examples | End of lifetime |
-| --- | --- | --- |
-| Component | Form state, actions, memoised calculations | Unmount |
-| Visible React screen | Resource observations and hook effects | Screen hidden or removed |
-| Foreground native controller | Camera, microphone, foreground location | Native controller lifecycle, including app backgrounding |
-| App runtime | Account module, shared in-memory store | Process/runtime disposal |
-| Native service | Detached audio | Explicit stop or Android termination |
-| Durable storage | Store preferences, queued jobs | Explicit deletion or app-data removal |
+The renderer reuses prepared text and image geometry. It combines adjacent draws of the same image without changing their order. When idle, it can display an update immediately; gestures and ongoing frames use Android’s frame scheduler.
 
-Hiding a route is different from putting the app in the background. Resource polling follows React subscriptions; app backgrounding alone does not unsubscribe them. Native controllers apply their own Android lifecycle rules.
+An unchanged screen requests no rendering frames. Timers, network connections and media can still use CPU and power.
 
-Hooks release native resources when their effects end. For explicit handles, call `close()` or unsubscribe. Garbage collection does not close a camera, socket or player. Reconnecting creates fresh handles; use saved IDs, not handles, to reopen durable resources.
+### Text and image caches
 
-Background jobs start a separate headless runtime with their registered worker entry point. They cannot share foreground globals. Native audio does not need a continuously running JavaScript loop. [Downloads](/downloads) uses persisted native jobs for HTTP file transfers. Android can stop work; storage and domain reconciliation provide recovery.
+Text and icons share a texture cache that starts at 1 MiB. When it fills, Ink clears cached entries and rebuilds the current scene. If the scene needs more space, the cache grows to 4 MiB, then 16 MiB. Exceeding that limit reports a rendering error. Images use a separate cache.
 
-## Package execution and trust
+## Leaving a screen
 
-JavaScript dependencies execute in the app's runtime and share its available host APIs. A package namespace is not a security sandbox. Native dependencies execute with the app's Android authority. A lockfile and build report make dependencies reproducible and inspectable; they do not make arbitrary third-party code safe.
+| Data or work | When it ends |
+| --- | --- |
+| Component state | Component unmounts. |
+| Screen effects and resource subscriptions | Screen is hidden or removed. |
+| Camera, microphone and foreground location | According to the module’s rules for hidden screens and app backgrounding. |
+| Shared JavaScript state | App runtime stops. |
+| Detached audio | Playback is stopped or Android terminates it. |
+| Saved settings and queued jobs | Data is deleted or app storage is cleared. |
 
-For hashing, use [`@noble/hashes`](https://github.com/paulmillr/noble-hashes) instead of an Ink crypto package. Secure credentials belong in [Secure store](/secure-store). JavaScript hashing does not provide Android Keystore-backed keys.
+Putting the app in the background does not unsubscribe its screen from resources. Native modules handle backgrounding separately; check the module’s page for its behaviour.
 
-## LightOS integration
+Hooks release native resources when their effects end. For handles opened directly, call `close()` or unsubscribe when finished. Garbage collection does not close cameras, sockets or players. Reopen saved files by ID; old connection handles cannot be reused.
 
-Ink adapts to available LightOS services, preferences and Android lifecycle. Host integration and distribution eligibility are separate contracts; see [LightOS](/light-sdk).
+## Background work
 
-## Performance
+[Background tasks](/background) run in separate JavaScript runtimes. They cannot access the foreground app’s variables or UI.
 
-Keep gestures and large media operations native. Batch updates, page large collections and avoid unnecessary polling.
+[Audio](/audio) and [Downloads](/downloads) run through native services and jobs without a continuous JavaScript loop. Android can stop them, so save the data needed to resume or retry.
 
-### LP3 runtime benchmark
+## Dependencies and permissions
 
-Use the [benchmark index](https://github.com/vandamd/ink/blob/main/benchmarks/README.md) for current app comparisons and the measurement limits.
+Packages share the app’s runtime, APIs and Android permissions. They are not isolated from each other. Review dependencies before adding them and keep the lockfile in version control.
+
+Use [Secure store](/secure-store) for credentials protected by Android Keystore. For JavaScript hashing, use [`@noble/hashes`](https://github.com/paulmillr/noble-hashes).
+
+[LightOS integration](/light-sdk) provides access to host services and preferences. Distribution approval is separate.
+
+## Benchmarks
+
+See the [benchmark results](https://github.com/vandamd/ink/blob/main/benchmarks/README.md) for app comparisons and measurement limits.

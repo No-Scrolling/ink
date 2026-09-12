@@ -22,7 +22,7 @@ export const syncMessages = defineTask({
 });
 ```
 
-`decodeAccountInput` is the app's decoder for `{ accountId: string }`. It receives unknown persisted input, including input queued by an older app version.
+Define `decodeAccountInput` to validate `{ accountId: string }`, including input saved by older app versions. `drainOutbox` is your message-sending function. Register the worker file in `ink.toml`:
 
 ```toml
 [background]
@@ -38,25 +38,60 @@ await syncMessages.enqueue({ accountId }, {
 });
 ```
 
-The build bundles registered task code and its dependencies into a headless entry. Enqueueing persists the task ID and JSON input; it does not serialise a function or capture foreground state.
+Ink bundles the worker separately from the UI. Scheduling saves the task ID and JSON input, not a function or the screen’s state.
 
 ## How tasks run
 
-Each invocation gets a fresh runtime, cancellation signal and decoded input. Open storage and account services there. Return `success`, `retry` with an optional requested delay, or `failed` with a stable reason. An uncaught exception is logged as a failure; the app must deliberately classify retryable failures.
+Each run starts a fresh JavaScript runtime with decoded input and a cancellation signal. Open storage and account services inside the worker.
 
-Android chooses when eligible jobs run. Periodic work has a minimum interval of 15 minutes and is inexact. Network and charging constraints narrow eligibility; they do not guarantee an execution time. A process may stop before recording completion, so delivery is at least once.
+Return `success`, `retry` with an optional delay, or `failed` with a reason. Uncaught exceptions are logged as failures; return `retry` for errors that should be tried again.
 
-A key identifies unique scheduled work: enqueueing the same key coalesces a pending request. If it is already running, a follow-up run is retained so newly queued data is not lost. Keys are not substitutes for idempotency at the remote service.
+Android chooses when tasks run. Periodic tasks have a minimum interval of 15 minutes. Network and charging constraints do not guarantee a start time. A task can run more than once if the process stops before saving completion.
+
+Scheduling the same `key` combines pending requests. If the task is already running, Ink keeps a follow-up run. The server must still handle repeated requests safely.
 
 Import `"@ink/network"` in worker modules that use web globals. Workers do not inherit imports or globals from the foreground app.
 
-Workers have a two-minute execution limit and accept at most 8 KiB of encoded input. Workers can use fetch (including response streams and multipart bodies), WebSocket, Store, task scheduling/state, notifications (schedule/cancel/status) and one-off location with an existing permission grant. Permission screens, UI controllers, camera, microphone and NFC are unavailable inside a worker. Each native call has its own timeout and is cancelled when the worker stops. Retry delays are minimum delays, not execution deadlines.
+### Limits and available APIs
+
+Workers run for up to two minutes and accept at most 8 KiB of encoded input. Retry delays set the earliest retry time, not a deadline.
+
+Workers can use:
+
+- `fetch`, including response streams and multipart uploads, and `WebSocket`.
+- Store and task scheduling or state.
+- Notification scheduling, cancellation and status.
+- One-off location reads with permission already granted.
+
+Permission prompts, UI controllers, camera, microphone and NFC are unavailable. Native calls have their own timeouts and are cancelled when the worker stops.
 
 ## Persist before scheduling
 
-Save an outgoing operation before scheduling its task. Recover unscheduled rows on app launch and later scheduled runs; a database commit and Android scheduling are not one transaction. Send with stable operation IDs, reconcile uncertain acknowledgements and delete or mark an entry only after acceptance.
+Save outgoing changes before scheduling a task. Recover any unscheduled changes when the app opens or a task runs: saving data and scheduling can fail separately.
 
-`cancel(key)` removes pending work and signals running work. Cancellation cannot reverse a completed remote write. `getJobs()` returns current scheduling information and the latest outcome for up to 256 task keys. `watchJobs({ signal })` observes changes without repeatedly querying from JavaScript:
+Give each operation a stable ID so the server can recognise retries. Mark it complete only after the server confirms acceptance.
+
+## Cancel and observe tasks
+
+Cancel using the key passed when scheduling:
+
+```ts
+import { cancel } from "@ink/background";
+
+await cancel(`messages.sync:${accountId}`);
+```
+
+Cancellation removes pending work and signals running work to stop. It cannot undo a completed server request.
+
+Read scheduling information and the latest outcome for up to 256 task keys:
+
+```ts
+import { getJobs } from "@ink/background";
+
+const jobs = await getJobs();
+```
+
+Provide a cancellation `signal` and an `updateJobs` handler to receive changes:
 
 ```ts
 import { watchJobs } from "@ink/background";
@@ -66,8 +101,10 @@ for await (const jobs of watchJobs({ signal })) {
 }
 ```
 
-States are `queued`, `running`, `retrying`, `succeeded`, `failed` or `cancelled`. `scheduled` and `periodic` describe pending Android work; a periodic task can have a successful last result and still be scheduled. The journal survives app restarts. Save your app’s progress and results in Store. Android can postpone or interrupt work, so a scheduled task has no promised start time.
+States are `queued`, `running`, `retrying`, `succeeded`, `failed` or `cancelled`. `scheduled` and `periodic` describe pending work, so a periodic task can be both successful and still scheduled.
 
-## Choose native services for continuous work
+Task history survives app restarts. Save your app’s progress and results in [Store](/store).
 
-Audio playback and downloads have specialised native lifecycles. A permanent JavaScript loop or interval is not a background service. Push can request reconciliation through [LightOS](/light-sdk) where supported, but handlers must validate the payload and tolerate duplicate delivery.
+## Continuous work
+
+Use [Audio](/audio) for playback and [Downloads](/downloads) for file transfers. A JavaScript loop cannot keep an app running in the background. [LightOS push](/light-sdk#background-push-tasks) can schedule a task; validate its payload and handle duplicate deliveries.

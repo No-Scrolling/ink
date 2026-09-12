@@ -1,38 +1,60 @@
 ---
 title: "Keyboard"
-description: "Focus, editing and spelling options."
+description: "Control focus, editing and spelling."
 ---
 
-See [Inputs](/text-input) for keyboard layouts and actions.
+See [Inputs](/text-input) for layouts, action keys and screenshots.
 
-## Focus and editing
+## Focus an input
 
-`autoFocus` focuses the input once per screen visit. Ink keeps the focused input visible. Header Back leaves the page and closes the keyboard; Android Back dismisses the keyboard first.
+`autoFocus` opens the keyboard once per screen visit:
 
-Update `value` synchronously in `onChange`. Debounce network requests, not input updates.
+```tsx
+<TextInput value={text} onChange={setText} autoFocus />
+```
 
-Long-press the input to show Copy, Paste and Clear. Copy copies all text; Paste inserts at the cursor. Single-line inputs replace pasted line breaks with spaces, and numeric inputs keep only digits. Long-press again to return to the keyboard. Ink reads the clipboard only when Paste is pressed.
+Ink keeps the cursor visible and preserves multiline scroll position unless it needs to reveal the cursor.
 
-Multiline editing preserves the scroll position unless it needs to reveal the cursor.
+Update `value` immediately in `onChange`. Delay network requests, not text updates.
+
+## Copy, paste and clear
+
+Long-press plain text for editing actions; long-press again to return.
+
+| Action | Behaviour |
+| --- | --- |
+| Copy | Copies all text. |
+| Paste | Inserts clipboard text at the cursor. |
+| Clear | Removes all text. |
+
+Single-line inputs replace pasted line breaks with spaces. Numeric inputs keep only digits. Ink reads the clipboard only when Paste is pressed.
 
 ## Spelling
 
-`spellCheck` underlines misspelt words with suggestions. Long-press an underlined word to show up to three replacements without moving the cursor.
+```tsx
+<TextInput value={text} onChange={setText} spellCheck autoCorrect />
+```
 
-`autoCorrect` corrects likely typos after a space or punctuation. Press Backspace immediately to undo a correction; Ink leaves that word alone for the rest of the editing session.
+`spellCheck` underlines misspelt words. Long-press an underlined word to see up to three suggestions without moving the cursor.
 
-Both default to false on `TextInput` and are enabled by `ConversationScreen`. Numeric inputs ignore them. They use the device’s enabled spellchecker and language settings, with no bundled dictionary. Typing still works when that service is unavailable.
+`autoCorrect` replaces likely typos after a space or punctuation. Press Backspace immediately to undo a correction. Ink then leaves that word unchanged for the rest of the editing session.
+
+Both options default to `false`. [Conversations](/conversations) enable them; numeric inputs ignore them. Suggestions use the phone’s spellchecker and language settings, with no bundled dictionary. If the service is unavailable, typing still works.
+
+## Close the keyboard
+
+The header Back button leaves the page and closes the keyboard. Android Back closes the keyboard first.
 
 ## Numpad-only apps
 
-Import `TextInput` from `ink/input/numeric` if the app only needs numbers. It always uses numeric mode and defaults to Done.
+For apps that only need numbers:
 
 ```tsx
 import { TextInput } from "ink/input/numeric";
 ```
 
-Release builds omit the letter layouts, emoji data and full-keyboard icons unless the regular `TextInput` or `ConversationScreen` is also imported.
+It always uses the numpad and defaults to Done. Release builds omit letter layouts, emoji data and full-keyboard icons unless the app also imports the regular `TextInput` or `ConversationScreen`.
 
 ## Prefix and suffix
 
-Prefixes and suffixes stay visible while text scrolls and are not part of the value. Tapping either focuses the input. Keep them short: each is limited to a third of the input width.
+[Prefixes and suffixes](/text-input) stay visible while text scrolls. They are excluded from the value. Tapping either focuses the input. Each is limited to a third of the input width.

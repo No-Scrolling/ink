@@ -1,9 +1,9 @@
 ---
 title: "LightOS"
-description: "Tool entry, host preferences and available system services."
+description: "Read LightOS preferences and use system services."
 ---
 
-Use `@ink/lightos` to read host preferences and permissions or open the LightOS dialler. Import ringtone and push features from their separate entry points. Dialler presentation is user-verified on the LP3; audible ringtones and production push still need device checks.
+Use `@ink/lightos` to read LightOS preferences, request permissions or open the dialler. Ringtones and push notifications use separate imports.
 
 Enable host integration in the app configuration:
 
@@ -12,11 +12,32 @@ Enable host integration in the app configuration:
 enabled = true
 ```
 
-The build registers the app's entry points and required host capabilities. Ink coordinates tool launch, navigation, lifecycle and native services. Integration is versioned; the installed host determines which optional operations are available.
+Ink registers the app and its required services. Available features depend on the installed LightOS version.
+
+## Permissions
+
+Use these methods when a feature requires permission from LightOS:
+
+```ts
+import { lightos } from "@ink/lightos";
+
+const permission = await lightos.requestPermission("microphone");
+```
+
+| Permission | Access |
+| --- | --- |
+| `camera` | Camera. |
+| `microphone` | Microphone. |
+| `location-approximate` | Approximate location. |
+| `location-precise` | Precise location. |
+
+Use `lightos.getPermission(name)` to check without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
+
+These methods require LightOS. To support devices without it, use the feature module’s permission methods, such as [Camera](/camera#permissions) or [Location](/location#permissions).
 
 ## Preferences and system actions
 
-`@ink/lightos` exposes `getVersion()`, `getPreferences()`, `getKeyboardOptions()`, `getPermission(name)`, `requestPermission(name)` and `openDialler({ phoneNumber })`. Ringtone and push bindings have separate package entry points.
+Read preferences or open the dialler with a user-selected phone number:
 
 ```ts
 import { lightos } from "@ink/lightos";
@@ -27,25 +48,43 @@ const keyboard = await lightos.getKeyboardOptions();
 await lightos.openDialler({ phoneNumber });
 ```
 
-The example assumes a user-selected phone number. Use host operations for the dialler and supported ringtone selection. Restricted services can return unavailable, denied or blocked-by-host outcomes. A local Android permission does not override host policy.
+Services can report unavailable, denied or blocked-by-host outcomes. Android permission does not override LightOS restrictions. A successful response means LightOS accepted the request; check the visible or audible result on your target phone.
 
-A successful response means the host accepted the request. Check visible and audible results on your target phone.
+Ink routes hardware keys to focus, navigation and active media. Avoid adding listeners that compete for the same keys.
 
-Hardware keys flow through focus, navigation and active media ownership. Avoid separate app listeners competing with the keyboard or media session for the same key.
+### Refresh preferences
 
-## Entry and recovery
+`getPreferences()` and `getKeyboardOptions()` return current values, not subscriptions. Read them again when returning to the app. Keyboard options include `emojis`, `displayVoice`, `enableKeyAnimation` and nullable `swipeEnabled`, which older hosts omit.
 
-Your app can open from the launcher, a link or a notification. Decode external route data and restore saved records on a cold launch. Handle missing or outdated destinations with a useful fallback screen.
+LightOS does not expose account details or a complete list of supported features. Check individual permissions and handle unavailable operations instead of relying on the version number.
 
-`getPreferences()` and `getKeyboardOptions()` read fresh host values. Keyboard options include `emojis`, `displayVoice`, `enableKeyAnimation` and nullable `swipeEnabled` (older hosts omit it). These are snapshots, not subscriptions; refresh them when returning to the app. The host does not expose an account snapshot or general capability discovery. Query individual permissions and handle unavailable operations instead of inferring support from its version.
+## Push notifications
 
-## Jobs, media and push
+`usePush()` from `@ink/lightos/push` provides registration state, a saved inbox and `register`, `retry`, `unregister`, `dismiss` and `clear` commands. It uses the configured LightOS UnifiedPush distributor, the service that delivers notifications to the phone.
 
-[Background jobs](/background) register named handlers and durable inputs. [Audio](/audio) keeps detached playback under a native media service and reconnects UI to existing state. Both must recover from Android termination.
+Inside your component, create the push controller and a registration action:
 
-`usePush()` from `@ink/lightos/push` exposes registration state, a persisted inbox, and `register`, `retry`, `unregister`, `dismiss` and `clear` commands. Registration uses the configured LightOS UnifiedPush distributor. `register(subscriptionBaseUrl, bearerToken?)` sends `PUT {subscriptionBaseUrl}/{installationId}` with `{ "endpoint": "…" }`; unregister sends `DELETE` to that URL. The subscription server must return a successful HTTP status. The template's loopback URL requires a local subscription server and an ADB reverse connection on port 18080.
+```ts
+import { useAction } from "ink";
+import { usePush } from "@ink/lightos/push";
 
-The current adapter accepts a versioned notification envelope:
+const push = usePush();
+const register = useAction(() => push.register("https://api.example.com/push"));
+```
+
+Use your subscription server’s URL. Call `register.run()` from a button once `push.ready` is true. Pass a bearer token as the second argument if your server requires authentication.
+
+Registration sends `PUT {subscriptionBaseUrl}/{installationId}` with `{ "endpoint": "…" }`. Your server must return a successful HTTP status.
+
+Unregister from a separate action:
+
+```ts
+await push.unregister();
+```
+
+This sends `DELETE` to the same URL.
+
+Send notifications in this format:
 
 ```json
 {
@@ -61,23 +100,17 @@ The current adapter accepts a versioned notification envelope:
 }
 ```
 
-Use `operation: "clear"` with an `id` and `groupKey` to remove a notification. New messages replace the same group; the final inbox state determines which notifications appear after a batch. Payloads are limited to 4 KiB and 16 events, with 64 inbox entries and 512 recent event IDs retained for deduplication. Notification taps consume the entry and open its optional route.
+Use `operation: "clear"` with an `id` and `groupKey` to remove a notification. New messages replace notifications in the same group. Ink applies the whole batch before showing the remaining notifications. Tapping one consumes its inbox entry and opens its optional route.
 
-`retry()` resumes a failed registration or pending unsubscribe. The requested operation survives app restarts.
+Each payload allows up to 4 KiB and 16 events. Ink keeps 64 inbox entries and 512 recent event IDs to recognise duplicates.
 
-Native receivers persist and present notifications. An optional registered background task can process the accepted delivery without opening the UI. Push may be duplicated, delayed or unavailable, so keep a durable sync strategy.
+`retry()` resumes failed registration or pending unsubscription. Both survive app restarts.
 
-## Development and distribution
-
-When switching devices, use `ink dev --device <serial>` to rebuild for the selected host. An APK configured for the emulator's host does not connect to LightOS on the LP3.
-
-`ink info` reports host integration requirements. A development APK can expose unavailable states on an emulator or device lacking the host service. Inspect actual capabilities on the LP3 rather than inferring them from an emulator.
-
-Installing an APK and qualifying for Light-approved distribution are separate processes. Distribution requirements and restricted service access must be agreed with Light; enabling this configuration does not confer approval.
+Ink saves and displays notifications natively. A [background task](#background-push-tasks) can process deliveries without opening the app. Push can be delayed, duplicated or unavailable, so also sync data independently.
 
 ## Background push tasks
 
-Define the handler in the existing worker entry and register it from the UI with `setPushTask(task)`. Enable the background capability and worker bundle as described in [Background](/background).
+Define a handler in your [worker file](/background) and register it from the UI with `setPushTask(task)`.
 
 ```ts
 // workers.ts
@@ -103,4 +136,16 @@ await setPushTask(processPush);
 await setPushTask(null);
 ```
 
-`reconcileInbox` is app code. Each accepted delivery contains new messages and cancelled group keys after native deduplication. Android schedules a persisted task in a fresh worker runtime; the handler has the same two-minute deadline, cancellation signal and native API access as other tasks. This is deferrable work, not an immediate callback or an always-running JavaScript process. Registration persists until cleared. Scheduling failures are logged without preventing native notification presentation; use regular synchronisation to recover missed work.
+`reconcileInbox` is your app’s function. It receives new messages and cancelled group keys after Ink removes duplicates.
+
+Android schedules the task in a new worker runtime with a two-minute limit, cancellation signal and worker APIs. The task may be delayed. Registration remains until cleared.
+
+Scheduling failures are logged but do not prevent notifications appearing. Regular syncing should recover missed work.
+
+## Device setup
+
+Use `ink dev --device <serial>` when switching devices. An APK built for the emulator’s LightOS host cannot connect to the LP3 host. `ink info` reports integration requirements. Missing host services report unavailable errors.
+
+The template’s push example requires a local subscription server and an ADB reverse connection on port 18080. Dialler presentation has been checked on the LP3; audible ringtones and production push still need device checks.
+
+Contact Light for distribution approval and access to restricted services. Enabling the integration does not grant either.

@@ -1,9 +1,9 @@
 ---
 title: "Files and media"
-description: "Choose attachments and use the same managed file throughout an app."
+description: "Choose, save and upload files."
 ---
 
-Use managed files to preview, store and upload attachments. Choose the import for the operation you need:
+Ink copies selected files into private app storage so you can reopen, display or upload them later.
 
 | Import | Provides |
 | --- | --- |
@@ -11,39 +11,73 @@ Use managed files to preview, store and upload attachments. Choose the import fo
 | `@ink/files/images` | Prepare images for display or upload. |
 | `@ink/files/media` | An Ink photo and video gallery with thumbnail display. |
 
-Basic file operations do not include image preparation or Ink’s image renderer. Import `Image` from `ink` to display images. The gallery includes thumbnail rendering without image preparation.
+Import `Image` from `ink` to display images. Basic file operations omit image rendering and preparation; the gallery includes thumbnail rendering only.
+
+## Permissions
+
+[MediaPicker](/media-picker) requests photo and video access when its page opens. There is no separate permission method to call.
+
+It requires full access for the selected media kind. Denied access offers a retry; blocked access offers app settings. Access to selected photos alone is not enough.
+
+Document picking with `files.pick()` uses Android’s file picker and does not need full photo-library access. Managed file operations do not request it either.
 
 ## Pick an attachment
 
-Use [Photo and video picker](/media-picker) for the gallery component and selection examples. It returns durable, app-owned files ready to store or upload.
+Use [MediaPicker](/media-picker) to choose photos and videos. It returns files stored by your app.
 
-For documents, `await files.pick({ types: ["application/pdf"] })` opens the platform picker and returns one durable `FileRef`, or `null` on cancellation. It owns the external activity round trip.
+Open Android’s document picker:
+
+```ts
+import { files } from "@ink/files";
+
+const file = await files.pick({ types: ["application/pdf"] });
+```
+
+The picker returns a saved `FileRef`, or `null` if cancelled, then returns to your app.
 
 ## One file representation
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Stable app-owned file identity. |
-| `src` | Ink-managed source for supported rendering and networking facilities. |
+| `id` | Stable ID used to reopen or remove the file. |
+| `src` | Source used to display, play or upload the file. |
 | `name` | Display name. |
 | `mimeType` | Content type. |
 | `size` | Byte length. |
 | `width`, `height` | Dimensions when available for images or video. |
 | `duration` | Duration in milliseconds when available for audio or video. |
 
-Accepted camera photos (`photo.file`), completed recordings and downloads use this representation. Camera results retain their earlier `uri` and `source` aliases for compatibility.
+Accepted camera photos (`photo.file`), completed recordings and downloads also return a `FileRef`. Camera results retain `uri` and `source` aliases for compatibility.
 
-Persist the file ID alongside app data. `files.open(id)` returns current metadata or `null` if removed; storage failures reject. Accepted files survive screen disposal and app restarts until explicitly removed or app data is cleared. No public temporary-file promotion step is required.
+## Reopen a file
 
-`files.remove(id)` deletes an app-owned file. The app owns retention: deleting one message should not remove a file referenced elsewhere. Failed operations clean up their partial files.
+Save the ID with your app’s data, then use that saved `fileId` to reopen it:
 
-A successful native import makes the file durable. Cancellation before that success cleans up the copy; later cancellation does not revoke ownership. As with document picking, process death between native success and the app recording the returned ID can leave an app-owned file without an app record. Import and app-data persistence are not one transaction.
+```ts
+import { files } from "@ink/files";
+
+const file = await files.open(fileId);
+```
+
+The result is the current file metadata, or `null` if removed. Storage failures reject. Files survive screen changes and app restarts until removed or app data is cleared.
+
+## Remove a file
+
+Check that no other records need the file, then remove it by its saved ID:
+
+```ts
+await files.remove(fileId);
+```
+
+Failed operations remove their partial files.
+
+Cancelling an import removes an unfinished copy, but not a completed file. Saving a file and recording its ID are separate operations: if the app stops between them, the file can remain without a matching app record.
 
 ## Preview, prepare and upload
 
-`Image` and audio playback accept appropriate file `src` values. Media bytes stay native during display. Picking a video does not provide video playback.
+Pass `src` to `Image` or the audio player. Displaying media does not copy the file into JavaScript memory. Video playback is not supported.
 
-`prepareImage` returns a new managed image with orientation applied and dimensions bounded while retaining aspect ratio. The original remains intact. Prepared output omits location metadata.
+`prepareImage` creates a resized copy, corrects its orientation and removes location metadata. The aspect ratio and original file stay unchanged.
 
 ```ts
 import { prepareImage } from "@ink/files/images";
@@ -51,12 +85,48 @@ import { prepareImage } from "@ink/files/images";
 const smaller = await prepareImage(file, { maxWidth: 1024, maxHeight: 1024 });
 ```
 
-Import `"@ink/network"` before using `fetch`, `Blob` or `FormData`. `fetch(file.src)` reads the local file as a native-backed response. Its `blob()` can be used as a request body or appended to `FormData` without copying the complete file into the JavaScript heap. Native upload preparation copies attachment ranges into an upload spool, preserving multipart boundaries and replay after redirects. Explicit `text()` and `arrayBuffer()` calls materialise bytes; use `body` for incremental reading. Apps supply endpoints, authentication and upload state.
+### Upload files
 
-`files.save(file)` lets the user save an external copy. `files.share(file)` opens an external share destination with temporary Android access grants. Cancellation leaves the original intact.
+Upload a selected or reopened file to your endpoint:
 
-The template's Files and media screen keeps attachment IDs in a store, reopens them after a restart, previews images and prepares a smaller copy. Its upload action uses the [local account and transfer fixture](https://github.com/vandamd/ink/blob/main/examples/light-template/scripts/auth-server.md): run `node examples/light-template/scripts/auth-server.mjs`, then use a debug Android emulator build. The example uploads multipart data to `http://10.0.2.2:8788/upload`. Save and share open Android interfaces from explicit button actions.
+```ts
+import "@ink/network";
+import type { FileRef } from "@ink/files";
 
-## Scope
+export async function uploadFile(file: FileRef, uploadUrl: string) {
+  const local = await fetch(file.src);
+  const form = new FormData();
+  form.append("file", await local.blob(), file.name);
+
+  const response = await fetch(uploadUrl, { method: "POST", body: form });
+  if (!response.ok) throw new Error(`Upload failed (${response.status})`);
+}
+```
+
+Add authentication if your endpoint requires it. Ink prepares the upload natively without copying the whole file into JavaScript memory.
+
+`text()` and `arrayBuffer()` read file contents into JavaScript memory. Use `body` to read in chunks. See [Network](/network) for upload examples and limits. Use your server’s upload endpoint and authentication.
+
+## Save or share a copy
+
+For a selected or reopened `file`, save an external copy:
+
+```ts
+await files.save(file);
+```
+
+Or open Android’s share interface:
+
+```ts
+await files.share(file);
+```
+
+Sharing grants temporary access to the file. Cancelling either action leaves the original unchanged.
+
+### Template upload server
+
+The template’s upload example requires a debug emulator build and the [local transfer server](https://github.com/vandamd/ink/blob/main/examples/light-template/scripts/auth-server.md). Start it with `node examples/light-template/scripts/auth-server.mjs`. The example uploads to `http://10.0.2.2:8788/upload`.
+
+## Limitations
 
 Arbitrary filesystem paths, document reading, general image editing and video playback are not supported. Use [Downloads](/downloads) for files that should keep downloading after a screen closes.

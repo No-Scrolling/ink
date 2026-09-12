@@ -1,0 +1,54 @@
+---
+title: "Connectivity"
+description: "Read and watch the device’s network connection."
+---
+
+Use `@ink/network/connectivity` to check whether the device is online.
+
+<p>The preview places this component inside <code>Screen title="Connection"</code>.</p>
+
+<div className="pattern-example">
+<div>
+
+```tsx
+import { Text, useSnapshot } from "ink";
+import { connectivity } from "@ink/network/connectivity";
+
+export function ConnectionNotice() {
+  const connection = useSnapshot(connectivity);
+  return connection.status === "ready" && connection.data.status === "offline"
+    ? <Text>Offline · showing saved content</Text>
+    : null;
+}
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/connectivity-offline.png" alt="An offline connection notice." width="1080" height="1240" />
+</div>
+</div>
+
+The snapshot is `loading`, `ready` or `error`. Ready data includes:
+
+- `status`: `unknown`, `offline` or `connected`.
+- The connection type and whether it is metered, when available.
+
+Ink watches connection changes while the screen is visible and refreshes when it returns.
+
+## Check once
+
+Read the current connection in a worker or command:
+
+```ts
+import { connectivity } from "@ink/network/connectivity";
+
+const connection = await connectivity.get();
+```
+
+## Connection does not guarantee access
+
+Handle request errors even when connected. Wi-Fi may need a sign-in, a server may be unavailable or an account may have expired.
+
+Use metered state for download preferences. Set network constraints on [downloads](/downloads) or [background tasks](/background) themselves: the connection can change after you check it.
+
+Share retry handling across screens to avoid duplicate requests.

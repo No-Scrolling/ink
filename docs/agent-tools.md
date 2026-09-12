@@ -5,7 +5,7 @@ description: "Run experiments, benchmarks and device tasks with the repository t
 
 Use `scripts/agent-tools` to build experiments, run benchmarks, reserve devices and inspect images or memory. Run `scripts/agent-tools --help` for commands. The wrapper uses uv and Pillow; OCR uses Apple Vision on macOS or an installed Tesseract elsewhere. Builds use the usual Ink Android toolchain.
 
-Operations return compact JSON summaries by default, including key results and an evidence directory when finished. Synchronous commands emit one final response; `--background` returns only a queued ID immediately. Full evidence stays on disk. Use these commands to resume inspection from another shell or agent:
+Operations return JSON summaries with results and an evidence directory. Synchronous commands return when finished; `--background` returns a queued ID immediately. Read saved results from another shell or agent:
 
 ```sh
 scripts/agent-tools list
@@ -20,7 +20,7 @@ scripts/agent-tools clean OPERATION_ID
 
 `status.json` records progress and completion or failure. `events.jsonl` and `operation.log` retain progress history. `clean` removes only the isolated build workspace after an operation has finished; it retains APKs, hashes, reports and other evidence. Cancellation terminates the worker's process group and attempts device cleanup. If a worker is killed forcibly or a device disconnects, its reservation remains available for explicit recovery.
 
-Results default to the ignored `.agent-tools/` directory. Set `INK_AGENT_TOOLS_DIR` to use another absolute location. These files are local working evidence, not published benchmark results; copy selected reports into `benchmarks/results/` when appropriate.
+Results default to the ignored `.agent-tools/` directory. Set `INK_AGENT_TOOLS_DIR` to use another absolute path. Copy reports intended for publication into `benchmarks/results/`.
 
 ## Isolated builds
 
@@ -35,9 +35,9 @@ Record the returned baseline and candidate IDs. `--ref` resolves an existing com
 
 Dependencies are installed from `bun.lock`; builds use a shared Cargo cache in the repository's `target/` directory. Each app has its own snapshot build directories. Experiment APKs are copied out, made read-only, and identified by SHA-256 in `manifest.json`. Every installation verifies the hash again. Source workspaces may be removed without losing the APKs.
 
-Experiments use a shared, generated **development signing key**, not production signing credentials. The generated key is cached locally so baseline and candidate APKs can replace each other. The use of development signing and tool versions are recorded in the manifest. Do not distribute these APKs as production releases.
+Experiments use a shared **development signing key**, cached locally so baseline and candidate APKs can replace each other. The manifest records the signing mode and tool versions. Do not distribute these APKs as production releases.
 
-Only explicitly supplied Ink feature flags are inherited:
+Pass feature flags with `--env`:
 
 ```sh
 scripts/agent-tools experiment --working-tree --app benchmarks/apps/ink-counter \
@@ -46,7 +46,7 @@ scripts/agent-tools experiment --working-tree --app benchmarks/apps/ink-counter 
   --env INK_MEMORY_DIAGNOSTICS=1 --background
 ```
 
-The supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1`, `INK_PRESENTATION_TIMING=0|1` and `INK_MEMORY_DIAGNOSTICS=0|1`. Instrumented builds perform extra accounting and logging: use them for diagnosis, and compare ordinary release builds for production memory and performance.
+Supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1`, `INK_PRESENTATION_TIMING=0|1` and `INK_MEMORY_DIAGNOSTICS=0|1`. Only supplied flags are inherited. Instrumentation adds logging and measurement overhead; use release builds without it for production memory and performance comparisons.
 
 `INK_PRESENTATION_TIMING=1` includes benchmark instrumentation and enables driver presentation timestamps where `VK_GOOGLE_display_timing` is supported. Logs connect native input handling, React scene revisions and presentation IDs to actual display times. Timing feedback arrives on later frames; allow extra interactions to collect the final measured frames. This measures software response, not touch sensing or physical panel response. Use ordinary `INK_BENCHMARK=1` builds for CPU profiling because presentation timing can add driver overhead. The `submit_present_ns` field measures combined submission and presentation wall time; scheduler traces separate CPU work from waiting.
 
@@ -62,7 +62,7 @@ scripts/agent-tools bench --baseline BASELINE_ID --candidate CANDIDATE_ID \
 
 Run device operations sequentially: a second benchmark cannot take an already reserved device. Counter and scroll presets use LP3 interaction coordinates on a 1080×1240 display. Counter performs 100 taps. The renderer fixture at `benchmarks/apps/ink-scroll` opens into 500 virtualised rows with shared artwork. Scroll performs six swipes each way, then a separate five-second drag. `--scenario idle` omits interaction and works with other display sizes and apps. The tool does not change or virtualise the fixtures; inspect the source manifests to establish fixture equivalence. Finish builds before measuring emulator performance to avoid competing with the emulator for host resources.
 
-Baseline/candidate order alternates each round. Each APK starts in a fresh process and settles for two seconds. Samples require the expected foreground app, thermal status 0 and no reported Ink/Android runtime errors. Foreground changes, process restarts during interaction and missing frame evidence fail the operation rather than producing a successful comparison. Earlier accepted samples remain on disk.
+Baseline/candidate order alternates each round. Each APK starts in a fresh process and settles for two seconds. Samples require the expected foreground app, thermal status 0 and no Ink/Android runtime errors. Foreground changes, process restarts during interaction or missing frame evidence fail the operation. Earlier accepted samples remain on disk.
 
 `result.json` separates idle PSS/RSS from post-interaction memory, CPU and frame timings. Raw launches, meminfo, frame histograms, error logs and screenshots sit alongside it. `report.md` summarises idle medians, ranges and the difference. Fewer than three rounds, overlapping ranges or differences below 0.25 MiB are labelled inconclusive. This is a conservative heuristic, not a statistical significance test. PSS is not peak memory, and counter presentation gaps include input-command delays.
 
@@ -90,7 +90,7 @@ scripts/agent-tools image /absolute/path/before.png \
   --compare /absolute/path/after.png --region 0,20,1080,90 --threshold 0 --ocr
 ```
 
-The region is `x,y,width,height`. Images must have matching dimensions; comparison never silently resizes them. Results include file hashes, bright/coloured pixel counts, mean colours, changed pixel count and bounding box, plus OCR text and confidence on macOS. `crop.png` preserves the inspected region and `diff.png` marks changed pixels white. The threshold ignores channel differences at or below the chosen 0–255 value. Review the image as well as the numbers. OCR can miss or misread text.
+The region is `x,y,width,height`. Images must have matching dimensions; comparison does not resize them. Results include file hashes, bright/coloured pixel counts, mean colours, changed pixel count and bounding box, plus OCR text and confidence on macOS. `crop.png` contains the inspected region and `diff.png` marks changed pixels white. The threshold ignores channel differences at or below the chosen 0–255 value. Check the image too: OCR can miss or misread text.
 
 ## Inspect memory
 

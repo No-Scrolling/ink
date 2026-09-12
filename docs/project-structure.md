@@ -28,5 +28,3 @@ my-app/
 Use optional `components/`, `lib/` and `assets/` folders for reusable components, data helpers and images. Keep non-page files outside `app/`.
 
 Ink generates the app entry point. Add `app/_layout.tsx` when pages need shared state or tabs; see [layouts](/navigation#layouts).
-
-**Next:** [development](/development).

@@ -3,7 +3,11 @@ title: "NFC"
 description: "Read supported tags through native sessions."
 ---
 
-Use `@ink/nfc` to read NDEF tags, exchange raw ISO-DEP or NfcA commands, or emulate an app-defined card. Tag writing is not supported.
+Use `@ink/nfc` to read tags, send raw commands or emulate a card. Tag writing is not supported.
+
+## Read a tag
+
+`nfc.read()` reads NFC Data Exchange Format (NDEF) records:
 
 ```ts
 import { nfc } from "@ink/nfc";
@@ -13,11 +17,11 @@ const shortcut = decodeShortcut(tag.records);
 await openShortcut(shortcut);
 ```
 
-This fragment assumes a cancellation signal and app-specific validation/navigation functions. Reading waits for a tag while the app is foregrounded. Cancellation, timeout, disabled NFC and unsupported tags are distinct outcomes.
+Supply a cancellation `signal`, a `decodeShortcut` validator and an `openShortcut` handler. Reading waits for a tag while the app is visible. Handle cancellation, timeout, disabled NFC and unsupported tags separately.
 
-Inspect record types and validate payloads before acting. A tag URL does not authorise opening an arbitrary destination automatically. Tag identifiers are useful lookup hints, not proof of identity.
+Validate records before using them. Let the user review a tag’s URL before opening it. Tag IDs are not proof of identity.
 
-Sessions release on leaving the screen or backgrounding. Reading NDEF does not require a raw connection or card emulation.
+Sessions close when leaving the screen or entering the background. Reading NDEF requires neither a raw connection nor card emulation.
 
 ## Raw connections
 
@@ -31,9 +35,13 @@ try {
 }
 ```
 
-`iso-dep` and `nfc-a` expose native exchanges as `Uint8Array` values. The result identifies the technology, serial number and maximum command length. Only one raw connection or NDEF reader can own the radio at a time. Exchanges are serial, with a timeout of up to ten seconds and a 64 KiB response limit. Cancelling a pending operation or backgrounding the app closes its connection. The connection signal covers discovery; close the returned connection in your screen's cleanup as well.
+Use `iso-dep` or `nfc-a` to exchange `Uint8Array` commands and responses. The connection reports its technology, serial number and maximum command length. Supply `commandBytes` using the tag’s protocol.
 
-Decode raw responses using the tag’s protocol. Support for a technology does not cover every application that uses it.
+Only one raw connection or NDEF reader can run at a time. Commands run in order, with a timeout of up to ten seconds and a 64 KiB response limit.
+
+The signal passed to `connect()` cancels discovery. Close the returned connection when leaving the screen. Cancelling an exchange or backgrounding the app also closes it.
+
+Decode responses using the tag’s protocol; NFC technology support alone does not decode application data.
 
 ## Card emulation
 
@@ -45,10 +53,30 @@ await nfc.emulate({
 });
 ```
 
-The template’s Enable Demo Card action uses this example: selecting the app-defined AID `F000000001` returns `9000` (success), and other commands return `6D00` (unsupported). Disable Demo Card removes the registration. It does not write a tag.
+This example registers application identifier (AID) `F000000001`. The listed command returns `9000` (success); other commands return `6D00` (unsupported).
 
-Register explicit hexadecimal AIDs in Android's `other` category. Exact command/response rules execute natively, including when the app UI is absent. Registration and responses persist until `await nfc.stopEmulation()`. This is host card emulation for an app protocol, without payment or secure-element integration; the device must support HCE and be unlocked.
+AIDs are hexadecimal values registered in Android’s `other` category. Static responses work without the app screen open. To remove the registration:
 
-For dynamic foreground responses, run `nfc.handleApdu(async command => responseBytes, { signal })` after registration. It receives command bytes and returns response bytes, including the status word. The native service waits up to `deadline` milliseconds (default 500, range 50–2000), then uses the matching static response or fallback. Late responses are discarded. A reader may impose a shorter deadline. Backgrounding or aborting the handler restores native fallback behaviour; it does not remove the registered AIDs. A JavaScript handler must finish promptly and should avoid network requests.
+```ts
+await nfc.stopEmulation();
+```
 
-Rules are limited to 256 entries; commands and responses to 4096 bytes; registrations to 32 AIDs. One JavaScript handler can run at a time.
+The device must support host card emulation (HCE) and be unlocked. Payment and secure-element integration are not supported.
+
+### Dynamic responses
+
+After registration, handle commands while the app is visible. Supply your protocol’s `respondToCommand` function and a cancellation `signal`:
+
+```ts
+await nfc.handleApdu(async command => {
+  return respondToCommand(command);
+}, { signal });
+```
+
+Return response bytes including the status word.
+
+`deadline` defaults to 500 milliseconds and accepts 50–2,000. If the handler misses it, Ink uses the static response or fallback and discards the late response. Readers may require a faster response, so avoid network requests in the handler.
+
+Backgrounding or aborting the handler restores static responses without removing the AIDs.
+
+Limits are 256 rules, 4,096 bytes per command or response, and 32 registered AIDs. Only one JavaScript handler can run at a time.

@@ -5,7 +5,31 @@ description: "Read a location or subscribe to updates."
 
 Use `@ink/location` for a single position, live updates or background tracking. It does not require Google Play Services.
 
-Request a single position for weather or nearby departures:
+## Permissions
+
+Request location access before reading a position or starting a watch.
+
+```ts
+import { location } from "@ink/location";
+
+const permission = await location.requestPermission();
+```
+
+Use `location.getPermission()` to check access without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
+
+Both methods accept `"balanced"` (the default) for approximate access or `"high"` for precise access. Match this to the accuracy used by your location request.
+
+For precise access:
+
+```ts
+const permission = await location.requestPermission("high");
+```
+
+`requestTrackingPermission(accuracy)` requests location and notification access for [background tracking](#background-tracking). It returns the same permission statuses.
+
+## Read a position
+
+`location.current()` returns one position:
 
 ```ts
 import { location } from "@ink/location";
@@ -21,9 +45,13 @@ if (permission === "granted") {
 }
 ```
 
-`selectNearbyPlace` is your app’s function. A fix includes timestamp, accuracy in metres and coordinates. Check age and accuracy before using it; a cached coarse fix may be sufficient for a forecast but unsuitable for turn guidance.
+`selectNearbyPlace` is your app’s function. A location result includes coordinates, a timestamp and accuracy in metres. A cached approximate position may suit a forecast but not navigation.
 
-`location.current({ signal })` accepts cancellation. A watch uses a native listener and yields fresh fixes:
+Pass `signal` to cancel a pending read.
+
+## Watch position changes
+
+`location.watch()` provides positions as they arrive. `updatePosition` handles them in your app:
 
 ```ts
 const controller = new AbortController();
@@ -37,13 +65,24 @@ for await (const fix of location.watch({
 }
 ```
 
-`interval` is the requested minimum interval in milliseconds (1,000–3,600,000); `distance` is the minimum distance in metres (0–100,000). The provider may deliver less frequently. Breaking the loop releases the listener. Abort the controller when leaving the screen or stopping a pending read. Ordinary watches pause when the app loses the foreground and resume when it returns; they do not create a background service. A slow consumer receives the latest fix, without an unbounded queue. Up to 16 watches can be active.
+| Option | Meaning | Range |
+| --- | --- | --- |
+| `interval` | Requested minimum interval in milliseconds. | 1,000–3,600,000 |
+| `distance` | Minimum distance in metres. | 0–100,000 |
 
-Balanced requests prefer Android's built-in fused provider when available and otherwise use its network provider. This does not require Google Play Services. High-accuracy requests retain the GPS/network path.
+Updates may arrive less frequently. If your app processes them slowly, it receives the latest position rather than a growing queue. Up to 16 watches can be active.
 
-Location permission uses the LightOS prompt on the phone and Android's native prompt on the emulator. Denied permission, disabled location services, timeout and unavailable providers are separate states. A manual saved-place choice is a useful fallback for weather and transit apps.
+Break the loop or abort its signal to stop watching. Clean up when leaving the screen. Watches pause when the app enters the background and resume when it returns.
 
-To continue tracking while the app is in the background, start the native tracking service from an explicit action while the app is visible:
+### Availability and accuracy
+
+Balanced requests use Android’s fused location provider when available, otherwise its network provider. High-accuracy requests use GPS and network providers.
+
+Permission uses the LightOS prompt on the phone and Android’s prompt on the emulator. Handle denied permission, disabled location services, timeouts and unavailable providers separately. Offer a manual location choice when appropriate.
+
+## Background tracking
+
+To keep tracking in the background, start tracking from a user action while the app is visible:
 
 ```ts
 if (await location.requestTrackingPermission() === "granted") {
@@ -52,9 +91,16 @@ if (await location.requestTrackingPermission() === "granted") {
 
 const tracking = await location.getTracking();
 // { running, fix, error } — fix is the latest recorded position, or null.
+```
+
+Stop tracking from a separate action:
+
+```ts
 await location.stopTracking();
 ```
 
-Tracking requires location and notification permission. It presents an ongoing notification with a Stop action and continues independently of the screen. It does not automatically restart after process death or reboot, or start while the app is hidden. `getTracking()` retains the last recorded fix after stopping; check its timestamp before using it. Tracking stores one latest fix, not a journey history. A screen watch does not turn into a tracking service when its screen disappears.
+Tracking requires location and notification permission. It shows an ongoing notification with a **Stop** action and continues after leaving the screen. It cannot start while the app is hidden and does not restart after process death or reboot.
 
-Geocoding and place search belong to a chosen provider, not the raw location API.
+`getTracking()` keeps the latest position after tracking stops. Check its timestamp before use. Ink does not save a journey history. Ordinary watches do not automatically become background tracking.
+
+Use a separate provider to search places or convert coordinates into addresses.

@@ -3,7 +3,7 @@ title: "Secure store"
 description: "Store credentials with Android Keystore protection."
 ---
 
-`@ink/secure-store` persists small secret strings with native encryption and Android Keystore-backed key protection. Use it for refresh tokens, provider credentials and account secrets.
+Use `@ink/secure-store` for small secret strings, such as tokens and credentials. Ink encrypts them with keys protected by Android Keystore.
 
 For standard OAuth sign-in, use [Auth](/auth), which stores and refreshes tokens for you.
 
@@ -11,12 +11,26 @@ For standard OAuth sign-in, use [Auth](/auth), which stores and refreshes tokens
 import { secureStore } from "@ink/secure-store";
 
 await secureStore.set("account.work.refresh-token", refreshToken);
+```
+
+Read the saved token:
+
+```ts
 const savedToken = await secureStore.get("account.work.refresh-token");
+```
+
+`get()` returns a string, or `null` if the key is missing. Unavailable storage, invalidated encryption keys and write failures reject. A failed read does not mean the user is signed out.
+
+Remove it on sign-out:
+
+```ts
 await secureStore.remove("account.work.refresh-token");
 ```
 
-`get()` returns `string | null`. Operations reject on unavailable storage, invalidated keys or write failures. A failed read is different from a missing value; do not quietly sign a user out on every storage error.
+## Protect credentials
 
-Secrets can be read by JavaScript when a provider library needs them. Encryption protects persisted data; it does not isolate a secret from dependencies running in the same app. Avoid placing tokens in component state, routes, analytics or logs.
+JavaScript and dependencies in the same app can read these values. Encryption protects saved data; it does not isolate secrets from your app’s code. Keep tokens out of component state, routes, analytics and logs.
 
-Namespace values by account and delete them on sign-out. Native key invalidation or device transfer can require reauthentication. Encrypted values are excluded from portable backups; custom backup and recovery schemes are outside this scope. Store public account metadata separately so an expired session can still show the account name.
+Use separate keys for each account and remove them on sign-out. Invalidated encryption keys or a device transfer can require signing in again. Encrypted values are excluded from portable backups; custom backup and recovery are not supported.
+
+Store public account details separately so you can still display the account name after a session expires.

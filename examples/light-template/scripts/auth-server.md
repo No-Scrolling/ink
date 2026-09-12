@@ -4,7 +4,7 @@ Use this server to try sign-in, downloads and uploads without production credent
 
 ## Start the server
 
-From the repository root, run:
+From the repository root:
 
 ```sh
 node examples/light-template/scripts/auth-server.mjs

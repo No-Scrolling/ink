@@ -4,7 +4,7 @@ The current comparison uses three counter apps: Ink, Expo (light-template) and L
 
 ## Recorded results
 
-The [counter LP3 comparison](results/matching-counter-lp3-2026-09-08.md) supplies the README figures. It includes build and runtime samples, screenshots and device cleanup checks.
+The [counter LP3 comparison](results/matching-counter-lp3-2026-09-08.md) contains the README measurements. It includes build and runtime samples, screenshots and device cleanup checks.
 
 ## Run the Ink counter
 

@@ -1,0 +1,106 @@
+---
+title: "Camera"
+description: "Preview and capture photos."
+---
+
+Use `@ink/camera` to capture photos with the front or rear camera.
+
+## Permissions
+
+Request camera access before opening the preview.
+
+```ts
+import { camera } from "@ink/camera";
+
+const permission = await camera.requestPermission();
+```
+
+Use `camera.getPermission()` to check access without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
+
+## Capture a photo
+
+<div className="pattern-example">
+<div>
+
+```tsx
+import { Screen } from "ink";
+import { CameraPreview, useCamera } from "@ink/camera";
+
+export function Capture() {
+  const camera = useCamera({ facing: "back" });
+  return (
+    <Screen title="Photo">
+      <CameraPreview controller={camera} />
+    </Screen>
+  );
+}
+```
+
+</div>
+<div className="pattern-preview">
+<Tabs>
+<Tab title="Camera">
+<img src="/images/patterns/camera-preview.png" alt="The camera preview in the emulator." width="1080" height="1240" />
+</Tab>
+<Tab title="Review">
+<img src="/images/patterns/camera-review.png" alt="A captured photo with Retake and Use photo actions." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+`useCamera` opens the camera after React commits the visible screen. It does not request permission; handle that before opening the preview.
+
+Tapping the preview captures a photo. `CameraPreview` provides the capture flash and review actions. The flash uses the current theme colour: black in dark mode or white in light mode.
+
+The review shows the full frame at screen resolution while Ink saves the full-resolution JPEG. While `camera.state.saving` is `true`, **Use photo** is disabled and labelled **Saving photo**. **Retake** remains available. Finishing the save does not replace the review image.
+
+## Save the result
+
+After acceptance, `camera.state.value` contains `source`, `width`, `height`, `mimeType`, `capturedAt` and a [FileRef](/files#one-file-representation) in `file`.
+
+Accepted photos stay in private app storage across screen changes and app restarts. Save `photo.file.id` with your app’s data. Remove the photo with `files.remove(photo.file.id)` from `@ink/files`. Unaccepted photos are temporary and are removed when the session closes.
+
+The earlier `uri`, `source` and `camera.removePhoto` APIs remain available for compatibility.
+
+## Custom capture controls
+
+With the `camera` from the capture example, start capture from an action:
+
+```ts
+await camera.capture();
+```
+
+This requires a mounted preview and a ready controller. The promise resolves when the camera accepts the command, before the user accepts the photo.
+
+In a custom **Use photo** action:
+
+```ts
+if (camera.state.reviewSource && !camera.state.saving) {
+  await camera.accept();
+}
+```
+
+For **Retake**:
+
+```ts
+await camera.retake();
+```
+
+Disable acceptance until `reviewSource` exists and `saving` is false. `reviewSource` is temporary; read `state.value` for the accepted photo.
+
+## Camera availability
+
+To use the front camera, change the hook in your component:
+
+```ts
+const camera = useCamera({ facing: "front" });
+```
+
+Missing hardware reports an unavailable error; Ink does not substitute another camera.
+
+The component releases the camera when covered by another screen or when the app enters the background. It reopens when visible again. Interrupted capture either rejects or completes for the original request; it cannot update a replacement screen.
+
+Handle permission denial, camera-in-use errors and unavailable hardware separately.
+
+Use [Barcode](/barcode) to scan codes or [MediaPicker](/media-picker) to choose existing photos. `@ink/camera` does not include the barcode scanner.

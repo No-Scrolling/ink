@@ -3,7 +3,7 @@ title: "Request a permission"
 description: "Request access when a feature opens."
 ---
 
-Request access when someone opens the feature that needs it. A tuner asks on its first screen; a camera asks when opened. Do not add a separate permission button.
+Request permission when the user opens the feature that needs it. Do not add a separate permission button.
 
 ## Request access
 
@@ -31,4 +31,4 @@ Use [ErrorState](/screen-states#error) for a failure that prevents the screen fr
 const permission = await microphone.getPermission();
 ```
 
-[Camera](/camera) and [Location](/location) provide their own permission methods. Permission grants access; it does not start a sensor or recording.
+[Camera](/camera) and [Location](/location) also provide permission methods. After permission is granted, start the sensor or recording separately.

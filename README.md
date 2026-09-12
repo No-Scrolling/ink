@@ -50,9 +50,10 @@ bun install
 ./scripts/ink -C examples/light-template dev
 ```
 
-For a small app example, see [Tuner](examples/tuner), a chromatic tuner with adjustable reference pitch and sharp or flat note names.
+- [Tuner](examples/tuner): microphone input, adjustable reference pitch and sharp or flat note names.
+- [Weather](examples/weather): file-based navigation, tabs and settings.
 
-For file-based navigation, tabs and settings, see [Weather](examples/weather).
+Commands:
 
 - `ink create <directory>` creates an app outside the repository using the selected local SDK.
 - `ink check` checks TypeScript and bundles an app.

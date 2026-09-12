@@ -3,9 +3,9 @@ title: "Network"
 description: "Use fetch with native HTTP transport."
 ---
 
-Ink supports fetch, response streams, Blob, File, FormData, multipart uploads and WebSocket. Public WSS and transport limits still need broader verification.
+Use `@ink/network` for `fetch`, response streams, `Blob`, `File`, `FormData` and `WebSocket`.
 
-Add `@ink/network` to your app’s dependencies and import it in modules that use `fetch`, `WebSocket` or related web globals. The import includes the native transport automatically.
+Add the package to your dependencies and import it wherever you use these APIs. It includes the native network transport.
 
 ```ts
 import "@ink/network";
@@ -20,7 +20,9 @@ export async function getDepartureBoard(stopId: string, signal?: AbortSignal) {
 }
 ```
 
-`decodeDepartures` validates the response for your app. A successful HTTP response still needs decoding. `fetch` rejects transport failures and cancellation; HTTP error statuses remain responses. Apply timeouts with `AbortSignal.timeout()` and propagate caller cancellation with `AbortSignal.any()`.
+`decodeDepartures` validates the response for your app. `fetch` rejects network failures and cancellation, but HTTP errors such as 404 still return a response. Check `response.ok` before reading the data.
+
+Use `AbortSignal.timeout()` for timeouts and `AbortSignal.any()` to combine cancellation signals.
 
 ## Optional features
 
@@ -31,13 +33,13 @@ import { connectivity } from "@ink/network/connectivity";
 import { downloads } from "@ink/network/downloads";
 ```
 
-These imports include their own native capabilities without installing the web globals. Importing `@ink/network` alone does not include either feature. Native image loading and maps also work without the JavaScript networking globals.
+These imports work independently and do not install `fetch` or other web globals. `@ink/network` alone includes neither feature. Images and maps also load without this import.
 
-## Requests
+## Read a response
 
-Fetch resolves when response headers arrive. Read `response.body` incrementally with a reader, async iterator or stream pipeline. Native transport reads one 32 KiB chunk on demand rather than buffering the whole response. Cancel the reader or abort the request when you no longer need it.
+`fetch` resolves when headers arrive. Read `response.body` with a reader, async iterator or stream pipeline. Ink reads 32 KiB chunks as needed. Cancel the reader or abort the request when finished.
 
-For HTTP responses, `json()`, `text()`, `blob()`, `formData()` and `arrayBuffer()` read the whole body into memory, with a 16 MiB limit. Stream larger responses instead. Managed local file responses preserve native storage when `blob()` is called; explicit text and byte reads still read their data into memory. A response body can be consumed once; `clone()` creates a second branch. Consuming only one stream clone can buffer data for the other branch, so avoid cloning large streams.
+`json()`, `text()`, `blob()`, `formData()` and `arrayBuffer()` read an entire HTTP response into memory, up to 16 MiB. Stream larger responses instead:
 
 ```ts
 const response = await fetch(url, { signal });
@@ -55,7 +57,17 @@ try {
 }
 ```
 
-Request bodies accept text, URLSearchParams, ArrayBuffer, typed arrays, Blob, FormData and ReadableStream of Uint8Array. Uploads are staged natively in bounded chunks before transmission, with a 64 MiB limit. This keeps individual bridge messages small and supports rewinding native uploads. Streaming request bodies are therefore accepted but do not begin transmission until their stream completes. Text, byte and Blob bodies can be replayed for redirects; a consumed stream body cannot.
+Supply `url`, a cancellation `signal` and a function named `processChunk`. A body can be read once. `clone()` creates a second stream, but unread data can accumulate in memory, so avoid cloning large responses.
+
+Local [managed files](/files) behave differently: `blob()` keeps their data in native storage. `text()` and `arrayBuffer()` still load it into JavaScript memory.
+
+## Upload data
+
+Request bodies accept text, `URLSearchParams`, `ArrayBuffer`, typed arrays, `Blob`, `FormData` and `ReadableStream<Uint8Array>`.
+
+Ink prepares the body before sending it, so stream uploads start only after the stream finishes. Bodies supplied from JavaScript have a 64 MiB limit. Text, byte and Blob bodies can be sent again after redirects; consumed stream bodies cannot.
+
+For a multipart upload, supply `photoBlob`, `uploadUrl` and an optional cancellation `signal`:
 
 ```ts
 const form = new FormData();
@@ -64,15 +76,27 @@ form.append("photo", photoBlob, "entrance.jpg");
 await fetch(uploadUrl, { method: "POST", body: form, signal });
 ```
 
-Let fetch set the multipart Content-Type, including its boundary. [Managed attachments](/files), including accepted camera photos, can be read with `fetch(file.src)`. Calling `blob()` preserves native file ranges, including through Blob slicing, File construction and FormData. Native code copies those ranges into the upload spool without bringing attachment bytes into JavaScript; its size is constrained by available storage. The 64 MiB limit applies to bodies streamed from JavaScript. Managed sources do not grant arbitrary filesystem access. The earlier `fetch(photo.file.uri)` camera path remains supported for compatibility.
+Let `fetch` set the multipart `Content-Type` and boundary.
 
-Each runtime allows 16 open responses and eight pending uploads. An abandoned response stream or upload spool expires after 60 seconds without reads or writes. Attachment preparation uses bounded 32 KiB operations and checks cancellation between chunks; file bytes remain native even when mixed with large text fields. Use [Downloads](/downloads) for durable incoming transfers.
+### Upload managed files
 
-Use HTTPS. Redirect handling strips credentials when crossing origins. There is no browser origin sandbox or ambient browser login session. A provider that needs cookies must use an explicit account-scoped cookie jar supplied by its adapter; ordinary fetch does not borrow browser cookies.
+Read an attachment with `fetch(file.src)` and use its `blob()` in the upload. Blob slices, File objects and FormData preserve references to native file data. Ink copies that data into a temporary upload file in 32 KiB chunks, checking cancellation between chunks. Attachment bytes stay outside JavaScript memory, including when mixed with text fields.
+
+These uploads are limited by available storage; the 64 MiB JavaScript body limit does not apply to native file data. Managed sources do not allow arbitrary filesystem access. The earlier `fetch(photo.file.uri)` camera path remains supported.
+
+### Transfer limits
+
+Each runtime allows 16 open responses and eight pending uploads. Inactive response streams and temporary upload files expire after 60 seconds without reads or writes. Use [Downloads](/downloads) for transfers that need to survive closing a screen.
+
+## HTTPS and authentication
+
+Release builds require HTTPS/WSS. Debug builds allow local loopback HTTP/WS.
+
+Redirects to another origin remove credentials. Requests do not share browser cookies or login sessions, and there is no browser origin sandbox. If a provider needs cookies, its integration must manage them separately for each account.
 
 ## Live connections
 
-`WebSocket` supports WSS, subprotocols, text and binary messages, `binaryType`, open/message/error/close events and graceful closure. Transport runs natively through OkHttp. Incoming events wait in native code until JavaScript reads them; idle sockets do not busy-poll.
+`WebSocket` supports WSS, subprotocols, text and binary messages, `binaryType`, and open, message, error and close events. Idle sockets wait for native events without polling.
 
 ```ts
 const socket = new WebSocket("wss://api.example.com/events");
@@ -82,25 +106,35 @@ socket.addEventListener("message", event => handleMessage(event.data));
 socket.close(1000, "Finished");
 ```
 
-There are at most eight sockets per runtime. Messages are limited to 256 KiB and incoming/outgoing queues to 512 KiB; overflowing an incoming queue closes the connection. `bufferedAmount` includes JavaScript sends and the latest native queue snapshot. Manage authentication and reconnection in a shared module. Do not open sockets during rendering.
+Supply `handleMessage` to process messages. Open sockets outside rendering and share authentication and reconnection logic across screens.
 
-For ordered message streams, track provider cursors or sequence numbers and recover after gaps. Bound pending sends and incoming queues. A socket surviving briefly after backgrounding is not a delivery guarantee; use [background work](/background) and push where available.
+| Limit | Maximum |
+| --- | --- |
+| Sockets per runtime | 8 |
+| Message size | 256 KiB |
+| Incoming or outgoing queue | 512 KiB |
+
+An overflowing incoming queue closes the connection. `bufferedAmount` includes JavaScript sends and the latest native queue reading.
+
+Track message sequence numbers or provider cursors to detect missing data and recover it after reconnecting. Limit queued messages. Sockets are not reliable background delivery; use [background work](/background) and push where available.
 
 ## Recovery
 
-Retry selected reads with bounded backoff. Writes need an idempotency key or a way to reconcile uncertain outcomes. Going offline can leave a request accepted remotely even if no response arrives locally.
+Retry failed reads with increasing delays and a retry limit. A server may accept a write even if the response never arrives. Give writes stable operation IDs so the server can recognise retries, or check whether a write succeeded before repeating it.
 
-Persist small results explicitly with [Store](/store); its read-only SQLite interface queries imported database assets. The HTTP cache, an in-memory UI resource and your offline database serve different purposes. Account sign-out must remove account-specific persisted content according to the app's policy.
+Save small results with [Store](/store) for offline use. A resource’s in-memory cache does not survive app restarts. Clear private saved content when signing out.
 
-Use [Downloads](/downloads) for durable transfers and [Auth](/auth) for account flows. You can use an npm HTTP client if it supports [Ink’s runtime](/development#using-javascript-packages).
+Use [Auth](/auth) for sign-in. npm HTTP clients must work without browser or Node.js APIs.
 
 ## Template server
 
-The template’s Network Features screen exercises streams, multipart uploads, WebSocket echo and cancellation against the included server:
+The template’s Network Features screen uses a local server for streams, multipart uploads, WebSocket echo and cancellation:
 
 ```sh
 bun examples/light-template/scripts/network-server.mjs
 adb -s emulator-5554 reverse tcp:18081 tcp:18081
 ```
 
-Open Modules → Network → Network Features. Debug builds accept cleartext HTTP/WS on loopback for this local server; release transport requires HTTPS/WSS.
+Open **Modules → Network → Network Features** in a debug build.
+
+Public WSS and transport limits still need broader verification.

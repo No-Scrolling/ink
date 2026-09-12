@@ -4,7 +4,7 @@ Weather for Ink and Light Phone III, adapted from the companion Expo weather app
 
 The example uses Open-Meteo for forecast, geocoding and air-quality data. It keeps the source app's current weather, hourly and weekly views, saved locations, units, time format, detail selection and ordering, and inverted appearance. The weather artwork is rasterised from the source app's SVGs for Ink's local `Image` API and includes light and dark variants for the appearance switch. The original artwork is from [erikflowers/weather-icons](https://github.com/erikflowers/weather-icons).
 
-Run it from the example directory:
+From the repository root:
 
 ```sh
 cd examples/weather
@@ -12,7 +12,7 @@ ink check
 ink dev
 ```
 
-The Locations tab lists saved places. Its Add action opens a dedicated search input page, as required by DESIGN.md. Forecast details can all be selected and appear on separate lines. The example has its own Android package ID, so it can coexist with the original app.
+The Locations tab lists saved places. Its Add action opens a search input page. Forecast details can all be selected and appear on separate lines. The example has its own Android package ID, so it can coexist with the original app.
 
 ## Code layout
 

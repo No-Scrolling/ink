@@ -3,7 +3,7 @@ title: "Downloads"
 description: "Download files and track progress after a screen closes."
 ---
 
-`@ink/network/downloads` handles ordinary HTTP files that should keep downloading after a screen closes. Ink owns scheduling, progress, partial files and recovery. Your app decides which files to keep.
+Use `@ink/network/downloads` to download files after a screen closes. Ink tracks progress, manages partial files and recovers interrupted transfers.
 
 ```ts
 import { downloads } from "@ink/network/downloads";
@@ -17,24 +17,77 @@ const download = await downloads.enqueue({
 await saveEpisodeDownload(episode.id, download.id);
 ```
 
-`episode` and `saveEpisodeDownload` come from your app. A stable key identifies one asset revision and deduplicates requests. The same key with conflicting source details rejects; use a new key for replacement content.
+`episode` and `saveEpisodeDownload` come from your app. Reusing a `key` avoids duplicate downloads. The same key with different source details rejects; use a new key when content changes.
 
-## Observe and control
+## Observe progress
 
-`downloads.observe(id)` supplies Ink's standard `loading`, `ready` or `error` snapshot for `useSnapshot`. Ready data contains the transfer state: `queued`, `running`, `paused`, `completed`, `failed` or `cancelled`. Progress contains received bytes and an optional total. Completion contains a [FileRef](/files#one-file-representation). Failure to read the job is a snapshot error; a failed transfer is job data with an error explaining the failure.
+Inside your component, observe a saved `downloadId`:
 
-`pause(id)`, `resume(id)`, `cancel(id)` and `remove(id)` return promises. Cancel stops unfinished work and deletes partial content. Remove also deletes the completed file and the saved job; discard its ID afterwards. Closing a screen or releasing an observer does neither.
+```ts
+import { useMemo } from "react";
+import { useSnapshot } from "ink";
+import { downloads } from "@ink/network/downloads";
 
-Native persisted state supports recovery after process restart. Partial resumption depends on server support and content validators; otherwise the transfer restarts safely. Constraints and storage failures appear in state. Apps reconcile missing files when reopening their library.
+const source = useMemo(() => downloads.observe(downloadId), [downloadId]);
+const download = useSnapshot(source);
+```
 
-Android JobScheduler runs transfers independently of the screen and reschedules persisted work after reboot. Android controls when eligible jobs run; force-stopping the app prevents background work until it is opened again. `downloads.get(id)` reads the current state without subscribing. The template saves its last download ID so reopening the example reconnects to that transfer.
+Keep the source stable while the ID is unchanged. The snapshot is `loading`, `ready` or `error`. Ready data includes:
 
-Production URLs require HTTPS. Debug builds also accept loopback HTTP for the template's local fixture server. Downloads do not add authentication headers; use an authorised download URL whose lifetime covers recovery.
+- Transfer state: `queued`, `running`, `paused`, `completed`, `failed` or `cancelled`.
+- Bytes received and the total size, when known.
+- A [FileRef](/files#one-file-representation) after completion, or an error if the transfer failed.
 
-## Provider integrations
+A snapshot error means Ink could not read the job. A failed transfer appears within ready job data.
 
-The initial interface handles URLs that remain usable for the transfer and recovery. Expired signed URLs fail; the app obtains a replacement and enqueues a new request. Do not place a permanent bearer token into a persisted URL.
+## Pause and resume
 
-Provider-specific offline media, such as Spotify downloads, needs its own integration. Ordinary HTTP downloads do not replace a provider’s authentication or playback engine.
+Use the saved `downloadId` in your pause action:
 
-Use `fetch` for short foreground requests and [Files and media](/files) for attachment uploads. Background jobs can schedule reconciliation, but do not act as a continuous download loop.
+```ts
+await downloads.pause(downloadId);
+```
+
+To resume:
+
+```ts
+await downloads.resume(downloadId);
+```
+
+## Cancel or remove
+
+Cancel unfinished work and delete its partial files:
+
+```ts
+await downloads.cancel(downloadId);
+```
+
+To delete the job and all its files, including a completed download:
+
+```ts
+await downloads.remove(downloadId);
+```
+
+Discard the ID after removal. Closing a screen or stopping observation does not cancel or remove a download.
+
+## Interrupted downloads
+
+Ink saves transfer state across app restarts. It resumes partial files when the server supports it and the content still matches; otherwise it restarts the transfer. Network constraints and storage failures appear in state. Handle missing files when reopening downloads.
+
+Android schedules transfers and restores pending work after reboot. Force-stopping the app prevents background work until it opens again.
+
+Read the saved job without subscribing:
+
+```ts
+const download = await downloads.get(downloadId);
+```
+
+## Download URLs
+
+Release builds require HTTPS. Debug builds also accept loopback HTTP for local development. Downloads do not add authentication headers; use an authorised URL that remains valid for retries.
+
+If a signed URL expires, obtain a replacement and enqueue a new request. Do not put permanent bearer tokens in saved URLs.
+
+Protected offline media may require a provider’s own download and playback integration.
+
+Use `fetch` for short foreground requests and [Files](/files) for uploads. Background jobs can check download state; they should not run a continuous download loop.

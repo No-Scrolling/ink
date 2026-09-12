@@ -27,16 +27,13 @@
       {
         "group": "Get started",
         "pages": [
-          "installation",
-          "project-structure",
-          "development"
+          "project-structure"
         ]
       },
       {
         "group": "Guides",
         "pages": [
-          "permissions-guide",
-          "release"
+          "permissions-guide"
         ]
       },
       {
@@ -100,8 +97,7 @@
       {
         "group": "Contributing and internals",
         "pages": [
-          "architecture",
-          "agent-tools"
+          "architecture"
         ]
       }
     ]
