@@ -4,14 +4,12 @@ import android.Manifest
 import android.app.Activity
 import android.content.ContentResolver
 import android.content.ContentUris
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.provider.MediaStore
-import android.provider.Settings
 import android.util.Size
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,10 +21,7 @@ internal class InkMediaLibrary(private val activity: Activity) {
     private val executor = Executors.newSingleThreadExecutor()
     private val thumbnails = Executors.newFixedThreadPool(2)
     private val pending = ConcurrentHashMap<Long, CancellationSignal>()
-    private val preferences = activity.getSharedPreferences("ink-media-permissions", 0)
     @Volatile private var stopped = false
-    private var permissionRequest: PermissionRequest? = null
-    private data class PermissionRequest(val id: Long, val kind: String, val complete: NativeResultHandler)
 
     fun execute(id: Long, operation: String, data: JSONObject, complete: NativeResultHandler) {
         if (stopped) return
@@ -36,30 +31,6 @@ internal class InkMediaLibrary(private val activity: Activity) {
         }
         val signal = CancellationSignal()
         pending[id] = signal
-        if (operation == "media-permission" || operation == "media-settings") {
-            activity.runOnUiThread {
-                if (stopped || signal.isCanceled) { pending.remove(id); return@runOnUiThread }
-                try {
-                    if (operation == "media-settings") {
-                        activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${activity.packageName}")))
-                        deliver(id, NativeResult.Success("null"), complete)
-                    } else {
-                        val kind = kind(data)
-                        val status = permission(kind)
-                        if (!data.optBoolean("request") || status == "granted") deliver(id, NativeResult.Success(status), complete)
-                        else {
-                            check(permissionRequest == null) { "Media access is already being requested" }
-                            permissionRequest = PermissionRequest(id, kind, complete)
-                            val permissions = permissions(kind)
-                            preferences.edit().apply { permissions.forEach { putBoolean(it, true) } }.apply()
-                            try { activity.requestPermissions(permissions, PERMISSION_REQUEST) }
-                            catch (error: Exception) { permissionRequest = null; throw error }
-                        }
-                    }
-                } catch (error: Exception) { deliver(id, failure(error), complete) }
-            }
-            return
-        }
         val queue = if (operation == "image") thumbnails else executor
         queue.execute {
             var temporary: File? = null
@@ -168,17 +139,10 @@ internal class InkMediaLibrary(private val activity: Activity) {
         "video" -> arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
         else -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
     }
-    private fun permission(kind: String): String {
-        val denied = permissions(kind).filter { activity.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        return if (denied.isEmpty()) "granted" else if (denied.any { preferences.getBoolean(it, false) && !activity.shouldShowRequestPermissionRationale(it) }) "blocked" else "denied"
-    }
-    private fun requireAccess(kind: String) { if (permission(kind) != "granted") throw SecurityException("Allow full photo and video access to browse the media library") }
-    fun onRequestPermissionsResult(requestCode: Int): Boolean {
-        if (requestCode != PERMISSION_REQUEST) return false
-        val request = permissionRequest ?: return true
-        permissionRequest = null
-        deliver(request.id, NativeResult.Success(permission(request.kind)), request.complete)
-        return true
+    private fun requireAccess(kind: String) {
+        if (permissions(kind).any { activity.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
+            throw SecurityException("Allow full photo and video access to browse the media library")
+        }
     }
     private fun deliver(id: Long, result: NativeResult, complete: NativeResultHandler): Boolean {
         val signal = pending.remove(id)
@@ -189,7 +153,6 @@ internal class InkMediaLibrary(private val activity: Activity) {
     fun cancel(id: Long) {
         pending[id]?.cancel()
     }
-    fun stop() { stopped = true; permissionRequest = null; pending.values.forEach { it.cancel() }; executor.shutdownNow(); thumbnails.shutdownNow() }
+    fun stop() { stopped = true; pending.values.forEach { it.cancel() }; executor.shutdownNow(); thumbnails.shutdownNow() }
     private fun failure(error: Throwable) = NativeResult.Failure(if (error is SecurityException) NativeErrorKind.PERMISSION_DENIED else NativeErrorKind.UNAVAILABLE, error.message ?: "Media library operation failed", true)
-    private companion object { const val PERMISSION_REQUEST = 7305 }
 }

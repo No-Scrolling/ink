@@ -9,9 +9,6 @@
     ],
     "src/recording.ts": [
       "audio-recording"
-    ],
-    "src/microphone-permission.ts": [
-      "microphone-permission"
     ]
   }
 }

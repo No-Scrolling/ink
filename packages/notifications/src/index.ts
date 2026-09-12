@@ -10,12 +10,6 @@ export interface NotificationContent {
   href?: Destination;
   data?: string;
 }
-export type PermissionStatus = "granted" | "denied" | "blocked";
-async function permission(operation: string): Promise<PermissionStatus> {
-  const value = await callNative("permissions", operation, { permission: "notifications" }, { timeoutMs: 120_000 });
-  if (value !== "granted" && value !== "denied" && value !== "blocked") throw new NativeError("protocol", "Invalid notification permission result");
-  return value;
-}
 async function command(operation: string, payload: unknown): Promise<void> {
   const value: unknown = JSON.parse(await callNative("notifications", operation, payload));
   if (typeof value !== "object" || value === null || !("status" in value)) throw new NativeError("protocol", "Invalid notification result");
@@ -32,16 +26,6 @@ function notificationError(value: unknown): NativeError {
   return new NativeError(value.kind, value.message, "retryable" in value && value.retryable === true);
 }
 export const notifications = {
-  async canScheduleExact(): Promise<boolean> {
-    const value = await callNative("notifications", "exact-status", {});
-    if (value !== "granted" && value !== "denied") throw new NativeError("protocol", "Invalid exact alarm permission result");
-    return value === "granted";
-  },
-  async requestExactPermission(): Promise<void> {
-    await callNative("notifications", "request-exact-permission", {});
-  },
-  getPermission: () => permission("status"),
-  requestPermission: () => permission("request"),
   show(notification: NotificationContent) { return command("schedule", { ...notification, delayMs: 0 }); },
   schedule({ at, ...notification }: NotificationContent & { at: number; exact?: boolean }) {
     if (!Number.isSafeInteger(at) || at < 0) return Promise.reject(new RangeError("Notification time must be a non-negative timestamp in milliseconds"));

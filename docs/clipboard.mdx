@@ -5,7 +5,9 @@ description: "Copy and paste plain text."
 
 `@ink/clipboard` reads and writes plain text through Android's clipboard.
 
-<p>The preview places this component inside <code>Screen title="Reference"</code>.</p>
+## Copy text
+
+<p>Place this component inside a <code>Screen</code>.</p>
 
 <div className="pattern-example">
 <div>
@@ -39,14 +41,16 @@ export function CopyReference({ value }: { value: string }) {
 
 ## Paste text
 
-Call this from your paste action:
-
 ```ts
 import { clipboard } from "@ink/clipboard";
 
 const text = await clipboard.readText();
 ```
 
-The result is text, or `null` if none is available. Repeated background reads can trigger Android privacy notices.
+The result is text, or `null` if none is available.
+
+### Privacy
+
+Repeated background reads can trigger Android privacy notices.
 
 Validate pasted URLs, codes and records before using them. Avoid copying credentials.

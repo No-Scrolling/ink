@@ -17,13 +17,21 @@ const shortcut = decodeShortcut(tag.records);
 await openShortcut(shortcut);
 ```
 
-Supply a cancellation `signal`, a `decodeShortcut` validator and an `openShortcut` handler. Reading waits for a tag while the app is visible. Handle cancellation, timeout, disabled NFC and unsupported tags separately.
+Supply a cancellation `signal`, a `decodeShortcut` validator and an `openShortcut` handler.
+
+Reading waits for a tag while the app is visible. Handle cancellation, timeout, disabled NFC and unsupported tags separately.
+
+### Validate tag data
 
 Validate records before using them. Let the user review a tag’s URL before opening it. Tag IDs are not proof of identity.
 
+### Session lifetime
+
 Sessions close when leaving the screen or entering the background. Reading NDEF requires neither a raw connection nor card emulation.
 
-## Raw connections
+## Exchange raw commands
+
+Use `iso-dep` or `nfc-a` to exchange bytes using the tag’s protocol:
 
 ```ts
 const connection = await nfc.connect({ technology: "iso-dep", signal });
@@ -35,15 +43,17 @@ try {
 }
 ```
 
-Use `iso-dep` or `nfc-a` to exchange `Uint8Array` commands and responses. The connection reports its technology, serial number and maximum command length. Supply `commandBytes` using the tag’s protocol.
+Commands and responses are `Uint8Array` values. The connection reports its technology, serial number and maximum command length.
+
+### Limits and cancellation
 
 Only one raw connection or NDEF reader can run at a time. Commands run in order, with a timeout of up to ten seconds and a 64 KiB response limit.
 
 The signal passed to `connect()` cancels discovery. Close the returned connection when leaving the screen. Cancelling an exchange or backgrounding the app also closes it.
 
-Decode responses using the tag’s protocol; NFC technology support alone does not decode application data.
-
 ## Card emulation
+
+### Register static responses
 
 ```ts
 await nfc.emulate({
@@ -75,8 +85,17 @@ await nfc.handleApdu(async command => {
 
 Return response bytes including the status word.
 
-`deadline` defaults to 500 milliseconds and accepts 50–2,000. If the handler misses it, Ink uses the static response or fallback and discards the late response. Readers may require a faster response, so avoid network requests in the handler.
+`deadline` defaults to 500 milliseconds and accepts 50–2,000. Late responses are discarded; Ink uses the static response or fallback instead.
+
+Readers may need a faster response, so avoid network requests in the handler.
 
 Backgrounding or aborting the handler restores static responses without removing the AIDs.
 
-Limits are 256 rules, 4,096 bytes per command or response, and 32 registered AIDs. Only one JavaScript handler can run at a time.
+### Emulation limits
+
+| Resource | Maximum |
+| --- | --- |
+| Static rules | 256 |
+| Command or response | 4,096 bytes |
+| Registered AIDs | 32 |
+| JavaScript handlers | 1 |

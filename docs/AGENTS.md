@@ -14,6 +14,7 @@ Follow the [Cloudflare style guide](https://developers.cloudflare.com/style-guid
 - Label incomplete examples and state their prerequisites.
 - Show how to perform an operation in a fenced code example, with its import and realistic arguments. Use inline code to refer to APIs, options and values, not as a substitute for a usage example.
 - Organise module pages by task. Keep explanations beside the relevant example; avoid paragraphs or tables that make readers assemble calls themselves.
+- List module permissions in a table with the permission name and what requires it. Keep request code below the table, and identify access requested automatically by a component.
 
 ## Component pages
 

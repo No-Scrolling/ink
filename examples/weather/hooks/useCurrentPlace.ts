@@ -1,3 +1,4 @@
+import { lightos } from "@ink/lightos";
 import { location } from "@ink/location";
 import { NativeError } from "ink/native";
 import { resource, useSnapshot } from "ink";
@@ -7,8 +8,8 @@ const LOCATION_STALE_TIME = 900_000;
 const currentLocation = resource({
   key: () => [],
   load: async (): Promise<Place> => {
-    let permission = await location.getPermission("balanced");
-    if (permission !== "granted") permission = await location.requestPermission("balanced");
+    let permission = await lightos.getPermission("location-approximate");
+    if (permission !== "granted") permission = await lightos.requestPermission("location-approximate");
     if (permission !== "granted") {
       throw new Error(permission === "blocked"
         ? "Location access is blocked. Enable it in the phone’s settings, then try again. You can also choose a saved location in Locations or Settings."

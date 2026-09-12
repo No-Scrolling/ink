@@ -45,7 +45,6 @@ export function ConversationExample({ group = false }: { group?: boolean }) {
     actions={message => [{ label: "React ❤️", onPress: () => toggleReaction(message.id) }]}
     onAttach={() => navigate("/actions")}
     onRetry={message => retry(message.id)}
-    onImagePress={() => navigate("/display/local-images/wallsocket")}
     onDoubleTap={message => toggleReaction(message.id)}
     hasOlder={olderCount > 0}
     onLoadOlder={async () => {

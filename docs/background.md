@@ -3,7 +3,9 @@ title: "Background work"
 description: "Schedule work to run after the app closes."
 ---
 
-Use `@ink/background` for work that can run later, such as refreshing forecasts, syncing a feed or sending queued messages.
+Use `@ink/background` to schedule work after the app closes.
+
+## Define a task
 
 Define tasks in a worker file, separate from your UI:
 
@@ -22,16 +24,22 @@ export const syncMessages = defineTask({
 });
 ```
 
-Define `decodeAccountInput` to validate `{ accountId: string }`, including input saved by older app versions. `drainOutbox` is your message-sending function. Register the worker file in `ink.toml`:
+`decodeAccountInput` must validate `{ accountId: string }`, including input saved by older app versions. `drainOutbox` is your message-sending function.
+
+Register the worker file in `ink.toml`:
 
 ```toml
 [background]
 entry = "./workers.ts"
 ```
 
-Schedule the task from your app:
+## Schedule a task
+
+Import the task into your app and enqueue it:
 
 ```ts
+import { syncMessages } from "./workers";
+
 await syncMessages.enqueue({ accountId }, {
   key: `messages.sync:${accountId}`,
   constraints: { network: "connected" },
@@ -44,13 +52,15 @@ Ink bundles the worker separately from the UI. Scheduling saves the task ID and 
 
 Each run starts a fresh JavaScript runtime with decoded input and a cancellation signal. Open storage and account services inside the worker.
 
+### Results and retries
+
 Return `success`, `retry` with an optional delay, or `failed` with a reason. Uncaught exceptions are logged as failures; return `retry` for errors that should be tried again.
+
+### Timing and duplicate runs
 
 Android chooses when tasks run. Periodic tasks have a minimum interval of 15 minutes. Network and charging constraints do not guarantee a start time. A task can run more than once if the process stops before saving completion.
 
 Scheduling the same `key` combines pending requests. If the task is already running, Ink keeps a follow-up run. The server must still handle repeated requests safely.
-
-Import `"@ink/network"` in worker modules that use web globals. Workers do not inherit imports or globals from the foreground app.
 
 ### Limits and available APIs
 
@@ -63,6 +73,8 @@ Workers can use:
 - Notification scheduling, cancellation and status.
 - One-off location reads with permission already granted.
 
+Import `"@ink/network"` in workers that use web globals. Workers do not inherit the foreground app’s imports.
+
 Permission prompts, UI controllers, camera, microphone and NFC are unavailable. Native calls have their own timeouts and are cancelled when the worker stops.
 
 ## Persist before scheduling
@@ -71,7 +83,7 @@ Save outgoing changes before scheduling a task. Recover any unscheduled changes 
 
 Give each operation a stable ID so the server can recognise retries. Mark it complete only after the server confirms acceptance.
 
-## Cancel and observe tasks
+## Cancel a task
 
 Cancel using the key passed when scheduling:
 
@@ -83,6 +95,8 @@ await cancel(`messages.sync:${accountId}`);
 
 Cancellation removes pending work and signals running work to stop. It cannot undo a completed server request.
 
+## Observe tasks
+
 Read scheduling information and the latest outcome for up to 256 task keys:
 
 ```ts
@@ -91,7 +105,9 @@ import { getJobs } from "@ink/background";
 const jobs = await getJobs();
 ```
 
-Provide a cancellation `signal` and an `updateJobs` handler to receive changes:
+### Watch for changes
+
+Provide a cancellation `signal` and an `updateJobs` handler:
 
 ```ts
 import { watchJobs } from "@ink/background";

@@ -142,7 +142,6 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
         }
         return true
     }
-    override fun onRequestPermissionsResult(requestCode: Int): Boolean = library.isInitialized() && library.value.onRequestPermissionsResult(requestCode)
     override fun cancel(requestId: Long) { if (requests.remove(requestId)) cancelled.add(requestId); if (library.isInitialized()) library.value.cancel(requestId) }
     override fun stop() { stopped = true; pending = null; requests.clear(); cancelled.clear(); executor.shutdownNow(); if (library.isInitialized()) library.value.stop() }
     private fun failure(error: Throwable) = NativeResult.Failure(NativeErrorKind.UNAVAILABLE, error.message ?: "File operation failed", true)

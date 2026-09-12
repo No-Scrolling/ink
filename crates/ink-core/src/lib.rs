@@ -2800,7 +2800,7 @@ impl Engine {
                 let font_size = self.scaled_font(size);
                 let fixed_width = width.map(|width| self.scaled(width.max(0.0)).min(available.width));
                 let lines = self.wrap_text(text, font_size, fixed_width.unwrap_or(available.width), *max_lines, *tabular_numbers);
-                let line_height = self.text_line_height(size, lines.len());
+                let line_height = self.text_line_height(size);
                 MeasuredSize {
                     width: fixed_width.unwrap_or_else(|| {
                         if *align == TextAlign::Justify && lines.iter().any(|line| line.wrapped) {
@@ -2837,7 +2837,7 @@ impl Engine {
                 let label_width = self.text_width(label, self.scaled_font(FIELD_LABEL_SIZE));
                 let lines = self.wrap_text(value, self.scaled_font(DEFAULT_TEXT_SIZE), available.width, None, false);
                 let value_width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
-                let value_height = self.text_line_height(DEFAULT_TEXT_SIZE, lines.len()) * lines.len() as f32;
+                let value_height = self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32;
                 MeasuredSize {
                     width: label_width.max(value_width).ceil().min(available.width),
                     height: (self.scaled(FIELD_LABEL_HEIGHT) + value_height).min(available.height),
@@ -3326,7 +3326,7 @@ impl Engine {
             let inset = self.scaled(CONTENT_INSET_START);
             let available_width = (rect.width - inset * 2.0).max(0.0);
             let lines = self.wrap_text(label, font_size, available_width, None, false);
-            let line_height = self.text_line_height(40.0, lines.len());
+            let line_height = self.text_line_height(40.0);
             let height = (line_height * lines.len() as f32 + self.scaled(CONTENT_BOTTOM))
                 .min((rect.height - header_height).max(0.0));
             let action_rect = Rect {
@@ -3756,7 +3756,7 @@ impl Engine {
         let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
         let font_size = self.scaled_font(size);
         let lines = self.wrap_text(text, font_size, rect.width, max_lines, tabular_numbers);
-        let line_height = self.text_line_height(size, lines.len());
+        let line_height = self.text_line_height(size);
         for (index, line) in lines.into_iter().enumerate() {
             let mut line_rect = Rect {
                 y: rect.y + line_height * index as f32,
@@ -4432,16 +4432,11 @@ impl Engine {
         best
     }
 
-    fn text_line_height(&self, size: f32, lines: usize) -> f32 {
-        let single_line = if size == DEFAULT_TEXT_SIZE {
+    fn text_line_height(&self, size: f32) -> f32 {
+        self.scaled(if size == DEFAULT_TEXT_SIZE {
             BUTTON_HEIGHT
         } else {
             size * 1.25
-        };
-        self.scaled(if lines > 1 {
-            single_line.max(size * 1.4)
-        } else {
-            single_line
         })
     }
 

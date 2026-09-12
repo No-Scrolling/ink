@@ -1,7 +1,6 @@
 import { createElement, useMemo } from "react";
 import { NativeError } from "ink/native";
 import { fields, useCapture } from "./capture-internal";
-export { microphone, type MicrophonePermission } from "./microphone-permission";
 
 export interface LevelState {
   status: "idle" | "listening" | "active" | "clipping" | "error";

@@ -97,6 +97,7 @@ export default function Chat() {
 <div>
 
 <p>Add <code>image</code> with a source and dimensions. Text is optional.</p>
+<p>Tap an image to open it in the full content area with zoom. Back returns to the conversation at the same scroll position. Set <code>onImagePress</code> to replace this behaviour.</p>
 
 ```tsx
 {
@@ -136,7 +137,7 @@ export default function Chat() {
 
 Every message needs a stable `id` and a `timestamp` in milliseconds since the Unix epoch. Ink shows local time for today and adds the month and day for older messages. `reactions` adds text to the same information line.
 
-Use `actions(message)` for extra message actions, `onAttach` for the plus button, and `onImagePress` or `onDoubleTap` for message interactions. Ink returns to the chat before running a custom action.
+Use `actions(message)` for extra message actions, `onAttach` for the plus button, and `onDoubleTap` for double taps. Ink returns to the chat before running a custom action.
 
 `onLoadOlder` returns a promise and prepends older messages; `hasOlder` says whether more remain. Ink preserves the scroll position. `loading` shows initial loading content; `sending` disables the send action.
 

@@ -5,7 +5,9 @@ description: "Read and watch the device’s network connection."
 
 Use `@ink/network/connectivity` to check whether the device is online.
 
-<p>The preview places this component inside <code>Screen title="Connection"</code>.</p>
+## Watch the connection
+
+<p>Place this component inside a <code>Screen</code>.</p>
 
 <div className="pattern-example">
 <div>
@@ -45,10 +47,8 @@ import { connectivity } from "@ink/network/connectivity";
 const connection = await connectivity.get();
 ```
 
-## Connection does not guarantee access
+## Handle connection failures
 
 Handle request errors even when connected. Wi-Fi may need a sign-in, a server may be unavailable or an account may have expired.
 
 Use metered state for download preferences. Set network constraints on [downloads](/downloads) or [background tasks](/background) themselves: the connection can change after you check it.
-
-Share retry handling across screens to avoid duplicate requests.

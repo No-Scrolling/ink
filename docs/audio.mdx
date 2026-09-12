@@ -13,17 +13,21 @@ Use `@ink/audio` to play audio and manage queues.
 
 ## Permissions
 
-Request microphone access before recording or analysing sound. Playback does not need it.
+| Permission | Required for |
+| --- | --- |
+| `microphone` | Recording, sound levels and pitch detection. |
+
+Playback does not require microphone access.
 
 ```ts
-import { microphone } from "@ink/audio/microphone";
+import { lightos } from "@ink/lightos";
 
-const permission = await microphone.requestPermission();
+const permission = await lightos.requestPermission("microphone");
 ```
 
-Use `microphone.getPermission()` to check access without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
+Use `lightos.getPermission("microphone")` to check without a prompt. See [Request a permission](/permissions-guide) for the returned statuses.
 
-`@ink/audio/recording` exports the same `microphone` methods. Granting permission does not start recording or analysis. Wait for the hook’s `ready` state, then call `start()`.
+Granting permission does not start recording or analysis. Wait for the hook’s `ready` state, then call `start()`.
 
 ## Playback
 
@@ -66,7 +70,7 @@ export function NowPlaying() {
 
 Wait for `state.ready` before sending commands or reading a restored queue. Commands sent before readiness reject.
 
-## Keep playing after leaving a screen
+### Keep playing after leaving a screen
 
 Inside your playback component:
 
@@ -83,7 +87,9 @@ Detached playback continues after leaving the screen.
 | `usage: "music"` (default) | Music playback. |
 | `usage: "speech"` | Spoken audio. |
 
-Android can stop a detached session. Ink restores its queue, index, speed and progress in a paused state when you reconnect. Queue changes, seeks and pauses save immediately; progress saves every five seconds. `stop()` clears the queue and saved state.
+Android can stop a detached session. Ink restores its queue, index, speed and progress in a paused state when you reconnect.
+
+Queue changes, seeks and pauses save immediately; progress saves every five seconds. `stop()` clears the queue and saved state.
 
 ### Sessions
 
@@ -91,9 +97,9 @@ Players with the same `session` name share playback and must use the same `mode`
 
 `session` defaults to `main`. Names accept 1–64 letters, numbers, dots, underscores or hyphens. Up to eight sessions can be active.
 
-`usePlayer` connects after React commits the screen and disconnects when hidden. Returning to the screen reconnects to the existing queue. Background workers cannot use audio controllers.
+`usePlayer` disconnects when the screen is hidden and reconnects to the queue when it returns. Background workers cannot use audio controllers.
 
-## Queue and state
+## Manage the queue
 
 Use the `player` from `usePlayer` in a button action, after `player.state.ready` is true:
 
@@ -117,9 +123,11 @@ async function playAlbum() {
 }
 ```
 
-Replace the example URLs with your audio sources. `setQueue` replaces the current queue. Items can also include artwork. `src` accepts bundled audio or a supported URL.
+`setQueue` replaces the current queue. Use your own audio URLs or bundled audio for `src`. Items can also include artwork.
 
-To seek from an action, use milliseconds:
+### Seek
+
+Positions are in milliseconds:
 
 ```ts
 await player.seek(30_000);
@@ -127,7 +135,9 @@ await player.seek(30_000);
 
 `setQueue`, `play`, `pause`, `seek`, `next`, `previous` and `stop` return promises.
 
-State includes readiness, current item, position, duration, buffering, playing and errors. It also reflects hardware keys, lock-screen controls and interruptions from other audio. Native code handles decoding, buffering, output routing and progress updates; no JavaScript animation loop is needed.
+### Playback state and errors
+
+State includes readiness, current item, position, duration, buffering, playing and errors. Hardware keys, lock-screen controls and interruptions update it automatically.
 
 Playback errors distinguish source, unsupported media and output failures. Deleted files and unavailable URLs produce errors. Ink does not automatically skip a failed item.
 
@@ -137,7 +147,9 @@ Playback errors distinguish source, unsupported media and output failures. Delet
 
 Each hook returns `ready`, `state` and commands that return promises. Wait for `ready` before enabling controls.
 
-Inside a recording component, create the recorder and an action to start it:
+### Record audio
+
+Inside your component:
 
 ```ts
 import { useAction } from "ink";
@@ -153,7 +165,9 @@ Call `start.run()` from a button after permission is granted and `recorder.ready
 await recorder.stop();
 ```
 
-For pitch analysis, use this hook inside your tuning component:
+### Detect pitch
+
+Inside your component:
 
 ```ts
 import { usePitchDetector } from "@ink/audio/microphone";
@@ -175,15 +189,21 @@ Pass `state.cents` to `PitchIndicator`, or `null` when no note is detected. Its 
 
 ### Saved recordings
 
-Recorder status is `idle`, `recording`, `stopping`, `ready` or `error`. Read the completed recording from state; `stop()` does not return it. The recording is a [FileRef](/files#one-file-representation) with a duration in milliseconds. Use its `src` with `usePlayer` or `fetch`.
+Recorder status is `idle`, `recording`, `stopping`, `ready` or `error`. Read the completed recording from state; `stop()` does not return it.
 
-`cancel()` discards unfinished capture. `delete()` removes the current saved recording. Earlier recordings remain available: save their IDs and reopen them with `files.open(id)`. They survive screen changes and app restarts until removed with `files.remove(id)` or app data is cleared.
+The recording is a [FileRef](/files#file-metadata) with a duration in milliseconds. Use its `src` with `usePlayer` or `fetch`.
+
+`cancel()` discards unfinished capture. `delete()` removes the current saved recording.
+
+Earlier recordings remain available. Save their IDs and reopen them with `files.open(id)`. They remain until removed with `files.remove(id)` or app data is cleared.
 
 ### Leaving the app
 
-Pitch and level analysis pause in the background and resume when the app returns. Calling `stop()` or removing the hook prevents resumption. Recordings stop in the background and do not resume automatically. Removing a capture hook releases the microphone.
+Pitch and level analysis pause in the background and resume when the app returns. Calling `stop()` or removing the hook prevents resumption.
 
-Recording and analysis cannot use the microphone at the same time. Each import includes only its input engine: analysis omits recording and file storage; recording omits analysis. Playback alone includes neither engine nor microphone permission.
+Recordings stop in the background and do not resume automatically. Removing a capture hook releases the microphone.
+
+Recording and analysis cannot use the microphone at the same time. Each import includes only its input engine. Playback includes neither engine nor microphone permission.
 
 ## Providers and offline media
 

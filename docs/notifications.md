@@ -7,30 +7,33 @@ Use `@ink/notifications` to show a notification or schedule a local reminder. Ta
 
 ## Permissions
 
-Request notification access when the user enables reminders or another notification feature.
+| Permission | Required for |
+| --- | --- |
+| `notifications` | Showing notifications and scheduling reminders. |
+| [Exact alarm access](#exact-reminders) | Reminders with `exact: true`, in addition to notification access. |
 
 ```ts
-import { notifications } from "@ink/notifications";
+import { lightos } from "@ink/lightos";
 
-const permission = await notifications.requestPermission();
+const permission = await lightos.requestPermission("notifications");
 ```
 
-Use `notifications.getPermission()` to check access without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
+Use `lightos.getPermission("notifications")` to check without a prompt. See [Request a permission](/permissions-guide) for the returned statuses.
 
 ### Exact reminders
 
 Android requires separate access to schedule reminders at an exact time:
 
 ```ts
-if (!await notifications.canScheduleExact()) {
-  await notifications.requestExactPermission();
+if (!await lightos.canScheduleExact()) {
+  await lightos.requestExactPermission();
 }
 ```
 
 `requestExactPermission()` returns after opening settings; it does not wait for a decision. When the user returns to the app, check again before scheduling:
 
 ```ts
-const allowed = await notifications.canScheduleExact();
+const allowed = await lightos.canScheduleExact();
 ```
 
 Only schedule with `exact: true` when `allowed` is true.
@@ -51,9 +54,7 @@ await notifications.show({
 
 Reuse an `id` to update or replace a notification. `href` names a registered screen; `data` is a string.
 
-`useNotificationTap()` provides the tapped ID and data. Call `consume()` to clear the tap. Validate the data and load saved records when a notification starts the app.
-
-## Scheduling
+## Schedule a reminder
 
 Schedule a reminder for ten minutes from now:
 
@@ -70,11 +71,15 @@ await notifications.schedule({
 
 `at` is a timestamp in milliseconds. Delivery time is approximate by default. `exact: true` requires exact-alarm access; without it, scheduling fails.
 
-Cancel a reminder by ID:
+### Cancel a reminder
 
 ```ts
 await notifications.cancel("tea");
 ```
+
+## Handle notification taps
+
+`useNotificationTap()` provides the tapped ID and data. Call `consume()` to clear the tap. Validate the data and load saved records when a notification starts the app.
 
 ### Pass screen parameters
 
@@ -93,10 +98,12 @@ Read parameters with `useRouteParams()` after a tap, including when the app star
 
 Parameters must be JSON values totalling at most 8 KiB. The complete notification request is limited to 12 KiB. `data` is a separate string payload.
 
-Update reminders when events or time zones change. Handle duplicate taps and records that have since been deleted.
+Handle duplicate taps and records that have since been deleted. Update reminders when events or time zones change.
 
-## Push and privacy
+## Push notifications
 
 Use [LightOS](/light-sdk) for host push integration. Validate incoming account and record IDs, update your app’s data, then decide whether to show a notification.
+
+### Private content
 
 Notification content can be visible outside the app. Offer limited previews for private messages. LightOS may restrict how notifications and actions appear.

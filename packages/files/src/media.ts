@@ -1,5 +1,6 @@
+import { lightos, type PermissionStatus } from "@ink/lightos";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, EmptyState, ErrorState, List, LoadingState, Screen, Text } from "ink";
+import { EmptyState, ErrorState, List, LoadingState, Screen, Text } from "ink";
 import { callNative, NativeError } from "ink/native";
 import { files, type FileRef } from "./index";
 import { decodeFileRef } from "./decode";
@@ -7,7 +8,6 @@ import { check, checkCircleFilled, videoFileFilled } from "ink/icons";
 
 type MediaItem = { id: string; src: string; name: string; mimeType: string; width: number; height: number };
 type MediaPage = { items: MediaItem[]; nextCursor: string | null };
-type Permission = "granted" | "denied" | "blocked";
 export type MediaPickerProps = {
   kind?: "image" | "video" | "all";
   title?: string;
@@ -28,7 +28,7 @@ function decodePage(value: string): MediaPage {
 export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" : kind === "video" ? "Videos" : "Photos and videos", onSelect }: MediaPickerProps) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [permission, setPermission] = useState<Permission | null>(null);
+  const [permission, setPermission] = useState<PermissionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [importing, setImporting] = useState(false);
@@ -63,17 +63,17 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
     } finally { if (loadingPage.current === signal) loadingPage.current = null; }
   }, [kind]);
 
-  const refresh = useCallback(async (request: boolean) => {
+  const refresh = useCallback(async () => {
     active.current?.abort();
     nextPage.current = null;
     const controller = new AbortController(); active.current = controller;
     loadingPage.current = null;
     setLoading(true); setError(null);
     try {
-      const result = await callNative("files", "media-permission", { kind, request }, { signal: controller.signal, timeoutMs: 120_000 });
-      if (!["granted", "denied", "blocked"].includes(result)) throw new NativeError("protocol", "Invalid photo access result");
+      const name = kind === "image" ? "photos" : kind === "video" ? "videos" : "photos-and-videos";
+      const result = await lightos.getPermission(name, { signal: controller.signal });
       if (controller.signal.aborted) return;
-      setPermission(result as Permission);
+      setPermission(result);
       if (result === "granted") await loadPage(controller.signal, true);
     } catch (reason) {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason : new Error(String(reason)));
@@ -83,7 +83,7 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
   useEffect(() => {
     setSelected(new Set()); setItems([]); cursor.current = null;
     confirming.current = null; setImporting(false);
-    void refresh(true);
+    void refresh();
     return () => { active.current?.abort(); active.current = null; };
   }, [refresh]);
 
@@ -121,12 +121,10 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
   if (loading) return createElement(Screen, { title }, createElement(LoadingState, { label: "Loading library…" }));
   if (error) return createElement(Screen, { title }, createElement(ErrorState, {
     message: error.message,
-    onRetry: () => { if (permission !== "granted" || items.length === 0) void refresh(false); else setError(null); },
+    onRetry: () => { if (permission !== "granted" || items.length === 0) void refresh(); else setError(null); },
   }));
   if (permission !== "granted") return createElement(Screen, { title },
-    createElement(Text, { size: 18 }, `Allow access to all ${kind === "image" ? "photos" : kind === "video" ? "videos" : "photos and videos"} to browse the library.`),
-    permission === "blocked" && createElement(Button, { onPress: () => { void callNative("files", "media-settings", {}).catch(reason => setError(reason instanceof Error ? reason : new Error(String(reason)))); } }, "Open settings"),
-    createElement(Button, { onPress: () => { void refresh(permission !== "blocked"); } }, permission === "blocked" ? "Refresh access" : "Allow access"));
+    createElement(Text, { size: 18 }, `Access to all ${kind === "image" ? "photos" : kind === "video" ? "videos" : "photos and videos"} is required to browse the library.`));
   if (importing) return createElement(Screen, { title }, createElement(LoadingState, { label: "Preparing attachments…" }));
   return createElement("MediaPickerScreen", { title, rightIcon: selected.size ? check : undefined, onRightPress: selected.size ? confirm : undefined },
     items.length === 0 ? createElement(EmptyState, { title: kind === "video" ? "No videos" : kind === "image" ? "No photos" : "No photos or videos" }) :

@@ -1,6 +1,6 @@
 import { callNative, NativeError } from "ink/native";
 
-export type HostPermission = "camera" | "microphone" | "location-approximate" | "location-precise";
+export type Permission = "camera" | "microphone" | "location-approximate" | "location-precise" | "notifications" | "photos" | "videos" | "photos-and-videos";
 export type PermissionStatus = "granted" | "denied" | "blocked";
 export interface HostPreferences { hapticsEnabled: boolean }
 export interface KeyboardOptions {
@@ -9,9 +9,9 @@ export interface KeyboardOptions {
   enableKeyAnimation: boolean;
   swipeEnabled: boolean | null;
 }
-async function permission(operation: string, name: HostPermission): Promise<PermissionStatus> {
-  const value = await callNative("permissions", operation, { permission: name, hostRequired: true }, { timeoutMs: 120_000 });
-  if (value !== "granted" && value !== "denied" && value !== "blocked") throw new NativeError("protocol", "Invalid host permission result");
+async function permission(operation: string, name: Permission, signal?: AbortSignal): Promise<PermissionStatus> {
+  const value = await callNative("permissions", operation, { permission: name }, { timeoutMs: 120_000, signal });
+  if (value !== "granted" && value !== "denied" && value !== "blocked") throw new NativeError("protocol", "Invalid permission result");
   return value;
 }
 
@@ -43,8 +43,16 @@ export const lightos = {
     if (!version.trim()) throw new NativeError("protocol", "Host returned an empty version");
     return version;
   },
-  getPermission(name: HostPermission) { return permission("status", name); },
-  requestPermission(name: HostPermission) { return permission("request", name); },
+  getPermission(name: Permission, { signal }: { signal?: AbortSignal } = {}) { return permission("status", name, signal); },
+  requestPermission(name: Permission, { signal }: { signal?: AbortSignal } = {}) { return permission("request", name, signal); },
+  async canScheduleExact(): Promise<boolean> {
+    const value = await callNative("notifications", "exact-status", {});
+    if (value !== "granted" && value !== "denied") throw new NativeError("protocol", "Invalid exact alarm permission result");
+    return value === "granted";
+  },
+  async requestExactPermission(): Promise<void> {
+    await callNative("notifications", "request-exact-permission", {});
+  },
   async openDialler({ phoneNumber }: { phoneNumber: string }): Promise<void> {
     if (!phoneNumber.trim() || phoneNumber.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(phoneNumber)) {
       throw new TypeError("Phone number must contain 1–64 characters without control characters");

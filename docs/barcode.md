@@ -9,19 +9,23 @@ See [Codes](/codes) for the 13 supported formats, examples and sizing. Invalid p
 
 ## Permissions
 
-Scanning requires camera access. Generating a code does not.
+| Permission | Required for |
+| --- | --- |
+| `camera` | Barcode scanning. |
+
+Generating a code does not require camera access.
 
 ```ts
-import { camera } from "@ink/barcode/scan";
+import { lightos } from "@ink/lightos";
 
-const permission = await camera.requestPermission();
+const permission = await lightos.requestPermission("camera");
 ```
 
-Use `camera.getPermission()` to check access without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
+Use `lightos.getPermission("camera")` to check without a prompt. See [Request a permission](/permissions-guide) for the returned statuses.
 
 ## Scan a pass
 
-Inside your scanner component, choose which formats to accept:
+Choose the accepted formats inside your scanner component:
 
 ```ts
 import { useCodeScanner } from "@ink/barcode/scan";
@@ -29,9 +33,15 @@ import { useCodeScanner } from "@ink/barcode/scan";
 const scanner = useCodeScanner({ formats: ["qr"] });
 ```
 
-Pass `scanner` as the controller to `CameraPreview` from the same import. See [Camera](/camera#capture-a-photo) for the preview layout. The result appears in `scanner.state.value` as `{ text, format, rawBytes }`. Select **Scan again** to restart.
+Pass `scanner` to `CameraPreview` from the same import. See [Camera](/camera#capture-a-photo) for the preview layout.
 
-QR scanning supports dark-on-light and inverted light-on-dark codes. `rawBytes` contains a `Uint8Array` when the decoder supplies bytes, otherwise `null`. These bytes may differ from the UTF-8 encoding of `text`.
+### Read the result
+
+`scanner.state.value` contains `{ text, format, rawBytes }`. Select **Scan again** to restart.
+
+QR scanning supports dark-on-light and inverted light-on-dark codes.
+
+`rawBytes` contains a `Uint8Array` when the decoder supplies bytes, otherwise `null`. It may differ from the UTF-8 encoding of `text`.
 
 Scanning runs natively. Release the camera when leaving the screen. Validate scanned values before storing them, and let the user review links before opening them.
 
@@ -49,7 +59,9 @@ const scanner = useCodeScanner({
 
 Results appear in `scanner.state.value`.
 
-`intervalMs` limits repeat results for the same code. It defaults to 1,000 milliseconds and accepts 100–60,000. Different codes arrive immediately. There is no scan timeout; scanning ends when the screen releases the camera.
+`intervalMs` limits repeat results for the same code. It defaults to 1,000 milliseconds and accepts 100–60,000. Different codes arrive immediately.
+
+There is no scan timeout. Scanning ends when the screen releases the camera.
 
 ## A pass library
 

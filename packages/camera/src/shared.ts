@@ -4,15 +4,7 @@ import { callNative, NativeError } from "ink/native";
 import { attachNativeController } from "ink/native/controller";
 import type { FileRef } from "@ink/files";
 
-export type PermissionStatus = "granted" | "denied" | "blocked";
-async function permission(operation: string): Promise<PermissionStatus> {
-  const value = await callNative("permissions", operation, { permission: "camera" }, { timeoutMs: 120_000 });
-  if (value !== "granted" && value !== "denied" && value !== "blocked") throw new NativeError("protocol", "Invalid camera permission result");
-  return value;
-}
 export const camera = {
-  getPermission: () => permission("status"),
-  requestPermission: () => permission("request"),
   removePhoto: async (file: CapturedFile): Promise<void> => {
     await callNative("camera", "remove-photo", { source: file.source });
   },
@@ -78,7 +70,7 @@ export function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown
     };
     return { capture: () => call("capture"), open: () => call("open"), retake: () => call("retake"), accept: () => call("use-photo") };
   }, []);
-  return { kind, state, previewId, ...commands, requestPermission: camera.requestPermission };
+  return { kind, state, previewId, ...commands };
 }
 export function CameraPreview({ controller }: { controller: ReturnType<typeof useSession<CapturedPhoto>> | ReturnType<typeof useSession<CodeScan>> }) {
   const command = useAction((run: () => Promise<void>) => run());

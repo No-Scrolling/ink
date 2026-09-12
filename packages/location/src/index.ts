@@ -1,7 +1,6 @@
 import { callNative, NativeError } from "ink/native";
 
 export type LocationAccuracy = "balanced" | "high";
-export type PermissionStatus = "granted" | "denied" | "blocked";
 export interface LocationFix {
   latitude: number;
   longitude: number;
@@ -14,17 +13,6 @@ export interface LocationOptions {
   maximumAge?: number;
   timeout?: number;
   signal?: AbortSignal;
-}
-
-function permissionName(accuracy: LocationAccuracy) {
-  return accuracy === "high" ? "location-precise" : "location-approximate";
-}
-async function permission(operation: string, accuracy: LocationAccuracy): Promise<PermissionStatus> {
-  const value = await callNative("permissions", operation, { permission: permissionName(accuracy) }, { timeoutMs: 120_000 });
-  if (value !== "granted" && value !== "denied" && value !== "blocked") {
-    throw new NativeError("protocol", "Invalid location permission result");
-  }
-  return value;
 }
 
 export interface LocationWatchOptions {
@@ -71,17 +59,6 @@ function parseTracking(value: unknown): LocationTrackingState {
 }
 
 export const location = {
-  getPermission(accuracy: LocationAccuracy = "balanced") { return permission("status", accuracy); },
-  requestPermission(accuracy: LocationAccuracy = "balanced") { return permission("request", accuracy); },
-  async requestTrackingPermission(accuracy: LocationAccuracy = "balanced"): Promise<PermissionStatus> {
-    const granted = await permission("request", accuracy);
-    if (granted !== "granted") return granted;
-    const notifications = await callNative("permissions", "request", { permission: "notifications" }, { timeoutMs: 120_000 });
-    if (notifications !== "granted" && notifications !== "denied" && notifications !== "blocked") {
-      throw new NativeError("protocol", "Invalid notification permission result");
-    }
-    return notifications;
-  },
   async *watch(options: LocationWatchOptions = {}): AsyncGenerator<LocationFix> {
     const watch = Number(await callNative("location", "watch-start", updateOptions(options), { signal: options.signal }));
     if (!Number.isSafeInteger(watch) || watch <= 0) throw new NativeError("protocol", "Invalid location watch");

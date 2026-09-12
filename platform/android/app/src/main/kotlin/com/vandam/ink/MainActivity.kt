@@ -526,7 +526,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        filesAdapter.onRequestPermissionsResult(requestCode)
         if (usesPermissions) permissionsAdapter.result(requestCode)
 
     }

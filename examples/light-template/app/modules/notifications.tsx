@@ -1,12 +1,13 @@
-import { useEffect } from "react";
+import { lightos } from "@ink/lightos";
+import { useCallback, useEffect } from "react";
 import { notifications, useNotificationTap } from "@ink/notifications";
 import { Button, Field, Screen, Stack, useAction, useRouteParams } from "ink";
 
 export default function Notifications() {
   const params = useRouteParams<{ source?: string }>();
-  const permission = useAction(notifications.getPermission);
+  const permission = useAction(useCallback(() => lightos.getPermission("notifications"), []));
   const request = useAction(async () => {
-    await notifications.requestPermission();
+    await lightos.requestPermission("notifications");
     permission.run();
   });
   const command = useAction((run: () => Promise<void>) => run());
@@ -38,7 +39,7 @@ export default function Notifications() {
         at: Date.now() + 15_000,
       }))}>Replace in 15 Seconds</Button>
       <Button disabled={busy} onPress={() => command.run(() => notifications.cancel("example-reminder"))}>Cancel Reminder</Button>
-      <Button disabled={busy} onPress={() => command.run(notifications.requestExactPermission)}>Allow Exact Reminders</Button>
+      <Button disabled={busy} onPress={() => command.run(lightos.requestExactPermission)}>Allow Exact Reminders</Button>
       <Button disabled={busy} onPress={() => command.run(() => notifications.schedule({
         id: "example-reminder", title: "Exact reminder", body: "Open the reminder details.",
         at: Date.now() + 15_000, exact: true,

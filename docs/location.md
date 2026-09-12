@@ -7,34 +7,34 @@ Use `@ink/location` for a single position, live updates or background tracking. 
 
 ## Permissions
 
-Request location access before reading a position or starting a watch.
+| Permission | Required for |
+| --- | --- |
+| `location-approximate` | Positions and watches with `accuracy: "balanced"` (the default). |
+| `location-precise` | Positions and watches with `accuracy: "high"`. |
 
 ```ts
-import { location } from "@ink/location";
+import { lightos } from "@ink/lightos";
 
-const permission = await location.requestPermission();
+const permission = await lightos.requestPermission("location-approximate");
 ```
 
-Use `location.getPermission()` to check access without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
-
-Both methods accept `"balanced"` (the default) for approximate access or `"high"` for precise access. Match this to the accuracy used by your location request.
+Use `lightos.getPermission("location-approximate")` to check without a prompt. See [Request a permission](/permissions-guide) for the returned statuses.
 
 For precise access:
 
 ```ts
-const permission = await location.requestPermission("high");
+const permission = await lightos.requestPermission("location-precise");
 ```
-
-`requestTrackingPermission(accuracy)` requests location and notification access for [background tracking](#background-tracking). It returns the same permission statuses.
 
 ## Read a position
 
 `location.current()` returns one position:
 
 ```ts
+import { lightos } from "@ink/lightos";
 import { location } from "@ink/location";
 
-const permission = await location.requestPermission();
+const permission = await lightos.requestPermission("location-approximate");
 if (permission === "granted") {
   const fix = await location.current({
     accuracy: "balanced",
@@ -45,7 +45,11 @@ if (permission === "granted") {
 }
 ```
 
-`selectNearbyPlace` is your app’s function. A location result includes coordinates, a timestamp and accuracy in metres. A cached approximate position may suit a forecast but not navigation.
+`selectNearbyPlace` is your app’s function. The result includes coordinates, a timestamp and accuracy in metres.
+
+### Cached positions and cancellation
+
+`maximumAge` is the oldest cached position to accept, in milliseconds. A cached approximate position may suit a forecast but not navigation.
 
 Pass `signal` to cancel a pending read.
 
@@ -70,22 +74,32 @@ for await (const fix of location.watch({
 | `interval` | Requested minimum interval in milliseconds. | 1,000–3,600,000 |
 | `distance` | Minimum distance in metres. | 0–100,000 |
 
-Updates may arrive less frequently. If your app processes them slowly, it receives the latest position rather than a growing queue. Up to 16 watches can be active.
+Updates may arrive less frequently. Slow consumers receive the latest position. Up to 16 watches can be active.
+
+### Stop watching
 
 Break the loop or abort its signal to stop watching. Clean up when leaving the screen. Watches pause when the app enters the background and resume when it returns.
 
-### Availability and accuracy
+## Availability and accuracy
 
 Balanced requests use Android’s fused location provider when available, otherwise its network provider. High-accuracy requests use GPS and network providers.
 
-Permission uses the LightOS prompt on the phone and Android’s prompt on the emulator. Handle denied permission, disabled location services, timeouts and unavailable providers separately. Offer a manual location choice when appropriate.
+Handle denied permission, disabled location services, timeouts and unavailable providers separately. A manual location choice can provide a fallback.
 
 ## Background tracking
 
-To keep tracking in the background, start tracking from a user action while the app is visible:
+Background tracking also requires notification permission because it displays an ongoing notification.
+
+### Start tracking
+
+Start from a user action while the app is visible:
 
 ```ts
-if (await location.requestTrackingPermission() === "granted") {
+import { lightos } from "@ink/lightos";
+import { location } from "@ink/location";
+
+if (await lightos.requestPermission("location-approximate") === "granted"
+  && await lightos.requestPermission("notifications") === "granted") {
   await location.startTracking({ interval: 5_000, distance: 10 });
 }
 
@@ -93,14 +107,20 @@ const tracking = await location.getTracking();
 // { running, fix, error } — fix is the latest recorded position, or null.
 ```
 
-Stop tracking from a separate action:
+### Stop tracking
 
 ```ts
 await location.stopTracking();
 ```
 
-Tracking requires location and notification permission. It shows an ongoing notification with a **Stop** action and continues after leaving the screen. It cannot start while the app is hidden and does not restart after process death or reboot.
+The notification also includes a **Stop** action.
 
-`getTracking()` keeps the latest position after tracking stops. Check its timestamp before use. Ink does not save a journey history. Ordinary watches do not automatically become background tracking.
+### Tracking state
+
+Tracking continues after leaving the screen. It cannot start while the app is hidden and does not restart after process death or reboot.
+
+`getTracking()` keeps the latest position after tracking stops. Check its timestamp before use. Ink does not save a journey history or turn ordinary watches into background tracking.
+
+## Search for places
 
 Use a separate provider to search places or convert coordinates into addresses.

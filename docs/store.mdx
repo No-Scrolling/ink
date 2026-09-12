@@ -47,19 +47,19 @@ const saved = await settings.get();
 await settings.set({ units: "fahrenheit" });
 ```
 
-`get()` loads and validates the saved value. `set()` replaces it and resolves once saved; readers see either the old value or the complete new value.
+`get()` loads and validates the saved value. `set()` replaces it and resolves once saved. Readers see either the old value or the complete new value.
 
-To change part of a value without replacing its other fields:
+### Update part of a value
 
 ```ts
 await settings.update(current => ({ ...current, units: "fahrenheit" }));
 ```
 
-`update(transform)` changes the current value. Its function must be synchronous and free of side effects: Ink may call it again if another write happens first.
+The transform must be synchronous and free of side effects. Ink may call it again if another write happens first.
 
 ## Observe a setting
 
-<p>The preview places this component inside <code>Screen title="Units"</code>.</p>
+<p>Place this component inside a <code>Screen</code>.</p>
 
 <div className="pattern-example">
 <div>
@@ -82,13 +82,15 @@ export function Units() {
 </div>
 </div>
 
-`useSnapshot` starts loading after React commits the component. It returns `loading`, `ready` with `data`, or `error`, and refreshes after writes from the app or its workers.
+`useSnapshot` loads when the component mounts. It returns `loading`, `ready` with `data`, or `error`. Writes from the app or its workers refresh it.
 
 Use `get()` outside React, including in workers. Use [useAction](/data#save-and-send-actions) for UI commands that need to show write failures.
 
 ## Change the data format
 
-Changing a TypeScript type does not update saved data. Increase `version` and supply `migrate(oldValue, oldVersion)` to convert the old JSON value. Ink validates the result with `decode` and replaces the saved value in one operation.
+Changing a TypeScript type does not update saved data. Increase `version` and supply `migrate(oldValue, oldVersion)` to convert it.
+
+Ink validates the result with `decode` and replaces the saved value in one operation.
 
 If version 1 stored a plain unit string, this function converts it to the settings object above:
 
@@ -101,7 +103,9 @@ function migrateUnits(oldValue: unknown, oldVersion: number) {
 
 In `createStore`, set `version` to `2` and `migrate` to `migrateUnits`. Keep the decoder and initial value for the new format. Adapt the migration to your actual saved data.
 
-Corrupt data or an unsupported newer version produces an error. Ink uses defaults only when the key is missing. All code in the app can access its store keys.
+### Invalid saved data
+
+Corrupt data or an unsupported newer version produces an error. Ink uses defaults only when the key is missing.
 
 ## Reset a store
 
@@ -111,7 +115,7 @@ Restore the initial value:
 await settings.reset();
 ```
 
-## Read-only SQLite access
+## Read a SQLite database
 
 Import a bundled `.db` file and open it with `openDatabase(asset)`. Close it with `db.close()` when finished:
 
@@ -131,10 +135,22 @@ try {
 }
 ```
 
+### Queries and results
+
 Queries must start with `SELECT`, `WITH` or `EXPLAIN`. The database prevents writes. Pass strings, finite numbers or `null` as parameters instead of inserting values into SQL text.
 
 Rows contain strings, numbers or `null`. Binary columns and integers outside JavaScript’s safe range reject; cast large integers to text. Validate rows before using them.
 
-Each runtime can open eight databases. A result can contain up to 10,000 rows and approximately 400 kB of encoded data. Use SQL limits and pagination for larger results. Pass `{ signal }` to `query()` to cancel a running query.
+### Limits
+
+| Resource | Maximum |
+| --- | --- |
+| Open databases per runtime | 8 |
+| Rows per result | 10,000 |
+| Encoded result size | Approximately 400 kB |
+
+Use SQL limits and pagination for larger results. Pass `{ signal }` to `query()` to cancel a running query.
 
 App updates can replace the bundled database. Writable SQL databases, transactions and live queries are not supported; use JSON stores for editable settings and small collections.
+
+All code in the app can access its store keys and bundled databases. Use [Secure store](/secure-store) for credentials.

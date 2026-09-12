@@ -6,6 +6,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ink/lightos": "workspace:*",
     "@ink/location": "workspace:*",
     "@ink/network": "workspace:*",
     "@ink/store": "workspace:*",

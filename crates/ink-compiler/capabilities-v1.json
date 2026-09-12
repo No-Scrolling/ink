@@ -86,7 +86,7 @@
       }
     },
     "camera-permission": {
-      "cost": "camera permission adapter",
+      "cost": "camera permission",
       "dependencies": [],
       "permissions": [
         "android.permission.CAMERA"
@@ -305,7 +305,6 @@
       "enabled": "cameraSession",
       "disabled": "noCamera"
     },
-    "permission": "cameraPermission",
     "photo": {
       "capability": "photo-capture",
       "enabled": "photoCapture",

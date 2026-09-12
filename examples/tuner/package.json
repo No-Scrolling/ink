@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@ink/audio": "workspace:*",
+    "@ink/lightos": "workspace:*",
     "@ink/store": "workspace:*",
     "ink": "workspace:*",
     "react": "19.2.8"

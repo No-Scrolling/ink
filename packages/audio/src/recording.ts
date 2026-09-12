@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { NativeError } from "ink/native";
 import type { FileRef } from "@ink/files";
 import { fields, useCapture } from "./capture-internal";
-export { microphone, type MicrophonePermission } from "./microphone-permission";
 
 export interface RecorderState {
   status: "idle" | "recording" | "stopping" | "ready" | "error";

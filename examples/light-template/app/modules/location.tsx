@@ -1,3 +1,4 @@
+import { lightos } from "@ink/lightos";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { location, type LocationFix } from "@ink/location";
 import { Button, Field, Screen, Stack, useAction } from "ink";
@@ -21,13 +22,16 @@ export default function Location() {
     }
   });
   const tracking = useAction(location.getTracking);
-  const trackingPermission = useAction(location.requestTrackingPermission);
+  const trackingPermission = useAction(async () => {
+    const permission = await lightos.requestPermission("location-approximate");
+    return permission === "granted" ? lightos.requestPermission("notifications") : permission;
+  });
   const startTracking = useAction(async () => {
     await location.startTracking({ interval: 1000 });
     tracking.run();
   });
   const stopTracking = useAction(async () => { await location.stopTracking(); tracking.run(); });
-  const permission = useAction(location.getPermission);
+  const permission = useAction(useCallback(() => lightos.getPermission("location-approximate"), []));
   const session = useRef<AbortController | null>(null);
   const current = useCallback(() => {
     const controller = new AbortController();
@@ -36,7 +40,7 @@ export default function Location() {
   }, []);
   const fix = useAction(current);
   const request = useAction(async () => {
-    await location.requestPermission();
+    await lightos.requestPermission("location-approximate");
     permission.run();
   });
   useEffect(() => {

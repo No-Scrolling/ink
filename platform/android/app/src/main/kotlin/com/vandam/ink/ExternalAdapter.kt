@@ -60,6 +60,10 @@ internal class ExternalAdapter(private val activity: Activity) : NativeAdapter, 
                     intent.putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", if (lightAppearance) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
                     intent.putExtra("androidx.browser.customtabs.extra.COLOR_SCHEME", if (lightAppearance) 1 else 2)
                     intent.putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1)
+                    intent.putExtra("androidx.browser.customtabs.extra.SHARE_STATE", 2)
+                    intent.putExtra("android.support.customtabs.extra.SHARE_MENU_ITEM", false)
+                    intent.putExtra("org.chromium.chrome.browser.customtabs.EXTRA_DISABLE_STAR_BUTTON", true)
+                    intent.putExtra("org.chromium.chrome.browser.customtabs.EXTRA_DISABLE_DOWNLOAD_BUTTON", true)
                 } else {
                     require(operation == "open-url") { "OAuth authorisation must use HTTPS" }
                     require(scheme !in setOf("javascript", "data", "file", "content", "intent", "about", "blob")) { "Unsupported URL scheme" }

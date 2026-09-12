@@ -5,6 +5,8 @@ description: "Download files and track progress after a screen closes."
 
 Use `@ink/network/downloads` to download files after a screen closes. Ink tracks progress, manages partial files and recovers interrupted transfers.
 
+## Start a download
+
 ```ts
 import { downloads } from "@ink/network/downloads";
 
@@ -17,7 +19,11 @@ const download = await downloads.enqueue({
 await saveEpisodeDownload(episode.id, download.id);
 ```
 
-`episode` and `saveEpisodeDownload` come from your app. Reusing a `key` avoids duplicate downloads. The same key with different source details rejects; use a new key when content changes.
+`episode` and `saveEpisodeDownload` come from your app.
+
+### Avoid duplicates
+
+Reusing a `key` avoids duplicate downloads. The same key with different source details rejects; use a new key when content changes.
 
 ## Observe progress
 
@@ -32,17 +38,27 @@ const source = useMemo(() => downloads.observe(downloadId), [downloadId]);
 const download = useSnapshot(source);
 ```
 
-Keep the source stable while the ID is unchanged. The snapshot is `loading`, `ready` or `error`. Ready data includes:
+Keep the source stable while the ID is unchanged.
+
+### Read transfer state
+
+The snapshot is `loading`, `ready` or `error`. Ready data includes:
 
 - Transfer state: `queued`, `running`, `paused`, `completed`, `failed` or `cancelled`.
 - Bytes received and the total size, when known.
-- A [FileRef](/files#one-file-representation) after completion, or an error if the transfer failed.
+- A [FileRef](/files#file-metadata) after completion, or an error if the transfer failed.
 
 A snapshot error means Ink could not read the job. A failed transfer appears within ready job data.
 
+To read a saved job once:
+
+```ts
+const download = await downloads.get(downloadId);
+```
+
 ## Pause and resume
 
-Use the saved `downloadId` in your pause action:
+Use the saved `downloadId`:
 
 ```ts
 await downloads.pause(downloadId);
@@ -54,7 +70,7 @@ To resume:
 await downloads.resume(downloadId);
 ```
 
-## Cancel or remove
+## Cancel a download
 
 Cancel unfinished work and delete its partial files:
 
@@ -62,7 +78,9 @@ Cancel unfinished work and delete its partial files:
 await downloads.cancel(downloadId);
 ```
 
-To delete the job and all its files, including a completed download:
+## Remove a download
+
+Delete the job and all its files, including a completed download:
 
 ```ts
 await downloads.remove(downloadId);
@@ -72,19 +90,19 @@ Discard the ID after removal. Closing a screen or stopping observation does not 
 
 ## Interrupted downloads
 
-Ink saves transfer state across app restarts. It resumes partial files when the server supports it and the content still matches; otherwise it restarts the transfer. Network constraints and storage failures appear in state. Handle missing files when reopening downloads.
+Ink saves transfer state across app restarts. It resumes partial files when the server supports it and the content still matches. Otherwise, it restarts the transfer.
+
+Network constraints and storage failures appear in state. Handle missing files when reopening downloads.
 
 Android schedules transfers and restores pending work after reboot. Force-stopping the app prevents background work until it opens again.
 
-Read the saved job without subscribing:
-
-```ts
-const download = await downloads.get(downloadId);
-```
-
 ## Download URLs
 
-Release builds require HTTPS. Debug builds also accept loopback HTTP for local development. Downloads do not add authentication headers; use an authorised URL that remains valid for retries.
+Release builds require HTTPS. Debug builds also accept loopback HTTP.
+
+### Authentication and expiry
+
+Downloads do not add authentication headers. Use an authorised URL that remains valid for retries.
 
 If a signed URL expires, obtain a replacement and enqueue a new request. Do not put permanent bearer tokens in saved URLs.
 

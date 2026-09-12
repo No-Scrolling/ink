@@ -1,5 +1,6 @@
+import { lightos } from "@ink/lightos";
 import { useEffect, useState } from "react";
-import { microphone, PitchIndicator, usePitchDetector } from "@ink/audio/microphone";
+import { PitchIndicator, usePitchDetector } from "@ink/audio/microphone";
 import { Screen, Stack, Text, navigate } from "ink";
 import { settings } from "ink/icons";
 import { useSettings } from "../lib/settings-context";
@@ -29,9 +30,9 @@ export default function Tuner() {
     setPermissionMessage(null);
     void (async () => {
       try {
-        let permission = await microphone.getPermission();
+        let permission = await lightos.getPermission("microphone");
         if (cancelled) return;
-        if (permission === "denied") permission = await microphone.requestPermission();
+        if (permission === "denied") permission = await lightos.requestPermission("microphone");
         if (cancelled) return;
         if (permission === "granted") await pitch.start();
         else setPermissionMessage(permission === "blocked"

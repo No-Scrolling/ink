@@ -1,0 +1,58 @@
+---
+title: "Request a permission"
+description: "Check and request permissions."
+---
+
+## Permissions
+
+| Access | Used for | Module |
+| --- | --- | --- |
+| Camera | Photos, videos and barcode scanning. | [Camera](/camera#permissions) |
+| Microphone | Recording and sound analysis. | [Audio](/audio#permissions) |
+| Approximate location | A general position. | [Location](/location#permissions) |
+| Precise location | A more accurate position. | [Location](/location#permissions) |
+| Location and notifications | Background location tracking. | [Location](/location#background-tracking) |
+| Notifications | Reminders and other notifications. | [Notifications](/notifications#permissions) |
+| Exact alarms | Reminders scheduled for an exact time. | [Notifications](/notifications#permissions) |
+| Photos and videos | Browsing the media library. | [Files and media](/files#permissions) |
+
+Use `lightos` from `@ink/lightos` to check and request access. Ink uses the LightOS permission screen when available, otherwise the Android prompt.
+
+## Request access
+
+```ts
+import { lightos } from "@ink/lightos";
+
+const permission = await lightos.requestPermission("microphone");
+```
+
+| Result | Meaning |
+| --- | --- |
+| `granted` | Access is allowed. |
+| `denied` | Access was not granted. You can request it again. |
+| `blocked` | Access is blocked. The user must change it in settings. |
+
+A request rejects if the native service fails, rather than returning a permission status.
+
+<div className="pattern-preview" style={{ position: "static", width: "320px", maxWidth: "100%" }}>
+
+<Tabs>
+<Tab title="LightOS">
+<img src="/images/patterns/permission-lightos.png" alt="The LightOS emulator requests microphone access, with Deny and Accept actions." width="1080" height="1240" />
+</Tab>
+<Tab title="Android">
+<img src="/images/patterns/permission-android.png" alt="Android requests microphone access, with options to allow while using the app, allow once or deny." width="1080" height="1240" />
+</Tab>
+</Tabs>
+
+</div>
+
+## Check access
+
+`getPermission()` returns the same three values without showing a prompt:
+
+```ts
+const permission = await lightos.getPermission("microphone");
+```
+
+Granting permission does not start a sensor or recording.

@@ -5,6 +5,16 @@ description: "Select photos and videos."
 
 ## Example
 
+Request access through `lightos` before displaying the picker:
+
+```ts
+import { lightos } from "@ink/lightos";
+
+const permission = await lightos.requestPermission("photos-and-videos");
+```
+
+The picker checks access without opening a permission prompt. See [Files and media](/files#permissions) for image-only and video-only permissions.
+
 <div className="pattern-example">
 <div>
 
@@ -13,7 +23,7 @@ description: "Select photos and videos."
 ```tsx
 import { MediaPicker } from "@ink/files/media";
 
-<MediaPicker onSelect={saveAttachments} />
+{permission === "granted" && <MediaPicker onSelect={saveAttachments} />}
 ```
 <p><code>saveAttachments</code> receives an array of managed files. Save their IDs, then navigate back. See <a href="/files">Files and media</a> for storage and uploads.</p>
 
@@ -53,6 +63,6 @@ import { MediaPicker } from "@ink/files/media";
 
 Use `kind="image"` or `kind="video"`. The default shows both. `title` changes the header.
 
-The picker requests full photo-library access on entry. Denied access offers a retry; blocked access offers settings. Selected-photo access alone is not enough.
+The picker requires full access for the selected media kind. Selected-photo access alone is not enough. Without access, it displays a message without requesting permission or opening settings.
 
 Selected items are copied into app-owned storage before `onSelect` runs. Back cancels selection. The callback may return a promise and decides when to leave the page. Picking a video does not add video playback.

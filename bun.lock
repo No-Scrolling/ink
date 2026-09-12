@@ -65,6 +65,7 @@
       "name": "ink-tuner-example",
       "dependencies": {
         "@ink/audio": "workspace:*",
+        "@ink/lightos": "workspace:*",
         "@ink/store": "workspace:*",
         "ink": "workspace:*",
         "react": "19.2.8",
@@ -73,6 +74,7 @@
     "examples/weather": {
       "name": "ink-weather-example",
       "dependencies": {
+        "@ink/lightos": "workspace:*",
         "@ink/location": "workspace:*",
         "@ink/network": "workspace:*",
         "@ink/store": "workspace:*",
@@ -136,6 +138,9 @@
     "packages/files": {
       "name": "@ink/files",
       "version": "0.1.0",
+      "dependencies": {
+        "@ink/lightos": "workspace:*",
+      },
       "peerDependencies": {
         "ink": "0.0.0",
         "react": "19.2.8",

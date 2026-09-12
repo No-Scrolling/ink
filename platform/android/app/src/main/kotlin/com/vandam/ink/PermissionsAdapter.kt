@@ -27,10 +27,6 @@ internal class PermissionsAdapter(
             complete(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid permission request", false))
             return
         }
-        if (requestPayload?.optBoolean("hostRequired") == true && !usesLightOs) {
-            complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "LightOS is not installed", false))
-            return
-        }
         if (operation == "status") {
             status(id, permission, complete)
             return
@@ -53,7 +49,7 @@ internal class PermissionsAdapter(
                 finish(NativeResult.Success("granted"))
                 return
             }
-            history.edit().putBoolean(permission.name, true).apply()
+            history.edit().apply { permissions.forEach { putBoolean(it, true) } }.apply()
             try {
                 activity.requestPermissions(permissions, REQUEST_CODE)
             } catch (error: Exception) {
@@ -63,7 +59,7 @@ internal class PermissionsAdapter(
     }
 
     private fun usesLightPermission(permission: Permission): Boolean {
-        if (!BuildConfig.INK_LIGHT_SDK_ENABLED || !usesLightOs || permission.name == "notifications") return false
+        if (!BuildConfig.INK_LIGHT_SDK_ENABLED || !usesLightOs || permission.name !in setOf("camera", "microphone", "location-approximate", "location-precise")) return false
         // The emulator SDK cannot grant location permissions.
         return BuildConfig.INK_LIGHT_SERVER_PACKAGE != "com.thelightphone.sdk.emulator" ||
             Manifest.permission.ACCESS_COARSE_LOCATION !in permission.android
@@ -78,7 +74,10 @@ internal class PermissionsAdapter(
         val denied = permissions.filter { activity.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         val status = when {
             denied.isEmpty() -> "granted"
-            history.getBoolean(permission.name, false) && denied.none(activity::shouldShowRequestPermissionRationale) -> "blocked"
+            denied.any {
+                (history.getBoolean(it, false) || history.getBoolean(permission.name, false)) &&
+                    !activity.shouldShowRequestPermissionRationale(it)
+            } -> "blocked"
             else -> "denied"
         }
         complete(NativeResult.Success(status))
@@ -113,6 +112,9 @@ internal class PermissionsAdapter(
             "camera" -> arrayOf(Manifest.permission.CAMERA)
             "microphone" -> arrayOf(Manifest.permission.RECORD_AUDIO)
             "notifications" -> arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+            "photos" -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+            "videos" -> arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
+            "photos-and-videos" -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
             "location-approximate" -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
             "location-precise" -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
             else -> return null

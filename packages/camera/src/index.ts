@@ -1,6 +1,6 @@
 import { NativeError } from "ink/native";
 import { useSession, type CapturedFile, type CapturedPhoto } from "./shared";
-export { camera, CameraPreview, type CapturedFile, type CapturedPhoto, type PermissionStatus } from "./shared";
+export { camera, CameraPreview, type CapturedFile, type CapturedPhoto } from "./shared";
 
 function decodePhoto(value: unknown): CapturedPhoto {
   if (typeof value !== "object" || value === null

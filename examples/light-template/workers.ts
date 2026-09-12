@@ -1,3 +1,4 @@
+import { lightos } from "@ink/lightos";
 import "@ink/network";
 import { notifications } from "@ink/notifications";
 import { location } from "@ink/location";
@@ -48,8 +49,8 @@ export const inspectWorker = defineTask({
     return null;
   },
   async run({ signal }) {
-    const permission = await notifications.getPermission();
-    const exact = await notifications.canScheduleExact();
+    const permission = await lightos.getPermission("notifications");
+    const exact = await lightos.canScheduleExact();
     const jobs = await getJobs({ signal });
     if (permission === "granted") {
       await notifications.show({ id: "worker-inspection", title: "Background worker", body: "Native notifications are available" });

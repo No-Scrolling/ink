@@ -1,8 +1,9 @@
 import { prepareImage } from "@ink/files/images";
+import { lightos } from "@ink/lightos";
 import "@ink/network";
 import { useEffect, useRef, useState } from "react";
 import { files, type FileRef } from "@ink/files";
-import { Button, Field, Image, Row, Screen, useAction, useSnapshot } from "ink";
+import { Button, Field, Image, Row, Screen, navigate, useAction, useSnapshot } from "ink";
 import { attachments } from "../../data/attachments";
 
 export default function Files() {
@@ -22,6 +23,15 @@ export default function Files() {
   const active = useRef<AbortController | null>(null);
   useEffect(() => () => active.current?.abort(), []);
   const action = useAction(async (run: () => Promise<string>) => run());
+  const openMedia = useAction(async () => {
+    const permission = await lightos.requestPermission("photos-and-videos");
+    if (permission !== "granted") {
+      throw new Error(permission === "blocked"
+        ? "Allow photo and video access in app settings."
+        : "Photo and video access was not granted.");
+    }
+    navigate("/modules/files/media");
+  });
   const keep = async (selected: FileRef) => {
     await attachments.update(ids => ids.includes(selected.id) ? ids : [...ids, selected.id]);
     setFile(selected);
@@ -30,7 +40,8 @@ export default function Files() {
   const pending = action.status === "pending";
   return (
     <Screen title="Files and media">
-      <Button href="/modules/files/media">Choose media</Button>
+      <Button disabled={openMedia.status === "pending"} onPress={openMedia.run}>Choose media</Button>
+      {openMedia.status === "error" && <Field label="Media access">{openMedia.error.message}</Field>}
       <Button disabled={pending} onPress={() => action.run(async () => {
         const selected = await files.pick({ types: ["application/pdf", "text/plain"] });
         return selected ? keep(selected) : "Selection cancelled";

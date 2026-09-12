@@ -11,6 +11,5 @@ private object NoFilesAdapter : FilesAdapter {
     }
     override fun cancel(requestId: Long) = Unit
     override fun onActivityResult(requestCode: Int, resultCode: Int, intent: Intent?) = false
-    override fun onRequestPermissionsResult(requestCode: Int) = false
     override fun stop() = Unit
 }

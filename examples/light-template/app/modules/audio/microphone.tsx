@@ -1,11 +1,12 @@
-import { useEffect } from "react";
-import { microphone, useLevelMeter, usePitchDetector } from "@ink/audio/microphone";
+import { lightos } from "@ink/lightos";
+import { useCallback, useEffect } from "react";
+import { useLevelMeter, usePitchDetector } from "@ink/audio/microphone";
 import { Button, Field, Screen, useAction } from "ink";
 
 export default function Microphone() {
-  const permission = useAction(microphone.getPermission);
+  const permission = useAction(useCallback(() => lightos.getPermission("microphone"), []));
   const request = useAction(async () => {
-    await microphone.requestPermission();
+    await lightos.requestPermission("microphone");
     permission.run();
   });
   const level = useLevelMeter();

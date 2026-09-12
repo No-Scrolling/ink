@@ -104,11 +104,16 @@ export function ConversationScreen<T extends ConversationMessage>({ title, group
     return { author: message.outgoing ? "You" : message.author ?? title, text: message.text || "Photo" };
   }
   function renderMessage(message: T, onLongPress?: () => void) {
+    const image = message.image;
     return createElement(Message, {
       text: message.text, timestamp: message.timestamp, outgoing: message.outgoing,
       author: group ? message.author : undefined, reply: message.reply,
       reactions: message.reactions, status: message.status,
-      image: message.image && { ...message.image, onPress: onImagePress && (() => onImagePress(message)) },
+      image: image && { ...image, onPress: () => {
+        if (onImagePress) onImagePress(message);
+        else presentPage(createElement(Screen, { title: "Photo", centered: true },
+          createElement(Image, { ...image, fit: "contain", bleed: true, zoomable: true })));
+      } },
       onRetry: onRetry && (() => onRetry(message)),
       onDoubleTap: onDoubleTap && (() => onDoubleTap(message)),
       onLongPress,

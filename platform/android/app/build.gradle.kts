@@ -298,7 +298,7 @@ android {
         val camera = inkCatalogue["androidCameraSources"] as Map<*, *>
         val session = camera["session"] as Map<*, *>
         val cameraSession = (session["capabilities"] as List<*>).any { it in inkCapabilities.get() }
-        val cameraSource = if (cameraSession) session["enabled"] else if (inkUsesCameraPermission.get()) camera["permission"] else session["disabled"]
+        val cameraSource = if (cameraSession) session["enabled"] else session["disabled"]
         getByName("main").java.srcDir("src/$cameraSource/kotlin")
         if (cameraSession) {
             for (kind in listOf("photo", "scanner")) {
