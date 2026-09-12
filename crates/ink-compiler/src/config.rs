@@ -17,6 +17,8 @@ struct AppConfig {
     background: Option<BackgroundConfig>,
     auth: Option<AuthConfig>,
     #[serde(default)]
+    keyboard: KeyboardConfig,
+    #[serde(default)]
     capabilities: Vec<crate::Capability>,
 }
 
@@ -47,6 +49,21 @@ struct AuthConfig {
     redirect_uri: String,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum KeyboardProvider {
+    #[default]
+    Ink,
+    System,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KeyboardConfig {
+    #[serde(default)]
+    provider: KeyboardProvider,
+}
+
 #[derive(Clone, Debug)]
 pub struct ReleaseSigning {
     pub keystore: PathBuf,
@@ -66,6 +83,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) capabilities: Vec<crate::Capability>,
     pub(crate) worker_entry: Option<PathBuf>,
     pub(crate) auth_redirect_uri: Option<String>,
+    pub(crate) keyboard_provider: KeyboardProvider,
 }
 
 impl ResolvedConfig {
@@ -91,6 +109,7 @@ impl ResolvedConfig {
             version: config.version,
             version_code: config.version_code,
             capabilities,
+            keyboard_provider: config.keyboard.provider,
             auth_redirect_uri: config.auth.map(|auth| auth.redirect_uri),
             worker_entry: config
                 .background

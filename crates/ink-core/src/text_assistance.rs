@@ -60,7 +60,25 @@ impl Engine {
             self.assistance.menu = false;
             return false;
         }
-        if let Some(replacement) = data["replacement"].as_str() {
+        if let Some(value) = data["value"].as_str() {
+            let Some(cursor) = data["selection"]
+                .as_u64()
+                .and_then(|n| byte_offset(value, n as usize))
+            else {
+                return false;
+            };
+            if value.chars().any(|ch| {
+                ch.is_control()
+                    && !(ch == '\n' && self.focused_input_action == TextInputAction::Return)
+            }) || (self.text_input_numeric() && !value.bytes().all(|byte| byte.is_ascii_digit()))
+            {
+                return false;
+            }
+            self.focused_input_cursor = cursor;
+            self.state[state.0] = StateValue::String(value.to_owned());
+            self.assistance = Assistance::default();
+            self.reveal_text_cursor(state);
+        } else if let Some(replacement) = data["replacement"].as_str() {
             let Some(cursor) = data["cursor"]
                 .as_u64()
                 .and_then(|n| byte_offset(text, n as usize))

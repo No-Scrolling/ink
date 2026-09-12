@@ -5,6 +5,21 @@ description: "Control focus, editing and spelling."
 
 See [Inputs](/text-input) for layouts, action keys and screenshots.
 
+## Choose a keyboard
+
+Ink uses its own keyboard by default. To use the device’s selected Android keyboard for every input:
+
+```toml ink.toml
+[keyboard]
+provider = "system"
+```
+
+Set `provider = "ink"` or omit the section to use Ink’s keyboard. Rebuild the app after changing this setting.
+
+Numeric inputs request a number layout. Search, Done and Return use the corresponding Android keyboard actions. The installed keyboard controls its appearance and suggestions.
+
+System-keyboard builds omit Ink’s keyboard layouts, icons and spelling interface.
+
 ## Focus an input
 
 `autoFocus` opens the keyboard once per screen visit:
@@ -19,7 +34,7 @@ Update `value` immediately in `onChange`. Delay network requests, not text updat
 
 ## Copy, paste and clear
 
-Long-press plain text for editing actions; long-press again to return.
+With Ink’s keyboard, long-press plain text for editing actions; long-press again to return.
 
 | Action | Behaviour |
 | --- | --- |
@@ -35,11 +50,13 @@ Single-line inputs replace pasted line breaks with spaces. Numeric inputs keep o
 <TextInput value={text} onChange={setText} spellCheck autoCorrect />
 ```
 
-`spellCheck` underlines misspelt words. Long-press an underlined word to see up to three suggestions without moving the cursor.
+With Ink’s keyboard, `spellCheck` underlines misspelt words. Long-press an underlined word to see up to three suggestions without moving the cursor.
 
 `autoCorrect` replaces likely typos after a space or punctuation. Press Backspace immediately to undo a correction. Ink then leaves that word unchanged for the rest of the editing session.
 
 Both options default to `false`. [Conversations](/conversations) enable them; numeric inputs ignore them. Suggestions use the phone’s spellchecker and language settings, with no bundled dictionary. If the service is unavailable, typing still works.
+
+With the system keyboard, these options request suggestions and autocorrection from that keyboard. Ink does not show its spelling menu.
 
 ## Close the keyboard
 

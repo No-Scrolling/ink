@@ -86,6 +86,7 @@ val inkUsesNotifications = inkUses("notifications")
 val inkUsesNotificationPermission = inkUses("notification-permission")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesTextInput = inkUses("text-input")
+val inkSystemKeyboard = providers.gradleProperty("inkKeyboardProvider").orElse("ink").map { it == "system" }
 val inkUsesDownloads = inkUses("downloads")
 val inkUsesMaps = inkUses("maps")
 val inkUsesFiles = inkUses("files")
@@ -291,7 +292,11 @@ android {
         inkCapabilityCatalogue.forEach { (name, value) ->
             val group = (value as Map<*, *>)["androidSourceGroup"] as? Map<*, *>
             if (group != null) {
-                val selected = group[if (name in inkCapabilities.get()) "enabled" else "disabled"] as String
+                val selected = if (name == "text-input" && inkUsesTextInput.get() && inkSystemKeyboard.get()) {
+                    "textInputSystem"
+                } else {
+                    group[if (name in inkCapabilities.get()) "enabled" else "disabled"] as String
+                }
                 getByName("main").java.srcDir("src/$selected/kotlin")
             }
         }
@@ -307,7 +312,7 @@ android {
                 getByName("main").java.srcDir("src/$selected/kotlin")
             }
         }
-        if (inkUsesTextInput.get()) {
+        if (inkUsesTextInput.get() && !inkSystemKeyboard.get()) {
             getByName("main").res.srcDir("src/textInput/res")
             val keyboard = if (inkUses("text-input-full").get()) "textInputFull" else "textInputNumeric"
             getByName("main").java.srcDir("src/$keyboard/kotlin")
