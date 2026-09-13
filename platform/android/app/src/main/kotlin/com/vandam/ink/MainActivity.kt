@@ -60,6 +60,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var mapsAdapter: MapsAdapter
     private val filesAdapter by lazy { createFilesAdapter(this) }
     private val sqliteAdapter by lazy { SqliteAdapter(this) }
+    private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
     private val secureStoreAdapter by lazy { SecureStoreAdapter(this) }
     private val authAdapter by lazy { AuthAdapter(this) { message ->
         runOnUiThread { if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, message) }
@@ -418,7 +419,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             CAMERA_MODULE -> cameraAdapter
             NOTIFICATIONS_MODULE -> notificationsAdapter
             BACKGROUND_MODULE -> backgroundAdapter
-            else -> null
+            else -> appNativeAdapters[module]
         }
         if (adapter == null) {
             sendJavaScriptResult(id, NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Unknown native module: $module", false))
@@ -602,7 +603,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onPause() {
-        textInputAdapter.close()
+        textInputAdapter.pause()
         externalAdapter.onPause()
         connectivityAdapter.stop()
         mapsAdapter.pause()

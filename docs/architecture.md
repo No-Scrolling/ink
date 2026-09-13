@@ -30,6 +30,8 @@ Packages declare native requirements in `ink-native.json`. Ink combines these wi
 
 Unused JavaScript can be removed from the bundle. Native SDKs may need to be included as a whole. Pure JavaScript packages need no Ink registration; third-party native modules do not yet have a general extension API.
 
+For app-local Android code, an `android/build.gradle.kts` library can supply resources and a manifest. Ink compiles `android/kotlin/` with its Android host; that code provides `createAppNativeAdapters` for calls from `ink/native`. This integration uses internal Android interfaces and is not a portable package API.
+
 ## Running an app
 
 React runs on a dedicated JavaScript thread. It manages app state and sends UI changes to Rust. Native API calls return promises so file and network operations do not block that thread.

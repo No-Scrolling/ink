@@ -1227,6 +1227,9 @@ pub struct Engine {
     state: Vec<StateValue>,
     viewport: Viewport,
     keyboard_inset: u32,
+    native_text_editor: bool,
+    native_editor_state: Option<StateId>,
+    native_editor_lines: Option<(StateId, String, usize)>,
     scene: Scene,
     react_list_positions: HashMap<usize, f32>,
     list_metrics: HashMap<usize, list::ListMetrics>,
@@ -1280,6 +1283,9 @@ impl Engine {
             state: Vec::new(),
             viewport: Viewport::default(),
             keyboard_inset: 0,
+            native_text_editor: false,
+            native_editor_state: None,
+            native_editor_lines: None,
             scene: Scene::default(),
             react_list_positions: HashMap::new(),
             list_metrics: HashMap::new(),
@@ -2829,8 +2835,14 @@ impl Engine {
                 height: if *action == TextInputAction::Return {
                     let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.as_str(), _ => "" };
                     let (prefix_width, suffix_width) = self.input_affix_widths(prefix, suffix, available.width);
-                    let lines = self.input_lines(value, (available.width - prefix_width - suffix_width - self.scaled(1.0)).max(0.0)).len().min(TEXT_INPUT_MAX_LINES);
-                    self.scaled((TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING) * lines as f32 + TEXT_INPUT_BOTTOM_PADDING).min(available.height)
+                    let lines = self.native_editor_lines.as_ref()
+                        .filter(|(id, text, _)| id == state && text == value)
+                        .map(|(_, _, lines)| *lines)
+                        .unwrap_or_else(|| self.input_lines(value, (available.width - prefix_width - suffix_width - self.scaled(1.0)).max(0.0)).len())
+                        .clamp(1, TEXT_INPUT_MAX_LINES);
+                    let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
+                    let line_height = if self.native_editor_state == Some(*state) { line_height.round() } else { line_height };
+                    (line_height * lines as f32 + self.scaled(TEXT_INPUT_BOTTOM_PADDING)).min(available.height)
                 } else { self.scaled(TEXT_INPUT_HEIGHT).min(available.height) },
             },
             NodeKind::Button { label, icon, .. } => {
@@ -3835,10 +3847,15 @@ impl Engine {
         let mut lines = Vec::new();
         let mut offset = 0;
         for paragraph in value.split('\n') {
+            let breakpoints = linebreaks(paragraph).map(|(index, _)| index).collect::<Vec<_>>();
             let mut start = 0;
             if paragraph.is_empty() { lines.push((offset, offset)); }
             while start < paragraph.len() {
-                let end = self.forced_text_break(paragraph, start, font_size, width, false);
+                let end = breakpoints.iter().copied()
+                    .filter(|end| *end > start)
+                    .take_while(|end| self.text_width(&paragraph[start..*end], font_size) <= width)
+                    .last()
+                    .unwrap_or_else(|| self.forced_text_break(paragraph, start, font_size, width, false));
                 lines.push((offset + start, offset + end));
                 start = end;
             }
@@ -3875,13 +3892,13 @@ impl Engine {
         for (index, (start, end)) in lines.iter().copied().enumerate() {
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
-                text: if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
+                text: if self.native_editor_state == Some(state) { String::new() } else if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
                 rect: Rect { y: viewport.y + index as f32 * line_height - scroll_offset, height: line_height, ..viewport },
                 clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
                 align: TextAlign::Start, scrolling: self.scrolling,
             });
         }
-        if focused {
+        if focused && !self.native_text_editor {
             let (start, end) = lines[cursor_line];
             self.scene.text_cursor = Some(Quad {
                 rect: Rect {
@@ -3996,7 +4013,7 @@ impl Engine {
         let text_run = self.scene.text.len();
         self.scene.text.push(TextRun {
             tabular_numbers: false,
-            text: text.to_owned(),
+            text: if self.native_editor_state == Some(state) { String::new() } else { text.to_owned() },
             rect: Rect {
                 x: text_viewport.x - scroll_offset,
                 width: text_width.max(text_viewport.width),
@@ -4008,7 +4025,7 @@ impl Engine {
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
-        if focused {
+        if focused && !self.native_text_editor {
             let cursor = self.focused_input_cursor;
             let cursor_offset = self.text_width(&value[..cursor], font_size);
             let cursor_clip = Rect {

@@ -14,6 +14,7 @@ internal interface TextInputAdapter {
     fun dismiss(): Boolean
     fun applyPreferences(preferences: KeyboardPreferences)
     fun syncContext(context: String) {}
+    fun pause() { close() }
     fun close() {}
 }
 

@@ -5,6 +5,11 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
+import android.text.StaticLayout
+import android.text.Layout
+import android.text.Spanned
+import android.text.style.SuggestionSpan
+import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -12,9 +17,18 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputConnectionWrapper
 import android.widget.EditText
 import android.widget.FrameLayout
 import org.json.JSONObject
+import android.graphics.Color
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.MotionEvent
+import kotlin.math.roundToInt
+
+private const val SPELLING_ANNOTATE = "ing.noscroll.ink.spelling.annotate.v1"
 
 internal fun createTextInputAdapter(
     activity: MainActivity,
@@ -39,8 +53,38 @@ private class SystemKeyboardAdapter(
     private var syncing = false
     private var pending = false
     private var imeVisible = false
+    private var lightAppearance: Boolean? = null
+    private var lineMeasurement: Triple<String, Int, Float>? = null
+    private var measuredLineCount = 1
     private val publish = Runnable { publishEdit() }
-    private val editor = object : EditText(activity) {
+    private val editor: EditText = object : EditText(activity) {
+        override fun onTouchEvent(event: MotionEvent): Boolean = active && super.onTouchEvent(event)
+        override fun onCreateInputConnection(info: EditorInfo): InputConnection? {
+            val connection = super.onCreateInputConnection(info) ?: return null
+            if (info.extras == null) info.extras = Bundle()
+            info.extras.putBoolean(SPELLING_ANNOTATE, true)
+            return object : InputConnectionWrapper(connection, false) {
+                override fun performPrivateCommand(action: String?, data: Bundle?): Boolean {
+                    if (action == SPELLING_ANNOTATE) {
+                        val annotated = data?.getCharSequence("annotations") as? Spanned ?: return false
+                        val editable = editor.text
+                        if (!active || annotated.toString() != editable.toString()) return false
+                        val incoming = annotated.getSpans(0, annotated.length, SuggestionSpan::class.java)
+                        val existing = editable.getSpans(0, editable.length, SuggestionSpan::class.java)
+                        fun matches(old: SuggestionSpan, next: SuggestionSpan) =
+                            editable.getSpanStart(old) == annotated.getSpanStart(next) &&
+                            editable.getSpanEnd(old) == annotated.getSpanEnd(next) &&
+                            old.flags == next.flags && old.suggestions.contentEquals(next.suggestions)
+                        existing.filter { old -> incoming.none { matches(old, it) } }.forEach(editable::removeSpan)
+                        incoming.filter { next -> existing.none { editable.getSpanStart(it) >= 0 && matches(it, next) } }.forEach {
+                            editable.setSpan(it, annotated.getSpanStart(it), annotated.getSpanEnd(it), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                        return true
+                    }
+                    return super.performPrivateCommand(action, data)
+                }
+            }
+        }
         override fun onSelectionChanged(start: Int, end: Int) {
             super.onSelectionChanged(start, end)
             scheduleEdit()
@@ -53,7 +97,16 @@ private class SystemKeyboardAdapter(
     }
 
     init {
-        editor.alpha = 0f
+        activity.window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
+        editor.visibility = View.GONE
+        editor.background = null
+        editor.typeface = activity.publicSansTypeface
+        editor.includeFontPadding = false
+        editor.gravity = Gravity.TOP or Gravity.START
+        editor.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
+        editor.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
+        editor.setTextColor(Color.WHITE)
+        editor.setHighlightColor(0x66888888)
         editor.isFocusableInTouchMode = true
         editor.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         editor.setPadding(0, 0, 0, 0)
@@ -67,7 +120,10 @@ private class SystemKeyboardAdapter(
         editor.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) = Unit
-            override fun afterTextChanged(text: Editable?) = scheduleEdit()
+            override fun afterTextChanged(text: Editable?) {
+                if (!syncing) resizeEditor()
+                scheduleEdit()
+            }
         })
         editor.setOnEditorActionListener { _, _, event ->
             if (action == 0) false else {
@@ -96,6 +152,25 @@ private class SystemKeyboardAdapter(
         container.post(publish)
     }
 
+    private fun measuredLines(): Int {
+        if (action != 0) return 1
+        val key = Triple(editor.text.toString(), editor.layoutParams.width.coerceAtLeast(1), editor.textSize)
+        if (key == lineMeasurement) return measuredLineCount
+        measuredLineCount = StaticLayout.Builder.obtain(editor.text, 0, editor.length(), editor.paint, key.second)
+            .setIncludePad(false).setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+            .build().lineCount.coerceIn(1, 3)
+        lineMeasurement = key
+        return measuredLineCount
+    }
+
+    private fun resizeEditor() {
+        val height = measuredLines() * editor.lineHeight
+        if (editor.layoutParams.height != height) {
+            editor.layoutParams = (editor.layoutParams as FrameLayout.LayoutParams).apply { this.height = height }
+        }
+    }
+
     private fun publishEdit() {
         container.removeCallbacks(publish)
         pending = false
@@ -104,7 +179,7 @@ private class SystemKeyboardAdapter(
         val cursor = editor.selectionEnd.coerceIn(0, value.length)
         if (value == nativeText && cursor == nativeCursor) return
         val payload = JSONObject().put("id", inputId).put("text", nativeText)
-            .put("value", value).put("selection", cursor)
+            .put("value", value).put("selection", cursor).put("lines", measuredLines())
         nativeText = value
         nativeCursor = cursor
         onEdit(TextEdit.Assistance(payload.toString()))
@@ -115,19 +190,20 @@ private class SystemKeyboardAdapter(
         val opening = active && !this.active
         val changed = action != this.action || numeric != this.numeric
         this.active = active
-        this.action = action
-        this.numeric = numeric
         if (!active) {
             container.removeCallbacks(publish)
             pending = false
-            inputId = -1
             inputMethod.hideSoftInputFromWindow(editor.windowToken, 0)
             editor.clearFocus()
             return
         }
+        this.action = action
+        this.numeric = numeric
         if (changed) {
             syncing = true
             editor.inputType = inputType()
+            editor.setSingleLine(action != 0)
+            editor.typeface = activity.publicSansTypeface
             editor.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or when (action) {
                 0 -> EditorInfo.IME_FLAG_NO_ENTER_ACTION
                 2 -> EditorInfo.IME_ACTION_DONE
@@ -145,25 +221,51 @@ private class SystemKeyboardAdapter(
     }
 
     override fun syncContext(context: String) {
-        if (!active || context.isEmpty() || pending) return
+        if (context.isEmpty()) {
+            editor.visibility = View.GONE
+            inputId = -1
+            return
+        }
+        if (pending) return
         val data = JSONObject(context)
+        val bounds = data.optJSONObject("editor") ?: return
+        val width = bounds.getDouble("width").roundToInt().coerceAtLeast(1)
+        val height = bounds.getDouble("height").roundToInt().coerceAtLeast(1)
+        val params = editor.layoutParams as FrameLayout.LayoutParams
+        val left = bounds.getDouble("x").roundToInt()
+        val top = bounds.getDouble("y").roundToInt()
+        if (params.width != width || params.height != height || params.leftMargin != left || params.topMargin != top) {
+            editor.layoutParams = FrameLayout.LayoutParams(width, height).apply { leftMargin = left; topMargin = top }
+        }
+        val fontSize = bounds.getDouble("fontSize").toFloat()
+        if (editor.textSize != fontSize) editor.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize)
+        val lineHeight = bounds.getDouble("lineHeight").roundToInt()
+        if (editor.lineHeight != lineHeight) editor.setLineHeight(lineHeight)
+        editor.visibility = View.VISIBLE
         val id = data.getInt("id")
         val text = data.getString("text")
         val cursor = data.getInt("cursor").coerceIn(0, text.length)
         syncing = true
         val changed = inputId != id
+        val textChanged = editor.text.toString() != text
         autoCorrect = data.getBoolean("autoCorrect")
         suggestions = data.getBoolean("spellCheck") || autoCorrect
         val type = inputType()
         val typeChanged = editor.inputType != type
-        if (typeChanged) editor.inputType = type
-        if (changed || editor.text.toString() != text) editor.setText(text)
-        if (changed || editor.selectionEnd != cursor) editor.setSelection(cursor)
+        if (typeChanged) {
+            editor.inputType = type
+            editor.typeface = activity.publicSansTypeface
+        }
+        if (changed || textChanged) editor.setText(text)
+        if (changed || textChanged) editor.setSelection(cursor)
+        resizeEditor()
         inputId = id
         nativeText = text
         nativeCursor = cursor
         syncing = false
         if ((changed || typeChanged) && editor.hasFocus()) inputMethod.restartInput(editor)
+        if (active && !data.optBoolean("nativeEditor")) onEdit(TextEdit.Assistance(JSONObject()
+            .put("id", id).put("text", text).put("nativeEditor", true).put("lines", measuredLines()).toString()))
     }
 
     private fun inputType(): Int = if (numeric) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT or
@@ -178,14 +280,29 @@ private class SystemKeyboardAdapter(
         return true
     }
 
-    override fun setLightAppearance(light: Boolean) = Unit
+    override fun setLightAppearance(light: Boolean) {
+        if (lightAppearance == light) return
+        lightAppearance = light
+        val colour = if (light) Color.BLACK else Color.WHITE
+        editor.setTextColor(colour)
+        editor.textCursorDrawable?.mutate()?.setTint(colour)
+        editor.textSelectHandle?.mutate()?.setTint(colour)
+        editor.textSelectHandleLeft?.mutate()?.setTint(colour)
+        editor.textSelectHandleRight?.mutate()?.setTint(colour)
+    }
     override fun applyPreferences(preferences: KeyboardPreferences) = Unit
 
-    override fun close() {
-        active = false
+    override fun pause() {
+        publishEdit()
+        sync(false, action, numeric)
         container.removeCallbacks(publish)
+        imeVisible = false
+        activity.setKeyboardInset(0)
+    }
+
+    override fun close() {
+        pause()
         container.setOnApplyWindowInsetsListener(null)
-        inputMethod.hideSoftInputFromWindow(editor.windowToken, 0)
         container.removeView(editor)
     }
 }

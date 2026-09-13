@@ -24,19 +24,31 @@ fn byte_offset(text: &str, utf16: usize) -> Option<usize> {
 
 impl Engine {
     pub fn text_input_context(&self) -> String {
-        let Some(state) = self.focused_input else {
+        let Some(state) = self.focused_input.or(self.native_editor_state)
+            .filter(|state| self.text_inputs.iter().any(|input| input.state == *state)) else {
             return String::new();
         };
         let Some(StateValue::String(text)) = self.state.get(state.0) else {
             return String::new();
         };
         let (_, auto_correct, spell_check) = self.text_input_options(state).unwrap_or_default();
+        let input = self.text_inputs.iter().find(|input| input.state == state);
+        let editor = input.map(|input| {
+            let rect = input.text_rect;
+            let y = rect.y + if input.scrolling { self.scroll_origin - self.scroll_offset } else { 0.0 };
+            json!({ "x": rect.x, "y": y, "width": rect.width, "height": rect.height,
+                "fontSize": self.scaled_font(TEXT_INPUT_TEXT_SIZE)
+                    * self.font.units_per_em().unwrap_or(self.font.height_unscaled()) / self.font.height_unscaled(),
+                "lineHeight": self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING) })
+        });
         json!({
             "id": state.0,
             "text": text,
             "cursor": text[..text_cursor_boundary(text, self.focused_input_cursor)].encode_utf16().count(),
             "autoCorrect": auto_correct,
             "spellCheck": spell_check,
+            "nativeEditor": self.native_editor_state == Some(state),
+            "editor": editor,
             "menu": self.assistance.menu,
             "selected": self.assistance.selected.map(|offset| text[..text_cursor_boundary(text, offset)].encode_utf16().count()),
         }).to_string()
@@ -54,6 +66,13 @@ impl Engine {
         };
         if data["id"].as_u64() != Some(state.0 as u64) || data["text"].as_str() != Some(text) {
             return false;
+        }
+        if data["nativeEditor"].as_bool() == Some(true) {
+            self.native_text_editor = true;
+            self.native_editor_state = Some(state);
+        }
+        if let Some(lines) = data["lines"].as_u64() {
+            self.native_editor_lines = Some((state, data["value"].as_str().unwrap_or(text).to_owned(), (lines as usize).clamp(1, TEXT_INPUT_MAX_LINES)));
         }
         if data["dismiss"].as_bool() == Some(true) {
             self.assistance.selected = None;
@@ -77,7 +96,7 @@ impl Engine {
             self.focused_input_cursor = cursor;
             self.state[state.0] = StateValue::String(value.to_owned());
             self.assistance = Assistance::default();
-            self.reveal_text_cursor(state);
+            if !self.native_text_editor { self.reveal_text_cursor(state); }
         } else if let Some(replacement) = data["replacement"].as_str() {
             let Some(cursor) = data["cursor"]
                 .as_u64()
@@ -124,7 +143,11 @@ impl Engine {
             self.assistance.menu = false;
             self.rebase_spelling(state);
             self.reveal_text_cursor(state);
-        } else {
+        }
+        if data["ranges"].is_array() {
+            let Some(StateValue::String(text)) = self.state.get(state.0) else {
+                return false;
+            };
             self.assistance.state = Some(state);
             self.assistance.text = text.clone();
             self.assistance.ranges = data["ranges"]

@@ -281,6 +281,8 @@ android {
     packaging.resources.excludes += setOf("kotlin/*.kotlin_builtins", "kotlin/**/*.kotlin_builtins", "kotlin-tooling-metadata.json")
 
     sourceSets {
+        val appNative = rootProject.findProject(":app-native")
+        getByName("main").java.srcDir(appNative?.file("kotlin") ?: file("src/noAppNative/kotlin"))
         val audioSource = if (inkUses("audio-capture").get()) "audioCapture" else if (inkUsesAudio.get()) "audioPlaybackAdapter" else "noAudio"
         getByName("main").java.srcDir("src/$audioSource/kotlin")
         getByName("main").res.srcDir(inkAndroidResources)
@@ -415,6 +417,7 @@ tasks.configureEach {
 }
 
 dependencies {
+    rootProject.findProject(":app-native")?.let { implementation(project(it.path)) }
     if (inkUsesFiles.get()) {
         implementation("androidx.core:core:1.13.1")
     }

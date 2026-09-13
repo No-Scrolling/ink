@@ -18,7 +18,7 @@ Set `provider = "ink"` or omit the section to use Ink’s keyboard. Rebuild the 
 
 Numeric inputs request a number layout. Search, Done and Return use the corresponding Android keyboard actions. The installed keyboard controls its appearance and suggestions.
 
-System-keyboard builds omit Ink’s keyboard layouts, icons and spelling interface.
+System-keyboard builds omit Ink’s keyboard layouts, icons and device spellchecker integration.
 
 ## Focus an input
 
@@ -56,7 +56,7 @@ With Ink’s keyboard, `spellCheck` underlines misspelt words. Long-press an und
 
 Both options default to `false`. [Conversations](/conversations) enable them; numeric inputs ignore them. Suggestions use the phone’s spellchecker and language settings, with no bundled dictionary. If the service is unavailable, typing still works.
 
-With the system keyboard, these options request suggestions and autocorrection from that keyboard. Ink does not show its spelling menu.
+With the system keyboard, inputs use Android’s text editor for selection and spelling corrections. These options request suggestions and autocorrection from the installed keyboard. Tap an underlined word to see available replacements.
 
 ## Close the keyboard
 
