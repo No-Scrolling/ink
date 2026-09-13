@@ -602,7 +602,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         externalAdapter.onPause()
         connectivityAdapter.stop()
         mapsAdapter.pause()
-        inkView.setTextCursorActive(false)
         audioAdapter.pause()
         nfcAdapter.pause()
         cameraAdapter.pause()
@@ -631,9 +630,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             return
         }
         val (action, value) = when (edit) {
-            is TextEdit.Insert -> TEXT_INPUT_INSERT to edit.text
-            is TextEdit.Assistance -> TEXT_INPUT_ASSISTANCE to edit.payload
-            TextEdit.Backspace -> TEXT_INPUT_BACKSPACE to null
+            is TextEdit.Update -> TEXT_INPUT_UPDATE to edit.payload
             TextEdit.Submit -> TEXT_INPUT_SUBMIT to null
             TextEdit.Dismiss -> TEXT_INPUT_DISMISS to null
         }
@@ -655,7 +652,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val active = nativeTextInputActive(engineHandle)
         textInputAdapter.sync(active, nativeTextInputAction(engineHandle), nativeTextInputNumeric(engineHandle))
         textInputAdapter.syncContext(nativeTextInputContext(engineHandle))
-        inkView.setTextCursorActive(active)
     }
 
     private fun syncCameraPortal() {
@@ -995,7 +991,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun renderFrame() {
         while (true) {
-            val request = nativeRender(engineHandle, inkView.isTextCursorVisible())
+            val request = nativeRender(engineHandle)
             if (request.isEmpty()) return
 
             val firstBreak = request.indexOf('\n')
@@ -1115,15 +1111,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private var previousImageTapTarget = 0L
         private var previousImageTapX = 0f
         private var previousImageTapY = 0f
-        private var textCursorVisible = true
         private var velocityTracker: VelocityTracker? = null
-        private val textCursorBlink = object : Runnable {
-            override fun run() {
-                textCursorVisible = !textCursorVisible
-                requestFrame()
-                postDelayed(this, TEXT_CURSOR_BLINK_MS)
-            }
-        }
         private val frameCallback = Choreographer.FrameCallback {
             // Include completed React work even if its handler is queued behind this frame.
             if (engineHandle != 0L && javascriptPending.get()) {
@@ -1375,16 +1363,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             renderFrame()
         }
 
-        fun isTextCursorVisible(): Boolean = textCursorVisible
-
-        fun setTextCursorActive(active: Boolean) {
-            removeCallbacks(textCursorBlink)
-            textCursorVisible = true
-            if (active) {
-                postDelayed(textCursorBlink, TEXT_CURSOR_BLINK_MS)
-            }
-        }
-
         fun stopScrolling() {
             stopFling()
             velocityTracker?.recycle()
@@ -1433,16 +1411,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private companion object {
-        private const val TEXT_INPUT_INSERT = 0
-        private const val TEXT_INPUT_BACKSPACE = 1
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
-        private const val TEXT_INPUT_ASSISTANCE = 4
+        private const val TEXT_INPUT_UPDATE = 4
         private const val POINTER_LONG_PRESS = 4
         private const val POINTER_CHANGED = 1
         private const val POINTER_ACTIVATED = 1 shl 1
         private const val POINTER_CAPTURED = 1 shl 2
-        private const val TEXT_CURSOR_BLINK_MS = 500L
         private const val RESOURCE_LOG_TAG = "InkResource"
         private const val LIGHT_SDK_MODULE = "light-sdk"
         private const val NETWORK_MODULE = "network"
@@ -1553,7 +1528,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeScrollMaximum(handle: Long): Float
 
         @JvmStatic
-        private external fun nativeRender(handle: Long, textCursorVisible: Boolean): String
+        private external fun nativeRender(handle: Long): String
 
         @JvmStatic
         private external fun nativeInstallSystemGlyph(

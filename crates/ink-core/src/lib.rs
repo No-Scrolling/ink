@@ -20,8 +20,8 @@ pub use fonts::{font_for_character, tabular_digit_width, text_width, text_width_
 
 mod list;
 mod masks;
+mod native_editor;
 mod react;
-mod text_assistance;
 
 pub use react::{ReactIcon, ReactTree};
 
@@ -303,9 +303,7 @@ impl NativeRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextEdit {
-    Insert(String),
-    Assistance(String),
-    Backspace,
+    Update(String),
     Submit,
     Dismiss,
 }
@@ -607,8 +605,6 @@ enum NodeKind {
         action: TextInputAction,
         auto_focus: bool,
         numeric: bool,
-        auto_correct: bool,
-        spell_check: bool,
         prefix: String,
         suffix: String,
         clear: Mask,
@@ -733,8 +729,6 @@ impl Node {
                 action,
                 auto_focus,
                 numeric,
-                auto_correct: false,
-                spell_check: false,
                 prefix,
                 suffix,
                 clear,
@@ -1022,7 +1016,6 @@ pub struct Scene {
     pub scroll_max: f32,
     pub scroll_clip: Option<Rect>,
     pub scroll_bar: Option<ScrollBar>,
-    pub text_cursor: Option<Quad>,
 }
 
 impl Scene {
@@ -1227,7 +1220,6 @@ pub struct Engine {
     state: Vec<StateValue>,
     viewport: Viewport,
     keyboard_inset: u32,
-    native_text_editor: bool,
     native_editor_state: Option<StateId>,
     native_editor_lines: Option<(StateId, String, usize)>,
     scene: Scene,
@@ -1247,7 +1239,6 @@ pub struct Engine {
     focused_input: Option<StateId>,
     focused_input_action: TextInputAction,
     focused_input_cursor: usize,
-    assistance: text_assistance::Assistance,
     auto_focus_node: Option<NodeIdentity>,
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
@@ -1283,7 +1274,6 @@ impl Engine {
             state: Vec::new(),
             viewport: Viewport::default(),
             keyboard_inset: 0,
-            native_text_editor: false,
             native_editor_state: None,
             native_editor_lines: None,
             scene: Scene::default(),
@@ -1303,7 +1293,6 @@ impl Engine {
             focused_input: None,
             focused_input_action: TextInputAction::default(),
             focused_input_cursor: 0,
-            assistance: text_assistance::Assistance::default(),
             auto_focus_node: None,
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
@@ -1835,14 +1824,7 @@ impl Engine {
         if let Some(Pointer::TextInput(pointer)) = self.pointers.get(&id) {
             if !pointer.dragging {
                 let input = pointer.input;
-                let dismiss = self.assistance.menu || self.assistance.selected.is_some();
-                if dismiss {
-                    self.assistance.menu = false;
-                    self.assistance.selected = None;
-                } else if self.focused_input != Some(input.state) || !self.select_spelling(x, y) {
-                    self.focus_text_input(input, x, y);
-                    self.assistance.menu = !self.select_spelling(x, y);
-                }
+                self.focus_text_input(input, x, y);
                 self.pointers.clear();
                 self.gesture_owner = Some(id);
                 return PointerOutcome { changed: true, activated: true, captured: true };
@@ -2048,8 +2030,6 @@ impl Engine {
     }
 
     fn focus_text_input(&mut self, input: TextInputLayout, x: f32, y: f32) -> bool {
-        let dismissed = self.assistance.selected.take().is_some();
-        let dismissed = std::mem::take(&mut self.assistance.menu) || dismissed;
         let Some(StateValue::String(value)) = self.state.get(input.state.0) else {
             return false;
         };
@@ -2065,7 +2045,7 @@ impl Engine {
                 .clamp(0.0, self.text_width(value, font_size));
             self.text_cursor_for_offset(value, font_size, target)
         };
-        let changed = dismissed || self.focused_input != Some(input.state)
+        let changed = self.focused_input != Some(input.state)
             || self.focused_input_action != input.action
             || self.focused_input_cursor != cursor;
         if !changed {
@@ -2160,7 +2140,7 @@ impl Engine {
             return false;
         }
         self.text_input_scroll_offsets.insert(state, offset);
-        if !self.assistance.ranges.is_empty() || self.text_inputs.iter().any(|input| input.state == state && input.action == TextInputAction::Return) {
+        if self.text_inputs.iter().any(|input| input.state == state && input.action == TextInputAction::Return) {
             self.relayout_scene();
             return true;
         }
@@ -2173,60 +2153,8 @@ impl Engine {
             input.scroll_offset = offset;
             self.scene.text[input.text_run].rect.x -= delta;
         }
-        if self.focused_input == Some(state)
-            && let Some(cursor) = &mut self.scene.text_cursor
-        {
-            cursor.rect.x -= delta;
-        }
         self.scene.revision = self.scene.revision.wrapping_add(1);
         true
-    }
-
-    fn reveal_text_cursor(&mut self, state: StateId) {
-        let Some(input) = self
-            .text_inputs
-            .iter()
-            .rev()
-            .find(|input| input.state == state)
-            .copied()
-        else {
-            return;
-        };
-        let Some(StateValue::String(value)) = self.state.get(state.0) else {
-            return;
-        };
-        let cursor = self.focused_input_cursor;
-        if input.action == TextInputAction::Return {
-            let lines = self.input_lines(value, input.text_rect.width);
-            let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
-            let line = lines.iter().rposition(|(start, _)| *start <= cursor).unwrap_or(0);
-            let height = lines.len().min(TEXT_INPUT_MAX_LINES) as f32 * line_height;
-            let current = self.text_input_scroll_offsets.get(&state).copied().unwrap_or(input.scroll_offset);
-            let top = line as f32 * line_height;
-            let next = if top < current { top }
-                else if top + line_height > current + height { top + line_height - height }
-                else { current };
-            self.text_input_scroll_offsets.insert(state, next.max(0.0));
-            return;
-        }
-        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let cursor_offset = self.text_width(&value[..cursor], font_size);
-        let scroll_max = (self.text_width(value, font_size) - input.text_rect.width).max(0.0);
-        let current = self
-            .text_input_scroll_offsets
-            .get(&state)
-            .copied()
-            .unwrap_or(input.scroll_offset)
-            .clamp(0.0, scroll_max);
-        let next = if cursor_offset < current {
-            cursor_offset
-        } else if cursor_offset > current + input.text_rect.width {
-            cursor_offset - input.text_rect.width
-        } else {
-            current
-        };
-        self.text_input_scroll_offsets
-            .insert(state, next.clamp(0.0, scroll_max));
     }
 
     fn move_content_pointer(
@@ -2331,15 +2259,14 @@ impl Engine {
 
     pub fn text_input_numeric(&self) -> bool {
         self.focused_input
-            .and_then(|state| self.text_input_options(state))
-            .is_some_and(|(numeric, _, _)| numeric)
+            .and_then(|state| self.text_input_numeric_for(state))
+            .unwrap_or(false)
     }
 
-    fn text_input_options(&self, state: StateId) -> Option<(bool, bool, bool)> {
-        fn find(node: &Node, target: StateId) -> Option<(bool, bool, bool)> {
+    fn text_input_numeric_for(&self, state: StateId) -> Option<bool> {
+        fn find(node: &Node, target: StateId) -> Option<bool> {
             match &node.kind {
-                NodeKind::TextInput { state, numeric, auto_correct, spell_check, .. } if *state == target =>
-                    Some((*numeric, !*numeric && *auto_correct, !*numeric && *spell_check)),
+                NodeKind::TextInput { state, numeric, .. } if *state == target => Some(*numeric),
                 NodeKind::ConversationComposer { children, .. }
                 | NodeKind::Message { children, .. }
                 | NodeKind::MessageQuote { children, .. }
@@ -2359,64 +2286,17 @@ impl Engine {
     }
 
     pub fn edit_text(&mut self, edit: TextEdit) -> bool {
-        let Some(state) = self.focused_input else {
+        if self.focused_input.is_none() {
             return false;
-        };
-        if let TextEdit::Insert(text) = &edit {
-            if self.text_input_numeric() && !text.bytes().all(|byte| byte.is_ascii_digit()) {
-                return false;
-            }
         }
-        if let TextEdit::Assistance(payload) = edit {
-            return self.apply_text_assistance(&payload);
-        }
-        self.assistance.selected = None;
-        self.assistance.menu = false;
-        let mut mutated = false;
-        let changed = match edit {
-            TextEdit::Insert(text) if !text.chars().any(|c| c.is_control() && !(c == '\n' && self.focused_input_action == TextInputAction::Return)) => {
-                let cursor = self.focused_input_cursor;
-                let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                let cursor = text_cursor_boundary(value, cursor);
-                value.insert_str(cursor, &text);
-                self.focused_input_cursor = next_text_cursor_boundary(value, cursor + text.len());
-                mutated = true;
-                true
-            }
-            TextEdit::Backspace => {
-                let cursor = self.focused_input_cursor;
-                let Some(StateValue::String(value)) = self.state.get_mut(state.0) else {
-                    return false;
-                };
-                let cursor = text_cursor_boundary(value, cursor);
-                let Some(previous) = value[..cursor]
-                    .grapheme_indices(true)
-                    .next_back()
-                    .map(|(index, _)| index)
-                else {
-                    return false;
-                };
-                value.replace_range(previous..cursor, "");
-                self.focused_input_cursor = previous;
-                mutated = true;
-                true
-            }
+        match edit {
+            TextEdit::Update(payload) => self.apply_editor_update(&payload),
             TextEdit::Submit | TextEdit::Dismiss => {
                 self.focused_input = None;
+                self.relayout_scene();
                 true
             }
-            TextEdit::Insert(_) | TextEdit::Assistance(_) => false,
-        };
-        if changed {
-            if mutated {
-                self.rebase_spelling(state);
-                self.reveal_text_cursor(state);
-            }
-            self.relayout_scene();
         }
-        changed
     }
 
     pub fn set_colour_scheme(&mut self, light: bool) -> bool {
@@ -2606,7 +2486,6 @@ impl Engine {
         self.scene.scroll_offset = self.scroll_offset;
         self.scene.scroll_clip = None;
         self.scene.scroll_bar = None;
-        self.scene.text_cursor = None;
         self.hit_regions.clear();
         self.text_inputs.clear();
         self.visible_images.clear();
@@ -2646,7 +2525,6 @@ impl Engine {
             },
         );
         self.root = root;
-        self.layout_spelling();
         self.sync_visible_images();
         self.image_zooms
             .retain(|identity, _| self.visible_zoom_images.contains(identity));
@@ -3913,18 +3791,6 @@ impl Engine {
                 align: TextAlign::Start, scrolling: self.scrolling,
             });
         }
-        if focused && !self.native_text_editor {
-            let (start, end) = lines[cursor_line];
-            self.scene.text_cursor = Some(Quad {
-                rect: Rect {
-                    x: viewport.x + self.text_width(&value[start..cursor.min(end)], font_size),
-                    y: viewport.y + cursor_line as f32 * line_height - scroll_offset + self.scaled(2.0),
-                    width: cursor_width, height: (line_height - self.scaled(4.0)).max(0.0),
-                },
-                clip: Rect { width: viewport.width + cursor_width, ..viewport }.intersection(self.clip),
-                colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
-            });
-        }
         let underline_height = self.control_line_height();
         self.scene.quads.push(Quad {
             rect: Rect { y: (rect.y + rect.height).round() - underline_height, height: underline_height, ..rect },
@@ -4040,25 +3906,6 @@ impl Engine {
             align: TextAlign::Start,
             scrolling: self.scrolling,
         });
-        if focused && !self.native_text_editor {
-            let cursor = self.focused_input_cursor;
-            let cursor_offset = self.text_width(&value[..cursor], font_size);
-            let cursor_clip = Rect {
-                width: text_viewport.width + cursor_width,
-                ..text_viewport
-            };
-            self.scene.text_cursor = Some(Quad {
-                rect: Rect {
-                    x: text_viewport.x + cursor_offset - scroll_offset,
-                    y: rect.y + self.scaled(2.0),
-                    width: cursor_width,
-                    height: (text_height - self.scaled(4.0)).max(0.0),
-                },
-                clip: cursor_clip.intersection(self.clip),
-                colour: self.scene.colour(Colour::WHITE),
-                scrolling: self.scrolling,
-            });
-        }
         let underline_height = self.control_line_height();
         self.scene.quads.push(Quad {
             rect: Rect {
@@ -4612,14 +4459,6 @@ fn text_cursor_boundary(text: &str, cursor: usize) -> usize {
         .take_while(|index| *index <= cursor)
         .last()
         .unwrap_or_default()
-}
-
-fn next_text_cursor_boundary(text: &str, cursor: usize) -> usize {
-    text.grapheme_indices(true)
-        .map(|(index, _)| index)
-        .chain(std::iter::once(text.len()))
-        .find(|index| *index >= cursor)
-        .unwrap_or(text.len())
 }
 
 pub fn is_emoji_grapheme(grapheme: &str) -> bool {

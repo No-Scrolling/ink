@@ -8,9 +8,6 @@
     "src/input.ts": [
       "text-input"
     ],
-    "src/input-numeric.ts": [
-      "text-input"
-    ],
     "src/external.ts": [
       "external"
     ]

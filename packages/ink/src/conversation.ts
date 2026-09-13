@@ -146,7 +146,7 @@ export function ConversationScreen<T extends ConversationMessage>({ title, group
         createElement(Reply, replyPreview(reply)), iconButton(closeFilled, () => setReply(undefined))),
       createElement("ConversationComposer", null,
         onAttach ? iconButton(addFilled, onAttach) : createElement(Stack),
-        createElement(TextInput, { value: draft, onChange: onDraftChange, placeholder: "Message…", action: "return", autoCorrect: true, spellCheck: true }),
+        createElement(TextInput, { value: draft, onChange: onDraftChange, placeholder: "Message…", action: "return" }),
         iconButton(sendFilled, text && !sending ? send : undefined)),
     ));
 }

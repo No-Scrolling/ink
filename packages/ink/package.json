@@ -12,8 +12,7 @@
     "./icons": "./src/icons.ts",
     "./file-router": "./src/file-router.tsx",
     "./runtime-types": "./runtime.d.ts",
-    "./tsconfig": "./tsconfig.app.json",
-    "./input/numeric": "./src/input-numeric.ts"
+    "./tsconfig": "./tsconfig.app.json"
   },
   "dependencies": {
     "react-reconciler": "0.33.0"

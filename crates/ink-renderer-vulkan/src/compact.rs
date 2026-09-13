@@ -686,14 +686,14 @@ impl Renderer {
         self.surface.resize(self.config.width, self.config.height);
     }
 
-    pub fn render(&mut self, scene: &Scene, text_cursor_visible: bool) -> Result<RenderOutcome> {
-        match self.render_frame(scene, text_cursor_visible) {
+    pub fn render(&mut self, scene: &Scene) -> Result<RenderOutcome> {
+        match self.render_frame(scene) {
             Err(error) if gpu::surface_lost(&error) => Ok(RenderOutcome::SurfaceLost),
             result => result,
         }
     }
 
-    fn render_frame(&mut self, scene: &Scene, text_cursor_visible: bool) -> Result<RenderOutcome> {
+    fn render_frame(&mut self, scene: &Scene) -> Result<RenderOutcome> {
         #[cfg(feature = "perf")]
         let frame_started = Instant::now();
         #[cfg(feature = "perf")]
@@ -753,10 +753,6 @@ impl Renderer {
             }),
         );
         self.overlay_instances.clear();
-        if text_cursor_visible && let Some(cursor) = &scene.text_cursor {
-            push_quad_instance(&mut self.overlay_instances, scene, cursor);
-        }
-        let cursor_end = self.overlay_instances.len() as u32;
         push_scrollbar_instances(scene, &mut self.overlay_instances);
         let overlay_end = self.overlay_instances.len() as u32;
         let _overlay_uploaded_bytes =
@@ -880,34 +876,11 @@ impl Renderer {
                 pass.draw(0..6, self.prepared.text_scroll.clone());
                 reset_scissor(&mut pass, scene);
             }
-            if cursor_end > 0 {
-                pass.set_pipeline(&self.quad_pipeline);
-                let scrolling = scene
-                    .text_cursor
-                    .as_ref()
-                    .is_some_and(|cursor| cursor.scrolling);
-                pass.set_bind_group(
-                    0,
-                    if scrolling {
-                        &self.scroll_transform
-                    } else {
-                        &self.fixed_transform
-                    },
-                );
-                pass.set_vertex_buffer(0, self.overlay_buffer.buffer());
-                if scrolling {
-                    set_scroll_scissor(&mut pass, scene);
-                }
-                pass.draw(0..6, 0..cursor_end);
-                if scrolling {
-                    reset_scissor(&mut pass, scene);
-                }
-            }
-            if cursor_end < overlay_end {
+            if overlay_end > 0 {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform);
                 pass.set_vertex_buffer(0, self.overlay_buffer.buffer());
-                pass.draw(0..6, cursor_end..overlay_end);
+                pass.draw(0..6, 0..overlay_end);
             }
         }
 
@@ -939,8 +912,7 @@ impl Renderer {
                 + self.prepared.system_glyph_draws.len() as u64
                 + u64::from(!self.prepared.text_fixed.is_empty())
                 + u64::from(!self.prepared.text_scroll.is_empty())
-                + u64::from(cursor_end > 0)
-                + u64::from(cursor_end < overlay_end);
+                + u64::from(overlay_end > 0);
             self.perf.instances += instances;
             self.perf.draw_calls += draw_calls;
             perf_trace_counter(b"Ink instances\0", instances);

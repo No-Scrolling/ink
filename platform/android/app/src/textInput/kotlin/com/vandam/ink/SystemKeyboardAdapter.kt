@@ -47,11 +47,10 @@ private class SystemKeyboardAdapter(
     private var active = false
     private var action = -1
     private var numeric = false
-    private var suggestions = false
-    private var autoCorrect = false
     private var inputId = -1
     private var nativeText = ""
     private var nativeCursor = 0
+    private var nativeBaseline = 0f
     private var syncing = false
     private var pending = false
     private var imeVisible = false
@@ -60,6 +59,11 @@ private class SystemKeyboardAdapter(
     private var measuredLineCount = 1
     private val publish = Runnable { publishEdit() }
     private val editor: EditText = object : EditText(ContextThemeWrapper(activity, R.style.Theme_Ink_TextEditor)) {
+        override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+            super.onLayout(changed, left, top, right, bottom)
+            if (action != 0) translationY = nativeBaseline - baseline
+        }
+
         override fun onTouchEvent(event: MotionEvent): Boolean = active && super.onTouchEvent(event)
         override fun onCreateInputConnection(info: EditorInfo): InputConnection? {
             val connection = super.onCreateInputConnection(info) ?: return null
@@ -175,7 +179,7 @@ private class SystemKeyboardAdapter(
         val finalLineSpacing = if (action == 0 && measuredLineCount <= MAX_EDITOR_LINES) {
             editor.lineHeight - editor.paint.fontMetricsInt.run { descent - ascent }
         } else 0
-        editor.translationY = finalLineSpacing.toFloat()
+        if (action == 0) editor.translationY = finalLineSpacing.toFloat()
         val height = lines * editor.lineHeight - finalLineSpacing + editor.paddingBottom
         if (editor.layoutParams.height != height) {
             editor.layoutParams = (editor.layoutParams as FrameLayout.LayoutParams).apply { this.height = height }
@@ -193,7 +197,7 @@ private class SystemKeyboardAdapter(
             .put("value", value).put("selection", cursor).put("lines", measuredLines())
         nativeText = value
         nativeCursor = cursor
-        onEdit(TextEdit.Assistance(payload.toString()))
+        onEdit(TextEdit.Update(payload.toString()))
     }
 
     override fun sync(active: Boolean, action: Int, numeric: Boolean) {
@@ -240,6 +244,7 @@ private class SystemKeyboardAdapter(
         if (pending) return
         val data = JSONObject(context)
         val bounds = data.optJSONObject("editor") ?: return
+        nativeBaseline = bounds.getDouble("baseline").toFloat()
         val width = bounds.getDouble("width").roundToInt().coerceAtLeast(1)
         val bottomPadding = bounds.getDouble("bottomPadding").roundToInt().coerceAtLeast(0)
         val height = bounds.getDouble("height").roundToInt().coerceAtLeast(1) + bottomPadding
@@ -263,8 +268,6 @@ private class SystemKeyboardAdapter(
         syncing = true
         val changed = inputId != id
         val textChanged = editor.text.toString() != text
-        autoCorrect = data.getBoolean("autoCorrect")
-        suggestions = data.getBoolean("spellCheck") || autoCorrect
         val type = inputType()
         val typeChanged = editor.inputType != type
         if (typeChanged) {
@@ -279,14 +282,13 @@ private class SystemKeyboardAdapter(
         nativeCursor = cursor
         syncing = false
         if ((changed || typeChanged) && editor.hasFocus()) inputMethod.restartInput(editor)
-        if (active && !data.optBoolean("nativeEditor")) onEdit(TextEdit.Assistance(JSONObject()
+        if (active && !data.optBoolean("nativeEditor")) onEdit(TextEdit.Update(JSONObject()
             .put("id", id).put("text", text).put("nativeEditor", true).put("lines", measuredLines()).toString()))
     }
 
     private fun inputType(): Int = if (numeric) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT or
         (if (action == 0) InputType.TYPE_TEXT_FLAG_MULTI_LINE else 0) or
-        (if (autoCorrect) InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES else 0) or
-        (if (suggestions) 0 else InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
+        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
 
     override fun dismiss(): Boolean {
         if (!active) return false

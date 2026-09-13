@@ -1,9 +1,7 @@
 package com.vandam.ink
 
 internal sealed interface TextEdit {
-    data class Insert(val text: String) : TextEdit
-    data class Assistance(val payload: String) : TextEdit
-    data object Backspace : TextEdit
+    data class Update(val payload: String) : TextEdit
     data object Submit : TextEdit
     data object Dismiss : TextEdit
 }

@@ -844,7 +844,7 @@ impl ReactTree {
                     value => bail!("unsupported input mode {value}"),
                 };
                 ensure!(!numeric || action != TextInputAction::Return, "numeric inputs require a search or done action");
-                let mut node = Node::text_input(
+                Node::text_input(
                     string(props, "placeholder").unwrap_or(""),
                     self.inputs
                         .get(&id)
@@ -856,12 +856,7 @@ impl ReactTree {
                     string(props, "prefix").unwrap_or("").to_owned(),
                     string(props, "suffix").unwrap_or("").to_owned(),
                     self.icon("close")?,
-                );
-                if let NodeKind::TextInput { auto_correct, spell_check, .. } = &mut node.kind {
-                    *auto_correct = !numeric && props.get("autoCorrect") == Some(&Json::Bool(true));
-                    *spell_check = !numeric && props.get("spellCheck") == Some(&Json::Bool(true));
-                }
-                node
+                )
             }
             HostKind::Barcode => {
                 let value = string(props, "value").context("Barcode requires a value")?;

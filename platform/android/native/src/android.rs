@@ -296,7 +296,7 @@ impl AndroidEngine {
         self.engine.fail_native(request_id, error)
     }
 
-    fn render(&mut self, text_cursor_visible: bool) -> Option<SystemGlyphRequest> {
+    fn render(&mut self) -> Option<SystemGlyphRequest> {
         // Keep the last complete frame while rows or the camera review image load.
         if !self.engine.list_viewports_ready() || !self.engine.camera_review_ready() {
             return None;
@@ -305,10 +305,7 @@ impl AndroidEngine {
             return None;
         };
         let mut surface_lost = false;
-        match surface
-            .renderer
-            .render(self.engine.scene(), text_cursor_visible)
-        {
+        match surface.renderer.render(self.engine.scene()) {
             Ok(RenderOutcome::Presented) => {
                 #[cfg(feature = "presentation-timing")]
                 {
@@ -711,12 +708,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
-    text_cursor_visible: jboolean,
 ) -> JString<'local> {
     let request = if let Some(engine) = engine(handle)
         && let Ok(mut engine) = engine.lock()
     {
-        engine.render(text_cursor_visible)
+        engine.render()
     } else {
         None
     };
@@ -820,14 +816,9 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
     value: JString<'_>,
 ) -> jboolean {
     let edit = match action {
-        0 if !value.is_null() => Some(TextEdit::Insert(
-            env.with_env(|env| value.try_to_string(env))
-                .resolve::<jni::errors::LogErrorAndDefault>(),
-        )),
-        1 => Some(TextEdit::Backspace),
         2 => Some(TextEdit::Submit),
         3 => Some(TextEdit::Dismiss),
-        4 if !value.is_null() => Some(TextEdit::Assistance(
+        4 if !value.is_null() => Some(TextEdit::Update(
             env.with_env(|env| value.try_to_string(env))
                 .resolve::<jni::errors::LogErrorAndDefault>(),
         )),

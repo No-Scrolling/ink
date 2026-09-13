@@ -23,11 +23,7 @@ Inputs use Android’s text editor for selection, copy, paste and spelling corre
 
 ## Spelling
 
-```tsx
-<TextInput value={text} onChange={setText} spellCheck autoCorrect />
-```
-
-`spellCheck` requests spelling suggestions. `autoCorrect` requests autocorrection and automatic sentence capitals. Both default to `false`; [Conversations](/conversations) enable them. Numeric inputs ignore them.
+Text inputs request spelling suggestions, autocorrection and automatic sentence capitals. Numeric inputs accept only digits.
 
 The selected keyboard controls which features are available. Tap an underlined word to see replacement suggestions. Ink does not bundle a keyboard or dictionary.
 
@@ -44,10 +40,10 @@ The header Back button leaves the page and closes the keyboard. Android Back clo
 For inputs that accept only digits:
 
 ```tsx
-import { TextInput } from "ink/input/numeric";
+<TextInput value={number} onChange={setNumber} inputMode="numeric" action="done" />
 ```
 
-This requests a number layout and defaults to Done. It uses the same Android editor as the regular `TextInput`.
+This requests a number layout with a Done action.
 
 ## Prefix and suffix
 
