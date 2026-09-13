@@ -30,6 +30,7 @@ Use Ink’s components and defaults to build Light Phone III apps.
 ## Loading and updates
 
 - Keep existing content visible during refreshes and when returning from another page. Use full-screen loading when no content is available.
+- Keep controls’ normal appearance while an action is pending. Prevent duplicate actions without setting `disabled` or flashing controls grey. Reserve disabled styling for controls that are unavailable for use.
 - Preserve scroll position, drafts and selections. Use Ink’s keyboard dismissal and navigation behaviour.
 - Use `tabularNumbers` for changing numeric readings. Reserve image space when its dimensions are known.
 - Keep the last reading visible through brief signal gaps. Mark stale readings when the distinction matters.
