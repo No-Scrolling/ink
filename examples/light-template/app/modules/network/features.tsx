@@ -16,11 +16,11 @@ export default function NetworkFeatures() {
     <Screen title="Network Features">
       <Text>Run the network example server on your computer and forward port 18081.</Text>
       <TextInput value={server} onChange={setServer} action="done" />
-      <Button disabled={request.status === "pending"} onPress={() => request.run(streamResponse)}>Stream Response</Button>
-      <Button disabled={request.status === "pending"} onPress={() => request.run(uploadForm)}>Upload Form</Button>
-      <Button disabled={request.status === "pending"} onPress={() => request.run(replayUpload)}>Replay Upload</Button>
-      <Button disabled={request.status === "pending"} onPress={() => request.run(echoSocket)}>WebSocket Echo</Button>
-      <Button disabled={request.status === "pending"} onPress={() => request.run(cancelResponse)}>Cancel Response</Button>
+      <Button onPress={() => request.run(streamResponse)}>Stream Response</Button>
+      <Button onPress={() => request.run(uploadForm)}>Upload Form</Button>
+      <Button onPress={() => request.run(replayUpload)}>Replay Upload</Button>
+      <Button onPress={() => request.run(echoSocket)}>WebSocket Echo</Button>
+      <Button onPress={() => request.run(cancelResponse)}>Cancel Response</Button>
       <Text>{request.status === "success" ? request.data : request.status === "error" ? request.error.message : request.status === "pending" ? "Running..." : "Ready"}</Text>
     </Screen>
   );

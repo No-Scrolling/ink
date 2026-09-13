@@ -30,7 +30,7 @@ export default function Background() {
   return (
     <Screen title="Background">
       <Field label="Status">{status}</Field>
-      <Button disabled={schedule.status === "pending"} onPress={() => schedule.run()}>Schedule Refresh</Button>
+      <Button onPress={() => schedule.run()}>Schedule Refresh</Button>
       <Button onPress={() => cancelRefresh.run()}>Cancel Refresh</Button>
       <Button onPress={() => inspect.run()}>Run Worker APIs</Button>
       {inspect.status === "error" && <Text>{inspect.error.message}</Text>}

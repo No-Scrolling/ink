@@ -6,7 +6,7 @@ export default function Dialler() {
   return (
     <Screen title="Dialler">
       <Text>Open the LightOS dialler with an example number. No call is placed.</Text>
-      <Button disabled={dialler.status === "pending"} onPress={() => dialler.run()}>Open Dialler</Button>
+      <Button onPress={() => dialler.run()}>Open Dialler</Button>
       {dialler.status === "error" && <Field label="Error">{dialler.error.message}</Field>}
     </Screen>
   );

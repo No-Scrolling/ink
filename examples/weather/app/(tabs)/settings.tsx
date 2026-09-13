@@ -13,7 +13,7 @@ function Settings({ prefs }: { prefs: WeatherPreferences }) {
   if (save.status === "error") return <Screen title="Settings"><ErrorState message="Could not save settings." onRetry={save.retry} /></Screen>;
   return (
     <Screen title="Settings">
-      <Toggle label="Invert Colours" value={prefs.invertColours} onChange={value => save.run({ invertColours: value })} disabled={save.status === "pending"} />
+      <Toggle label="Invert Colours" value={prefs.invertColours} onChange={value => save.run({ invertColours: value })} />
       <Field label="Main Page Location" href="/settings/main-location">{mainLocationLabel}</Field>
       <Button href="/settings/details">Weather Details</Button>
       <Button href="/settings/units">Units</Button>

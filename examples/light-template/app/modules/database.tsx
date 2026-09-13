@@ -13,7 +13,7 @@ export default function Database() {
     } finally { await db.close(); }
   });
   return <Screen title="Database">
-    <Button disabled={search.status === "pending"} onPress={() => search.run()}>Find stations</Button>
+    <Button onPress={() => search.run()}>Find stations</Button>
     {names.map(name => <Text key={name}>{name}</Text>)}
     {search.status === "error" && <Text>{search.error.message}</Text>}
   </Screen>;

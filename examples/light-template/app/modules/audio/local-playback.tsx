@@ -7,7 +7,7 @@ export default function LocalPlayback() {
   const session = params.session === "secondary" ? "secondary" : "main";
   const player = usePlayer({ session, usage: "music", mode: "detached" });
   const command = useAction((run: () => Promise<void>) => run());
-  const disabled = !player.state.ready || command.status === "pending";
+  const disabled = !player.state.ready;
 
   return (
     <Screen title={session === "secondary" ? "Second Player" : "Local Playback"}>

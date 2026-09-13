@@ -12,7 +12,7 @@ export default function Ringtone() {
           : ringtone.status === "pending" ? "Installing..."
           : ringtone.status === "success" ? "Installed" : ringtone.error.message}
       </Field>
-      <Button disabled={ringtone.status === "pending"} onPress={() => ringtone.run()}>Install Ringtone</Button>
+      <Button onPress={() => ringtone.run()}>Install Ringtone</Button>
     </Screen>
   );
 }

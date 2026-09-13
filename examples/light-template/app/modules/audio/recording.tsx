@@ -4,7 +4,7 @@ import { Button, Field, Screen, useAction } from "ink";
 export default function Recording() {
   const recorder = useRecorder();
   const command = useAction((run: () => Promise<void>) => run());
-  const disabled = !recorder.ready || command.status === "pending";
+  const disabled = !recorder.ready;
 
   return (
     <Screen title="Recording">

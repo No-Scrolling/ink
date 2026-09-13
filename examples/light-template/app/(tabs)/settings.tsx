@@ -11,17 +11,17 @@ export default function Settings() {
   return (
     <Screen title="Settings">
       {saved.status === "ready" && <Toggle label="Invert Colours" value={saved.data === "light"}
-        disabled={saveAppearance.status === "pending"} onChange={saveAppearance.run} />}
+        onChange={saveAppearance.run} />}
       {saved.status === "loading" && <LoadingState label="Loading appearance…" />}
       {saved.status === "error" && <ErrorState message={saved.error.message}
-        onRetry={() => reloadAppearance.run()} disabled={reloadAppearance.status === "pending"} />}
+        onRetry={() => reloadAppearance.run()} />}
       {saveAppearance.status === "error" && <ErrorState message={saveAppearance.error.message}
         onRetry={() => { if (saved.status === "ready") saveAppearance.run(saved.data !== "light"); }} />}
       <Field label="Selection" href="/settings/selection">
         {choice.status === "ready" ? choice.data : choice.status === "error" ? "Unavailable" : "Loading…"}
       </Field>
       {choice.status === "error" && <ErrorState message={`Could not load the selection. ${choice.error.message}`}
-        onRetry={() => reloadSelection.run()} disabled={reloadSelection.status === "pending"} />}
+        onRetry={() => reloadSelection.run()} />}
     </Screen>
   );
 }

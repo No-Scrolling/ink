@@ -30,8 +30,8 @@ export default function Accounts() {
   const signOut = useAction(async () => { await account.signOut(); setDevice(null); });
   return <Screen title="Accounts">
     <Field label="Session">{session.status === "ready" ? session.data.status : session.status}</Field>
-    <Button disabled={start.status === "pending"} onPress={start.run}>Device sign-in</Button>
-    <Button disabled={browser.status === "pending"} onPress={browser.run}>Browser sign-in</Button>
+    <Button onPress={start.run}>Device sign-in</Button>
+    <Button onPress={browser.run}>Browser sign-in</Button>
     <Button onPress={token.run}>Get token</Button>
     <Button onPress={signOut.run}>Sign out</Button>
     {device && <>

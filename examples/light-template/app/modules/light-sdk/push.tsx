@@ -8,7 +8,7 @@ export default function Push() {
   const push = usePush();
   const handled = useSnapshot(pushResult);
   const command = useAction((run: () => Promise<void>) => run());
-  const disabled = !push.ready || command.status === "pending";
+  const disabled = !push.ready;
 
   return (
     <Screen title="Push">

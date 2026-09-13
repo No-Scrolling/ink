@@ -23,10 +23,10 @@ export default function Photo() {
     <Screen title={params.facing === "front" ? "Front Camera" : "Photo"}>
       {capture.state.value && <>
         <Field label="Saved photo">{`${capture.state.value.file.size} bytes`}</Field>
-        <Button disabled={read.status === "pending"} onPress={() => read.run()}>Read Photo</Button>
+        <Button onPress={() => read.run()}>Read Photo</Button>
         {read.status === "success" && <Field label="Read">{`${read.data} bytes`}</Field>}
         {read.status === "error" && <Field label="Read">{read.error.message}</Field>}
-        <Button disabled={remove.status === "pending"} onPress={() => remove.run()}>Delete Photo</Button>
+        <Button onPress={() => remove.run()}>Delete Photo</Button>
         {remove.status === "error" && <Field label="Delete">{remove.error.message}</Field>}
       </>}
       <CameraPreview controller={capture} />

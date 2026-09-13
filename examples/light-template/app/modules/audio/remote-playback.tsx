@@ -4,7 +4,7 @@ import { Button, Field, Screen, useAction } from "ink";
 export default function RemotePlayback() {
   const player = usePlayer({ session: "speech", usage: "speech", mode: "detached" });
   const command = useAction((run: () => Promise<void>) => run());
-  const disabled = !player.state.ready || command.status === "pending";
+  const disabled = !player.state.ready;
 
   return (
     <Screen title="Remote Playback">

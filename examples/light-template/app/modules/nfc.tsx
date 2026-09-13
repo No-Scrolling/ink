@@ -45,14 +45,14 @@ export default function Nfc() {
           <Field label="URI">{tag.data.hasUri ? tag.data.uri : "None"}</Field>
         </Stack>
       ) : <Field label="Tag">{tag.status === "error" ? tag.error.message : "Hold an NFC tag near the phone..."}</Field>}
-      <Button disabled={tag.status === "pending" || raw.status === "pending"} onPress={() => tag.run()}>Read another tag</Button>
-      <Button disabled={raw.status === "pending"} onPress={() => raw.run("iso-dep")}>Read ISO-DEP Details</Button>
-      <Button disabled={raw.status === "pending"} onPress={() => raw.run("nfc-a")}>Read NFC-A Details</Button>
+      <Button onPress={() => { if (raw.status !== "pending") tag.run(); }}>Read another tag</Button>
+      <Button onPress={() => raw.run("iso-dep")}>Read ISO-DEP Details</Button>
+      <Button onPress={() => raw.run("nfc-a")}>Read NFC-A Details</Button>
       {raw.status === "pending" && <Field label="Connection">Hold a compatible tag near the phone...</Field>}
       {raw.status === "success" && <Field label="Connection">{raw.data}</Field>}
       {raw.status === "error" && <Field label="Connection">{raw.error.message}</Field>}
-      <Button disabled={card.status === "pending"} onPress={() => card.run(true)}>Enable Demo Card</Button>
-      <Button disabled={card.status === "pending"} onPress={() => card.run(false)}>Disable Demo Card</Button>
+      <Button onPress={() => card.run(true)}>Enable Demo Card</Button>
+      <Button onPress={() => card.run(false)}>Disable Demo Card</Button>
       {card.status === "success" && <Field label="Demo card">{card.data}</Field>}
       {card.status === "error" && <Field label="Demo card">{card.error.message}</Field>}
     </Screen>

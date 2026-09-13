@@ -29,7 +29,9 @@ export default function Data() {
       {cached.status === "ready" ? (
         <Field label={cached.refreshError ? "Stale cache" : "Cached resource"}>{cached.data.title}</Field>
       ) : <Field label="Cache">{cached.status === "error" ? cached.error.message : "Loading..."}</Field>}
-      <Button onPress={source.refresh} disabled={cached.status === "loading" || (cached.status === "ready" && cached.refreshing)}>Refresh</Button>
+      <Button onPress={() => {
+        if (cached.status !== "loading" && !(cached.status === "ready" && cached.refreshing)) source.refresh();
+      }}>Refresh</Button>
       {save.status === "idle" ? (
         <Button onPress={() => save.run(count, session.current?.signal)}>Run Mutation</Button>
       ) : save.status === "pending" ? (

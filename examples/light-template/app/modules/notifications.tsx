@@ -12,7 +12,6 @@ export default function Notifications() {
   });
   const command = useAction((run: () => Promise<void>) => run());
   const tap = useNotificationTap();
-  const busy = command.status === "pending";
   useEffect(() => permission.run(), [permission.run]);
 
   return (
@@ -21,16 +20,16 @@ export default function Notifications() {
         {permission.status === "success" ? permission.data
           : permission.status === "error" ? permission.error.message : "Checking..."}
       </Field>
-      <Button disabled={request.status === "pending"} onPress={() => request.run()}>Request Permission</Button>
+      <Button onPress={() => request.run()}>Request Permission</Button>
       {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
-      <Button disabled={busy} onPress={() => command.run(() => notifications.show({
+      <Button onPress={() => command.run(() => notifications.show({
         id: "example-reminder",
         title: "Ink reminder",
         body: "This notification was presented by Ink.",
         href: "/modules/notifications",
         data: "immediate",
       }))}>Show Now</Button>
-      <Button disabled={busy} onPress={() => command.run(() => notifications.schedule({
+      <Button onPress={() => command.run(() => notifications.schedule({
         id: "example-reminder",
         title: "Updated reminder",
         body: "The same ID atomically replaces the earlier reminder.",
@@ -38,9 +37,9 @@ export default function Notifications() {
         data: "future",
         at: Date.now() + 15_000,
       }))}>Replace in 15 Seconds</Button>
-      <Button disabled={busy} onPress={() => command.run(() => notifications.cancel("example-reminder"))}>Cancel Reminder</Button>
-      <Button disabled={busy} onPress={() => command.run(lightos.requestExactPermission)}>Allow Exact Reminders</Button>
-      <Button disabled={busy} onPress={() => command.run(() => notifications.schedule({
+      <Button onPress={() => command.run(() => notifications.cancel("example-reminder"))}>Cancel Reminder</Button>
+      <Button onPress={() => command.run(lightos.requestExactPermission)}>Allow Exact Reminders</Button>
+      <Button onPress={() => command.run(() => notifications.schedule({
         id: "example-reminder", title: "Exact reminder", body: "Open the reminder details.",
         at: Date.now() + 15_000, exact: true,
         href: { path: "/modules/notifications", params: { source: "exact-reminder" } },
@@ -52,7 +51,7 @@ export default function Notifications() {
         <Stack gap={16}>
           <Field label="Notification">{tap.state.value.id}</Field>
           <Field label="Data">{tap.state.value.data}</Field>
-          <Button disabled={busy} onPress={() => command.run(tap.consume)}>Consume Tap</Button>
+          <Button onPress={() => command.run(tap.consume)}>Consume Tap</Button>
         </Stack>
       ) : <Field label="Last tap">{tap.state.status === "error" ? tap.state.error.message : tap.state.status === "loading" ? "Loading..." : "None"}</Field>}
     </Screen>

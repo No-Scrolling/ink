@@ -40,9 +40,9 @@ export default function Files() {
   const pending = action.status === "pending";
   return (
     <Screen title="Files and media">
-      <Button disabled={openMedia.status === "pending"} onPress={openMedia.run}>Choose media</Button>
+      <Button onPress={openMedia.run}>Choose media</Button>
       {openMedia.status === "error" && <Field label="Media access">{openMedia.error.message}</Field>}
-      <Button disabled={pending} onPress={() => action.run(async () => {
+      <Button onPress={() => action.run(async () => {
         const selected = await files.pick({ types: ["application/pdf", "text/plain"] });
         return selected ? keep(selected) : "Selection cancelled";
       })}>Choose document</Button>
@@ -61,11 +61,11 @@ export default function Files() {
         <Field label="Attachment">{`${file.name} · ${file.size} bytes`}</Field>
         {file.mimeType.startsWith("image/") && <>
           <Image src={file.src} width={280} height={220} />
-          <Button disabled={pending} onPress={() => action.run(async () => keep(await prepareImage(file, { maxWidth: 1024, maxHeight: 1024 })))}>Prepare smaller image</Button>
+          <Button onPress={() => action.run(async () => keep(await prepareImage(file, { maxWidth: 1024, maxHeight: 1024 })))}>Prepare smaller image</Button>
         </>}
-        <Button disabled={pending} onPress={() => action.run(async () => { await files.save(file); return "Save dialogue closed"; })}>Save a copy</Button>
-        <Button disabled={pending} onPress={() => action.run(async () => { await files.share(file); return "Share destinations opened"; })}>Share attachment</Button>
-        <Button disabled={pending} onPress={() => action.run(async () => {
+        <Button onPress={() => action.run(async () => { await files.save(file); return "Save dialogue closed"; })}>Save a copy</Button>
+        <Button onPress={() => action.run(async () => { await files.share(file); return "Share destinations opened"; })}>Share attachment</Button>
+        <Button onPress={() => action.run(async () => {
           const controller = new AbortController();
           active.current = controller;
           const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]);
@@ -80,7 +80,7 @@ export default function Files() {
           } finally { if (active.current === controller) active.current = null; }
         })}>Upload attachment</Button>
         {pending && <Button onPress={() => active.current?.abort()}>Cancel upload</Button>}
-        <Button disabled={pending} onPress={() => action.run(async () => {
+        <Button onPress={() => action.run(async () => {
           await files.remove(file.id);
           await attachments.update(ids => ids.filter(id => id !== file.id));
           setFile(null);

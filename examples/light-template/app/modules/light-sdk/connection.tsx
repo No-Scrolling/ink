@@ -23,7 +23,8 @@ export default function Connection() {
       <Field label="Light SDK version">
         {version.status === "success" ? version.data : version.status === "error" ? version.error.message : "Connecting..."}
       </Field>
-      <Button disabled={version.status === "pending"} onPress={() => {
+      <Button onPress={() => {
+        if (version.status === "pending") return;
         version.run();
         preferences.run();
         keyboard.run();
@@ -39,7 +40,7 @@ export default function Connection() {
       <Field label="Camera permission">
         {camera.status === "success" ? camera.data : camera.status === "error" ? camera.error.message : "Checking..."}
       </Field>
-      <Button disabled={request.status === "pending"} onPress={() => request.run()}>Request Camera</Button>
+      <Button onPress={() => request.run()}>Request Camera</Button>
       {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
     </Screen>
   );

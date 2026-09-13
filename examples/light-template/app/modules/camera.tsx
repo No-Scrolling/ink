@@ -15,7 +15,7 @@ export default function Camera() {
       <Field label="Permission">
         {permission.status === "success" ? permission.data : permission.status === "error" ? permission.error.message : "Checking..."}
       </Field>
-      <Button disabled={request.status === "pending"} onPress={() => request.run()}>Request Camera</Button>
+      <Button onPress={() => request.run()}>Request Camera</Button>
       {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
       <Button href="/modules/camera/photo">Photo</Button>
       <Button href="/modules/camera/scan">Scan Code</Button>
