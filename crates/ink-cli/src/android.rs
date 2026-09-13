@@ -182,7 +182,6 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
         ))
         .arg(format!("-PinkLightServerPackage={light_server}"))
         .arg(format!("-PinkAuthRedirectUri={}", project.auth_redirect_uri().unwrap_or("")))
-        .arg(format!("-PinkKeyboardProvider={}", project.keyboard_provider()))
         .arg(format!("-PinkAppAndroid={}", project.root().join("android").display()))
         .arg(format!(
             "-PinkAndroidResources={}",

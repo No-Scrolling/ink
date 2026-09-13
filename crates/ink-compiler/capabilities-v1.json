@@ -280,20 +280,13 @@
       "permissions": []
     },
     "text-input": {
-      "cost": "Numeric keyboard adapter",
+      "cost": "Android text editor and keyboard integration",
       "dependencies": [],
       "permissions": [],
       "androidSourceGroup": {
         "enabled": "textInput",
         "disabled": "noTextInput"
       }
-    },
-    "text-input-full": {
-      "cost": "Letter, symbol and emoji keyboard layouts",
-      "dependencies": [
-        "text-input"
-      ],
-      "permissions": []
     }
   },
   "androidCameraSources": {

@@ -1,6 +1,6 @@
 ---
 title: "Inputs"
-description: "Text entry with Ink’s keyboard."
+description: "Text entry with the device’s keyboard."
 ---
 
 ## Example
@@ -46,7 +46,7 @@ export default function Search() {
 <div className="pattern-example">
 <div>
 
-<p><code>action</code> chooses the bottom-right keyboard key: <code>"search"</code> for a magnifying glass, or <code>"done"</code> for a tick.</p>
+<p><code>action</code> requests a <code>"search"</code> or <code>"done"</code> key. Its appearance depends on the selected keyboard.</p>
 
 <p>Both call <code>onSubmit</code> with the entered text. Without it, they dismiss the keyboard.</p>
 

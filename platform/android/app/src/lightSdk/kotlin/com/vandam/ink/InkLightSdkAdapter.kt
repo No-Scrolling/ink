@@ -20,17 +20,11 @@ import java.util.concurrent.FutureTask
 
 internal fun createLightSdkAdapter(
     activity: MainActivity,
-    onKeyboardPreferencesChanged: KeyboardPreferencesChangedHandler,
     updateController: (Long, String) -> Unit,
-): LightSdkAdapter = InkLightSdkAdapter(
-    activity,
-    onKeyboardPreferencesChanged,
-    updateController,
-)
+): LightSdkAdapter = InkLightSdkAdapter(activity, updateController)
 
 private class InkLightSdkAdapter(
     private val activity: MainActivity,
-    private val onKeyboardPreferencesChanged: KeyboardPreferencesChangedHandler,
     private val updateController: (Long, String) -> Unit,
 ) : LightSdkAdapter, ServiceConnection {
     private val context = activity.applicationContext
@@ -44,15 +38,8 @@ private class InkLightSdkAdapter(
 
     @Volatile
     private var hapticsEnabled = false
-    @Volatile
-    private var emojis: String? = null
-    @Volatile
-    private var keyAnimationEnabled = true
 
-    override fun start() {
-        updateKeyboardPreferences()
-        bind()
-    }
+    override fun start() = bind()
 
     override fun refresh() {
         if (binder != null) {
@@ -442,16 +429,6 @@ private class InkLightSdkAdapter(
             }
             is Response.Error -> Log.w(TAG, "Could not read Light SDK preferences: ${preferences.message}")
         }
-
-        when (val options = authenticatedRequest(GET_KEYBOARD_OPTIONS, UNIT_JSON)) {
-            is Response.Success -> {
-                val value = JSONObject(options.data)
-                emojis = value.optString("emojisAsString").takeIf(String::isNotEmpty)
-                keyAnimationEnabled = value.optBoolean("enableKeyAnimation", true)
-            }
-            is Response.Error -> Log.w(TAG, "Could not read Light SDK keyboard options: ${options.message}")
-        }
-        updateKeyboardPreferences()
     }
 
     private fun authenticate(): Response.Error? {
@@ -504,11 +481,6 @@ private class InkLightSdkAdapter(
             request.recycle()
             reply.recycle()
         }
-    }
-
-    private fun updateKeyboardPreferences() {
-        val preferences = KeyboardPreferences(hapticsEnabled, emojis, keyAnimationEnabled)
-        activity.runOnUiThread { onKeyboardPreferencesChanged(preferences) }
     }
 
     private fun updateRingtone(

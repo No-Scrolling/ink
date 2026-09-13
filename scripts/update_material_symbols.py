@@ -11,40 +11,11 @@ from fontTools.varLib.instancer import instantiateVariableFont
 COMMIT = "84ccef280841abfac506afc4ad4a2782f6d0a1d0"
 BASE_URL = f"https://raw.githubusercontent.com/google/material-design-icons/{COMMIT}/variablefont"
 FONT_NAME = "MaterialSymbolsOutlined%5BFILL%2CGRAD%2Copsz%2Cwght%5D"
-KEYBOARD_SYMBOLS = {
-    "ink_keyboard_arrow_down": "keyboard_arrow_down",
-    "ink_keyboard_arrow_up": "keyboard_arrow_up",
-    "ink_keyboard_chevron_left": "chevron_left",
-    "ink_keyboard_done": "done",
-    "ink_keyboard_match_case": "match_case",
-    "ink_keyboard_mood": "mood",
-    "ink_keyboard_return": "keyboard_return",
-    "ink_keyboard_search": "search",
-}
 
 
 def download(suffix: str) -> bytes:
     with urlopen(f"{BASE_URL}/{FONT_NAME}.{suffix}") as response:
         return response.read()
-
-
-def android_vector(name: str) -> str:
-    url = (
-        f"https://raw.githubusercontent.com/google/material-design-icons/{COMMIT}"
-        f"/symbols/android/{name}/materialsymbolsoutlined/{name}_wght300_24px.xml"
-    )
-    with urlopen(url) as response:
-        vector = response.read().decode()
-    return vector.replace(
-        '\n    android:tint="?attr/colorControlNormal">',
-        ">",
-    ).replace(
-        '\n    android:tint="?attr/colorControlNormal"',
-        "",
-    ).replace(
-        'android:fillColor="@android:color/white"',
-        'android:fillColor="#FFFFFFFF"',
-    )
 
 
 def main() -> None:
@@ -77,13 +48,6 @@ def main() -> None:
 
     (output / "MaterialSymbolsOutlined.codepoints").write_bytes(download("codepoints"))
     subprocess.run(["bun", str(output.parents[1] / "scripts/generate-icons.ts")], check=True)
-
-    keyboard_output = (
-        Path(__file__).resolve().parents[1]
-        / "platform/android/app/src/textInput/res/drawable"
-    )
-    for output_name, symbol_name in KEYBOARD_SYMBOLS.items():
-        (keyboard_output / f"{output_name}.xml").write_text(android_vector(symbol_name))
 
 
 if __name__ == "__main__":

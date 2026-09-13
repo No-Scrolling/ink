@@ -73,6 +73,17 @@ export default function Home() {
 </div>
 </div>
 
+A vertical `Stack` with `justify="space-between"` fills the content area when it is the only child of `Screen`. Use it to place content at the top and bottom.
+
+```tsx
+<Screen title="About">
+  <Stack justify="space-between">
+    <Text>My app</Text>
+    <Text size={18}>Version 1.0</Text>
+  </Stack>
+</Screen>
+```
+
 ## Pinned content
 
 <div className="pattern-example">

@@ -17,11 +17,3 @@ internal interface LightSdkAdapter : NativeAdapter {
         complete: NativeResultHandler,
     )
 }
-
-internal data class KeyboardPreferences(
-    val hapticsEnabled: Boolean,
-    val emojis: String?,
-    val keyAnimationEnabled: Boolean,
-)
-
-internal typealias KeyboardPreferencesChangedHandler = (KeyboardPreferences) -> Unit

@@ -39,7 +39,8 @@ impl Engine {
             json!({ "x": rect.x, "y": y, "width": rect.width, "height": rect.height,
                 "fontSize": self.scaled_font(TEXT_INPUT_TEXT_SIZE)
                     * self.font.units_per_em().unwrap_or(self.font.height_unscaled()) / self.font.height_unscaled(),
-                "lineHeight": self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING) })
+                "lineHeight": self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING),
+                "bottomPadding": self.scaled(TEXT_INPUT_BOTTOM_PADDING) })
         });
         json!({
             "id": state.0,

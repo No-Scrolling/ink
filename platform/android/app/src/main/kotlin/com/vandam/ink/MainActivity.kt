@@ -137,12 +137,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             )
         }
         textInputAdapter = createTextInputAdapter(this, root, ::handleTextEdit)
-        lightSdkAdapter = createLightSdkAdapter(
-            this,
-            textInputAdapter::applyPreferences,
-        ) { controller, value ->
-            updateController(controller, value)
-        }
+        lightSdkAdapter = createLightSdkAdapter(this, ::updateController)
         networkAdapter = createNetworkAdapter(this)
         mapsAdapter = createMapsAdapter(this, root, ::updateController)
         locationAdapter = createLocationAdapter(this)

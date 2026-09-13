@@ -6,7 +6,7 @@
       "network"
     ],
     "src/input.ts": [
-      "text-input-full"
+      "text-input"
     ],
     "src/input-numeric.ts": [
       "text-input"

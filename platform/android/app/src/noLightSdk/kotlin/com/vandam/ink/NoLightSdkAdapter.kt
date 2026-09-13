@@ -6,12 +6,9 @@ import android.view.View
 
 internal fun createLightSdkAdapter(
     _activity: MainActivity,
-    onKeyboardPreferencesChanged: KeyboardPreferencesChangedHandler,
     _updateController: (Long, String) -> Unit,
 ): LightSdkAdapter = object : LightSdkAdapter {
-    override fun start() {
-        onKeyboardPreferencesChanged(KeyboardPreferences(true, null, true))
-    }
+    override fun start() = Unit
 
     override fun refresh() = Unit
 

@@ -12,7 +12,6 @@ internal interface TextInputAdapter {
     fun sync(active: Boolean, action: Int, numeric: Boolean)
     fun setLightAppearance(light: Boolean)
     fun dismiss(): Boolean
-    fun applyPreferences(preferences: KeyboardPreferences)
     fun syncContext(context: String) {}
     fun pause() { close() }
     fun close() {}

@@ -25,10 +25,12 @@ import org.json.JSONObject
 import android.graphics.Color
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.ContextThemeWrapper
 import android.view.MotionEvent
 import kotlin.math.roundToInt
 
 private const val SPELLING_ANNOTATE = "ing.noscroll.ink.spelling.annotate.v1"
+private const val MAX_EDITOR_LINES = 3
 
 internal fun createTextInputAdapter(
     activity: MainActivity,
@@ -57,7 +59,7 @@ private class SystemKeyboardAdapter(
     private var lineMeasurement: Triple<String, Int, Float>? = null
     private var measuredLineCount = 1
     private val publish = Runnable { publishEdit() }
-    private val editor: EditText = object : EditText(activity) {
+    private val editor: EditText = object : EditText(ContextThemeWrapper(activity, R.style.Theme_Ink_TextEditor)) {
         override fun onTouchEvent(event: MotionEvent): Boolean = active && super.onTouchEvent(event)
         override fun onCreateInputConnection(info: EditorInfo): InputConnection? {
             val connection = super.onCreateInputConnection(info) ?: return null
@@ -109,6 +111,7 @@ private class SystemKeyboardAdapter(
         editor.setHighlightColor(0x66888888)
         editor.isFocusableInTouchMode = true
         editor.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        editor.maxLines = MAX_EDITOR_LINES
         editor.setPadding(0, 0, 0, 0)
         editor.filters = arrayOf(InputFilter { source, start, end, _, _, _ ->
             val value = source.subSequence(start, end).toString()
@@ -155,17 +158,25 @@ private class SystemKeyboardAdapter(
     private fun measuredLines(): Int {
         if (action != 0) return 1
         val key = Triple(editor.text.toString(), editor.layoutParams.width.coerceAtLeast(1), editor.textSize)
-        if (key == lineMeasurement) return measuredLineCount
-        measuredLineCount = StaticLayout.Builder.obtain(editor.text, 0, editor.length(), editor.paint, key.second)
-            .setIncludePad(false).setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
-            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
-            .build().lineCount.coerceIn(1, 3)
-        lineMeasurement = key
-        return measuredLineCount
+        if (key != lineMeasurement) {
+            measuredLineCount = StaticLayout.Builder.obtain(editor.text, 0, editor.length(), editor.paint, key.second)
+                .setIncludePad(false).setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+                .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+                .build().lineCount
+            lineMeasurement = key
+        }
+        return measuredLineCount.coerceIn(1, MAX_EDITOR_LINES)
     }
 
     private fun resizeEditor() {
-        val height = measuredLines() * editor.lineHeight
+        val lines = measuredLines()
+        // Android omits line spacing after the final line. Match its content height so
+        // the unscrolled editor can draw underlines into its bottom padding too.
+        val finalLineSpacing = if (action == 0 && measuredLineCount <= MAX_EDITOR_LINES) {
+            editor.lineHeight - editor.paint.fontMetricsInt.run { descent - ascent }
+        } else 0
+        editor.translationY = finalLineSpacing.toFloat()
+        val height = lines * editor.lineHeight - finalLineSpacing + editor.paddingBottom
         if (editor.layoutParams.height != height) {
             editor.layoutParams = (editor.layoutParams as FrameLayout.LayoutParams).apply { this.height = height }
         }
@@ -230,7 +241,8 @@ private class SystemKeyboardAdapter(
         val data = JSONObject(context)
         val bounds = data.optJSONObject("editor") ?: return
         val width = bounds.getDouble("width").roundToInt().coerceAtLeast(1)
-        val height = bounds.getDouble("height").roundToInt().coerceAtLeast(1)
+        val bottomPadding = bounds.getDouble("bottomPadding").roundToInt().coerceAtLeast(0)
+        val height = bounds.getDouble("height").roundToInt().coerceAtLeast(1) + bottomPadding
         val params = editor.layoutParams as FrameLayout.LayoutParams
         val left = bounds.getDouble("x").roundToInt()
         val top = bounds.getDouble("y").roundToInt()
@@ -241,6 +253,9 @@ private class SystemKeyboardAdapter(
         if (editor.textSize != fontSize) editor.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize)
         val lineHeight = bounds.getDouble("lineHeight").roundToInt()
         if (editor.lineHeight != lineHeight) editor.setLineHeight(lineHeight)
+        if (editor.paddingBottom != bottomPadding) {
+            editor.setPadding(0, 0, 0, bottomPadding)
+        }
         editor.visibility = View.VISIBLE
         val id = data.getInt("id")
         val text = data.getString("text")
@@ -270,7 +285,7 @@ private class SystemKeyboardAdapter(
 
     private fun inputType(): Int = if (numeric) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT or
         (if (action == 0) InputType.TYPE_TEXT_FLAG_MULTI_LINE else 0) or
-        (if (autoCorrect) InputType.TYPE_TEXT_FLAG_AUTO_CORRECT else 0) or
+        (if (autoCorrect) InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES else 0) or
         (if (suggestions) 0 else InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
 
     override fun dismiss(): Boolean {
@@ -290,7 +305,6 @@ private class SystemKeyboardAdapter(
         editor.textSelectHandleLeft?.mutate()?.setTint(colour)
         editor.textSelectHandleRight?.mutate()?.setTint(colour)
     }
-    override fun applyPreferences(preferences: KeyboardPreferences) = Unit
 
     override fun pause() {
         publishEdit()

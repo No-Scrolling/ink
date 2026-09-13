@@ -71,13 +71,6 @@ impl Project {
         self.config.auth_redirect_uri.as_deref()
     }
 
-    pub fn keyboard_provider(&self) -> &str {
-        match self.config.keyboard_provider {
-            config::KeyboardProvider::Ink => "ink",
-            config::KeyboardProvider::System => "system",
-        }
-    }
-
     pub fn root(&self) -> &Path {
         self.config_path
             .parent()

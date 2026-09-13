@@ -13,5 +13,4 @@ internal fun createTextInputAdapter(
 
     override fun dismiss() = false
 
-    override fun applyPreferences(preferences: KeyboardPreferences) = Unit
 }

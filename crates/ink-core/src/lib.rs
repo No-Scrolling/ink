@@ -2921,9 +2921,17 @@ impl Engine {
                     (self.viewport.height as f32 - available.y).max(0.0)
                 },
             },
-            NodeKind::Toggle { .. } => MeasuredSize {
-                width: available.width,
-                height: self.scaled(TOGGLE_HEIGHT).min(available.height),
+            NodeKind::Toggle { label, .. } => {
+                let width = (available.width
+                    - self.scaled(TOGGLE_START + TOGGLE_ICON_SIZE + TOGGLE_LINE_WIDTH + TOGGLE_LABEL_GAP))
+                    .max(0.0);
+                let lines = self.wrap_text(label, self.scaled_font(DEFAULT_TEXT_SIZE), width, None, false);
+                MeasuredSize {
+                    width: available.width,
+                    height: (self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32)
+                        .max(self.scaled(TOGGLE_HEIGHT))
+                        .min(available.height),
+                }
             },
         }
     }
@@ -3483,6 +3491,13 @@ impl Engine {
                 height: (rect.height - header_height - inset_top - inset_bottom).max(0.0),
                 ..unbounded_content
             };
+        }
+        if children.len() == 1
+            && matches!(children[0].kind, NodeKind::Stack {
+                axis: Axis::Vertical, justify: Justification::SpaceBetween, ..
+            })
+        {
+            sizes[0].height = sizes[0].height.max(content.height);
         }
         self.scroll_max = (content_height - content.height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, self.scroll_max);
@@ -4176,16 +4191,20 @@ impl Engine {
             height: rect.height,
         };
         let label_font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
-        self.scene.text.push(TextRun {
-            tabular_numbers: false,
-            text: self.ellipsize(label, label_font_size, label_rect.width),
-            rect: label_rect,
-            clip: self.clip,
-            font_size: label_font_size,
-            colour,
-            align: TextAlign::Start,
-            scrolling: self.scrolling,
-        });
+        let lines = self.wrap_text(label, label_font_size, label_rect.width, None, false);
+        let text_height = self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32;
+        let start = self.scene.text.len();
+        self.layout_text(
+            label, None, TextAlign::Start, None, false,
+            Rect {
+                y: rect.y + (rect.height - text_height).max(0.0) / 2.0,
+                height: text_height.min(rect.height),
+                ..label_rect
+            },
+        );
+        for run in &mut self.scene.text[start..] {
+            run.colour = colour;
+        }
         if let Some(action) = action {
             self.push_hit_region(rect, action.clone());
         }
