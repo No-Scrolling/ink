@@ -73,16 +73,32 @@ export default function Home() {
 </div>
 </div>
 
-A vertical `Stack` with `justify="space-between"` fills the content area when it is the only child of `Screen`. Use it to place content at the top and bottom.
+## Space between
+
+<div className="pattern-example">
+<div>
+
+<p>A vertical <code>Stack</code> with <code>justify="space-between"</code> fills the content area when it is the only child of <code>Screen</code>.</p>
 
 ```tsx
+import { Screen, Stack, Text } from "ink";
+
 <Screen title="About">
-  <Stack justify="space-between">
+  <Stack align="stretch" justify="space-between">
     <Text>My app</Text>
-    <Text size={18}>Version 1.0</Text>
+    <Stack align="center">
+      <Text size={18}>Powered by</Text>
+      <Text>Ink Framework</Text>
+    </Stack>
   </Stack>
 </Screen>
 ```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/stack-space-between.png" alt="My app at the top, with Powered by above Ink Framework centred at the bottom." width="1080" height="1240" />
+</div>
+</div>
 
 ## Pinned content
 
