@@ -1625,6 +1625,7 @@ impl Engine {
             );
         if blurred {
             self.focused_input = None;
+            self.native_editor_state = None;
         }
 
         let changes_layout = action.as_ref().is_some_and(Action::changes_layout);
@@ -2293,6 +2294,7 @@ impl Engine {
             TextEdit::Update(payload) => self.apply_editor_update(&payload),
             TextEdit::Submit | TextEdit::Dismiss => {
                 self.focused_input = None;
+                self.native_editor_state = None;
                 self.relayout_scene();
                 true
             }
