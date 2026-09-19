@@ -90,7 +90,6 @@ const BUTTON_ICON_GAP: f32 = 12.0;
 const FIELD_LABEL_SIZE: f32 = 20.0;
 const FIELD_LABEL_HEIGHT: f32 = 25.0;
 const CONTENT_INSET_START: f32 = 37.0;
-const CONTENT_INSET_END: f32 = CONTENT_INSET_START;
 const CONTENT_TOP: f32 = 14.0;
 const CONTENT_BOTTOM: f32 = 20.0;
 const CONTENT_GAP: f32 = 47.0;
@@ -586,6 +585,7 @@ enum NodeKind {
         footer: Option<(String, Option<Action>)>,
         pinned_header: bool,
         pinned_footer: bool,
+        wide: bool,
         left_action: Option<(Mask, Action)>,
         right_action: Option<(Mask, Action)>,
         media_picker: bool,
@@ -676,6 +676,7 @@ impl Node {
                 footer: None,
                 pinned_header: false,
                 pinned_footer: false,
+                wide: false,
                 left_action: None,
                 right_action: None,
                 media_picker: false,
@@ -3270,6 +3271,7 @@ impl Engine {
                 footer,
                 pinned_header,
                 pinned_footer,
+                wide,
                 left_action,
                 right_action,
                 media_picker,
@@ -3280,6 +3282,7 @@ impl Engine {
                 footer.as_ref(),
                 *pinned_header,
                 *pinned_footer,
+                *wide,
                 left_action.as_ref(),
                 right_action.as_ref(),
                 *media_picker,
@@ -3438,6 +3441,7 @@ impl Engine {
         footer: Option<&(String, Option<Action>)>,
         pinned_header: bool,
         pinned_footer: bool,
+        wide: bool,
         left_action: Option<&(Mask, Action)>,
         right_action: Option<&(Mask, Action)>,
         media_picker: bool,
@@ -3509,7 +3513,7 @@ impl Engine {
             });
         }
 
-        let content_inset = if media_picker { 0.0 } else if pinned_footer { 16.0 } else { CONTENT_INSET_START };
+        let content_inset = if media_picker { 0.0 } else if pinned_footer { 16.0 } else if wide { 20.0 } else { CONTENT_INSET_START };
         let scroll_track_end = if media_picker { SCROLL_TRACK_END } else { SCROLL_TRACK_END + content_inset - CONTENT_INSET_START };
         let scroll_content_inset_end = scroll_track_end * 2.0 - SCROLL_TRACK_WIDTH;
 
@@ -3576,9 +3580,9 @@ impl Engine {
         let (children, header_height) = if pinned_header && !children.is_empty() {
             let top = self.scaled(if has_header { HEADER_CONTENT_TOP } else { CONTENT_TOP });
             let available = Rect {
-                x: rect.x + self.scaled(CONTENT_INSET_START),
+                x: rect.x + self.scaled(content_inset),
                 y: rect.y + header_height + top,
-                width: (rect.width - self.scaled(CONTENT_INSET_START + CONTENT_INSET_END)).max(0.0),
+                width: (rect.width - self.scaled(content_inset * 2.0)).max(0.0),
                 height: (rect.height - header_height - top - self.scaled(CONTENT_BOTTOM)).max(0.0),
             };
             let size = self.measure(&children[0], available);

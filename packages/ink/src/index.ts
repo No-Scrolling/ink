@@ -14,6 +14,7 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   header?: ReactNode;
   title?: string;
   centered?: boolean;
+  wide?: boolean;
   leftAction?: { icon: IconAsset; onPress: () => void };
   rightAction?: { icon: IconAsset; onPress: () => void };
 }) {

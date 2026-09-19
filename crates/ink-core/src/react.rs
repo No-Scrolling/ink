@@ -817,7 +817,8 @@ impl ReactTree {
                 } else {
                     Node::screen(self.children(host, depth)?, props.title, props.centered)
                 };
-                if let NodeKind::Screen { pinned_header, pinned_footer, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
+                if let NodeKind::Screen { pinned_header, pinned_footer, wide, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
+                    *wide = props.wide;
                     *pinned_header = state.is_none() && props.pinned_header;
                     *pinned_footer = state.is_none() && props.pinned_footer;
                     *left = left_action;
@@ -1051,6 +1052,8 @@ impl ReactTree {
 #[derive(Deserialize)]
 struct ScreenProps {
     title: Option<String>,
+    #[serde(default)]
+    wide: bool,
     #[serde(default)]
     centered: bool,
     #[serde(default, rename = "pinnedHeader")]
