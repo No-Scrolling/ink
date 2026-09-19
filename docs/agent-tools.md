@@ -107,6 +107,6 @@ These counters are partial logical sizes, **not a full allocation profiler**: th
 
 ## Three-framework counter comparison
 
-Use `scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SERIAL --background` to run the counter-only comparison harness. The JSON object maps `ink`, `expo` and `light-sdk` to their release APK paths. The tool copies and hashes the APKs, reserves the device, runs 15 launches, five idle samples and five 100-tap workloads per app, then uninstalls its apps and restores settings. It refuses pre-existing benchmark installations. This mode uses the fixed comparison protocol rather than paired `--rounds`/`--scenario` options.
+Use `scripts/agent-tools bench --comparison /absolute/path/counters.json --serial SERIAL --background` to run the counter-only comparison harness. The JSON object maps `ink`, `expo` and `light-sdk` to their release APK paths. The tool copies and hashes the APKs, reserves the device, runs 50 launches, five idle samples and five 100-tap workloads per app, then uninstalls its apps and restores settings. It refuses pre-existing benchmark installations. This mode uses the fixed comparison protocol rather than paired `--rounds`/`--scenario` options.
 
 The evidence directory retains the harness, APK hashes, runtime log, raw samples, screenshots after each workload, and before/after settings. Use `wait ID --after CURSOR` and `result ID --full` as for paired benchmarks. Check the screenshots to confirm that injected taps reached Count: 100 before publishing results.

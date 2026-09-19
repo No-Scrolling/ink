@@ -1,0 +1,19 @@
+{
+  "ink": {
+    "revision": "fae16351cac12c74ada33a247ae620556fcb5c92",
+    "dirty": true
+  },
+  "expo": {
+    "revision": "5a5eaadd09251c37e244da21bc18082aacbe004f",
+    "dirty": false,
+    "versions": {
+      "expo": "55.0.9",
+      "react": "19.2.0",
+      "react-native": "0.83.4"
+    }
+  },
+  "light-sdk": {
+    "revision": "3df3c24a21247e70ad59e1bc0393ac6d63840bc2",
+    "dirty": false
+  }
+}

@@ -1,6 +1,0 @@
-5f31ff3d305fc5b7cce177460a9a999512d3ad5f9eb414a6a8c51bfb94c1fce6  benchmarks/apps/expo-counter/app/index.tsx
-b55cba13cf42099329f594bbe0884d109560ba999f76011d0eab035fa9853f56  benchmarks/apps/light-sdk-counter/src/main/kotlin/com/vandam/benchmark/lightsdk/counter/CounterScreen.kt
-c90eb75f0501c311d8ca73725c741bf1262bd99d3fcef444f49aa98bb4118674  benchmarks/apps/light-sdk-counter/src/main/res/font/public_sans_regular.ttf
-7754dada27341a247fe3a8fa608166b7e1425b4df9616deb3ebe63aa76f9a260  /tmp/ink-comparison-20260906/expo-counter/components/Header.tsx
-b94a46b219b2827b883c7c82b02a805b61b4f26469fec0daa6eaa56d65c2b9a5  /tmp/ink-comparison-20260906/expo-counter/components/StyledButton.tsx
-03f757c663f71075b7c242d3250df6fb071995d1703590466419f4231e6040d6  /tmp/ink-comparison-20260906/expo-counter/bun.lock

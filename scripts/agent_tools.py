@@ -717,7 +717,7 @@ def compare_frameworks(op, args):
                "INK_COUNTER_APK": artifacts["ink"]["file"],
                "EXPO_COUNTER_APK": artifacts["expo"]["file"],
                "LIGHT_COUNTER_APK": artifacts["light-sdk"]["file"]}
-        op.step("Measuring three counters: 15 launches, five idle samples and five 100-tap workloads each")
+        op.step("Measuring three counters: 50 launches, five idle samples and five 100-tap workloads each")
         with (op.path / "runtime.log").open("w") as log:
             run(["bun", op.path / "measure.ts"], cwd=ROOT, env=env, timeout=1800, log=log)
         result = read_json(op.path / "result.json")

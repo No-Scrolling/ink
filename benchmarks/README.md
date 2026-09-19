@@ -34,7 +34,7 @@ The existing [scroll fixture](apps/ink-scroll/README.md) remains available for f
 
 The comparison uses three counter apps: Ink, Expo (light-template) and Light SDK. Each has a standard header, a centred count starting at zero and an **Increase** button.
 
-The [recorded LP3 comparison](results/matching-counter-lp3-2026-09-08.md) includes build and runtime samples, screenshots and device cleanup checks.
+The [recorded LP3 comparison](results/matching-counter-lp3-2026-09-19.md) includes build and runtime samples, screenshots and device cleanup checks.
 
 ### Prepare and run
 
@@ -52,7 +52,7 @@ The tool reserves the device, saves results and screenshots, removes its benchma
 
 ### Measurement limits
 
-The harness alternates frameworks across 15 cold launches, five idle-memory samples and five 100-tap workloads. It uses Android activity launch timings, PSS memory, process CPU ticks and SurfaceFlinger frame intervals. Build measurements include APK size and clean and unchanged build times.
+The harness alternates frameworks across 50 cold launches, five idle-memory samples and five 100-tap workloads. It uses Android activity launch timings, PSS memory, process CPU ticks and SurfaceFlinger frame intervals. Build measurements include APK size and clean and unchanged build times.
 
 These are not measurements of time to interactive, peak memory, battery drain or GPU usage. Counter frame intervals include pauses between taps and must not be interpreted as scrolling frame rate or input-to-display latency.
 

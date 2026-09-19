@@ -1,0 +1,17 @@
+{
+  "ink": {
+    "package": "com.vandam.benchmark.ink.counter",
+    "file": "/Users/vandam/Developer/ink/.agent-tools/bench-20260919-115426-63584e11/ink.apk",
+    "sha256": "46ebbdb08d5be517f9fbf9bc33595351d21e207851aaa203ffbd26efc835974a"
+  },
+  "expo": {
+    "package": "com.vandam.benchmark.expo.counter",
+    "file": "/Users/vandam/Developer/ink/.agent-tools/bench-20260919-115426-63584e11/expo.apk",
+    "sha256": "f1c7920649535f4a07a024c2578f7f1535e6217fd748d8aa4976f1986e0a0e93"
+  },
+  "light-sdk": {
+    "package": "com.vandam.benchmark.lightsdk.counter",
+    "file": "/Users/vandam/Developer/ink/.agent-tools/bench-20260919-115426-63584e11/light-sdk.apk",
+    "sha256": "873bf5eb2a3cd8c793c102fbd43198de004299f2627a7140f173de9dd11e514b"
+  }
+}
