@@ -10,6 +10,10 @@ description: "Display artwork and playback controls."
 
 <p>Pass playback state and callbacks. Times are in milliseconds.</p>
 
+<p>Titles and artist names stay on one line and scroll when they don't fit.</p>
+
+<p>The progress bar animates between position updates while <code>playing</code> is true. Set it to false when paused or buffering.</p>
+
 ```tsx
 import { PlayingScreen } from "ink";
 import artwork from "../assets/wallsocket.jpg";
@@ -35,6 +39,14 @@ import artwork from "../assets/wallsocket.jpg";
 <img src="/images/patterns/playing.png" alt="Artwork, track details, progress and playback controls with bottom actions." width="1080" height="1240" />
 </div>
 </div>
+
+## Upcoming artwork
+
+Pass up to two cover sources in `preloadImages`, such as the next and previous tracks. Ink prepares them at the playing screen’s image size and keeps the current cover visible while a replacement loads.
+
+```tsx
+<PlayingScreen image={track.artwork} preloadImages={nearbyCovers} {...playbackProps} />
+```
 
 ## Without artwork
 

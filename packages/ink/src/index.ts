@@ -9,27 +9,30 @@ export { resource, type ResourceSnapshot, type ResourceSource } from "./resource
 export { useAction, type Action } from "./action";
 export { Tabs, Slot, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
 
-export function Screen({ header, children, rightAction, ...props }: {
+export function Screen({ header, children, leftAction, rightAction, ...props }: {
   children?: ReactNode;
   header?: ReactNode;
   title?: string;
   centered?: boolean;
+  leftAction?: { icon: IconAsset; onPress: () => void };
   rightAction?: { icon: IconAsset; onPress: () => void };
 }) {
-  return createElement("Screen", { ...props, pinnedHeader: header != null, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
+  return createElement("Screen", { ...props, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
     header != null && createElement(Stack, { gap: 47 }, header),
     children,
   );
 }
 
-export function Stack(props: {
+export function Stack({ onPress, ...props }: {
   children?: ReactNode;
   axis?: "vertical" | "horizontal";
   gap?: number;
   align?: "start" | "center" | "end" | "stretch";
   justify?: "start" | "center" | "end" | "space-between";
+  onPress?: () => void;
 }) {
-  return createElement("Stack", props);
+  const stack = createElement("Stack", props);
+  return onPress ? createElement("Pressable", { onPress }, stack) : stack;
 }
 
 export function Text(props: {

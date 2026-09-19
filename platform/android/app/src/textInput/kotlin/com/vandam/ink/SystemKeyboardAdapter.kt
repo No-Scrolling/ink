@@ -112,6 +112,8 @@ private class SystemKeyboardAdapter(
         editor.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
         editor.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         editor.setTextColor(Color.WHITE)
+        // Ink draws the placeholder in both states so its rasterisation stays consistent.
+        editor.setHintTextColor(Color.TRANSPARENT)
         editor.setHighlightColor(0x66888888)
         editor.isFocusableInTouchMode = true
         editor.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -268,8 +270,6 @@ private class SystemKeyboardAdapter(
         val text = data.getString("text")
         val placeholder = data.optString("placeholder")
         if (editor.hint?.toString() != placeholder) editor.hint = placeholder
-        val hintGrey = data.getInt("hintGrey")
-        editor.setHintTextColor(Color.rgb(hintGrey, hintGrey, hintGrey))
         val cursor = data.getInt("cursor").coerceIn(0, text.length)
         syncing = true
         val changed = inputId != id

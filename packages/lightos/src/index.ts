@@ -1,6 +1,6 @@
 import { callNative, NativeError } from "ink/native";
 
-export type Permission = "camera" | "microphone" | "location-approximate" | "location-precise" | "notifications" | "photos" | "videos" | "photos-and-videos";
+export type Permission = "camera" | "microphone" | "location-approximate" | "location-precise" | "notifications" | "photos" | "videos" | "photos-and-videos" | "audio-files";
 export type PermissionStatus = "granted" | "denied" | "blocked";
 export interface HostPreferences { hapticsEnabled: boolean }
 export interface KeyboardOptions {

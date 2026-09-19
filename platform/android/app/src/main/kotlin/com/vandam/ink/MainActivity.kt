@@ -1166,7 +1166,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 !nativeCanPresentPointerMove(engineHandle, id, position.second)
             }
             if (presentBeforeMove) presentFrame()
-            var changed = renderPending && !presentBeforeMove
+            var changed = nativeAnimateScene(engineHandle) || (renderPending && !presentBeforeMove)
             renderPending = false
             if (hasPendingMove) changed = flushPointerMoves() || changed
             if (scroller.computeScrollOffset()) {
@@ -1401,6 +1401,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private fun presentFrame() {
             lastFrameNanos = System.nanoTime()
             renderFrame()
+            postFrame()
         }
 
         fun stopScrolling() {
@@ -1428,7 +1429,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private fun postFrame() {
             if (
                 !framePosted &&
-                (renderPending || hasPendingMove || !scroller.isFinished)
+                (renderPending || hasPendingMove || !scroller.isFinished ||
+                    (surfaceAttached && engineHandle != 0L && nativeHasSceneAnimations(engineHandle)))
             ) {
                 framePosted = true
                 choreographer.postFrameCallback(frameCallback)
@@ -1522,6 +1524,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         @JvmStatic
         private external fun nativeResize(handle: Long, width: Int, height: Int)
 
+        @JvmStatic
+        private external fun nativeHasSceneAnimations(handle: Long): Boolean
+        @JvmStatic
+        private external fun nativeAnimateScene(handle: Long): Boolean
         @JvmStatic
         private external fun nativeFrameReady(handle: Long): Boolean
 

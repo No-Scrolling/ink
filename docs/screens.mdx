@@ -32,6 +32,23 @@ export default function Home() {
 </div>
 </div>
 
+## Header actions
+
+Use `leftAction` and `rightAction` for header buttons. Back takes precedence over `leftAction` on detail screens.
+
+```tsx
+import { Screen, navigate } from "ink";
+import { graphicEq, sort } from "ink/icons";
+
+<Screen
+  title="Albums"
+  leftAction={{ icon: sort, onPress: () => navigate("/albums-sort") }}
+  rightAction={{ icon: graphicEq, onPress: () => navigate("/playing") }}
+>
+  {/* Screen content */}
+</Screen>
+```
+
 ## Centred content
 
 <div className="pattern-example">
@@ -55,6 +72,7 @@ export default function Home() {
 <div>
 
 <p>Use <code>Stack</code> to group content. Set <code>axis="horizontal"</code> for a row.</p>
+<p>Set <code>onPress</code> to make the whole group tappable, including gaps between its children.</p>
 
 ```tsx
 <Stack gap={8}>

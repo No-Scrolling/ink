@@ -7,39 +7,59 @@ use crate::{PUBLIC_SANS, is_emoji_grapheme};
 
 pub fn font_for_character(character: char) -> (usize, &'static FontArc) {
     static PRIMARY: OnceLock<FontArc> = OnceLock::new();
-    static FALLBACKS: OnceLock<Vec<FontArc>> = OnceLock::new();
     let primary = PRIMARY.get_or_init(|| {
         FontArc::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid")
     });
     if primary.glyph_id(character).0 != 0 {
         return (0, primary);
     }
-    let fallbacks = FALLBACKS.get_or_init(system_fonts);
-    for (index, font) in fallbacks.iter().enumerate() {
+    for (index, font) in system_fonts() {
         if font.glyph_id(character).0 != 0 {
-            return (index + 1, font);
+            return (index, font);
         }
     }
     (0, primary)
 }
 
 #[cfg(target_os = "android")]
-fn system_fonts() -> Vec<FontArc> {
-    [
-        "/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf",
-        "/system/fonts/NotoSansSymbols-Regular-Subsetted2.ttf",
-        "/system/fonts/NotoSansSymbols-Regular.ttf",
-        "/system/fonts/NotoSansSymbols2-Regular.ttf",
-    ]
-    .into_iter()
-    .filter_map(|path| std::fs::read(path).ok())
-    .filter_map(|bytes| FontArc::try_from_vec(bytes).ok())
-    .collect()
+fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
+    struct SystemFont {
+        path: &'static str,
+        data: OnceLock<Option<memmap2::Mmap>>,
+        font: OnceLock<Option<FontArc>>,
+    }
+
+    impl SystemFont {
+        const fn new(path: &'static str) -> Self {
+            Self { path, data: OnceLock::new(), font: OnceLock::new() }
+        }
+
+        fn get(&'static self) -> Option<&'static FontArc> {
+            self.font.get_or_init(|| {
+                let data = self.data.get_or_init(|| {
+                    let file = std::fs::File::open(self.path).ok()?;
+                    // Android's system fonts are read-only. Keep the mapping for the
+                    // cached font's lifetime, and let the OS page in only what is used.
+                    unsafe { memmap2::Mmap::map(&file).ok() }
+                }).as_ref()?;
+                FontArc::try_from_slice(data).ok()
+            }).as_ref()
+        }
+    }
+
+    static FONTS: [SystemFont; 5] = [
+        SystemFont::new("/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf"),
+        SystemFont::new("/system/fonts/NotoSansSymbols-Regular-Subsetted2.ttf"),
+        SystemFont::new("/system/fonts/NotoSansSymbols-Regular.ttf"),
+        SystemFont::new("/system/fonts/NotoSansSymbols2-Regular.ttf"),
+        SystemFont::new("/system/fonts/NotoSansCJK-Regular.ttc"),
+    ];
+    FONTS.iter().enumerate().filter_map(|(index, font)| font.get().map(|font| (index + 1, font)))
 }
 
 #[cfg(not(target_os = "android"))]
-fn system_fonts() -> Vec<FontArc> {
-    Vec::new()
+fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
+    std::iter::empty()
 }
 
 pub fn text_width(text: &str, size: f32) -> f32 {

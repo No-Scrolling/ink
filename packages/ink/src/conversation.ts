@@ -38,7 +38,7 @@ function messageTime(timestamp: number) {
 }
 
 function Reply({ author, text, onPress }: ReplyPreview) {
-  return createElement("PlayingPressable", { onPress },
+  return createElement("Pressable", { onPress },
     createElement("MessageQuote", null,
       createElement(Stack, { gap: 3 },
         createElement(Text, { size: 14 }, `Replying to ${author}`),
@@ -70,7 +70,7 @@ export function Message({ text, onLinkPress = openLink, linkPreview, timestamp, 
       reactions && createElement(Text, { size: 12 }, `, ${reactions}`)),
     outgoing && status && status !== "failed" && createElement("Icon", { name: statusIcons[status], size: 14, tone: status === "sending" ? "muted" : "primary" }));
   return createElement("Message", { outgoing },
-    createElement<{ haptic: boolean; onLongPress?: () => void; onPress: () => void }>("PlayingPressable", {
+    createElement<{ haptic: boolean; onLongPress?: () => void; onPress: () => void }>("Pressable", {
       haptic: false,
       onLongPress,
       onPress() {
@@ -85,10 +85,10 @@ export function Message({ text, onLinkPress = openLink, linkPreview, timestamp, 
       },
     }, createElement(Stack, { gap: 4, align: "stretch" },
       createElement(Stack, { align: outgoing ? "end" : "start" },
-        failed && onRetry ? createElement("PlayingPressable", { onPress: onRetry }, metadata) : metadata),
+        failed && onRetry ? createElement("Pressable", { onPress: onRetry }, metadata) : metadata),
       createElement(Stack, { gap: 8, align: "stretch" },
         reply && createElement(Reply, reply),
-        image && createElement("PlayingPressable", { onPress: image.onPress, onLongPress },
+        image && createElement("Pressable", { onPress: image.onPress, onLongPress },
           createElement(Image, { src: image.src, width: image.width, height: image.height, fit: "contain" })),
         displayText && createElement(Text, { size: 20 }, ...content),
         linkPreview && createElement(LinkPreview, { ...linkPreview, onPress: () => onLinkPress(linkPreview.url), onLongPress }),
@@ -177,7 +177,7 @@ export function ConversationScreen<T extends ConversationMessage>({ title, right
     };
     return renderMessage(message, open);
   }
-  const iconButton = (name: string, onPress?: () => void) => createElement("PlayingPressable", { onPress },
+  const iconButton = (name: string, onPress?: () => void) => createElement("Pressable", { onPress },
     createElement("Icon", { name, size: 28, tone: onPress ? "primary" : "muted" }));
   return createElement("Screen", { title, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress, pinnedFooter: true, initialEnd: true, scrollToEnd },
     loading ? createElement(Text, { size: 18, align: "center" }, "Loading…")

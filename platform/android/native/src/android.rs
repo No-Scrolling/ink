@@ -613,6 +613,22 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeHasSceneAnimations(
+    _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
+) -> jboolean {
+    engine(handle).and_then(|engine| engine.lock().ok())
+        .is_some_and(|engine| engine.engine.has_scene_animations()) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAnimateScene(
+    _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
+) -> jboolean {
+    engine(handle).and_then(|engine| engine.lock().ok())
+        .is_some_and(|mut engine| engine.engine.animate_scene()) as jboolean
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFrameReady(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,

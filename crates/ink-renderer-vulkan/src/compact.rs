@@ -138,6 +138,7 @@ struct PreparedScene {
     quads: Vec<ink_core::Quad>,
     masks: Vec<PreparedMaskRun>,
     images: Vec<PreparedImageRun>,
+    preloaded_images: Vec<(u64, u64)>,
     quad_fixed: Range<u32>,
     quad_scroll: Range<u32>,
     text_fixed: Range<u32>,
@@ -1114,6 +1115,7 @@ impl Renderer {
         if !self.prepared.ready
             || viewport_changed
             || self.prepared.image_revision != scene.image_revision
+            || !self.prepared.preloaded_images.iter().copied().eq(scene.preloaded_images.iter().map(|image| (image.id(), image.generation())))
             || !prepared_images_match(&self.prepared.images, &scene.images)
         {
             let (images, draws) = self.image_scene_instances(scene)?;
@@ -1157,9 +1159,13 @@ impl Renderer {
         &mut self,
         scene: &Scene,
     ) -> Result<(Vec<TextInstance>, Vec<ImageDraw>)> {
+        self.prepared.preloaded_images = scene.preloaded_images.iter().map(|image| (image.id(), image.generation())).collect();
         self.image_cache.begin_frame();
         let (mut images, mut draws) = self.image_instances(scene, false)?;
         let (scroll_images, mut scroll_draws) = self.image_instances(scene, true)?;
+        for image in &scene.preloaded_images {
+            self.image_cache.prepare(&self.device, &self.queue, image)?;
+        }
         let scroll_start = images.len() as u32;
         images.extend(scroll_images);
         for draw in &mut scroll_draws {
@@ -1168,7 +1174,7 @@ impl Renderer {
         }
         draws.extend(scroll_draws);
         self.image_cache
-            .trim(&draws.iter().map(|draw| draw.id).collect::<HashSet<_>>());
+            .trim(&draws.iter().map(|draw| draw.id).chain(scene.preloaded_images.iter().map(ImageData::id)).collect::<HashSet<_>>());
         Ok((images, draws))
     }
 

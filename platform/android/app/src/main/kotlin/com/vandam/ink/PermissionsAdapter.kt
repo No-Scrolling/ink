@@ -39,7 +39,7 @@ internal class PermissionsAdapter(
         pending = request
         if (usesLightPermission(permission)) {
             lightSdk.execute(id, "request-permission", permission.name) { result ->
-                if (result is NativeResult.Failure) activity.runOnUiThread {
+                if (result is NativeResult.Failure || result is NativeResult.Success && result.value == "granted") activity.runOnUiThread {
                     if (pending === request) finish(result)
                 }
             }
@@ -59,8 +59,8 @@ internal class PermissionsAdapter(
     }
 
     private fun usesLightPermission(permission: Permission): Boolean {
-        if (!BuildConfig.INK_LIGHT_SDK_ENABLED || !usesLightOs || permission.name !in setOf("camera", "microphone", "location-approximate", "location-precise")) return false
-        // The emulator SDK cannot grant location permissions.
+        if (!BuildConfig.INK_LIGHT_SDK_ENABLED || !usesLightOs || permission.name !in setOf("camera", "microphone", "audio-files", "location-approximate", "location-precise")) return false
+        // Older emulator SDK versions cannot grant location permissions.
         return BuildConfig.INK_LIGHT_SERVER_PACKAGE != "com.thelightphone.sdk.emulator" ||
             Manifest.permission.ACCESS_COARSE_LOCATION !in permission.android
     }
@@ -112,6 +112,7 @@ internal class PermissionsAdapter(
             "camera" -> arrayOf(Manifest.permission.CAMERA)
             "microphone" -> arrayOf(Manifest.permission.RECORD_AUDIO)
             "notifications" -> arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+            "audio-files" -> arrayOf(Manifest.permission.READ_MEDIA_AUDIO)
             "photos" -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
             "videos" -> arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
             "photos-and-videos" -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)

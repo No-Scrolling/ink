@@ -1,4 +1,3 @@
-#[cfg(feature = "perf")]
 use std::time::Instant;
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
@@ -560,9 +559,10 @@ enum NodeKind {
     LinkPreview { children: Vec<Node> },
     ConversationComposer { children: Vec<Node> },
     PlayingLayout { children: Vec<Node>, centred: bool, hide_controls: bool, bleed: bool },
-    PlayingPressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool, haptic: bool },
+    Pressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool, haptic: bool },
     PlayingTransport { children: Vec<Node> },
-    PlayingProgress { position: f32, duration: f32, seek: bool },
+    PlayingLabel { text: String, size: f32 },
+    PlayingProgress { position: f32, duration: f32, playing: bool, seek: bool },
     PitchIndicator { cents: Option<f32> },
     Row {
         children: Vec<Node>,
@@ -586,6 +586,7 @@ enum NodeKind {
         footer: Option<(String, Option<Action>)>,
         pinned_header: bool,
         pinned_footer: bool,
+        left_action: Option<(Mask, Action)>,
         right_action: Option<(Mask, Action)>,
         media_picker: bool,
     },
@@ -634,6 +635,8 @@ enum NodeKind {
     },
     Image {
         source: ImageSource,
+        preload: Vec<ImageSource>,
+        retain_while_loading: bool,
         fallback: Option<ImageAsset>,
         bleed: bool,
         zoomable: bool,
@@ -673,6 +676,7 @@ impl Node {
                 footer: None,
                 pinned_header: false,
                 pinned_footer: false,
+                left_action: None,
                 right_action: None,
                 media_picker: false,
             },
@@ -791,6 +795,8 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Image {
+                preload: Vec::new(),
+                retain_while_loading: false,
                 source,
                 fallback,
                 bleed,
@@ -1017,6 +1023,7 @@ pub struct Scene {
     pub text: Vec<TextRun>,
     pub masks: Vec<MaskRun>,
     pub images: Vec<ImageRun>,
+    pub preloaded_images: Vec<ImageData>,
     pub camera_portal: Option<CameraPortal>,
     pub map_portal: Option<MapPortal>,
     pub video_portal: Option<MapPortal>,
@@ -1235,8 +1242,41 @@ pub struct CorePerfMetrics {
     pub incremental_rebuilds: u32,
 }
 
+struct Marquee {
+    text: String,
+    started: Instant,
+    run: usize,
+    x: f32,
+    distance: f32,
+    speed: f32,
+    visible: bool,
+}
+
+struct PlaybackProgress {
+    position: f32,
+    duration: f32,
+    playing: bool,
+    started: Instant,
+    quad: usize,
+    width: f32,
+    visible: bool,
+}
+
+impl PlaybackProgress {
+    fn current(&self) -> f32 {
+        let elapsed = if self.playing { self.started.elapsed().as_secs_f32() } else { 0.0 };
+        (self.position + elapsed).min(self.duration)
+    }
+
+    fn animating(&self) -> bool {
+        self.visible && self.playing && self.current() < self.duration
+    }
+}
+
 pub struct Engine {
     root: Node,
+    marquees: HashMap<NodeIdentity, Marquee>,
+    playback_progress: HashMap<NodeIdentity, PlaybackProgress>,
     state: Vec<StateValue>,
     viewport: Viewport,
     keyboard_inset: u32,
@@ -1264,6 +1304,9 @@ pub struct Engine {
     in_flight_requests: HashMap<u64, PendingRequest>,
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
     pending_images: Vec<PendingImage>,
+    preloaded_images: BTreeSet<RemoteImageKey>,
+    retained_images: HashMap<NodeIdentity, ImageData>,
+    visible_retained_images: BTreeSet<NodeIdentity>,
     visible_images: BTreeSet<RemoteImageKey>,
     image_zooms: HashMap<NodeIdentity, ImageZoomState>,
     visible_zoom_images: BTreeSet<NodeIdentity>,
@@ -1319,7 +1362,12 @@ impl Engine {
             in_flight_requests: HashMap::new(),
             remote_images: HashMap::new(),
             pending_images: Vec::new(),
+            preloaded_images: BTreeSet::new(),
+            retained_images: HashMap::new(),
+            visible_retained_images: BTreeSet::new(),
             visible_images: BTreeSet::new(),
+            marquees: HashMap::new(),
+            playback_progress: HashMap::new(),
             image_zooms: HashMap::new(),
             visible_zoom_images: BTreeSet::new(),
             image_pinch: None,
@@ -1413,6 +1461,9 @@ impl Engine {
                 last_used: self.scene.revision,
             },
         );
+        if self.preloaded_images.contains(&key) {
+            self.scene.preloaded_images.push(ImageData::Remote(image.clone()));
+        }
         if key.module == "barcode" || self.pending_images.iter().any(|slot| slot.key == key && slot.needs_layout) {
             self.rebuild_scene();
         } else {
@@ -2328,7 +2379,7 @@ impl Engine {
                 | NodeKind::LinkPreview { children, .. }
                 | NodeKind::PlayingTransport { children, .. }
                 | NodeKind::PlayingLayout { children, .. }
-                | NodeKind::PlayingPressable { children, .. }
+                | NodeKind::Pressable { children, .. }
                 | NodeKind::Screen { children, .. }
                 | NodeKind::MediaGridRow { children }
                 | NodeKind::Row { children, .. }
@@ -2363,6 +2414,44 @@ impl Engine {
         self.scene.light = light;
         self.relayout_scene();
         true
+    }
+
+    pub fn has_scene_animations(&self) -> bool {
+        self.marquees.values().any(|marquee| marquee.visible)
+            || self.playback_progress.values().any(PlaybackProgress::animating)
+    }
+
+    pub fn animate_scene(&mut self) -> bool {
+        let mut changed = false;
+        for marquee in self.marquees.values().filter(|marquee| marquee.visible) {
+            let cycle = 1.25 + marquee.distance / marquee.speed;
+            let elapsed = marquee.started.elapsed().as_secs_f32() % cycle;
+            let offset = (elapsed - 1.25).max(0.0) * marquee.speed;
+            for copy in 0..2 {
+                let run = &mut self.scene.text[marquee.run + copy];
+                let x = marquee.x - offset + copy as f32 * marquee.distance;
+                changed |= run.rect.x != x;
+                run.rect.x = x;
+            }
+        }
+        for progress in self.playback_progress.values().filter(|progress| progress.visible) {
+            let width = if progress.duration > 0.0 {
+                progress.width * (progress.current() / progress.duration).clamp(0.0, 1.0)
+            } else { 0.0 };
+            let quad = &mut self.scene.quads[progress.quad];
+            let right = quad.rect.x + width;
+            let solid_width = (right.floor() - quad.rect.x).max(0.0);
+            changed |= quad.rect.width != solid_width;
+            quad.rect.width = solid_width;
+            // Shade the partially covered pixel so slow progress doesn't jump pixel by pixel.
+            let edge = &mut self.scene.quads[progress.quad + 1];
+            let alpha = right.fract().min(width);
+            changed |= edge.rect.x != right.floor() || edge.colour.alpha != alpha;
+            edge.rect.x = right.floor();
+            edge.colour.alpha = alpha;
+        }
+        if changed { self.scene.revision = self.scene.revision.wrapping_add(1); }
+        changed
     }
 
     pub fn scene(&self) -> &Scene {
@@ -2534,8 +2623,13 @@ impl Engine {
         self.react_list_positions.clear();
         self.scene.quads.clear();
         self.scene.text.clear();
+        for marquee in self.marquees.values_mut() { marquee.visible = false; }
+        for progress in self.playback_progress.values_mut() { progress.visible = false; }
         self.scene.masks.clear();
         self.scene.images.clear();
+        self.scene.preloaded_images.clear();
+        self.preloaded_images.clear();
+        self.visible_retained_images.clear();
         self.pending_images.clear();
         self.scene.camera_portal = None;
         self.scene.map_portal = None;
@@ -2584,6 +2678,10 @@ impl Engine {
             },
         );
         self.root = root;
+        self.marquees.retain(|_, marquee| marquee.visible);
+        self.playback_progress.retain(|_, progress| progress.visible);
+        self.animate_scene();
+        self.retained_images.retain(|identity, _| self.visible_retained_images.contains(identity));
         self.sync_visible_images();
         self.image_zooms
             .retain(|identity, _| self.visible_zoom_images.contains(identity));
@@ -2609,7 +2707,7 @@ impl Engine {
             | NodeKind::LinkPreview { children, .. }
             | NodeKind::PlayingTransport { children, .. }
             | NodeKind::PlayingLayout { children, .. }
-            | NodeKind::PlayingPressable { children, .. }
+            | NodeKind::Pressable { children, .. }
             | NodeKind::Screen { children, .. }
             | NodeKind::MediaGridRow { children }
             | NodeKind::Row { children, .. }
@@ -2629,6 +2727,7 @@ impl Engine {
             | NodeKind::CameraPreview { .. }
             | NodeKind::VideoView { .. } | NodeKind::MapView { .. }
             | NodeKind::MediaCell { .. }
+            | NodeKind::PlayingLabel { .. }
             | NodeKind::PlayingProgress { .. }
             | NodeKind::PitchIndicator { .. }
             | NodeKind::Toggle { .. } => None,
@@ -2700,7 +2799,7 @@ impl Engine {
                 let height = children.iter().map(|child| self.measure(child, Rect { width, ..available }).height).fold(0.0, f32::max);
                 MeasuredSize { width: available.width, height }
             }
-            NodeKind::PlayingPressable { children, .. } => children.first().map(|child| self.measure(child, available)).unwrap_or_default(),
+            NodeKind::Pressable { children, .. } => children.first().map(|child| self.measure(child, available)).unwrap_or_default(),
             NodeKind::PlayingTransport { children } => MeasuredSize {
                 width: available.width,
                 height: children.iter().map(|child| self.measure(child, available).height).fold(0.0, f32::max),
@@ -2753,6 +2852,10 @@ impl Engine {
                     }
                 }
             }
+            NodeKind::PlayingLabel { text, size } => MeasuredSize {
+                width: self.text_width(text, self.scaled_font(*size)).min(available.width),
+                height: self.text_line_height(*size).min(available.height),
+            },
             NodeKind::Text {
                 width,
                 text,
@@ -2929,7 +3032,7 @@ impl Engine {
                 }
             }
             NodeKind::MediaCell { source, selected, video, check, play, action } => {
-                self.layout_image(node.identity, source, None, ImageFit::Cover, false, rect);
+                self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, rect);
                 if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
                 if *selected {
                     self.scene.masks.push(MaskRun {
@@ -3046,7 +3149,40 @@ impl Engine {
                     self.layout(child, Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width: size.width, height: size.height });
                 }
             }
-            NodeKind::PlayingPressable { children, action, long_action, selected, haptic } => {
+            NodeKind::PlayingLabel { text, size } => {
+                let font_size = self.scaled_font(*size);
+                let width = self.text_width(text, font_size);
+                let overflow = width > rect.width;
+                let run = self.scene.text.len();
+                let distance = width + self.scaled(25.0);
+                let speed = self.scaled(24.0);
+                self.scene.text.push(TextRun {
+                    text: text.clone(), rect: Rect { width: width.max(rect.width), ..rect },
+                    clip: rect.intersection(self.clip), font_size,
+                    colour: self.scene.colour(Colour::WHITE),
+                    align: if overflow { TextAlign::Start } else { TextAlign::Centre },
+                    tabular_numbers: false, scrolling: self.scrolling,
+                });
+                if overflow {
+                    let mut copy = self.scene.text[run].clone();
+                    copy.rect.x += distance;
+                    self.scene.text.push(copy);
+                    let marquee = self.marquees.entry(node.identity).or_insert_with(|| Marquee {
+                        text: text.clone(), started: Instant::now(), run, x: rect.x,
+                        distance, speed, visible: true,
+                    });
+                    if marquee.text != *text || marquee.distance != distance {
+                        marquee.text = text.clone();
+                        marquee.started = Instant::now();
+                    }
+                    marquee.run = run;
+                    marquee.x = rect.x;
+                    marquee.distance = distance;
+                    marquee.speed = speed;
+                    marquee.visible = true;
+                }
+            }
+            NodeKind::Pressable { children, action, long_action, selected, haptic } => {
                 if *selected {
                     let height = self.control_line_height();
                     self.scene.quads.push(Quad {
@@ -3085,11 +3221,29 @@ impl Engine {
                     });
                 }
             }
-            NodeKind::PlayingProgress { position, duration, seek } => {
+            NodeKind::PlayingProgress { position, duration, playing, seek } => {
                 let ratio = if *duration > 0.0 { (position / duration).clamp(0.0, 1.0) } else { 0.0 };
                 for (width, height) in [(rect.width, self.scaled(2.0)), (rect.width * ratio, self.scaled(6.0))] {
                     self.scene.quads.push(Quad { rect: Rect { y: rect.y + (rect.height - height) / 2.0, width, height, ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
                 }
+                let quad = self.scene.quads.len() - 1;
+                let mut edge = self.scene.quads[quad].clone();
+                edge.rect.width = 1.0;
+                edge.colour.alpha = 0.0;
+                self.scene.quads.push(edge);
+                let progress = self.playback_progress.entry(node.identity).or_insert_with(|| PlaybackProgress {
+                    position: *position, duration: *duration, playing: *playing,
+                    started: Instant::now(), quad, width: rect.width, visible: true,
+                });
+                if (progress.position, progress.duration, progress.playing) != (*position, *duration, *playing) {
+                    progress.position = *position;
+                    progress.duration = *duration;
+                    progress.playing = *playing;
+                    progress.started = Instant::now();
+                }
+                progress.quad = quad;
+                progress.width = rect.width;
+                progress.visible = true;
                 if *seek && *duration > 0.0 {
                     self.push_hit_region(Rect { y: rect.y - self.scaled(15.0), height: self.scaled(36.0), ..rect }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
                 }
@@ -3116,6 +3270,7 @@ impl Engine {
                 footer,
                 pinned_header,
                 pinned_footer,
+                left_action,
                 right_action,
                 media_picker,
             } => self.layout_screen(
@@ -3125,6 +3280,7 @@ impl Engine {
                 footer.as_ref(),
                 *pinned_header,
                 *pinned_footer,
+                left_action.as_ref(),
                 right_action.as_ref(),
                 *media_picker,
                 screen_bottom_inset,
@@ -3216,20 +3372,29 @@ impl Engine {
                 colour: self.scene.colour(tone_colour(*tone)),
                 scrolling: self.scrolling,
             }),
-            NodeKind::Image {
-                source,
-                fallback,
-                fit,
-                zoomable,
-                ..
-            } => self.layout_image(
-                node.identity,
-                source,
-                fallback.as_ref(),
-                *fit,
-                *zoomable,
-                rect,
-            ),
+            NodeKind::Image { source, fallback, fit, zoomable, preload, retain_while_loading, .. } => {
+                self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, rect);
+                let visible = rect.intersection(self.clip);
+                if visible.width > 0.0 && visible.height > 0.0 {
+                    for source in preload {
+                        if let ImageSource::Native(module, url) = source {
+                            let key = RemoteImageKey {
+                                module: module.clone(), url: url.clone(), fit: *fit,
+                                width: rect.width.ceil().max(1.0) as u32,
+                                height: rect.height.ceil().max(1.0) as u32,
+                            };
+                            self.visible_images.insert(key.clone());
+                            if self.preloaded_images.insert(key.clone()) {
+                                if let Some(RemoteImageState::Ready { image, .. }) = self.remote_images.get(&key) {
+                                    self.scene.preloaded_images.push(ImageData::Remote(image.clone()));
+                                } else {
+                                    self.queue_remote_image(key);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             NodeKind::CameraPreview { controller, kind } => {
                 self.layout_camera_preview(*controller, *kind, rect)
             }
@@ -3273,12 +3438,14 @@ impl Engine {
         footer: Option<&(String, Option<Action>)>,
         pinned_header: bool,
         pinned_footer: bool,
+        left_action: Option<&(Mask, Action)>,
         right_action: Option<&(Mask, Action)>,
         media_picker: bool,
         bottom_inset: bool,
         rect: Rect,
     ) {
-        let has_header = title.is_some() || self.back_icon.is_some() || right_action.is_some();
+        let left_action = left_action.filter(|_| self.back_icon.is_none());
+        let has_header = title.is_some() || self.back_icon.is_some() || left_action.is_some() || right_action.is_some();
         let header_height = if has_header {
             self.scaled(HEADER_HEIGHT)
         } else {
@@ -3297,9 +3464,10 @@ impl Engine {
                 Action::Back,
             );
         }
-        if let Some((icon, action)) = right_action {
+        for (is_left, action) in [(true, left_action), (false, right_action)] {
+            let Some((icon, action)) = action else { continue };
             let action_rect = Rect {
-                x: rect.x + rect.width - header_inset - header_button_size,
+                x: if is_left { rect.x + header_inset } else { rect.x + rect.width - header_inset - header_button_size },
                 y: rect.y + (header_height - header_button_size) / 2.0,
                 width: header_button_size,
                 height: header_button_size,
@@ -3316,7 +3484,7 @@ impl Engine {
         }
         if let Some(title) = title {
             let title_inset = header_inset
-                + if self.back_icon.is_some() || right_action.is_some() {
+                + if self.back_icon.is_some() || left_action.is_some() || right_action.is_some() {
                     header_button_size
                 } else {
                     0.0
@@ -3674,7 +3842,7 @@ impl Engine {
     fn measure_horizontal_children(&mut self, children: &[Node], gap: f32, rect: Rect) -> Vec<MeasuredSize> {
         let mut sizes: Vec<_> = children.iter().map(|child| self.measure(child, rect)).collect();
         let shrinkable = |child: &Node| matches!(child.kind,
-            NodeKind::Text { width: None, .. } | NodeKind::Stack { axis: Axis::Vertical, .. });
+            NodeKind::Text { width: None, .. } | NodeKind::Stack { axis: Axis::Vertical, .. } | NodeKind::Row { .. });
         let label_width: f32 = children.iter().zip(&sizes)
             .filter(|(child, _)| shrinkable(child)).map(|(_, size)| size.width).sum();
         let total = sizes.iter().map(|size| size.width).sum::<f32>()
@@ -3913,11 +4081,13 @@ impl Engine {
         let clip = viewport.intersection(self.clip);
         let text_run = self.scene.text.len();
         let showing_placeholder = value.is_empty();
+        // Android places the line's extra spacing above the text.
+        let baseline_offset = (line_height - font_size) / 2.0;
         for (index, (start, end)) in lines.iter().copied().enumerate() {
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
-                text: if self.native_editor_state == Some(state) { String::new() } else if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
-                rect: Rect { y: viewport.y + index as f32 * line_height - scroll_offset, height: line_height, ..viewport },
+                text: if showing_placeholder { placeholder.to_owned() } else if self.native_editor_state == Some(state) { String::new() } else { value[start..end].to_owned() },
+                rect: Rect { y: (viewport.y + index as f32 * line_height - scroll_offset + baseline_offset).round(), height: line_height, ..viewport },
                 clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
                 align: TextAlign::Start, scrolling: self.scrolling,
             });
@@ -4024,9 +4194,10 @@ impl Engine {
         let text_run = self.scene.text.len();
         self.scene.text.push(TextRun {
             tabular_numbers: false,
-            text: if self.native_editor_state == Some(state) { String::new() } else { text.to_owned() },
+            text: if self.native_editor_state == Some(state) && !showing_placeholder { String::new() } else { text.to_owned() },
             rect: Rect {
                 x: text_viewport.x - scroll_offset,
+                y: text_viewport.y.round(),
                 width: text_width.max(text_viewport.width),
                 ..text_viewport
             },
@@ -4274,6 +4445,7 @@ impl Engine {
         fallback: Option<&ImageAsset>,
         fit: ImageFit,
         zoomable: bool,
+        retain_while_loading: bool,
         rect: Rect,
     ) {
         let visible = rect.intersection(self.clip);
@@ -4319,7 +4491,7 @@ impl Engine {
                                 clip: self.clip,
                                 fit,
                                 scrolling: self.scrolling,
-                                needs_layout: zoomable || fallback.is_some(),
+                                needs_layout: zoomable || fallback.is_some() || retain_while_loading,
                             });
                         }
                         self.queue_remote_image(key);
@@ -4329,6 +4501,15 @@ impl Engine {
             }
         };
         if visible.width <= 0.0 || visible.height <= 0.0 { return; }
+        let image = if retain_while_loading {
+            self.visible_retained_images.insert(identity);
+            if let Some(image) = &image {
+                self.retained_images.insert(identity, image.clone());
+            } else if failed {
+                self.retained_images.remove(&identity);
+            }
+            image.or_else(|| self.retained_images.get(&identity).cloned())
+        } else { image };
         if let Some(image) = image {
             let transform = if zoomable {
                 let content = image_content_rect(&image, rect, fit);

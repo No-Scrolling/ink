@@ -16,7 +16,7 @@ export type LinkPreviewProps = LinkPreviewData & {
 
 export function LinkPreview({ url, title, image, icon, onPress, onLongPress }: LinkPreviewProps) {
   const domain = url.replace(/^https?:\/\/(?:www\.)?/, "").split(/[/?#]/, 1)[0];
-  return createElement("PlayingPressable", { onPress: onPress ?? (() => openLink(url)), onLongPress },
+  return createElement("Pressable", { onPress: onPress ?? (() => openLink(url)), onLongPress },
     createElement("LinkPreview", null,
       image && createElement(Image, {
         src: image.src, width: 220, height: 220 * image.height / image.width, fit: "cover",

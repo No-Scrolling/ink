@@ -30,13 +30,10 @@ impl Engine {
         };
         let y = rect.y + if input.scrolling { self.scroll_origin - self.scroll_offset } else { 0.0 };
         let font = self.font.as_scaled(PxScale::from(self.scaled_font(TEXT_INPUT_TEXT_SIZE)));
-        let muted = self.scene.colour(Colour::MUTED).red;
-        let hint_grey = (255.0 * if muted <= 0.0031308 { 12.92 * muted } else { 1.055 * muted.powf(1.0 / 2.4) - 0.055 }).round() as u8;
         json!({
             "id": state.0,
             "text": text,
             "placeholder": placeholder,
-            "hintGrey": hint_grey,
             "cursor": text[..text_cursor_boundary(text, self.focused_input_cursor)].encode_utf16().count(),
             "nativeEditor": self.native_editor_state == Some(state),
             "editor": {

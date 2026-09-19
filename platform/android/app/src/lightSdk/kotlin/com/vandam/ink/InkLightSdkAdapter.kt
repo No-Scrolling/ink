@@ -184,6 +184,7 @@ private class InkLightSdkAdapter(
             PERMISSION_STATUS_OPERATION, REQUEST_PERMISSION_OPERATION ->
                 payload == CAMERA ||
                     payload == MICROPHONE ||
+                    payload == AUDIO_FILES ||
                     payload == LOCATION_APPROXIMATE ||
                     payload == LOCATION_PRECISE
             OPEN_DIALLER_OPERATION -> runCatching {
@@ -344,6 +345,9 @@ private class InkLightSdkAdapter(
     }
 
     private fun requestPermission(permission: String): NativeResult {
+        val status = permissionStatus(permission)
+        if (status is NativeResult.Failure) return status
+        if (status is NativeResult.Success && status.value == "granted") return status
         return when (val response = authenticatedRequest(REQUEST_PERMISSION_COMPONENT, UNIT_JSON)) {
             is Response.Error -> response.failure()
             is Response.Success -> launchPermission(response.data, permission)
@@ -375,6 +379,7 @@ private class InkLightSdkAdapter(
     private fun androidPermission(permission: String): String = when (permission) {
         CAMERA -> android.Manifest.permission.CAMERA
         MICROPHONE -> android.Manifest.permission.RECORD_AUDIO
+        AUDIO_FILES -> android.Manifest.permission.READ_MEDIA_AUDIO
         LOCATION_APPROXIMATE -> android.Manifest.permission.ACCESS_COARSE_LOCATION
         LOCATION_PRECISE -> android.Manifest.permission.ACCESS_FINE_LOCATION
         else -> error("Unsupported permission: $permission")
@@ -541,6 +546,7 @@ private class InkLightSdkAdapter(
         const val OPEN_DIALLER_OPERATION = "open-dialler"
         const val CAMERA = "camera"
         const val MICROPHONE = "microphone"
+        const val AUDIO_FILES = "audio-files"
         const val LOCATION_APPROXIMATE = "location-approximate"
         const val LOCATION_PRECISE = "location-precise"
         val DEVICE_KEY_CODES = setOf(24, 25, 27, 80, 317, 318, 319)

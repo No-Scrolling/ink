@@ -16,6 +16,7 @@ Importing `@ink/lightos` includes the integration and registers the app’s requ
 | `location-approximate` | Approximate location. |
 | `location-precise` | Precise location. |
 | `notifications` | Notifications. |
+| `audio-files` | Audio files in the device media library. |
 | `photos` | Photo library. |
 | `videos` | Video library. |
 | `photos-and-videos` | Photos and videos. |
@@ -28,7 +29,7 @@ const permission = await lightos.requestPermission("microphone");
 
 Use `lightos.getPermission(name)` to check without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
 
-Ink uses LightOS for supported permissions and Android for the others. Without LightOS, requests use Android. Denied or blocked LightOS access does not trigger an Android fallback.
+Ink uses LightOS for camera, microphone, audio files and supported location requests. Other permissions use Android. Without LightOS, requests use Android. Denied or blocked LightOS access does not trigger an Android fallback.
 
 Exact reminders use `lightos.canScheduleExact()` and `lightos.requestExactPermission()`. See [Notifications](/notifications#exact-reminders).
 
