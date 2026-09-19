@@ -20,6 +20,7 @@ pub enum Capability {
     CameraPermission,
     CodeScanner,
     Connectivity,
+    Crypto,
     Downloads,
     External,
     FileImages,
@@ -39,6 +40,7 @@ pub enum Capability {
     PhotoCapture,
     TextInput,
     TextInputFull,
+    Video,
 }
 
 impl Capability {

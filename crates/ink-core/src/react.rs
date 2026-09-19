@@ -1,7 +1,8 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, OnceLock}};
 
 use anyhow::{Context, Result, bail, ensure};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use crate::ReactIcon;
 use serde_json::{Map, Value as Json, json};
 
 use super::{
@@ -57,6 +58,7 @@ enum HostKind {
     Barcode,
     CameraPreview,
     MapView,
+    VideoView,
     MediaPickerScreen,
     MediaGridRow,
     MediaCell,
@@ -68,6 +70,7 @@ enum HostKind {
     Row,
     Message,
     MessageQuote,
+    LinkPreview,
     ConversationComposer,
     PlayingLayout,
     PlayingTransport,
@@ -102,6 +105,7 @@ impl ListProps {
 enum HostProps {
     RawText(Box<str>),
     Text {
+        on_press: bool,
         width: Option<f32>,
         size: Option<f32>,
         align: TextAlign,
@@ -148,6 +152,7 @@ impl HostProps {
                 })
                 .transpose()?;
             return Ok(Self::Text {
+                on_press: props.get("onPress") == Some(&Json::Bool(true)),
                 width: number(&props, "width")?,
                 size: number(&props, "size")?,
                 align,
@@ -204,16 +209,6 @@ struct InputBinding {
     event_count: u64,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ReactIcon {
-    pub name: String,
-    pub filled: bool,
-    pub id: u64,
-    pub width: u16,
-    pub height: u16,
-    pub pixels: Vec<u8>,
-}
-
 impl Default for ReactTree {
     fn default() -> Self {
         Self {
@@ -262,18 +257,9 @@ impl ReactTree {
     }
 
     pub fn with_icons(bytes: &[u8]) -> Result<Self> {
-        ensure!(bytes.len() <= 16 * 1024 * 1024, "icon assets are too large");
-        let icons: Vec<ReactIcon> = serde_json::from_slice(bytes)?;
+        let icons = ReactIcon::decode(bytes)?;
         let mut tree = Self::default();
         for icon in icons {
-            ensure!(
-                icon.width > 0
-                    && icon.height > 0
-                    && icon.width <= 512
-                    && icon.height <= 512
-                    && icon.pixels.len() == usize::from(icon.width) * usize::from(icon.height),
-                "invalid icon asset"
-            );
             let variants = tree.icons.entry(icon.name).or_default();
             let slot = if icon.filled {
                 &mut variants.filled
@@ -367,7 +353,7 @@ impl ReactTree {
             && targets.iter().all(|id| {
                 self.nodes
                     .get(id)
-                    .is_some_and(|node| !matches!(node.kind, HostKind::Tabs | HostKind::Navigator | HostKind::Tab))
+                    .is_some_and(|node| !matches!(node.kind, HostKind::Tabs | HostKind::Navigator | HostKind::Tab | HostKind::ScreenState))
             })
         {
             let patches = targets
@@ -621,6 +607,22 @@ impl ReactTree {
         Ok(text)
     }
 
+    fn text_links(&self, id: usize, depth: usize, offset: &mut usize, links: &mut Vec<(std::ops::Range<usize>, Action)>) -> Result<()> {
+        ensure!(depth < 256, "React text is too deep");
+        let node = self.node(id)?;
+        if node.hidden { return Ok(()); }
+        let start = *offset;
+        if let HostProps::RawText(text) = &node.props {
+            *offset += text.len();
+        } else {
+            for child in &node.children { self.text_links(*child, depth + 1, offset, links)?; }
+            if matches!(&node.props, HostProps::Text { on_press: true, .. }) {
+                links.push((start..*offset, event(id, "onPress", vec![])));
+            }
+        }
+        Ok(())
+    }
+
     fn render_node(&self, id: usize, depth: usize) -> Result<Option<Node>> {
         ensure!(depth < 256, "React tree is too deep");
         let host = self.node(id)?;
@@ -633,11 +635,13 @@ impl ReactTree {
             align,
             max_lines,
             tabular_numbers,
+            ..
         } = &host.props
         {
             let mut node = Node::text(self.text(id, depth)?, *size, *align, *max_lines, *tabular_numbers);
-            if let NodeKind::Text { width: node_width, .. } = &mut node.kind {
+            if let NodeKind::Text { width: node_width, links, .. } = &mut node.kind {
                 *node_width = *width;
+                self.text_links(id, depth, &mut 0, links)?;
             }
             node.identity = NodeIdentity(id);
             return Ok(Some(node));
@@ -713,15 +717,22 @@ impl ReactTree {
             },
             HostKind::Message => Node { identity: NodeIdentity(id), kind: NodeKind::Message { children: self.children(host, depth)?, outgoing: props.get("outgoing") == Some(&Json::Bool(true)) } },
             HostKind::MessageQuote => Node { identity: NodeIdentity(id), kind: NodeKind::MessageQuote { children: self.children(host, depth)? } },
+            HostKind::LinkPreview => Node { identity: NodeIdentity(id), kind: NodeKind::LinkPreview { children: self.children(host, depth)? } },
             HostKind::PlayingTransport => {
                 ensure!(host.children.len() == 3, "Playing transport requires three controls");
                 Node { identity: NodeIdentity(id), kind: NodeKind::PlayingTransport { children: self.children(host, depth)? } }
             },
             HostKind::PlayingLayout => {
                 ensure!(host.children.len() == 2, "Playing layout requires content and actions");
-                Node { identity: NodeIdentity(id), kind: NodeKind::PlayingLayout { children: self.children(host, depth)?, centred: props.get("centered") == Some(&Json::Bool(true)) } }
+                Node { identity: NodeIdentity(id), kind: NodeKind::PlayingLayout {
+                    children: self.children(host, depth)?,
+                    centred: props.get("centered") == Some(&Json::Bool(true)),
+                    hide_controls: props.get("hideControls") == Some(&Json::Bool(true)),
+                    bleed: props.get("bleed") == Some(&Json::Bool(true)),
+                } }
             },
             HostKind::PlayingPressable => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingPressable {
+                haptic: props.get("haptic") != Some(&Json::Bool(false)),
                 selected: props.get("selected") == Some(&Json::Bool(true)),
                 long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
                 children: self.children(host, depth)?, action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
@@ -741,6 +752,8 @@ impl ReactTree {
                 kind: NodeKind::Row {
                     children: self.children(host, depth)?,
                     has_image: props.get("hasImage") == Some(&Json::Bool(true)),
+                    long_action: (props.get("onLongPress") == Some(&Json::Bool(true)))
+                        .then(|| event(id, "onLongPress", vec![])),
                     action: (props.get("onPress") == Some(&Json::Bool(true)))
                         .then(|| event(id, "onPress", vec![])),
                 },
@@ -875,6 +888,20 @@ impl ReactTree {
                     ImageFit::Contain,
                 )
             }
+            HostKind::VideoView => {
+                let controller = match props.get("controller") {
+                    None | Some(Json::Null) => None,
+                    Some(value) => {
+                        let id = value.as_i64().context("Invalid video controller")?;
+                        ensure!((1..=9_007_199_254_740_991).contains(&id), "Invalid video controller");
+                        Some(ControllerId::new((-id) as usize))
+                    }
+                };
+                Node { identity: NodeIdentity(0), kind: NodeKind::VideoView {
+                    controller,
+                    loading: props.get("loading").and_then(Json::as_bool).unwrap_or(false),
+                } }
+            }
             HostKind::MapView => {
                 let id = props.get("controller").and_then(Json::as_i64)
                     .context("Map requires a controller")?;
@@ -901,7 +928,7 @@ impl ReactTree {
                 let src = string(props, "src").context("Image requires a source")?;
                 let source = if let Some(path) = src.strip_prefix("asset://") {
                     ImageSource::Native("assets".into(), path.to_owned())
-                } else if src.starts_with("https://") {
+                } else if src.starts_with("https://") || src.starts_with("http://") {
                     ImageSource::Native("network".into(), src.to_owned())
                 } else if src.starts_with("ink-file://") || src.starts_with("ink-media://") {
                     ImageSource::Native("files".into(), src.to_owned())

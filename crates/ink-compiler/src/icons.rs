@@ -23,6 +23,26 @@ pub fn raster(name: &str, logical_size: f32) -> Result<RasterIcon> {
     raster_variant(name, logical_size, false)
 }
 
+pub fn raster_svg(path: &std::path::Path, name: &str, logical_size: f32) -> Result<RasterIcon> {
+    let bytes = std::fs::read(path)?;
+    let tree = resvg::usvg::Tree::from_data(&bytes, &resvg::usvg::Options::default())
+        .with_context(|| format!("invalid SVG icon {}", path.display()))?;
+    let dimension = (logical_size * LP3_REFERENCE_SCALE).round().max(1.0) as u32;
+    anyhow::ensure!(dimension <= MAX_ICON_PIXELS, "SVG icon exceeds Ink's maximum size");
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(dimension, dimension).context("could not allocate SVG icon")?;
+    let scale = dimension as f32 / tree.size().width().max(tree.size().height());
+    let transform = resvg::tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale,
+        (dimension as f32 - tree.size().width() * scale) / 2.0,
+        (dimension as f32 - tree.size().height() * scale) / 2.0);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    Ok(RasterIcon {
+        id: hash(name, dimension),
+        width: dimension as u16,
+        height: dimension as u16,
+        pixels: pixmap.pixels().iter().map(|pixel| pixel.alpha()).collect(),
+    })
+}
+
 pub fn raster_filled(name: &str, logical_size: f32) -> Result<RasterIcon> {
     raster_variant(name, logical_size, true)
 }

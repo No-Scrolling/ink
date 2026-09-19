@@ -10,11 +10,22 @@ const history: ConversationMessage[] = Array.from({ length: 30 }, (_, i) => ({
 const initial: ConversationMessage[] = [
   { id: "hello", author: "Alex", text: "Have you listened to this album yet?", timestamp: start + 1800000 },
   { id: "album", author: "Alex", text: "Wallsocket by underscores", image: artwork, timestamp: start + 1860000 },
+  { id: "sending", text: "Just putting it on.", outgoing: true, status: "sending", timestamp: start + 1870000 },
+  { id: "sent", text: "Listening now.", outgoing: true, status: "sent", timestamp: start + 1880000 },
   { id: "reply", text: "Yes! Cops and robbers is my favourite.", outgoing: true, status: "delivered", reply: { author: "Alex", text: "Have you listened to this album yet?" }, timestamp: start + 1920000 },
   { id: "emoji", author: "Sam", text: "❤️", timestamp: start + 1980000 },
   { id: "read", text: "Are you free this evening?", outgoing: true, status: "read", timestamp: start + 2010000 },
   { id: "failed", text: "We should listen to it together.", outgoing: true, status: "failed", timestamp: start + 2040000 },
   { id: "photo", author: "Alex", image: artwork, timestamp: start + 2100000 },
+  { id: "link", author: "Alex", text: "Have a look at https://ink.noscroll.ing", timestamp: start + 2160000 },
+  {
+    id: "preview", author: "Alex", text: "https://www.youtube.com/watch?v=-zjJpFYtx9s", timestamp: start + 2220000,
+    linkPreview: {
+      url: "https://www.youtube.com/watch?v=-zjJpFYtx9s",
+      title: "Arson as a Christmas Tradition: The Gävle Goat",
+      image: { src: "https://i.ytimg.com/vi/-zjJpFYtx9s/hqdefault.jpg", width: 480, height: 360 },
+    },
+  },
 ];
 
 export default function Conversation() {

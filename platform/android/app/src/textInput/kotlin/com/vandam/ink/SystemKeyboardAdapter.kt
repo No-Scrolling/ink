@@ -145,10 +145,10 @@ private class SystemKeyboardAdapter(
         activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         container.setOnApplyWindowInsetsListener { _, insets ->
             val visible = insets.isVisible(WindowInsets.Type.ime())
-            activity.setKeyboardInset(if (visible) insets.getInsets(WindowInsets.Type.ime()).bottom else 0)
             val dismissed = imeVisible && !visible && active
             imeVisible = visible
             if (dismissed) onEdit(TextEdit.Dismiss)
+            activity.setKeyboardInset(if (visible && active) insets.getInsets(WindowInsets.Type.ime()).bottom else 0)
             insets
         }
     }
@@ -210,6 +210,8 @@ private class SystemKeyboardAdapter(
             pending = false
             inputMethod.hideSoftInputFromWindow(editor.windowToken, 0)
             editor.clearFocus()
+            imeVisible = false
+            activity.setKeyboardInset(0)
             return
         }
         this.action = action
@@ -264,6 +266,10 @@ private class SystemKeyboardAdapter(
         editor.visibility = View.VISIBLE
         val id = data.getInt("id")
         val text = data.getString("text")
+        val placeholder = data.optString("placeholder")
+        if (editor.hint?.toString() != placeholder) editor.hint = placeholder
+        val hintGrey = data.getInt("hintGrey")
+        editor.setHintTextColor(Color.rgb(hintGrey, hintGrey, hintGrey))
         val cursor = data.getInt("cursor").coerceIn(0, text.length)
         syncing = true
         val changed = inputId != id

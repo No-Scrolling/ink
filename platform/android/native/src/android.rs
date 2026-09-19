@@ -158,6 +158,19 @@ impl AndroidEngine {
         if let Some(surface) = &mut self.surface {
             surface.renderer.resize(width, height);
         }
+        self.notify_layout_inputs();
+    }
+
+    fn notify_layout_inputs(&mut self) {
+        if let Some(script) = &mut self.script
+            && let Err(error) = script.notify_inputs(&self.engine)
+        {
+            android_log(
+                ANDROID_LOG_ERROR,
+                &format!("JavaScript layout update failed: {error:#}"),
+            );
+            self.script = None;
+        }
     }
 
     fn pointer(&mut self, action: i32, id: i32, x: f32, y: f32) -> jint {
@@ -524,6 +537,28 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeMapPortal<'local>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeVideoPortal<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+) -> JString<'local> {
+    let value = engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .and_then(|engine| engine.engine.scene().video_portal)
+        .map_or_else(String::new, |portal| {
+            serde_json::json!({
+                "controller": portal.controller.index() as i64,
+                "x": portal.rect.x.round() as i32,
+                "y": portal.rect.y.round() as i32,
+                "width": portal.rect.width.round().max(1.0) as i32,
+                "height": portal.rect.height.round().max(1.0) as i32,
+            }).to_string()
+        });
+    env.with_env(|env| env.new_string(value))
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAttachSurface(
     env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -554,7 +589,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetKeyboardInset(
     let Ok(mut engine) = engine.lock() else {
         return false;
     };
-    engine.engine.set_keyboard_inset(height.max(0) as u32)
+    let changed = engine.engine.set_keyboard_inset(height.max(0) as u32);
+    if changed {
+        engine.notify_layout_inputs();
+    }
+    changed
 }
 
 #[unsafe(no_mangle)]

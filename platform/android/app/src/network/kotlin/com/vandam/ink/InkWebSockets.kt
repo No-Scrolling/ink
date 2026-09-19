@@ -16,7 +16,10 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 internal class InkWebSockets(private val handler: Handler) {
-    private val client = OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .pingInterval(20, TimeUnit.SECONDS)
+        .build()
     private val sockets = mutableMapOf<String, Socket>()
     private val pending = mutableMapOf<Long, Socket>()
 

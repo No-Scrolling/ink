@@ -15,7 +15,7 @@ export default function Push() {
       <Field label="Status">{push.ready ? push.state.status : "Connecting"}</Field>
       {push.state.endpoint !== "" && <Field label="Endpoint">{push.state.endpoint}</Field>}
       {push.state.error && <Field label="Error">{push.state.error.message}</Field>}
-      <Button disabled={disabled} onPress={() => command.run(() => push.register("http://127.0.0.1:18080/v1/push/subscriptions"))}>Register Push</Button>
+      <Button disabled={disabled} onPress={() => command.run(() => push.register({ url: "http://127.0.0.1:18080/v1/push/subscriptions" }))}>Register Push</Button>
       <Button disabled={disabled} onPress={() => command.run(push.retry)}>Retry Registration</Button>
       <Button disabled={disabled} onPress={() => command.run(push.unregister)}>Unregister</Button>
       <Button disabled={disabled} onPress={() => command.run(push.clear)}>Clear Inbox</Button>

@@ -18,12 +18,14 @@ use unicode_segmentation::UnicodeSegmentation;
 mod fonts;
 pub use fonts::{font_for_character, tabular_digit_width, text_width, text_width_with_numbers};
 
+mod icon_assets;
 mod list;
 mod masks;
 mod native_editor;
 mod react;
 
-pub use react::{ReactIcon, ReactTree};
+pub use icon_assets::ReactIcon;
+pub use react::ReactTree;
 
 #[cfg(all(feature = "perf", target_os = "android"))]
 #[link(name = "android")]
@@ -554,9 +556,10 @@ enum NodeKind {
     MediaCell { source: ImageSource, selected: bool, video: bool, check: Mask, play: Mask, action: Option<Action> },
     Message { children: Vec<Node>, outgoing: bool },
     MessageQuote { children: Vec<Node> },
+    LinkPreview { children: Vec<Node> },
     ConversationComposer { children: Vec<Node> },
-    PlayingLayout { children: Vec<Node>, centred: bool },
-    PlayingPressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool },
+    PlayingLayout { children: Vec<Node>, centred: bool, hide_controls: bool, bleed: bool },
+    PlayingPressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool, haptic: bool },
     PlayingTransport { children: Vec<Node> },
     PlayingProgress { position: f32, duration: f32, seek: bool },
     PitchIndicator { cents: Option<f32> },
@@ -564,6 +567,7 @@ enum NodeKind {
         children: Vec<Node>,
         has_image: bool,
         action: Option<Action>,
+        long_action: Option<Action>,
     },
     ReactList {
         children: Vec<Node>,
@@ -592,6 +596,7 @@ enum NodeKind {
         justify: Justification,
     },
     Text {
+        links: Vec<(std::ops::Range<usize>, Action)>,
         width: Option<f32>,
         text: String,
         font_size: Option<f32>,
@@ -639,6 +644,7 @@ enum NodeKind {
         controller: ControllerId,
         kind: CameraPreviewKind,
     },
+    VideoView { controller: Option<ControllerId>, loading: bool },
     MapView {
         controller: ControllerId,
     },
@@ -701,6 +707,7 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Text {
+                links: Vec::new(),
                 width: None,
                 text,
                 font_size,
@@ -1011,6 +1018,7 @@ pub struct Scene {
     pub images: Vec<ImageRun>,
     pub camera_portal: Option<CameraPortal>,
     pub map_portal: Option<MapPortal>,
+    pub video_portal: Option<MapPortal>,
     pub scroll_origin: f32,
     pub scroll_offset: f32,
     pub scroll_max: f32,
@@ -1035,6 +1043,7 @@ struct HitRegion {
     long_action: Option<Action>,
     scrolling: bool,
     preserve_input: bool,
+    haptic: bool,
     target: PressTarget,
 }
 
@@ -1783,10 +1792,11 @@ impl Engine {
                     return PointerOutcome::default();
                 }
                 let revision = self.scene.revision;
+                let haptic = self.hit_region_at(x, y).is_some_and(|region| region.haptic);
                 let activated = self.tap(x, y);
                 PointerOutcome {
-                    changed: self.scene.revision != revision,
-                    activated,
+                    changed: activated || self.scene.revision != revision,
+                    activated: activated && haptic,
                     captured: false,
                 }
             }
@@ -2265,12 +2275,20 @@ impl Engine {
     }
 
     fn text_input_numeric_for(&self, state: StateId) -> Option<bool> {
-        fn find(node: &Node, target: StateId) -> Option<bool> {
+        match &self.text_input_node(state)?.kind {
+            NodeKind::TextInput { numeric, .. } => Some(*numeric),
+            _ => None,
+        }
+    }
+
+    fn text_input_node(&self, state: StateId) -> Option<&Node> {
+        fn find(node: &Node, target: StateId) -> Option<&Node> {
             match &node.kind {
-                NodeKind::TextInput { state, numeric, .. } if *state == target => Some(*numeric),
+                NodeKind::TextInput { state, .. } if *state == target => Some(node),
                 NodeKind::ConversationComposer { children, .. }
                 | NodeKind::Message { children, .. }
                 | NodeKind::MessageQuote { children, .. }
+                | NodeKind::LinkPreview { children, .. }
                 | NodeKind::PlayingTransport { children, .. }
                 | NodeKind::PlayingLayout { children, .. }
                 | NodeKind::PlayingPressable { children, .. }
@@ -2483,6 +2501,7 @@ impl Engine {
         self.scene.images.clear();
         self.scene.camera_portal = None;
         self.scene.map_portal = None;
+        self.scene.video_portal = None;
         self.scroll_origin = self.scroll_offset;
         self.scene.scroll_origin = self.scroll_origin;
         self.scene.scroll_offset = self.scroll_offset;
@@ -2549,6 +2568,7 @@ impl Engine {
             NodeKind::ConversationComposer { children, .. }
             | NodeKind::Message { children, .. }
             | NodeKind::MessageQuote { children, .. }
+            | NodeKind::LinkPreview { children, .. }
             | NodeKind::PlayingTransport { children, .. }
             | NodeKind::PlayingLayout { children, .. }
             | NodeKind::PlayingPressable { children, .. }
@@ -2569,7 +2589,7 @@ impl Engine {
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
             | NodeKind::CameraPreview { .. }
-            | NodeKind::MapView { .. }
+            | NodeKind::VideoView { .. } | NodeKind::MapView { .. }
             | NodeKind::MediaCell { .. }
             | NodeKind::PlayingProgress { .. }
             | NodeKind::PitchIndicator { .. }
@@ -2622,6 +2642,15 @@ impl Engine {
                 let width = available.width * 0.85;
                 let size = children.first().map(|child| self.measure(child, Rect { width, ..available })).unwrap_or_default();
                 MeasuredSize { width: available.width, height: size.height }
+            }
+            NodeKind::LinkPreview { children } => {
+                let width = available.width.min(self.scaled(220.0));
+                let mut height = self.scaled(16.0);
+                for (index, child) in children.iter().enumerate() {
+                    let inset = if index + 1 == children.len() { self.scaled(20.0) } else { 0.0 };
+                    height += self.measure(child, Rect { width: (width - inset).max(0.0), ..available }).height;
+                }
+                MeasuredSize { width, height: height.min(available.height) }
             }
             NodeKind::MessageQuote { children } => {
                 let inset = self.scaled(10.0);
@@ -2693,11 +2722,12 @@ impl Engine {
                 align,
                 max_lines,
                 tabular_numbers,
+                links,
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font_size = self.scaled_font(size);
                 let fixed_width = width.map(|width| self.scaled(width.max(0.0)).min(available.width));
-                let lines = self.wrap_text(text, font_size, fixed_width.unwrap_or(available.width), *max_lines, *tabular_numbers);
+                let lines = self.wrap_linked_text(text, font_size, fixed_width.unwrap_or(available.width), *max_lines, *tabular_numbers, links);
                 let line_height = self.text_line_height(size);
                 MeasuredSize {
                     width: fixed_width.unwrap_or_else(|| {
@@ -2793,7 +2823,7 @@ impl Engine {
                     },
                 }
             }
-            NodeKind::CameraPreview { .. } | NodeKind::MapView { .. } => MeasuredSize {
+            NodeKind::CameraPreview { .. } | NodeKind::VideoView { .. } | NodeKind::MapView { .. } => MeasuredSize {
                 width: available.width,
                 height: if available.height.is_finite() {
                     available.height
@@ -2922,7 +2952,6 @@ impl Engine {
                     } else {
                         let first_hit = self.hit_regions.len();
                         self.layout(child, child_rect);
-                        // Send dismisses the keyboard with the React message update.
                         if children.len() == 3 && index == 2 {
                             for hit in &mut self.hit_regions[first_hit..] { hit.preserve_input = true; }
                         }
@@ -2937,18 +2966,33 @@ impl Engine {
                     self.layout(child, Rect { x: if *outgoing { rect.x + rect.width - width } else { rect.x }, width, ..rect });
                 }
             }
+            NodeKind::LinkPreview { children } => {
+                let mut y = rect.y;
+                for (index, child) in children.iter().enumerate() {
+                    let info = index + 1 == children.len();
+                    let inset = if info { self.scaled(10.0) } else { 0.0 };
+                    if info { y += self.scaled(8.0); }
+                    let area = Rect { x: rect.x + inset, y, width: (rect.width - inset * 2.0).max(0.0), height: (rect.y + rect.height - y).max(0.0) };
+                    let size = self.measure(child, area);
+                    self.layout(child, Rect { height: size.height, ..area });
+                    y += size.height;
+                }
+            }
             NodeKind::MessageQuote { children } => {
                 let inset = self.scaled(10.0);
                 self.scene.quads.push(Quad { rect: Rect { width: self.scaled(2.0), ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
                 if let Some(child) = children.first() { self.layout(child, Rect { x: rect.x + inset, width: (rect.width - inset).max(0.0), ..rect }); }
             }
-            NodeKind::PlayingLayout { children, centred } => {
+            NodeKind::PlayingLayout { children, centred, hide_controls, bleed } => {
                 let inset = self.scaled(CONTENT_INSET_START);
                 let body = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), ..rect };
                 let footer = self.measure(&children[1], body);
                 let bottom = rect.y + rect.height - self.scaled(CONTENT_BOTTOM);
-                self.layout(&children[1], Rect { y: bottom - footer.height, height: footer.height, ..body });
-                let available = Rect { height: (bottom - footer.height - self.scaled(12.0) - body.y).max(0.0), ..body };
+                if !hide_controls {
+                    self.layout(&children[1], Rect { y: bottom - footer.height, height: footer.height, ..body });
+                }
+                let content = if *bleed { rect } else { body };
+                let available = Rect { height: (bottom - footer.height - self.scaled(12.0) - content.y).max(0.0), ..content };
                 let size = self.measure(&children[0], available);
                 let y = available.y + if *centred { (available.height - size.height).max(0.0) / 2.0 } else { 0.0 };
                 self.layout(&children[0], Rect { y, height: size.height, ..available });
@@ -2964,7 +3008,7 @@ impl Engine {
                     self.layout(child, Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width: size.width, height: size.height });
                 }
             }
-            NodeKind::PlayingPressable { children, action, long_action, selected } => {
+            NodeKind::PlayingPressable { children, action, long_action, selected, haptic } => {
                 if *selected {
                     let height = self.control_line_height();
                     self.scene.quads.push(Quad {
@@ -2978,7 +3022,9 @@ impl Engine {
                         let height = rect.height.max(self.scaled(52.0));
                         Rect { x: rect.x - (width - rect.width) / 2.0, y: rect.y - (height - rect.height) / 2.0, width, height }
                     } else { rect };
+                    let start = self.hit_regions.len();
                     self.push_press_region(hit, action.clone(), long_action.clone());
+                    for region in &mut self.hit_regions[start..] { region.haptic = *haptic; }
                 }
                 if let Some(child) = children.first() { self.layout(child, rect); }
             }
@@ -3010,7 +3056,7 @@ impl Engine {
                     self.push_hit_region(Rect { y: rect.y - self.scaled(15.0), height: self.scaled(36.0), ..rect }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
                 }
             }
-            NodeKind::Row { children, has_image, action } => {
+            NodeKind::Row { children, has_image, action, long_action } => {
                 let image_width = if *has_image { self.scaled(65.0).min(rect.width) } else { 0.0 };
                 if *has_image {
                     if let Some(image) = children.first() {
@@ -3023,7 +3069,7 @@ impl Engine {
                     let size = self.measure(text, available);
                     self.layout(text, Rect { y: rect.y + (rect.height - size.height) / 2.0, height: size.height, ..available });
                 }
-                if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
+                if let Some(action) = action { self.push_press_region(rect, action.clone(), long_action.clone()); }
             }
             NodeKind::Screen {
                 children,
@@ -3066,9 +3112,40 @@ impl Engine {
                 align,
                 max_lines,
                 tabular_numbers,
-                ..
+                links, ..
             } => {
-                self.layout_text(text, *font_size, *align, *max_lines, *tabular_numbers, rect);
+                let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
+                let font = self.scaled_font(size);
+                let lines = self.wrap_linked_text(text, font, rect.width, *max_lines, *tabular_numbers, links);
+                if !links.is_empty() {
+                    let line_height = self.text_line_height(size);
+                    let mut offset = 0;
+                    for (index, line) in lines.iter().enumerate() {
+                        let Some(relative) = text[offset..].find(&line.text) else { break; };
+                        let start = offset + relative;
+                        let end = start + line.text.len();
+                        let inset = match align { TextAlign::Centre => (rect.width - line.width) / 2.0, TextAlign::End => rect.width - line.width, _ => 0.0 };
+                        for (range, action) in links {
+                            let from = range.start.max(start);
+                            let to = range.end.min(end);
+                            if from < to {
+                                let x = text_width_with_numbers(&text[start..from], font, *tabular_numbers);
+                                let width = text_width_with_numbers(&text[start..to], font, *tabular_numbers) - x;
+                                let hit = Rect { x: rect.x + inset + x, y: rect.y + index as f32 * line_height, width, height: line_height };
+                                let long_action = self.hit_regions.iter().rev()
+                                    .find(|region| region.rect.contains(hit.x, hit.y))
+                                    .and_then(|region| region.long_action.clone());
+                                self.push_press_region(hit, action.clone(), long_action);
+                                self.scene.quads.push(Quad {
+                                    rect: Rect { x: rect.x + inset + x, y: rect.y + (index + 1) as f32 * line_height - self.control_line_height(), width, height: self.control_line_height() },
+                                    clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+                                });
+                            }
+                        }
+                        offset = end;
+                    }
+                }
+                self.layout_text_lines(lines, size, *align, *tabular_numbers, rect);
             }
             NodeKind::TextInput {
                 placeholder,
@@ -3117,6 +3194,14 @@ impl Engine {
             ),
             NodeKind::CameraPreview { controller, kind } => {
                 self.layout_camera_preview(*controller, *kind, rect)
+            }
+            NodeKind::VideoView { controller, loading } => {
+                self.scene.video_portal = controller.map(|controller| MapPortal { controller, rect });
+                if *loading {
+                    let height = self.text_line_height(18.0);
+                    self.layout_text("Loading…", Some(18.0), TextAlign::Centre, Some(1), false,
+                        Rect { y: rect.y + (rect.height - height) / 2.0, height, ..rect });
+                }
             }
             NodeKind::MapView { controller } => {
                 self.scene.map_portal = Some(MapPortal { controller: *controller, rect });
@@ -3227,7 +3312,7 @@ impl Engine {
             let inset = self.scaled(content_inset);
             let available = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), height: (rect.height - header_height).max(0.0), ..rect };
             let size = self.measure(composer, available);
-            let bottom = if self.keyboard_inset > 0 { 0.0 } else { self.scaled(CONTENT_BOTTOM) };
+            let bottom = self.scaled(if self.keyboard_inset > 0 { 4.0 } else { CONTENT_BOTTOM });
             let height = size.height + bottom + self.scaled(10.0);
             self.layout(composer, Rect { y: rect.y + rect.height - bottom - size.height, height: size.height, ..available });
             (messages, Rect { height: (rect.height - height).max(header_height), ..rect })
@@ -3550,7 +3635,8 @@ impl Engine {
 
     fn measure_horizontal_children(&mut self, children: &[Node], gap: f32, rect: Rect) -> Vec<MeasuredSize> {
         let mut sizes: Vec<_> = children.iter().map(|child| self.measure(child, rect)).collect();
-        let shrinkable = |child: &Node| matches!(child.kind, NodeKind::Text { width: None, .. });
+        let shrinkable = |child: &Node| matches!(child.kind,
+            NodeKind::Text { width: None, .. } | NodeKind::Stack { axis: Axis::Vertical, .. });
         let label_width: f32 = children.iter().zip(&sizes)
             .filter(|(child, _)| shrinkable(child)).map(|(_, size)| size.width).sum();
         let total = sizes.iter().map(|size| size.width).sum::<f32>()
@@ -3675,6 +3761,11 @@ impl Engine {
         let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
         let font_size = self.scaled_font(size);
         let lines = self.wrap_text(text, font_size, rect.width, max_lines, tabular_numbers);
+        self.layout_text_lines(lines, size, align, tabular_numbers, rect);
+    }
+
+    fn layout_text_lines(&mut self, lines: Vec<WrappedLine>, size: f32, align: TextAlign, tabular_numbers: bool, rect: Rect) {
+        let font_size = self.scaled_font(size);
         let line_height = self.text_line_height(size);
         for (index, line) in lines.into_iter().enumerate() {
             let mut line_rect = Rect {
@@ -3783,7 +3874,7 @@ impl Engine {
             .clamp(0.0, scroll_max);
         let clip = viewport.intersection(self.clip);
         let text_run = self.scene.text.len();
-        let showing_placeholder = value.is_empty() && !focused;
+        let showing_placeholder = value.is_empty();
         for (index, (start, end)) in lines.iter().copied().enumerate() {
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
@@ -3852,8 +3943,7 @@ impl Engine {
             Some(StateValue::String(value)) => value.clone(),
             _ => String::new(),
         };
-        let focused = self.focused_input == Some(state);
-        let showing_placeholder = value.is_empty() && !focused;
+        let showing_placeholder = value.is_empty();
         let text = if showing_placeholder {
             placeholder
         } else {
@@ -4160,6 +4250,7 @@ impl Engine {
                 return;
             }
         }
+        let mut failed = false;
         let image = match source {
             ImageSource::Asset(asset) => Some(ImageData::Asset(asset.clone())),
             ImageSource::Native(module, source) => {
@@ -4178,6 +4269,7 @@ impl Engine {
                         Some(RemoteImageState::Ready { image, .. }) => {
                             Some(ImageData::Remote(image.clone()))
                         }
+                        Some(RemoteImageState::Failed) => { failed = true; None },
                         _ => None,
                     };
                     if loaded.is_none() {
@@ -4215,6 +4307,13 @@ impl Engine {
                 scrolling: self.scrolling,
                 transform,
             });
+        } else if zoomable {
+            let height = self.text_line_height(18.0);
+            self.layout_text(
+                if failed { "Could not load photo" } else { "Loading…" },
+                Some(18.0), TextAlign::Centre, Some(1), false,
+                Rect { y: rect.y + (rect.height - height) / 2.0, height, ..rect },
+            );
         }
     }
 
@@ -4245,19 +4344,39 @@ impl Engine {
         max_lines: Option<u32>,
         tabular_numbers: bool,
     ) -> Vec<WrappedLine> {
+        self.wrap_linked_text(text, font_size, available_width, max_lines, tabular_numbers, &[])
+    }
+
+    fn wrap_linked_text(
+        &mut self,
+        text: &str,
+        font_size: f32,
+        available_width: f32,
+        max_lines: Option<u32>,
+        tabular_numbers: bool,
+        links: &[(std::ops::Range<usize>, Action)],
+    ) -> Vec<WrappedLine> {
         let key = TextWrapKey {
             text: text.to_owned(),
             font_size: font_size.to_bits(),
             width: available_width.to_bits(),
             max_lines,
             tabular_numbers,
+            links: links.iter().map(|(range, _)| range.clone()).collect(),
         };
         if let Some((lines, used)) = self.wrapped_text.get_mut(&key) {
             *used = true;
             return lines.clone();
         }
+        let unbroken_links = links.iter().filter_map(|(range, _)| {
+            (text_width_with_numbers(&text[range.clone()], font_size, tabular_numbers) <= available_width)
+                .then_some(range)
+        }).collect::<Vec<_>>();
         let mut lines = Vec::new();
+        let mut paragraph_offset = 0;
         for paragraph in text.split('\n') {
+            let offset = paragraph_offset;
+            paragraph_offset += paragraph.len() + 1;
             if paragraph.is_empty() {
                 lines.push(WrappedLine {
                     text: String::new(),
@@ -4267,9 +4386,20 @@ impl Engine {
                 continue;
             }
 
-            let breakpoints = linebreaks(paragraph)
+            let protected = unbroken_links.iter().copied().filter(|range| {
+                range.start >= offset && range.end <= offset + paragraph.len()
+            }).collect::<Vec<_>>();
+            let mut breakpoints = linebreaks(paragraph)
                 .map(|(index, _)| index)
+                .filter(|index| !protected.iter().any(|range| range.start < offset + index && offset + index < range.end))
                 .collect::<Vec<_>>();
+            if !protected.is_empty() {
+                for range in protected {
+                    breakpoints.extend([range.start - offset, range.end - offset]);
+                }
+                breakpoints.sort_unstable();
+                breakpoints.dedup();
+            }
             let mut start = 0;
             while start < paragraph.len() {
                 let mut best = None;
@@ -4445,6 +4575,7 @@ impl Engine {
                 long_action,
                 scrolling: self.scrolling,
                 preserve_input: false,
+                haptic: true,
                 target,
             });
         }
@@ -4501,6 +4632,7 @@ struct TextWrapKey {
     width: u32,
     max_lines: Option<u32>,
     tabular_numbers: bool,
+    links: Vec<std::ops::Range<usize>>,
 }
 
 #[derive(Clone)]
@@ -4563,7 +4695,7 @@ fn stretchable(node: &Node) -> bool {
             | NodeKind::Button { .. }
             | NodeKind::Field { .. }
             | NodeKind::CameraPreview { .. }
-            | NodeKind::MapView { .. }
+            | NodeKind::VideoView { .. } | NodeKind::MapView { .. }
             | NodeKind::MediaGridRow { .. }
             | NodeKind::MediaCell { .. }
             | NodeKind::Toggle { .. }
@@ -4618,7 +4750,7 @@ fn constrained_axis(content_start: f32, content_size: f32, view_start: f32, view
 fn fills_remaining_screen(node: &Node) -> bool {
     matches!(
         &node.kind,
-        NodeKind::PlayingLayout { .. } | NodeKind::CameraPreview { .. } | NodeKind::MapView { .. }
+        NodeKind::PlayingLayout { .. } | NodeKind::CameraPreview { .. } | NodeKind::VideoView { .. } | NodeKind::MapView { .. }
             | NodeKind::Image {
                 bleed: true,
                 zoomable: true,

@@ -1,0 +1,45 @@
+---
+title: "Video"
+description: "Play videos."
+---
+
+## Example
+
+<div className="pattern-example">
+<div>
+
+```tsx app/index.tsx
+import { Screen } from "ink";
+import { Video } from "@ink/video";
+import video from "../assets/video.mov";
+
+export default function Watch() {
+  return <Screen title="Video">
+    <Video src={video} />
+  </Screen>;
+}
+```
+
+<p>Videos play automatically. Tap to pause or resume. Drag the progress bar to seek.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/video-paused.png" alt="Paused video with a play icon in its centre." width="1080" height="1240" />
+</div>
+</div>
+
+Playback pauses in the background and stops when you leave the page.
+
+## Sources
+
+Import `.mp4`, `.mov` or `.webm` files, or pass an HTTPS URL:
+
+```tsx
+import { Video } from "@ink/video";
+
+<Video src="https://example.com/video.mp4" />
+```
+
+Local file and content URIs are also supported. Development builds allow localhost HTTP URLs.
+
+Format support depends on the device's codecs.

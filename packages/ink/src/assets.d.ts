@@ -22,3 +22,19 @@ declare module "*.mp3" {
   const source: string;
   export default source;
 }
+declare module "*.mp4" {
+  const source: string;
+  export default source;
+}
+declare module "*.mov" {
+  const source: string;
+  export default source;
+}
+declare module "*.webm" {
+  const source: string;
+  export default source;
+}
+declare module "*.svg" {
+  const icon: import("./assets").IconAsset;
+  export default icon;
+}

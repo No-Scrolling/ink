@@ -58,6 +58,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var backgroundAdapter: BackgroundAdapter
     private lateinit var cameraAdapter: CameraAdapter
     private lateinit var mapsAdapter: MapsAdapter
+    private lateinit var videoAdapter: VideoAdapter
     private val filesAdapter by lazy { createFilesAdapter(this) }
     private val sqliteAdapter by lazy { SqliteAdapter(this) }
     private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
@@ -140,6 +141,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         lightSdkAdapter = createLightSdkAdapter(this, ::updateController)
         networkAdapter = createNetworkAdapter(this)
         mapsAdapter = createMapsAdapter(this, root, ::updateController)
+        videoAdapter = createVideoAdapter(this, root, ::updateController)
         locationAdapter = createLocationAdapter(this)
         nfcAdapter = createNfcAdapter(this)
         backgroundAdapter = createBackgroundAdapter(this)
@@ -231,7 +233,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         try {
             check(java.io.File(directory, "complete").isFile) { "Bundle transfer is incomplete: ${directory.absolutePath}/complete" }
             val source = java.io.File(directory, "app.js").readText()
-            val icons = java.io.File(directory, "ink-icons-v1.json").readBytes()
+            val icons = java.io.File(directory, "ink-icons-v1.bin").readBytes()
             val compatibility = JSONObject(java.io.File(directory, "ink-bundle-v1.json").readText())
                 .optString("refreshCompatibilityHash")
             if (compatibility.isNotEmpty() && compatibility == refreshCompatibility &&
@@ -255,8 +257,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     internal fun bundledAudioUri(source: String): android.net.Uri {
         if (!BuildConfig.DEBUG || developmentBundle == null) return android.net.Uri.parse(source)
+        return android.net.Uri.fromFile(bundledMediaFile(source))
+    }
+
+    internal fun bundledMediaFile(source: String): java.io.File {
         val path = source.removePrefix("asset:///")
-        require(path.matches(Regex("ink-assets/[a-f0-9]{64}\\.mp3"))) { "Invalid bundled audio source" }
+        require(path.matches(Regex("ink-assets/[a-f0-9]{64}\\.(mp3|mp4|mov|webm)"))) { "Invalid bundled media source" }
         val pinned = java.io.File(filesDir, "ink-media/${path.substringAfterLast('/')}")
         pinned.parentFile!!.mkdirs()
         if (!pinned.isFile) {
@@ -271,7 +277,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
         }
 
-        return android.net.Uri.fromFile(pinned)
+        return pinned
     }
 
     private fun startDevelopmentBundle(directory: java.io.File?) {
@@ -280,8 +286,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             if (BuildConfig.DEBUG && directory == null) java.io.File(filesDir, "ink-dev/active-worker").delete()
             val source = if (directory == null) assets.open("app.js").bufferedReader().use { it.readText() }
                 else java.io.File(directory, "app.js").readText()
-            val icons = if (directory == null) assets.open("ink-icons-v1.json").use { it.readBytes() }
-                else java.io.File(directory, "ink-icons-v1.json").readBytes()
+            val icons = if (directory == null) assets.open("ink-icons-v1.bin").use { it.readBytes() }
+                else java.io.File(directory, "ink-icons-v1.bin").readBytes()
             if (BuildConfig.DEBUG) {
                 val manifest = if (directory == null) assets.open("ink-bundle-v1.json").bufferedReader().use { it.readText() }
                     else java.io.File(directory, "ink-bundle-v1.json").readText()
@@ -379,12 +385,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, "deactivate", "{}", complete)
                 CAMERA_MODULE -> cameraAdapter.executeController(0, -controller, "deactivate", "{}", complete)
                 "maps" -> mapsAdapter.executeController(0, -controller, "deactivate", "{}", complete)
+                "video" -> videoAdapter.executeController(0, -controller, "deactivate", "{}", complete)
                 "downloads" -> downloadsAdapter.executeController(-controller, "deactivate", "{}", complete)
             }
         }
         javascriptControllers.clear()
         connectivityAdapter.reset()
         javascriptRequests = newJavaScriptRequests()
+    }
+
+    internal fun performInteractionHaptic() {
+        lightSdkAdapter.performHaptic(inkView)
     }
 
     private fun executeJavaScriptCall(call: JSONObject) {
@@ -394,6 +405,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             return
         }
         val module = call.getString("module")
+        if (module == "interaction" && call.getString("operation") == "haptic") {
+            performInteractionHaptic()
+            sendJavaScriptResult(id, NativeResult.Success(""))
+            return
+        }
         val adapter = when (module) {
             "permissions" -> { usesPermissions = true; permissionsAdapter }
             "store" -> { usesStore = true; storeAdapter }
@@ -402,9 +418,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             "connectivity" -> connectivityAdapter
             "files" -> filesAdapter
             "secure-store" -> secureStoreAdapter
+            "crypto" -> createCryptoAdapter()
             "auth" -> authAdapter
             "external" -> externalAdapter
             "downloads" -> downloadsAdapter
+            "video" -> videoAdapter
             "maps" -> mapsAdapter
             NETWORK_MODULE -> networkAdapter
             LIGHT_SDK_MODULE -> lightSdkAdapter
@@ -438,6 +456,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     AUDIO_MODULE -> audioAdapter.executeController(-controller, operation, payload, finish)
                     NOTIFICATIONS_MODULE -> notificationsAdapter.executeController(-controller, operation, payload, finish)
                     "maps" -> mapsAdapter.executeController(-id, -controller, operation, payload, finish)
+                    "video" -> videoAdapter.executeController(-id, -controller, operation, payload, finish)
                     "downloads" -> downloadsAdapter.executeController(-controller, operation, payload, finish)
                     CAMERA_MODULE -> {
                         if (operation == OPEN_OPERATION) openCameraController(-id, -controller, payload, finish)
@@ -499,6 +518,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         externalAdapter.onResume()
         connectivityAdapter.start()
         mapsAdapter.resume()
+        videoAdapter.resume()
         audioAdapter.resume()
         locationAdapter.resume()
         lightSdkAdapter.refresh()
@@ -508,6 +528,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         nfcAdapter.resume()
         notificationsAdapter.refreshEvents()
         syncTextInput()
+        if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, "{\"type\":\"resume\"}")
     }
 
     @Deprecated("Android activity result callback")
@@ -551,6 +572,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         logResource("Surface resized to ${width}x${height}")
         nativeResize(engineHandle, width, height)
+        syncTextInput()
         inkView.requestFrame()
         syncCameraPortal()
     }
@@ -575,6 +597,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         backgroundAdapter.stop()
         cameraAdapter.stop()
         mapsAdapter.stop()
+        videoAdapter.stop()
         filesAdapter.stop()
         sqliteAdapter.stop()
         externalAdapter.close()
@@ -598,10 +621,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onPause() {
+        if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, "{\"type\":\"pause\"}")
         textInputAdapter.pause()
         externalAdapter.onPause()
         connectivityAdapter.stop()
         mapsAdapter.pause()
+        videoAdapter.pause()
         audioAdapter.pause()
         nfcAdapter.pause()
         cameraAdapter.pause()
@@ -644,6 +669,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (engineHandle == 0L) return
         if (nativeSetKeyboardInset(engineHandle, height)) {
             logResource("Keyboard inset=$height surface=${inkView.width}x${inkView.height}")
+            syncTextInput()
             inkView.requestFrame()
         }
     }
@@ -676,6 +702,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }.getOrNull()
         }
         cameraAdapter.syncPortal(portal, nativeCameraReviewReady(engineHandle))
+        val video = nativeVideoPortal(engineHandle)
+        videoAdapter.syncPortal(if (video.isEmpty()) null else {
+            val value = JSONObject(video)
+            VideoPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
+        })
         val map = nativeMapPortal(engineHandle)
         mapsAdapter.syncPortal(if (map.isEmpty()) null else {
             val value = JSONObject(map)
@@ -1323,6 +1354,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             capturedGesture = capturedGesture || (result and POINTER_CAPTURED) != 0
             if ((result and POINTER_ACTIVATED) != 0) {
                 lightSdkAdapter.performHaptic(this)
+            }
+            if ((result and POINTER_ACTIVATED) != 0 ||
+                ((result and POINTER_CHANGED) != 0 && !capturedGesture)) {
                 drainNativeRequests()
                 syncCameraPortal()
                 syncTextInput()
@@ -1549,6 +1583,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         @JvmStatic
         private external fun nativeCameraReviewReady(handle: Long): Boolean
 
+        @JvmStatic
+        private external fun nativeVideoPortal(handle: Long): String
         @JvmStatic
         private external fun nativeMapPortal(handle: Long): String
 

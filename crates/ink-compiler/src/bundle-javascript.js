@@ -1,5 +1,7 @@
 import { dirname, resolve, relative, extname } from "node:path";
 import { realpath } from "node:fs/promises";
+import { parseEnv } from "node:util";
+import { collectIconSizes } from "./icon-usage.js";
 const [root, entry, output, profile = "release"] = Bun.argv.slice(2);
 const development = profile === "development";
 if (entry.endsWith("/entry.tsx")) {
@@ -8,10 +10,24 @@ if (entry.endsWith("/entry.tsx")) {
 }
 const splitWeb = !development && process.env.INK_SPLIT_WEB !== "0" && output.endsWith("/app.js");
 const inputs = new Set();
+const environment = {};
+for (const name of [".env", ".env.local"]) {
+  const path = resolve(root, name);
+  if (await Bun.file(path).exists()) {
+    inputs.add(path);
+    Object.assign(environment, parseEnv(await Bun.file(path).text()));
+  }
+}
+Object.assign(environment, process.env);
+const publicEnvironment = Object.fromEntries(Object.entries(environment).filter(([key]) => key.startsWith("INK_PUBLIC_")));
 const capabilities = new Set();
 const moduleCapabilities = new Map();
 const assets = new Map();
 const icons = new Map();
+const svgIcons = new Map();
+const svgReferences = new Map();
+const iconSizes = new Map();
+const inspectedIconModules = new Set();
 const declarations = new Map();
 const shared = new Map();
 const components = new Set();
@@ -19,6 +35,11 @@ const persistentModules = new Map();
 const sourceMaps = new Map();
 const bundleDirectory = await realpath(process.cwd());
 const ts = await import(Bun.resolveSync("typescript", root));
+const iconSource = await Bun.file(Bun.resolveSync("ink/icons", root)).text();
+const materialIcons = new Map(Array.from(
+  iconSource.matchAll(/export const (\w+) = "((?:outlined|filled):[a-z0-9_]+)"/g),
+  ([, name, reference]) => [name, reference],
+));
 ts.getParsedCommandLineOfConfigFile(resolve(root, "tsconfig.json"), {}, {
   ...ts.sys,
   readFile(path) {
@@ -89,20 +110,35 @@ async function addAsset(path) {
   const bytes = await Bun.file(path).bytes();
   const name = `${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}${extname(path).toLowerCase()}`;
   assets.set(name, path);
-  return `${extname(path).toLowerCase() === ".mp3" ? "asset:///" : "asset://"}ink-assets/${name}`;
+  return `${/\.(?:mp3|mp4|mov|webm)$/i.test(path) ? "asset:///" : "asset://"}ink-assets/${name}`;
+}
+async function svgReference(path) {
+  path = await realpath(path);
+  if (svgReferences.has(path)) return svgReferences.get(path);
+  inputs.add(path);
+  const bytes = await Bun.file(path).bytes();
+  const name = `svg_${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}`;
+  const reference = `outlined:${name}`;
+  svgIcons.set(name, path);
+  svgReferences.set(path, reference);
+  return reference;
 }
 function buildOptions(bootstrap = false) { return {
   entrypoints: [entry], target: "browser", format: development && !bootstrap ? "cjs" : "iife", minify: !development,
   sourcemap: development ? "external" : "none",
   metafile: true,
-  define: { "process.env.NODE_ENV": JSON.stringify(development ? "development" : "production") },
+  define: { "process.env.NODE_ENV": JSON.stringify(development ? "development" : "production"), "import.meta.env": JSON.stringify(publicEnvironment) },
   plugins: [{ name: "ink-resolved-inputs", setup(build) {
-    build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3|db)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
+    build.onLoad({ filter: /\.svg$/i }, async ({ path }) => {
+      return { contents: `export default ${JSON.stringify(await svgReference(path))}`, loader: "js" };
+    });
+    build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3|mp4|mov|webm|db)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
     build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
       const resolved = await realpath(Bun.resolveSync(path, /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
       const name = await inspect(resolved);
       if (development && !bootstrap && importer && (name === "ink" || name === "react" || name?.startsWith("@ink/") || resolved.includes("/node_modules/"))) {
         shared.set(path, resolved);
+        shared.set(resolved, resolved);
         return { path: resolved, external: true };
       }
       return { path: resolved };
@@ -111,6 +147,12 @@ function buildOptions(bootstrap = false) { return {
       await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
+      if (!inspectedIconModules.has(path) && (contents.includes("ink/icons") || contents.includes(".svg"))) {
+        inspectedIconModules.add(path);
+        const sizes = await collectIconSizes(ts, path, contents, materialIcons,
+          module => svgReference(Bun.resolveSync(module, dirname(path))));
+        for (const [reference, size] of sizes) iconSizes.set(reference, Math.max(iconSizes.get(reference) ?? 0, size));
+      }
       let compilerMap;
       const appSource = path.startsWith(root + "/") && !path.includes("/node_modules/") && !path.includes("/.ink/");
       const refresh = development && !bootstrap && !path.includes("/node_modules/");
@@ -269,7 +311,7 @@ function collectIcons(node) {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     const reference = node.text;
     const match = /^(outlined|filled):([a-z0-9_]+)$/.exec(reference);
-    if (match) icons.set(reference, { name: match[2], filled: match[1] === "filled", reference, size: 56 });
+    if (match) icons.set(reference, { name: match[2], filled: match[1] === "filled", reference, size: iconSizes.get(reference) ?? 56, svg: svgIcons.get(match[2]) });
   }
   ts.forEachChild(node, collectIcons);
 }

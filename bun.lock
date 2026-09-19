@@ -59,6 +59,7 @@
         "@ink/notifications": "workspace:*",
         "@ink/secure-store": "workspace:*",
         "@ink/store": "workspace:*",
+        "@ink/video": "workspace:*",
         "ink": "workspace:*",
         "react": "19.2.8",
       },
@@ -142,6 +143,13 @@
         "ink": "0.0.0",
       },
     },
+    "packages/crypto": {
+      "name": "@ink/crypto",
+      "version": "0.0.0",
+      "peerDependencies": {
+        "ink": "0.0.0",
+      },
+    },
     "packages/files": {
       "name": "@ink/files",
       "version": "0.1.0",
@@ -157,6 +165,7 @@
       "name": "ink",
       "version": "0.0.0",
       "dependencies": {
+        "linkify-it": "^6.1.0",
         "react-reconciler": "0.33.0",
       },
       "peerDependencies": {
@@ -229,6 +238,14 @@
         "ink": "0.0.0",
       },
     },
+    "packages/video": {
+      "name": "@ink/video",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "ink": "0.0.0",
+        "react": "19.2.8",
+      },
+    },
   },
   "packages": {
     "@ink/audio": ["@ink/audio@workspace:packages/audio"],
@@ -242,6 +259,8 @@
     "@ink/camera": ["@ink/camera@workspace:packages/camera"],
 
     "@ink/clipboard": ["@ink/clipboard@workspace:packages/clipboard"],
+
+    "@ink/crypto": ["@ink/crypto@workspace:packages/crypto"],
 
     "@ink/files": ["@ink/files@workspace:packages/files"],
 
@@ -260,6 +279,8 @@
     "@ink/secure-store": ["@ink/secure-store@workspace:packages/secure-store"],
 
     "@ink/store": ["@ink/store@workspace:packages/store"],
+
+    "@ink/video": ["@ink/video@workspace:packages/video"],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
@@ -377,6 +398,8 @@
 
     "ink-weather-example": ["ink-weather-example@workspace:examples/weather"],
 
+    "linkify-it": ["linkify-it@6.1.0", "", { "dependencies": { "uc.micro": "^3.0.0" } }, "sha512-wJ/TwpSDTLepCrQoYWYIExIKg5Zchex2Nn5yk2mFnB+6PtdkHtyLx742md9csRjjOnGkKIS/RrbY7l8D6gT9Vw=="],
+
     "oxc-parser": ["oxc-parser@0.149.0", "", { "dependencies": { "@oxc-project/types": "^0.149.0" }, "optionalDependencies": { "@oxc-parser/binding-android-arm-eabi": "0.149.0", "@oxc-parser/binding-android-arm64": "0.149.0", "@oxc-parser/binding-darwin-arm64": "0.149.0", "@oxc-parser/binding-darwin-x64": "0.149.0", "@oxc-parser/binding-freebsd-x64": "0.149.0", "@oxc-parser/binding-linux-arm-gnueabihf": "0.149.0", "@oxc-parser/binding-linux-arm-musleabihf": "0.149.0", "@oxc-parser/binding-linux-arm64-gnu": "0.149.0", "@oxc-parser/binding-linux-arm64-musl": "0.149.0", "@oxc-parser/binding-linux-ppc64-gnu": "0.149.0", "@oxc-parser/binding-linux-riscv64-gnu": "0.149.0", "@oxc-parser/binding-linux-riscv64-musl": "0.149.0", "@oxc-parser/binding-linux-s390x-gnu": "0.149.0", "@oxc-parser/binding-linux-x64-gnu": "0.149.0", "@oxc-parser/binding-linux-x64-musl": "0.149.0", "@oxc-parser/binding-openharmony-arm64": "0.149.0", "@oxc-parser/binding-win32-arm64-msvc": "0.149.0", "@oxc-parser/binding-win32-ia32-msvc": "0.149.0", "@oxc-parser/binding-win32-x64-msvc": "0.149.0" } }, "sha512-iuirONeHJBp6dFuuZKvkCfFvBiF0uFmojIQooGtazR9+GvcwoayGMtal1+cvDUnEw2k435GBish01HOn5iyVqQ=="],
 
     "oxc-transform-react": ["oxc-transform-react@0.149.0", "", { "optionalDependencies": { "@oxc-transform-react/binding-android-arm-eabi": "0.149.0", "@oxc-transform-react/binding-android-arm64": "0.149.0", "@oxc-transform-react/binding-darwin-arm64": "0.149.0", "@oxc-transform-react/binding-darwin-x64": "0.149.0", "@oxc-transform-react/binding-freebsd-x64": "0.149.0", "@oxc-transform-react/binding-linux-arm-gnueabihf": "0.149.0", "@oxc-transform-react/binding-linux-arm-musleabihf": "0.149.0", "@oxc-transform-react/binding-linux-arm64-gnu": "0.149.0", "@oxc-transform-react/binding-linux-arm64-musl": "0.149.0", "@oxc-transform-react/binding-linux-ppc64-gnu": "0.149.0", "@oxc-transform-react/binding-linux-riscv64-gnu": "0.149.0", "@oxc-transform-react/binding-linux-riscv64-musl": "0.149.0", "@oxc-transform-react/binding-linux-s390x-gnu": "0.149.0", "@oxc-transform-react/binding-linux-x64-gnu": "0.149.0", "@oxc-transform-react/binding-linux-x64-musl": "0.149.0", "@oxc-transform-react/binding-openharmony-arm64": "0.149.0", "@oxc-transform-react/binding-win32-arm64-msvc": "0.149.0", "@oxc-transform-react/binding-win32-ia32-msvc": "0.149.0", "@oxc-transform-react/binding-win32-x64-msvc": "0.149.0" } }, "sha512-ab3dxcPtkDSfIR9tNdxHUtmpdL0lhHndsBD9IUAU5BxtJtwGG/85NnRzs2f2KwouNkHl7caSswMLQeUvw3FERw=="],
@@ -394,6 +417,8 @@
     "tr46": ["tr46@5.1.1", "", { "dependencies": { "punycode": "^2.3.1" } }, "sha512-hdF5ZgjTqgAntKkklYw0R03MG2x/bSzTtkxmIRw/sTNV8YXsCJ1tfLAX23lhxhHJlEf3CRCOCGGWw3vI3GaSPw=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "uc.micro": ["uc.micro@3.0.0", "", {}, "sha512-U3PppEkleoTnIfi8BozMx3yju3qc/L6SwqWo2Sw+54PX+PX0q9I+r1Um5HCmqD7n9VDX5/v3vQH/AjA6deDdtw=="],
 
     "web-streams-polyfill": ["web-streams-polyfill@4.3.0", "", {}, "sha512-/Gnggvj9oSrEvJbDyyPtAnxBt5fGQM2iWOKQNu7ie1OxDgK40iZpyV3TKaRiEzVj1oA1UxKnEy9XPXh6PW3eVw=="],
 

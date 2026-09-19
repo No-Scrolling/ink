@@ -1,6 +1,6 @@
 ---
 title: "Icons"
-description: "Use Material icons."
+description: "Use Material icons or custom SVGs."
 ---
 
 ## Example
@@ -54,4 +54,36 @@ Find names in the [Material Symbols catalogue](https://fonts.google.com/icons). 
 
 Use named imports. For dynamic lookups, pass a small object of imported icons to `findIcon(collection, name)`; it returns `undefined` for unknown names. A dynamic namespace import can bundle the whole catalogue.
 
-Icons use weight 400; keyboard icons use 300. Assets are generated at 56 logical units, so larger display sizes can soften edges.
+Material icons use weight 400.
+
+## Custom SVGs
+
+<div className="pattern-example">
+<div>
+
+<p>Import an SVG wherever an icon is accepted. Here, the icon is <a href="https://hugeicons.com/icon/spotify?style=stroke-rounded">Spotify from Hugeicons</a>.</p>
+
+```tsx
+import { Icon, Stack } from "ink";
+import spotify from "./assets/spotify.svg";
+
+<Stack axis="horizontal" gap={24}>
+  <Icon name={spotify} size={24} />
+  <Icon name={spotify} size={36} />
+  <Icon name={spotify} size={48} />
+</Stack>
+```
+
+<p>SVG icons use the current text colour. Use a transparent background and paths rather than text or external images. Use <a href="/images">Image</a> for colour artwork.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/icons-custom.png" alt="The Spotify icon at sizes 24, 36 and 48." width="1080" height="1240" />
+</div>
+</div>
+
+## Bundling
+
+Ink bundles only used icons as images. The APK does not include icon fonts or an SVG renderer.
+
+An icon used at sizes 16, 24 and 48 needs only one image, sized for 48. If Ink cannot determine the size during the build, it uses at least 56. Enlarging an icon beyond its generated size can look blurry.

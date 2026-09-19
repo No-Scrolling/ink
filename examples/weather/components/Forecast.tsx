@@ -81,7 +81,7 @@ function dailyDetail(
 }
 
 function DetailsLines({ values }: { values: string[] }) {
-  return <Stack gap={0}>{values.map(value => <Text key={value} size={16} tabularNumbers>{value}</Text>)}</Stack>;
+  return <Stack gap={0}>{values.map(value => <Text key={value} size={16}>{value}</Text>)}</Stack>;
 }
 
 export function Forecast({
@@ -126,9 +126,9 @@ export function Forecast({
         <Stack align="center" gap={0}>
           <Stack axis="horizontal" align="center" justify="center" gap={8}>
             <WeatherSymbol code={current.weatherCode} isDay={current.isDay} size={100} />
-            <Text size={88} tabularNumbers>{formatNumber(current.temperature)}°</Text>
+            <Text size={88}>{formatNumber(current.temperature)}°</Text>
           </Stack>
-          <Text size={20} tabularNumbers>
+          <Text size={20}>
             Feels like {formatNumber(current.apparentTemperature)}°, L: {formatNumber(data.daily.temperatureMin[0])}° H: {formatNumber(data.daily.temperatureMax[0])}°
           </Text>
           {state.error && <Text size={16}>Weather may be out of date.</Text>}
@@ -144,7 +144,7 @@ export function Forecast({
             gap={14}
             renderItem={row => row.event ? (
               <Stack axis="horizontal" align="center" gap={8}>
-                <Text size={26} width={prefs.timeFormat === "12h" ? 140 : 84} tabularNumbers>{formatTime(row.time, prefs.timeFormat)}</Text>
+                <Text size={26} width={prefs.timeFormat === "12h" ? 140 : 84}>{formatTime(row.time, prefs.timeFormat)}</Text>
                 <WeatherSymbol kind={row.event} size={32} />
                 <Text size={26}>{row.event === "sunrise" ? "Sunrise" : "Sunset"}</Text>
               </Stack>
@@ -193,7 +193,7 @@ function HourlyRow({
 }) {
   return (
     <Stack axis="horizontal" align="start" gap={8}>
-      <Text size={26} width={prefs.timeFormat === "12h" ? 140 : 84} tabularNumbers>{formatTime(data.hourly.time[index], prefs.timeFormat)}</Text>
+      <Text size={26} width={prefs.timeFormat === "12h" ? 140 : 84}>{formatTime(data.hourly.time[index], prefs.timeFormat)}</Text>
       <Stack gap={0}>
         <Stack axis="horizontal" align="center" gap={8}>
           <WeatherSymbol code={data.hourly.weatherCode[index]} isDay={data.hourly.isDay[index]} size={32} />

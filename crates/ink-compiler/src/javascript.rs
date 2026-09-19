@@ -25,6 +25,7 @@ struct IconUse {
     name: String,
     size: f32,
     filled: bool,
+    svg: Option<std::path::PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -53,9 +54,11 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
     write_if_changed(&entry, source.as_bytes())?;
     let builder = project.root().join(".ink/build.js");
     write_if_changed(&builder, include_bytes!("bundle-javascript.js"))?;
+    write_if_changed(&project.root().join(".ink/icon-usage.js"), include_bytes!("icon-usage.js"))?;
     write_if_changed(&project.root().join(".ink/file-routes.js"), include_bytes!("file-routes.js"))?;
     run(Command::new("bun")
         .current_dir(project.root())
+        .arg("--no-env-file")
         .arg(&builder)
         .arg(project.root())
         .arg(&entry)
@@ -134,13 +137,19 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
     };
     add("arrow_back_ios".into(), 52.0, false)?;
     add("close".into(), 52.0, false)?;
+    let mut svg_icons = BTreeMap::new();
     for icon in uses.icons {
+        if let Some(path) = icon.svg {
+            svg_icons.insert(icon.name.clone(), path);
+        }
         add(icon.name, icon.size, icon.filled)?;
     }
     let icons = icons
         .into_iter()
         .map(|((name, filled), size)| {
-            let mask = if filled {
+            let mask = if let Some(path) = svg_icons.get(&name) {
+                crate::icons::raster_svg(path, &name, size)
+            } else if filled {
                 crate::icons::raster_filled(&name, size)
             } else {
                 crate::icons::raster(&name, size)
@@ -183,7 +192,7 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
         source,
         manifest,
         worker,
-        icons: serde_json::to_vec(&icons)?,
+        icons: ink_core::ReactIcon::encode(&icons)?,
         capabilities,
         assets: uses.assets,
     })

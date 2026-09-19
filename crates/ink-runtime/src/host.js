@@ -15,8 +15,8 @@
   globalThis.setTimeout = (callback, delay = 0, ...args) => schedule(callback, delay, false, args);
   globalThis.setInterval = (callback, delay = 0, ...args) => schedule(callback, delay, true, args);
   globalThis.clearTimeout = globalThis.clearInterval = id => {
-    timers.delete(id);
-    __inkCancelTimer(id);
+    id = Number(id);
+    if (timers.delete(id)) __inkCancelTimer(id);
   };
   globalThis.__inkFireTimer = id => {
     const timer = timers.get(id);

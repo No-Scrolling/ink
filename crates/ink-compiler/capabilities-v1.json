@@ -106,6 +106,15 @@
         "android.permission.ACCESS_NETWORK_STATE"
       ]
     },
+    "crypto": {
+      "cost": "Android authenticated encryption",
+      "dependencies": [],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "crypto",
+        "disabled": "noCrypto"
+      }
+    },
     "downloads": {
       "cost": "durable HTTP download jobs",
       "dependencies": [
@@ -160,7 +169,8 @@
       "dependencies": [
         "light-sdk",
         "notifications",
-        "network"
+        "network",
+        "crypto"
       ],
       "permissions": [],
       "androidSourceGroup": {
@@ -286,6 +296,17 @@
       "androidSourceGroup": {
         "enabled": "textInput",
         "disabled": "noTextInput"
+      }
+    },
+    "video": {
+      "cost": "Android video playback",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.INTERNET"
+      ],
+      "androidSourceGroup": {
+        "enabled": "video",
+        "disabled": "noVideo"
       }
     }
   },

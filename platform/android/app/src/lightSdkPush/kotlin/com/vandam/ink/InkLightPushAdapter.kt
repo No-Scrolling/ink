@@ -16,6 +16,7 @@ import org.unifiedpush.android.connector.UnifiedPush
 import org.unifiedpush.android.connector.data.PushEndpoint
 import org.unifiedpush.android.connector.data.PushMessage
 import java.io.File
+import java.lang.ref.WeakReference
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -27,6 +28,31 @@ internal fun createLightPushAdapter(
     activity: MainActivity,
     update: (Long, String) -> Unit,
 ): LightPushAdapter = InkLightPushAdapter(activity, update)
+
+private object ForegroundPush {
+    private var activity = WeakReference<MainActivity>(null)
+    private var group: String? = null
+
+    @Synchronized
+    fun set(owner: MainActivity, groupKey: String?) {
+        activity = WeakReference(owner)
+        group = groupKey
+    }
+
+    @Synchronized
+    fun clear(owner: MainActivity) {
+        if (activity.get() === owner) {
+            activity.clear()
+            group = null
+        }
+    }
+
+    @Synchronized
+    fun matches(groupKey: String): Boolean {
+        val owner = activity.get() ?: return false
+        return group == groupKey && owner.hasWindowFocus()
+    }
+}
 
 private class InkLightPushAdapter(
     private val activity: MainActivity,
@@ -51,6 +77,7 @@ private class InkLightPushAdapter(
     }
 
     override fun stop() {
+        ForegroundPush.clear(activity)
         if (started) activity.unregisterReceiver(stateReceiver)
         started = false
         controller = null
@@ -88,11 +115,24 @@ private class InkLightPushAdapter(
         }
         if (operation == "deactivate") {
             if (this.controller != controller) return false
+            ForegroundPush.clear(activity)
             this.controller = null
             return true
         }
         if (this.controller != controller) return false
         when (operation) {
+            "foreground-message" -> {
+                val key = JSONObject(payload).getString("groupKey")
+                if (ForegroundPush.matches(key)) activity.performInteractionHaptic()
+                return true
+            }
+            "foreground" -> {
+                val value = JSONObject(payload)
+                val key = if (value.isNull("groupKey")) null else value.getString("groupKey")
+                require(key == null || validOpaque(key, MAX_KEY_BYTES)) { "Invalid Light push group key" }
+                ForegroundPush.set(activity, key)
+                if (key != null) dismissGroup(key)
+            }
             "register" -> register(payload)
             "retry" -> retry()
             "unregister" -> unregister()
@@ -109,13 +149,20 @@ private class InkLightPushAdapter(
             store.fail("protocol", "Invalid Light push registration", false)
             return
         }
-        val baseUrl = request.optString("subscriptionBaseUrl").trimEnd('/')
+        val baseUrl = request.optString("url").trimEnd('/')
         val token = request.optString("bearerToken")
         val error = runCatching {
             validateBaseUrl(baseUrl)
             require(token.toByteArray().size <= MAX_TOKEN_BYTES && token.none { Character.isISOControl(it.code) }) {
                 "Bearer token is invalid"
             }
+            val key = if (request.isNull("encryptionKey")) null else request.getString("encryptionKey")
+            val credentials = SecureValues(activity)
+            if (key != null) {
+                InkCipher(key)
+                credentials.set("ink.push.key", key)
+            } else credentials.remove("ink.push.key")
+            credentials.remove("ink.push.encryption")
         }.exceptionOrNull()
         if (error != null) {
             store.fail("protocol", error.message ?: "Invalid Light push registration", false)
@@ -135,6 +182,7 @@ private class InkLightPushAdapter(
     }
 
     private fun unregister() {
+        SecureValues(activity).remove("ink.push.key")
         val registration = store.beginUnregister()
         runCatching { UnifiedPush.unregister(activity, PUSH_INSTANCE) }
             .onFailure { Log.w(TAG, "Could not unregister UnifiedPush", it) }
@@ -156,6 +204,10 @@ private class InkLightPushAdapter(
             store.fail("protocol", "Invalid Light push group key", false)
             return
         }
+        dismissGroup(key)
+    }
+
+    private fun dismissGroup(key: String) {
         store.dismiss(key)
         InkNotificationPresenter.cancelPush(activity, key)
     }
@@ -265,7 +317,13 @@ class InkLightPushReceiver : MessagingReceiver() {
             try {
                 val store = InkLightPushStore(context)
                 val effects = runCatching {
-                    store.apply(parseEnvelope(message.content))
+                    require(message.content.size <= MAX_ENCRYPTED_PAYLOAD_BYTES) { "Push payload is too large" }
+                    val key = SecureValues(context).get("ink.push.key")
+                    val content = if (key == null) message.content else {
+                        val encrypted = JSONObject(message.content.toString(Charsets.UTF_8)).getString("encrypted")
+                        InkCipher(key).decrypt(encrypted).toByteArray(Charsets.UTF_8)
+                    }
+                    store.apply(parseEnvelope(content))
                 }.getOrElse { error ->
                     Log.w(TAG, "Rejected Light push payload: ${error.message}")
                     runCatching {
@@ -279,7 +337,12 @@ class InkLightPushReceiver : MessagingReceiver() {
                     return@execute
                 }
                 effects.cancelled.forEach { InkNotificationPresenter.cancelPush(context, it) }
-                effects.shown.forEach { presentPush(context, it) }
+                effects.shown.forEach {
+                    if (ForegroundPush.matches(it.groupKey)) {
+                        store.dismiss(it.groupKey)
+                        InkNotificationPresenter.cancelPush(context, it.groupKey)
+                    } else presentPush(context, it)
+                }
                 if (effects.shown.isNotEmpty() || effects.cleared.isNotEmpty()) {
                     val background = createBackgroundAdapter(context)
                     try {
@@ -363,6 +426,8 @@ private object InkLightPushRegistrar {
             }
             val code = connection.responseCode
             require(code in 200..299) { "Subscription server returned HTTP $code" }
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            require(JSONObject(response).optBoolean("success")) { "Subscription server did not confirm registration" }
         } finally {
             connection.disconnect()
         }
@@ -702,6 +767,13 @@ private fun parseEnvelope(bytes: ByteArray): List<LightPushEvent> {
     require(text.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Push payload is not valid UTF-8" }
     val root = JSONObject(text)
     require(root.getInt("version") == WIRE_VERSION) { "Unsupported push envelope version" }
+    if (root.has("expiresAtMs")) {
+        val expires = root.get("expiresAtMs")
+        require(expires is Number && expires.toDouble().isFinite() && expires.toDouble() == expires.toLong().toDouble() && expires.toLong() >= 0) {
+            "Invalid push expiry"
+        }
+        if (expires.toLong() <= System.currentTimeMillis()) return emptyList()
+    }
     val events = root.getJSONArray("events")
     require(events.length() in 1..MAX_EVENTS) { "Push envelope has an invalid event count" }
     return List(events.length()) { index ->
@@ -774,6 +846,8 @@ private const val EXTRA_LIGHT_PUSH_KEY = "com.vandam.ink.lightpush.KEY"
 private const val WIRE_VERSION = 1
 private const val STORE_VERSION = 1
 private const val MAX_PAYLOAD_BYTES = 4096
+// Includes the JSON wrapper, ink1. prefix and base64-encoded nonce, payload and tag.
+private const val MAX_ENCRYPTED_PAYLOAD_BYTES = 5521
 private const val MAX_EVENTS = 16
 private const val MAX_MESSAGES = 64
 private const val MAX_RECENT_IDS = 512

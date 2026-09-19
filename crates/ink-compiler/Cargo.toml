@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 ab_glyph = "0.2.32"
+resvg = { version = "0.45", default-features = false }
 anyhow.workspace = true
 image.workspace = true
 ink-core = { path = "../ink-core" }

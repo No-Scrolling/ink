@@ -20,6 +20,7 @@
     "@ink/notifications": "workspace:*",
     "@ink/secure-store": "workspace:*",
     "@ink/store": "workspace:*",
+    "@ink/video": "workspace:*",
     "ink": "workspace:*",
     "react": "19.2.8"
   },

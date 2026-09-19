@@ -54,16 +54,19 @@ internal class ExternalAdapter(private val activity: Activity) : NativeAdapter, 
                     if (operation == "browser-auth") require(scheme == "https" || (BuildConfig.DEBUG && scheme == "http" && uri.host in setOf("localhost", "127.0.0.1", "10.0.2.2"))) { "OAuth authorisation must use HTTPS" }
                     val browser = activity.packageManager.queryIntentServices(Intent("android.support.customtabs.action.CustomTabsService"), 0)
                         .map { it.serviceInfo.packageName }.firstOrNull { name -> activity.packageManager.resolveActivity(Intent(Intent.ACTION_VIEW, uri).setPackage(name), 0) != null }
-                        ?: throw UnsupportedOperationException("Custom Tabs unavailable")
-                    intent = Intent(Intent.ACTION_VIEW, uri).setPackage(browser)
-                    intent.putExtras(Bundle().apply { putBinder("android.support.customtabs.extra.SESSION", null) })
-                    intent.putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", if (lightAppearance) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
-                    intent.putExtra("androidx.browser.customtabs.extra.COLOR_SCHEME", if (lightAppearance) 1 else 2)
-                    intent.putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1)
-                    intent.putExtra("androidx.browser.customtabs.extra.SHARE_STATE", 2)
-                    intent.putExtra("android.support.customtabs.extra.SHARE_MENU_ITEM", false)
-                    intent.putExtra("org.chromium.chrome.browser.customtabs.EXTRA_DISABLE_STAR_BUTTON", true)
-                    intent.putExtra("org.chromium.chrome.browser.customtabs.EXTRA_DISABLE_DOWNLOAD_BUTTON", true)
+                    if (browser == null && operation == "browser-auth") throw UnsupportedOperationException("Custom Tabs unavailable")
+                    intent = Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+                    if (browser != null) {
+                        intent.setPackage(browser)
+                        intent.putExtras(Bundle().apply { putBinder("android.support.customtabs.extra.SESSION", null) })
+                        intent.putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", if (lightAppearance) android.graphics.Color.WHITE else android.graphics.Color.BLACK)
+                        intent.putExtra("androidx.browser.customtabs.extra.COLOR_SCHEME", if (lightAppearance) 1 else 2)
+                        intent.putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1)
+                        intent.putExtra("androidx.browser.customtabs.extra.SHARE_STATE", 2)
+                        intent.putExtra("android.support.customtabs.extra.SHARE_MENU_ITEM", false)
+                        intent.putExtra("org.chromium.chrome.browser.customtabs.EXTRA_DISABLE_STAR_BUTTON", true)
+                        intent.putExtra("org.chromium.chrome.browser.customtabs.EXTRA_DISABLE_DOWNLOAD_BUTTON", true)
+                    }
                 } else {
                     require(operation == "open-url") { "OAuth authorisation must use HTTPS" }
                     require(scheme !in setOf("javascript", "data", "file", "content", "intent", "about", "blob")) { "Unsupported URL scheme" }

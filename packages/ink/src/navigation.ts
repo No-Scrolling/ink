@@ -10,7 +10,7 @@ type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type Params = Record<string, Json>;
 export type Destination = string | { path: string; params?: Params };
 export type Entry = { key: number; path: string; params: Params; tabGroup?: object; unavailable?: boolean; page?: ReactElement };
-type NavigationAction = { type: "back" } | { type: "push" | "replace"; destination: Destination } | { type: "present"; page: ReactElement };
+type NavigationAction = { type: "back" } | { type: "push" | "replace" | "open"; destination: Destination } | { type: "present"; page: ReactElement };
 let dispatch: ((action: NavigationAction) => void) | undefined;
 let openNativeRoute: ((destination: Destination) => void) | undefined;
 let pendingNativeRoute: Destination | undefined;
@@ -122,18 +122,19 @@ export function NavigationStack({ routes, renderEntries }: {
         const index = group ? current.findIndex(entry => entry.tabGroup === group) : -1;
         if (index >= 0) return [...current.slice(0, index), { ...current[index], path: entry.path, params: entry.params }];
         const next = { ...entry, tabGroup: group };
+        if (action.type === "open") return current[0].path === next.path ? [next] : [current[0], next];
         return action.type === "replace" ? [...current.slice(0, -1), next] : [...current, next];
       });
     };
     openNativeRoute = destination => {
       const path = typeof destination === "string" ? destination : destination.path;
       try { resolve(destination); } catch {
-        setEntries(current => [...current, {
+        setEntries(current => [current[0], {
           key: nextKey.current++, path, params: {}, unavailable: true,
         }]);
         return;
       }
-      dispatch?.({ type: "push", destination });
+      dispatch?.({ type: "open", destination });
     };
     if (pendingNativeRoute !== undefined) {
       const path = pendingNativeRoute;

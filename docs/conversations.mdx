@@ -73,7 +73,7 @@ export default function Chat() {
 <div>
 
 <p>Long-press a message or image, then choose Reply. Ink returns to the conversation and shows a reply banner.</p>
-<p><code>onSend</code> receives <code>{ text, replyTo }</code>. Add the outgoing message, save its reply preview and clear the draft; Ink dismisses the keyboard and scrolls to the bottom.</p>
+<p><code>onSend</code> receives <code>{ text, replyTo }</code>. Add the outgoing message, save its reply preview and clear the draft. Ink keeps the keyboard open and scrolls to the bottom.</p>
 
 </div>
 <div className="pattern-preview">
@@ -118,7 +118,22 @@ export default function Chat() {
 <div className="pattern-example">
 <div>
 
-<p><code>status</code> accepts <code>sending</code>, <code>sent</code>, <code>delivered</code>, <code>read</code> or <code>failed</code>. Supply <code>onRetry</code> to offer “Tap to try again”.</p>
+<p>Set <code>status</code> on outgoing messages.</p>
+
+| Status | Display |
+| --- | --- |
+| `sending` | Single tick in inactive grey |
+| `sent` | Single tick |
+| `delivered` | Double tick |
+| `read` | Eye |
+| `failed` | “Tap to retry” when `onRetry` is supplied; otherwise “Could not send” |
+
+```tsx
+<Message text="See you soon" timestamp={Date.now()}
+  outgoing status="delivered" />
+```
+
+<p>Failure text replaces the timestamp. Failed messages have no icon.</p>
 
 </div>
 <div className="pattern-preview">
@@ -139,6 +154,61 @@ Every message needs a stable `id` and a `timestamp` in milliseconds since the Un
 
 Use `actions(message)` for extra message actions, `onAttach` for the plus button, and `onDoubleTap` for double taps. Ink returns to the chat before running a custom action.
 
+Set `rightAction={{ icon, onPress }}` to add a header action, as with [Screen](/screens).
+
 `onLoadOlder` returns a promise and prepends older messages; `hasOlder` says whether more remain. Ink preserves the scroll position. `loading` shows initial loading content; `sending` disables the send action.
 
 `Message` is also available separately for custom screens.
+
+## Links
+
+<div className="pattern-example">
+<div>
+
+<p>Messages detect and underline links automatically. Tapping opens the in-app browser, or the default browser if unavailable. Set <code>onLinkPress</code> to override this behaviour.</p>
+
+```tsx
+import { Message } from "ink";
+
+<Message
+  text="Have a look at https://ink.noscroll.ing"
+  timestamp={Date.now()}
+/>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/message-link.png" alt="A detected link kept together on its own line below the message text." width="1080" height="1240" />
+</div>
+</div>
+
+## Link previews
+
+<div className="pattern-example">
+<div>
+
+<p>Tapping a card opens its URL. Use <code>onPress</code> for a custom action. Supply the title and image yourself; Ink does not fetch page metadata.</p>
+
+```tsx
+import { LinkPreview } from "ink";
+
+<LinkPreview
+  url="https://www.youtube.com/watch?v=-zjJpFYtx9s"
+  title="Arson as a Christmas Tradition: The Gävle Goat"
+  image={{
+    src: "https://i.ytimg.com/vi/-zjJpFYtx9s/hqdefault.jpg",
+    width: 480,
+    height: 360,
+  }}
+/>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/link-preview.png" alt="A YouTube preview card with the Gävle Goat thumbnail, video title and domain." width="1080" height="1240" />
+</div>
+</div>
+
+Use `icon={favicon}` to add a site icon.
+
+In a conversation, pass the same data as the message's `linkPreview`. The card replaces its URL in the displayed text. Tapping uses `onLinkPress` if supplied; long-pressing opens message actions.

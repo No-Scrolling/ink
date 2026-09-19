@@ -184,9 +184,10 @@ fn compile_profile(project: &Project, development: bool) -> Result<Capabilities>
         &bundle.source,
     )?;
     write_if_changed(
-        &project.android_assets_path().join("ink-icons-v1.json"),
+        &project.android_assets_path().join("ink-icons-v1.bin"),
         &bundle.icons,
     )?;
+    remove_obsolete_output(&project.android_assets_path().join("ink-icons-v1.json"))?;
     write_if_changed(&project.capability_manifest_path(), &capabilities.encode()?)?;
     generate_icon(project)?;
     Ok(capabilities)

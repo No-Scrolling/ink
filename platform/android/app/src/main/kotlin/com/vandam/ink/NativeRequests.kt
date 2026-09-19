@@ -10,17 +10,7 @@ internal class NativeRequests(
     private val pending = mutableMapOf<Long, Request>()
     private var closed = false
 
-    @Synchronized
     fun execute(id: Long, timeoutMs: Long, cancel: () -> Unit, start: (NativeResultHandler) -> Unit) {
-        if (closed) return
-        if (id <= 0 || pending.containsKey(id)) {
-            reply(id, NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid native request ID", false))
-            return
-        }
-        if (pending.size >= 256) {
-            reply(id, NativeResult.Failure(NativeErrorKind.BUSY, "Too many pending native requests", true))
-            return
-        }
         lateinit var request: Request
         val timeout = Runnable {
             if (remove(id, request)) {
@@ -29,11 +19,25 @@ internal class NativeRequests(
             }
         }
         request = Request(cancel, timeout)
-        pending[id] = request
-        handler.postDelayed(timeout, timeoutMs.coerceIn(1, 2_147_483_647))
+        val failure = synchronized(this) {
+            if (closed) return
+            when {
+                id <= 0 || pending.containsKey(id) ->
+                    NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid native request ID", false)
+                pending.size >= 256 ->
+                    NativeResult.Failure(NativeErrorKind.BUSY, "Too many pending native requests", true)
+                else -> {
+                    pending[id] = request
+                    handler.postDelayed(timeout, timeoutMs.coerceIn(1, 2_147_483_647))
+                    null
+                }
+            }
+        }
+        if (failure != null) { reply(id, failure); return }
         val complete: NativeResultHandler = { result ->
             if (remove(id, request)) reply(id, result) else disposeNativeResult(result)
         }
+        // Adapters can complete on a worker while holding their own lock.
         try { start(complete) } catch (error: Exception) {
             complete(NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Native request failed", false))
         }
@@ -47,19 +51,18 @@ internal class NativeRequests(
         return true
     }
 
-    @Synchronized
     fun cancel(id: Long) {
-        val request = pending.remove(id) ?: return
+        val request = synchronized(this) { pending.remove(id) } ?: return
         handler.removeCallbacks(request.timeout)
         request.cancel()
     }
 
-    @Synchronized
     override fun close() {
-        if (closed) return
-        closed = true
-        val requests = pending.values.toList()
-        pending.clear()
+        val requests = synchronized(this) {
+            if (closed) return
+            closed = true
+            pending.values.toList().also { pending.clear() }
+        }
         requests.forEach { handler.removeCallbacks(it.timeout); it.cancel() }
     }
 }

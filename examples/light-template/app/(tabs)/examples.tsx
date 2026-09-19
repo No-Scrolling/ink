@@ -6,8 +6,11 @@ export default function Examples() {
     <Screen title="Examples" rightAction={{ icon: moreHoriz, onPress: () => navigate("/actions") }}>
       <Button href="/examples/inputs">Inputs</Button>
       <Button href="/display/typography">Typography</Button>
+      <Button href="/display/icons">Icons</Button>
+      <Button href="/display/links">Links</Button>
       <Button href="/display/emoji">Emoji</Button>
       <Button href="/display/local-images">Local images</Button>
+      <Button href="/display/local-video">Local video</Button>
       <Button href="/settings/dynamic-ui">Dynamic UI</Button>
       <Button href="/settings/virtualised-list">Virtualised List</Button>
       <Button href="/settings/follow-items">Follow new items</Button>

@@ -28,3 +28,20 @@ my-app/
 Use optional `components/`, `lib/` and `assets/` folders for reusable components, data helpers and images. Keep non-page files outside `app/`.
 
 Ink generates the app entry point. Add `app/_layout.tsx` when pages need shared state or tabs; see [layouts](/navigation#layouts).
+
+## Environment variables
+
+Prefix environment variables with `INK_PUBLIC_` to include them in the app:
+
+```dotenv
+# .env
+INK_PUBLIC_BRIDGE_URL=https://bridge.example.com
+```
+
+```ts
+const bridgeURL = import.meta.env.INK_PUBLIC_BRIDGE_URL;
+```
+
+Ink reads `.env`, then `.env.local`. Shell variables take precedence. Values are strings; a missing variable is `undefined`. Rebuild the app to change them, or edit the file while `ink dev` is running.
+
+Values are readable from the APK. Use [Secure storage](/secure-store) for passwords and encryption keys. Add `.env.local` to `.gitignore`.

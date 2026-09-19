@@ -18,6 +18,14 @@ export interface PushState {
   messages: readonly PushMessage[];
   error: Error | null;
 }
+export interface PushRegistration {
+  url: string;
+  bearerToken?: string;
+  encryptionKey?: string;
+}
+export interface PushOptions {
+  foregroundGroup?: string | null;
+}
 const initial: PushState = { status: "idle", endpoint: "", registeredAt: 0, openedKey: "", messages: [], error: null };
 function fields(value: unknown) {
   if (typeof value !== "object" || value === null) throw new NativeError("protocol", "Invalid push state");
@@ -34,6 +42,10 @@ function fields(value: unknown) {
     },
   };
 }
+function decodeMessage(value: unknown): PushMessage {
+  const item = fields(value);
+  return { id: item.text("id"), groupKey: item.text("groupKey"), title: item.text("title"), body: item.text("body"), route: item.text("route"), receivedAt: item.time("receivedAtMs") };
+}
 function decode(value: unknown): PushState {
   const field = fields(value);
   const status = field.text("status");
@@ -46,13 +58,10 @@ function decode(value: unknown): PushState {
     error = new NativeError(detail.text("kind"), detail.text("message"), "retryable" in value.error && value.error.retryable === true);
   }
   return { status, endpoint: field.text("endpoint"), registeredAt: field.time("registeredAtMs"), openedKey: field.text("openedKey"), error,
-    messages: value.messages.map((message: unknown) => {
-      const item = fields(message);
-      return { id: item.text("id"), groupKey: item.text("groupKey"), title: item.text("title"), body: item.text("body"), route: item.text("route"), receivedAt: item.time("receivedAtMs") };
-    }) };
+    messages: value.messages.map(decodeMessage) };
 }
 
-export function usePush() {
+export function usePush({ foregroundGroup = null }: PushOptions = {}) {
   const [state, setState] = useState(initial);
   const [ready, setReady] = useState(false);
   const controller = useRef<ReturnType<typeof attachNativeController> | null>(null);
@@ -72,15 +81,25 @@ export function usePush() {
       void attachment.dispose().catch(error => console.error("Could not release push inbox", error));
     };
   }, []);
+  useEffect(() => {
+    const attachment = controller.current;
+    if (!attachment) return;
+    let active = true;
+    void attachment.call("foreground", { groupKey: foregroundGroup }).catch(error => {
+      if (active) setState(current => ({ ...current, status: "error", error: error instanceof Error ? error : new Error(String(error)) }));
+    });
+    return () => { active = false; };
+  }, [foregroundGroup]);
   const commands = useMemo(() => {
     const call = async (operation: string, payload: unknown = {}) => {
       if (!controller.current) throw new NativeError("unavailable", "Push inbox is not attached");
       await controller.current.call(operation, payload);
     };
     return {
-      register: (subscriptionBaseUrl: string, bearerToken = "") => call("register", { subscriptionBaseUrl, bearerToken }),
+      register: (options: PushRegistration) => call("register", options),
       retry: () => call("retry"), unregister: () => call("unregister"),
       dismiss: (groupKey: string) => call("dismiss", { groupKey }), clear: () => call("clear"),
+      notifyForeground: (groupKey: string) => call("foreground-message", { groupKey }),
     };
   }, []);
   return { state, ready, ...commands };
@@ -91,10 +110,7 @@ export function decodePushDelivery(value: unknown): PushDelivery {
   if (typeof value !== "object" || value === null || !("messages" in value) || !Array.isArray(value.messages)
     || !("cancelled" in value) || !Array.isArray(value.cancelled)) throw new TypeError("Invalid push delivery");
   return {
-    messages: value.messages.map((message: unknown) => {
-      const item = fields(message);
-      return { id: item.text("id"), groupKey: item.text("groupKey"), title: item.text("title"), body: item.text("body"), route: item.text("route"), receivedAt: item.time("receivedAtMs") };
-    }),
+    messages: value.messages.map(decodeMessage),
     cancelled: value.cancelled.map((key: unknown) => {
       if (typeof key !== "string") throw new TypeError("Invalid cancelled push group");
       return key;

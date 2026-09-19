@@ -1,6 +1,9 @@
 export {};
 
 declare global {
+  interface ImportMeta {
+    readonly env: { readonly [key: `INK_PUBLIC_${string}`]: string | undefined };
+  }
   function setTimeout<T extends unknown[]>(callback: (...args: T) => void, delay?: number, ...args: T): number;
   function setInterval<T extends unknown[]>(callback: (...args: T) => void, delay?: number, ...args: T): number;
   function clearTimeout(id?: number): void;

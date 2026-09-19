@@ -1,6 +1,7 @@
 package com.vandam.ink
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.net.http.HttpEngine
@@ -64,12 +65,16 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
             return
         }
         val url = recipe.optString(URL_KEY)
-        if (!url.startsWith(HTTPS_PREFIX)) {
+        if (!allowedImageUrl(url)) {
             complete(protocol("Network requests require HTTPS"))
             return
         }
         startRequest(requestId, url, complete)
     }
+
+    private fun allowedImageUrl(url: String): Boolean =
+        url.startsWith(HTTPS_PREFIX) || BuildConfig.DEBUG && url.startsWith("http://") &&
+            Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2")
 
     override fun cancel(requestId: Long) {
         if (streamTransport.isInitialized()) streams.cancel(requestId)
@@ -120,7 +125,7 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
             if (redirects > REDIRECT_LIMIT) {
                 finishFailure(protocol("Network request followed too many redirects"))
                 request.cancel()
-            } else if (newLocationUrl.startsWith(HTTPS_PREFIX)) {
+            } else if (allowedImageUrl(newLocationUrl)) {
                 request.followRedirect()
             } else {
                 finishFailure(protocol("Network redirect did not use HTTPS"))

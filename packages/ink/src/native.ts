@@ -18,6 +18,9 @@ export class NativeError extends Error {
 
 export function onNativeMessage(type: string, listener: Listener) {
   listeners.set(type, listener);
+  return () => {
+    if (listeners.get(type) === listener) listeners.delete(type);
+  };
 }
 
 Object.defineProperty(globalThis, "__inkReceive", {

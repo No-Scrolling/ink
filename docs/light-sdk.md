@@ -87,12 +87,56 @@ import { useAction } from "ink";
 import { usePush } from "@ink/lightos/push";
 
 const push = usePush();
-const register = useAction(() => push.register("https://api.example.com/push"));
+const register = useAction(() => push.register({
+  url: "https://api.example.com/push",
+}));
 ```
 
-Use your subscription server’s URL. Call `register.run()` from a button once `push.ready` is true. Pass a bearer token as the second argument if your server requires authentication.
+Call `register.run()` once `push.ready` is true. Set `bearerToken` if your server requires authentication.
 
-Registration sends `PUT {subscriptionBaseUrl}/{installationId}` with `{ "endpoint": "…" }`. Your server must return a successful HTTP status.
+Registration sends `PUT {url}/{installationId}` with `{ "endpoint": "…" }`. Your server must return a successful HTTP status and `{ "success": true }`.
+
+### Encrypted notifications
+
+Set the same encryption key on your server and in registration:
+
+```ts
+await push.register({
+  url: "https://api.example.com/push",
+  bearerToken,
+  encryptionKey,
+});
+```
+
+Ink saves the key in secure storage and decrypts notifications on Android, even when the app is closed. The key is not sent to the subscription server. Unregistering removes it.
+
+Encrypt the [notification payload](#send-a-notification) using the [Ink cipher format](/crypto#server-format). Send this wrapper with `Content-Type: application/json`:
+
+```json
+{ "encrypted": "ink1.…" }
+```
+
+When encryption is enabled, plaintext notifications are rejected.
+
+### Foreground notifications
+
+Use the notification's `groupKey` to identify the content on screen. For a conversation, this can be its ID:
+
+```ts
+import { usePush } from "@ink/lightos/push";
+
+const push = usePush({ foregroundGroup: conversationId });
+```
+
+Ink clears existing notifications for this group and suppresses new ones while the app has focus. Pass `null` when no specific group is on screen, such as when returning to the inbox.
+
+When a new message arrives through your live connection, trigger a haptic for the visible group:
+
+```ts
+await push.notifyForeground(conversationId);
+```
+
+This does nothing if another group is visible or the app is in the background.
 
 ### Unregister
 
@@ -106,7 +150,7 @@ This sends `DELETE` to the same URL.
 
 ### Send a notification
 
-Your server sends this payload:
+Your server sends a JSON payload:
 
 ```json
 {
@@ -124,11 +168,13 @@ Your server sends this payload:
 
 New messages replace notifications in the same group. Ink applies the whole batch before showing notifications. Tapping one removes its inbox entry and opens its optional route.
 
+The optional top-level `expiresAtMs` sets an expiry as a Unix timestamp in milliseconds. Ink ignores expired payloads and duplicate event IDs. Without it, notifications do not expire.
+
 Use `operation: "clear"` with an `id` and `groupKey` to remove a notification. In the app, use `dismiss` and `clear` to manage the inbox.
 
 ### Delivery limits
 
-Each payload allows up to 4 KiB and 16 events. Ink keeps 64 inbox entries and 512 recent event IDs to recognise duplicates.
+Notification JSON is limited to 4 KiB and 16 events, before encryption. Ink keeps 64 inbox entries and 512 recent event IDs to recognise duplicates.
 
 Ink saves and displays notifications natively. A [background task](#background-push-tasks) can process deliveries without opening the app. Push can be delayed, duplicated or unavailable, so also sync data independently.
 
