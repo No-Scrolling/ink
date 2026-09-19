@@ -591,7 +591,6 @@ pub struct RenderMemoryMetrics {
     pub font_texture_bytes: usize,
     pub image_texture_bytes: usize,
     pub system_glyph_texture_bytes: usize,
-    pub image_pipeline_created: bool,
 }
 
 pub struct Renderer {
@@ -608,7 +607,6 @@ pub struct Renderer {
     overlay_instances: Vec<QuadInstance>,
     text_pipeline: gpu::RenderPipeline,
     text_buffer: InstanceBuffer<TextInstance>,
-    image_pipeline: Option<gpu::RenderPipeline>,
     image_buffer: InstanceBuffer<TextInstance>,
     image_cache: ImageCache,
     system_glyph_buffer: InstanceBuffer<TextInstance>,
@@ -629,8 +627,8 @@ impl Renderer {
             height,
             format: surface.format(),
         };
-        let quad_pipeline = device.pipeline(config.format, false, false)?;
-        let text_pipeline = device.pipeline(config.format, true, false)?;
+        let quad_pipeline = device.pipeline(config.format, false)?;
+        let text_pipeline = device.pipeline(config.format, true)?;
         let fixed_transform_buffer = transform_buffer(&device, "Ink fixed transform");
         let scroll_transform_buffer = transform_buffer(&device, "Ink scroll transform");
         let fixed_transform = fixed_transform_buffer.bind_group();
@@ -665,7 +663,6 @@ impl Renderer {
             overlay_instances: Vec::with_capacity(2),
             text_pipeline,
             text_buffer,
-            image_pipeline: None,
             image_buffer,
             image_cache,
             system_glyph_buffer,
@@ -715,12 +712,8 @@ impl Renderer {
         if self.config.width != scene.width || self.config.height != scene.height {
             self.resize(scene.width, scene.height);
         }
-        if !scene.images.is_empty() {
-            self.prepare_image_pipeline();
-        }
         if !self.prepared.ready || self.prepared.revision != scene.revision {
             if let Some(request) = self.system_glyph_atlas.request(scene) {
-                self.prepare_image_pipeline();
                 return Ok(RenderOutcome::NeedsSystemGlyph(request));
             }
             #[cfg(feature = "perf")]
@@ -767,7 +760,6 @@ impl Renderer {
         let _overlay_uploaded_bytes =
             self.overlay_buffer
                 .write(&self.device, &self.queue, &self.overlay_instances);
-        self.queue.flush_uploads();
         #[cfg(feature = "perf")]
         {
             drop(upload_trace);
@@ -794,6 +786,16 @@ impl Renderer {
             self.perf.acquire_ns += elapsed_ns(acquire_started);
         }
         #[cfg(feature = "perf")]
+        let upload_started = Instant::now();
+        #[cfg(feature = "perf")]
+        let upload_trace = PerfTraceSection::new(b"Ink upload\0");
+        pass.upload(&self.queue);
+        #[cfg(feature = "perf")]
+        {
+            drop(upload_trace);
+            self.perf.upload_ns += elapsed_ns(upload_started);
+        }
+        #[cfg(feature = "perf")]
         let encode_started = Instant::now();
         #[cfg(feature = "perf")]
         let encode_trace = PerfTraceSection::new(b"Ink encode\0");
@@ -813,11 +815,7 @@ impl Renderer {
                 reset_scissor(&mut pass, scene);
             }
             if !self.prepared.image_draws.is_empty() {
-                pass.set_pipeline(
-                    self.image_pipeline
-                        .as_ref()
-                        .expect("image pipeline prepared before drawing"),
-                );
+                pass.set_pipeline(&self.text_pipeline);
                 pass.set_vertex_buffer(0, self.image_buffer.buffer());
                 for draw in &self.prepared.image_draws {
                     let image = self
@@ -844,11 +842,7 @@ impl Renderer {
                 reset_scissor(&mut pass, scene);
             }
             if !self.prepared.system_glyph_draws.is_empty() {
-                pass.set_pipeline(
-                    self.image_pipeline
-                        .as_ref()
-                        .expect("image pipeline prepared before drawing"),
-                );
+                pass.set_pipeline(&self.text_pipeline);
                 pass.set_vertex_buffer(0, self.system_glyph_buffer.buffer());
                 for draw in &self.prepared.system_glyph_draws {
                     pass.set_bind_group(
@@ -983,7 +977,6 @@ impl Renderer {
                 .map(|image| image.bytes)
                 .sum(),
             system_glyph_texture_bytes: self.system_glyph_atlas.texture_capacity_bytes(),
-            image_pipeline_created: self.image_pipeline.is_some(),
         }
     }
 
@@ -991,12 +984,6 @@ impl Renderer {
         self.surface.wait_for_frame()?;
         self.system_glyph_atlas
             .install(&self.device, &self.queue, request_id, pixels)
-    }
-
-    fn prepare_image_pipeline(&mut self) {
-        if self.image_pipeline.is_none() {
-            self.image_pipeline = Some(image_pipeline(&self.device, self.config.format));
-        }
     }
 
     fn prepare_with_atlas_recovery(&mut self, scene: &Scene) -> Result<()> {
@@ -1414,11 +1401,6 @@ fn prepared_images_match(prepared: &[PreparedImageRun], current: &[ImageRun]) ->
             .all(|(prepared, current)| *prepared == PreparedImageRun::from(current))
 }
 
-fn image_pipeline(device: &gpu::Device, format: gpu::TextureFormat) -> gpu::RenderPipeline {
-    device
-        .pipeline(format, true, true)
-        .expect("create image pipeline")
-}
 fn raw_instance_buffer<T>(
     device: &gpu::Device,
     _label: &'static str,

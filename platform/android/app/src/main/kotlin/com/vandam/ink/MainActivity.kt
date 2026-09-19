@@ -1041,7 +1041,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             nativeInstallSystemGlyph(
                 engineHandle,
                 requestId,
-                systemGlyphRasterizer.rasterise(grapheme, size) ?: ByteArray(0),
+                systemGlyphRasterizer.rasterise(grapheme, size) ?: IntArray(0),
             )
         }
     }
@@ -1571,7 +1571,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeInstallSystemGlyph(
             handle: Long,
             requestId: Long,
-            pixels: ByteArray,
+            pixels: IntArray,
         )
 
         @JvmStatic

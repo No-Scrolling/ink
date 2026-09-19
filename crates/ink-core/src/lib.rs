@@ -1210,6 +1210,16 @@ enum RemoteImageState {
     Failed,
 }
 
+struct PendingImage {
+    key: RemoteImageKey,
+    index: usize,
+    rect: Rect,
+    clip: Rect,
+    fit: ImageFit,
+    scrolling: bool,
+    needs_layout: bool,
+}
+
 enum QueuedRequest {
     Start(PendingRequest),
     Cancel(NativeRequest),
@@ -1253,6 +1263,7 @@ pub struct Engine {
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
+    pending_images: Vec<PendingImage>,
     visible_images: BTreeSet<RemoteImageKey>,
     image_zooms: HashMap<NodeIdentity, ImageZoomState>,
     visible_zoom_images: BTreeSet<NodeIdentity>,
@@ -1263,7 +1274,7 @@ pub struct Engine {
     back_icon: Option<Mask>,
     navigation_handler: Option<(Mask, NativeOperation)>,
     font: FontRef<'static>,
-    wrapped_text: HashMap<TextWrapKey, (Vec<WrappedLine>, bool)>,
+    wrapped_text: HashMap<TextWrapKey, (Arc<[WrappedLine]>, bool)>,
     #[cfg(feature = "perf")]
     perf: CorePerfMetrics,
     #[cfg(feature = "perf")]
@@ -1307,6 +1318,7 @@ impl Engine {
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
             remote_images: HashMap::new(),
+            pending_images: Vec::new(),
             visible_images: BTreeSet::new(),
             image_zooms: HashMap::new(),
             visible_zoom_images: BTreeSet::new(),
@@ -1393,14 +1405,38 @@ impl Engine {
         let id = image_id(&key);
         let generation = self.next_image_generation;
         self.next_image_generation = self.next_image_generation.wrapping_add(1).max(1);
+        let image = RemoteImage { id, generation, width, height, pixels: pixels.into() };
         self.remote_images.insert(
-            key,
+            key.clone(),
             RemoteImageState::Ready {
-                image: RemoteImage { id, generation, width, height, pixels: pixels.into() },
+                image: image.clone(),
                 last_used: self.scene.revision,
             },
         );
-        self.rebuild_scene();
+        if key.module == "barcode" || self.pending_images.iter().any(|slot| slot.key == key && slot.needs_layout) {
+            self.rebuild_scene();
+        } else {
+            let mut index = 0;
+            while index < self.pending_images.len() {
+                if self.pending_images[index].key != key {
+                    index += 1;
+                    continue;
+                }
+                let slot = self.pending_images.remove(index);
+                self.scene.images.insert(slot.index, ImageRun {
+                    image: ImageData::Remote(image.clone()),
+                    zoom_id: None,
+                    rect: slot.rect,
+                    clip: slot.clip,
+                    fit: slot.fit,
+                    scrolling: slot.scrolling,
+                    transform: ImageTransform::default(),
+                });
+                // Later slots keep their paint order even when downloads finish out of order.
+                for later in &mut self.pending_images[index..] { later.index += 1; }
+            }
+            self.scene.image_revision = self.scene.image_revision.wrapping_add(1);
+        }
         true
     }
 
@@ -2500,6 +2536,7 @@ impl Engine {
         self.scene.text.clear();
         self.scene.masks.clear();
         self.scene.images.clear();
+        self.pending_images.clear();
         self.scene.camera_portal = None;
         self.scene.map_portal = None;
         self.scene.video_portal = None;
@@ -3146,7 +3183,7 @@ impl Engine {
                         offset = end;
                     }
                 }
-                self.layout_text_lines(lines, size, *align, *tabular_numbers, rect);
+                self.layout_text_lines(&lines, size, *align, *tabular_numbers, rect);
             }
             NodeKind::TextInput {
                 placeholder,
@@ -3762,13 +3799,13 @@ impl Engine {
         let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
         let font_size = self.scaled_font(size);
         let lines = self.wrap_text(text, font_size, rect.width, max_lines, tabular_numbers);
-        self.layout_text_lines(lines, size, align, tabular_numbers, rect);
+        self.layout_text_lines(&lines, size, align, tabular_numbers, rect);
     }
 
-    fn layout_text_lines(&mut self, lines: Vec<WrappedLine>, size: f32, align: TextAlign, tabular_numbers: bool, rect: Rect) {
+    fn layout_text_lines(&mut self, lines: &[WrappedLine], size: f32, align: TextAlign, tabular_numbers: bool, rect: Rect) {
         let font_size = self.scaled_font(size);
         let line_height = self.text_line_height(size);
-        for (index, line) in lines.into_iter().enumerate() {
+        for (index, line) in lines.iter().enumerate() {
             let mut line_rect = Rect {
                 y: rect.y + line_height * index as f32,
                 height: line_height
@@ -3781,7 +3818,7 @@ impl Engine {
             }
             self.scene.text.push(TextRun {
                 tabular_numbers,
-                text: line.text,
+                text: line.text.clone(),
                 rect: line_rect,
                 clip: self.clip,
                 font_size,
@@ -4274,6 +4311,17 @@ impl Engine {
                         _ => None,
                     };
                     if loaded.is_none() {
+                        if visible.width > 0.0 && visible.height > 0.0 {
+                            self.pending_images.push(PendingImage {
+                                key: key.clone(),
+                                index: self.scene.images.len(),
+                                rect,
+                                clip: self.clip,
+                                fit,
+                                scrolling: self.scrolling,
+                                needs_layout: zoomable || fallback.is_some(),
+                            });
+                        }
                         self.queue_remote_image(key);
                     }
                     loaded.or_else(|| fallback.cloned().map(ImageData::Asset))
@@ -4344,7 +4392,7 @@ impl Engine {
         available_width: f32,
         max_lines: Option<u32>,
         tabular_numbers: bool,
-    ) -> Vec<WrappedLine> {
+    ) -> Arc<[WrappedLine]> {
         self.wrap_linked_text(text, font_size, available_width, max_lines, tabular_numbers, &[])
     }
 
@@ -4356,7 +4404,7 @@ impl Engine {
         max_lines: Option<u32>,
         tabular_numbers: bool,
         links: &[(std::ops::Range<usize>, Action)],
-    ) -> Vec<WrappedLine> {
+    ) -> Arc<[WrappedLine]> {
         let key = TextWrapKey {
             text: text.to_owned(),
             font_size: font_size.to_bits(),
@@ -4404,10 +4452,12 @@ impl Engine {
             let mut start = 0;
             while start < paragraph.len() {
                 let mut best = None;
+                let mut measured_end = start;
+                let mut measure = fonts::TextWidth::new(font_size, tabular_numbers);
                 for end in breakpoints.iter().copied().filter(|end| *end > start) {
                     let display_end = trim_whitespace_end(paragraph, start, end);
-                    let candidate = &paragraph[start..display_end];
-                    let width = text_width_with_numbers(candidate, font_size, tabular_numbers);
+                    let width = measure.push(&paragraph[measured_end..display_end]);
+                    measured_end = display_end;
                     if width <= available_width {
                         best = Some((end, display_end, width));
                     } else {
@@ -4437,6 +4487,7 @@ impl Engine {
                 line.wrapped = false;
             }
         }
+        let lines: Arc<[WrappedLine]> = lines.into();
         self.wrapped_text.insert(key, (lines.clone(), true));
         lines
     }
@@ -4450,9 +4501,11 @@ impl Engine {
         tabular_numbers: bool,
     ) -> usize {
         let mut best = start;
+        let mut measure = fonts::TextWidth::new(font_size, tabular_numbers);
         for (offset, grapheme) in text[start..].grapheme_indices(true) {
             let end = start + offset + grapheme.len();
-            if best > start && text_width_with_numbers(&text[start..end], font_size, tabular_numbers) > available_width {
+            let width = measure.push(grapheme);
+            if best > start && width > available_width {
                 break;
             }
             best = end;
@@ -4636,7 +4689,6 @@ struct TextWrapKey {
     links: Vec<std::ops::Range<usize>>,
 }
 
-#[derive(Clone)]
 struct WrappedLine {
     text: String,
     width: f32,

@@ -21,7 +21,7 @@ use jni::EnvUnowned;
 use jni::objects::JByteArray;
 #[cfg(feature = "audio")]
 use jni::objects::JShortArray;
-use jni::objects::{JByteBuffer, JClass, JObject, JString};
+use jni::objects::{JByteBuffer, JClass, JIntArray, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use ndk::native_window::NativeWindow;
 
@@ -382,7 +382,6 @@ impl AndroidEngine {
                             "font_texture_bytes": memory.font_texture_bytes,
                             "image_texture_bytes": memory.image_texture_bytes,
                             "system_glyph_texture_bytes": memory.system_glyph_texture_bytes,
-                            "image_pipeline_created": memory.image_pipeline_created,
                         },
                     })
                 ),
@@ -765,10 +764,18 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeInstallSystemGlyph
     _class: JClass<'_>,
     handle: jlong,
     request_id: jlong,
-    pixels: JByteArray<'_>,
+    pixels: JIntArray<'_>,
 ) {
     let pixels = env
-        .with_env(|env| env.convert_byte_array(&pixels))
+        .with_env(|env| -> jni::errors::Result<Vec<u8>> {
+            let mut argb = vec![0; env.get_array_length(&pixels)? as usize];
+            env.get_int_array_region(&pixels, 0, &mut argb)?;
+            // Bitmap.getPixels returns straight-alpha ARGB; Vulkan samples RGBA.
+            Ok(argb
+                .into_iter()
+                .flat_map(|pixel| (pixel as u32).rotate_left(8).to_be_bytes())
+                .collect())
+        })
         .resolve::<jni::errors::LogErrorAndDefault>();
     if let Some(engine) = engine(handle)
         && let Ok(mut engine) = engine.lock()

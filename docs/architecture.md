@@ -54,9 +54,11 @@ Scrolling continues natively while JavaScript is busy. New content and actions t
 
 Changes to existing elements update the affected parts of the native tree. Structural and navigation changes rebuild the tree. Both recalculate layout.
 
+Images with fixed bounds can finish loading without recalculating layout.
+
 Lists render rows around the visible area and measure their heights automatically. Stable keys keep the scroll position when rows change. See [Lists](/lists).
 
-The renderer reuses prepared text and image geometry. It combines adjacent draws of the same image without changing their order. When idle, it can display an update immediately; gestures and ongoing frames use Android’s frame scheduler.
+The renderer reuses prepared text and image geometry. Text, icons and images share one textured pipeline. It combines adjacent draws of the same image without changing their order. When idle, it can display an update immediately; gestures and ongoing frames use Android’s frame scheduler.
 
 An unchanged screen requests no rendering frames. Timers, network connections and media can still use CPU and power.
 

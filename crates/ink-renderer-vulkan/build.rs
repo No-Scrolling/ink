@@ -21,7 +21,6 @@ fn main() {
         ("quad_fragment", naga::ShaderStage::Fragment),
         ("text_vertex", naga::ShaderStage::Vertex),
         ("text_fragment", naga::ShaderStage::Fragment),
-        ("image_fragment", naga::ShaderStage::Fragment),
     ] {
         let pipeline = naga::back::spv::PipelineOptions {
             shader_stage,

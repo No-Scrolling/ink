@@ -101,7 +101,7 @@ scripts/agent-tools memory --serial LP3LHMA531900140 \
 
 Inspect an already running foreground app. The tool saves Android's meminfo and process-specific Ink logs. Android's app-summary PSS categories are reported separately from the latest `InkMemory` record emitted by an `INK_MEMORY_DIAGNOSTICS=1` build.
 
-Opt-in native counters report host-node and text-node counts, raw text payload bytes, inline host-node bytes and child-ID capacity. Renderer counters report requested GPU instance-buffer capacities, retained CPU instance snapshots, font/image/system-glyph texture payload sizes and whether the image pipeline exists. Normal releases compile out this accounting.
+Opt-in native counters report host-node and text-node counts, raw text payload bytes, inline host-node bytes and child-ID capacity. Renderer counters report requested GPU instance-buffer capacities, retained CPU instance snapshots and font/image/system-glyph texture payload sizes. Normal releases compile out this accounting.
 
 These counters are partial logical sizes, **not a full allocation profiler**: they omit allocator overhead, JSON-map allocations, other retained scene/cache structures, JavaScript heaps, driver allocations and pipeline memory. They overlap Android's PSS and must not be added to it. The log describes the latest rendered frame, not necessarily the instant meminfo was sampled. Missing counters are reported as unavailable, never as zero.
 

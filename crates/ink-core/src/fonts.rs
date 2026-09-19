@@ -56,31 +56,51 @@ pub fn tabular_digit_width(size: f32) -> f32 {
 }
 
 pub fn text_width_with_numbers(text: &str, size: f32, tabular_numbers: bool) -> f32 {
-    let mut previous = None;
-    let mut width = 0.0;
-    for grapheme in text.graphemes(true) {
-        if is_emoji_grapheme(grapheme) {
-            previous = None;
-            width += size;
-            continue;
-        }
-        for character in grapheme.chars() {
-            if tabular_numbers && character.is_ascii_digit() {
-                width += tabular_digit_width(size);
-                previous = None;
-                continue;
-            }
-            let (index, font) = font_for_character(character);
-            let scaled = font.as_scaled(PxScale::from(size));
-            let glyph = scaled.glyph_id(character);
-            if let Some((previous_index, previous_glyph)) = previous {
-                if previous_index == index {
-                    width += scaled.kern(previous_glyph, glyph);
-                }
-            }
-            width += scaled.h_advance(glyph);
-            previous = Some((index, glyph));
+    TextWidth::new(size, tabular_numbers).push(text)
+}
+
+pub(crate) struct TextWidth {
+    size: f32,
+    tabular_numbers: bool,
+    previous: Option<(usize, ab_glyph::GlyphId)>,
+    width: f32,
+}
+
+impl TextWidth {
+    pub fn new(size: f32, tabular_numbers: bool) -> Self {
+        Self {
+            size,
+            tabular_numbers,
+            previous: None,
+            width: 0.0,
         }
     }
-    width
+
+    pub fn push(&mut self, text: &str) -> f32 {
+        for grapheme in text.graphemes(true) {
+            if is_emoji_grapheme(grapheme) {
+                self.previous = None;
+                self.width += self.size;
+                continue;
+            }
+            for character in grapheme.chars() {
+                if self.tabular_numbers && character.is_ascii_digit() {
+                    self.width += tabular_digit_width(self.size);
+                    self.previous = None;
+                    continue;
+                }
+                let (index, font) = font_for_character(character);
+                let scaled = font.as_scaled(PxScale::from(self.size));
+                let glyph = scaled.glyph_id(character);
+                if let Some((previous_index, previous_glyph)) = self.previous {
+                    if previous_index == index {
+                        self.width += scaled.kern(previous_glyph, glyph);
+                    }
+                }
+                self.width += scaled.h_advance(glyph);
+                self.previous = Some((index, glyph));
+            }
+        }
+        self.width
+    }
 }

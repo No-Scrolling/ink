@@ -24,6 +24,7 @@ impl<F: FnOnce()> Drop for Cleanup<F> {
 
 pub type TextureFormat = vk::Format;
 pub type Queue = Device;
+const MAX_RETAINED_UPLOAD_BYTES: usize = 256 * 1024;
 
 pub fn surface_lost(error: &anyhow::Error) -> bool {
     error.downcast_ref::<vk::Result>() == Some(&vk::Result::ERROR_SURFACE_LOST_KHR)
@@ -40,6 +41,11 @@ pub struct Device(Arc<Core>, Arc<Mutex<Uploads>>);
 struct Uploads {
     commands: Vec<Upload>,
     bytes: Vec<u8>,
+}
+// Keep uploaded textures and staging memory alive until the frame fence signals.
+struct UploadBatch {
+    _staging: Option<Buffer>,
+    _commands: Vec<Upload>,
 }
 enum Upload {
     Clear(Texture),
@@ -105,7 +111,7 @@ impl Core {
                 .expect("allocate descriptor")[0]
         }
     }
-    fn immediate(&self, record: impl FnOnce(vk::CommandBuffer)) {
+    fn record_uploads(&self, record: impl FnOnce(vk::CommandBuffer)) {
         unsafe {
             self.device
                 .reset_command_buffer(self.upload, vk::CommandBufferResetFlags::empty())
@@ -121,16 +127,6 @@ impl Core {
             self.device
                 .end_command_buffer(self.upload)
                 .expect("end upload");
-            self.device
-                .queue_submit(
-                    self.queue,
-                    &[vk::SubmitInfo::default().command_buffers(&[self.upload])],
-                    vk::Fence::null(),
-                )
-                .expect("submit upload");
-            self.device
-                .queue_wait_idle(self.queue)
-                .expect("finish upload");
         }
     }
 }
@@ -365,6 +361,17 @@ impl Device {
                     &vk::ImageViewCreateInfo::default()
                         .image(image)
                         .view_type(vk::ImageViewType::TYPE_2D)
+                        // Glyph coverage becomes alpha in the shared textured shader.
+                        .components(if mask {
+                            vk::ComponentMapping {
+                                r: vk::ComponentSwizzle::ONE,
+                                g: vk::ComponentSwizzle::ONE,
+                                b: vk::ComponentSwizzle::ONE,
+                                a: vk::ComponentSwizzle::R,
+                            }
+                        } else {
+                            vk::ComponentMapping::default()
+                        })
                         .format(if mask {
                             vk::Format::R8_UNORM
                         } else {
@@ -428,20 +435,30 @@ impl Device {
         });
     }
 
-    pub fn flush_uploads(&self) {
-        let uploads = std::mem::take(&mut *self.1.lock().unwrap());
-        if uploads.commands.is_empty() {
-            return;
+    fn prepare_uploads(&self, reusable: &mut Option<Buffer>) -> Option<UploadBatch> {
+        let mut pending = self.1.lock().unwrap();
+        if pending.commands.is_empty() {
+            return None;
         }
+        let mut uploads = std::mem::take(&mut *pending);
+        drop(pending);
         let staging = if uploads.bytes.is_empty() {
             None
         } else {
-            let buffer = self.buffer(uploads.bytes.len(), false);
+            let size = uploads.bytes.len();
+            let buffer = if size <= MAX_RETAINED_UPLOAD_BYTES {
+                if reusable.as_ref().is_none_or(|buffer| buffer.0.size < size) {
+                    *reusable = Some(self.buffer(size.next_power_of_two(), false));
+                }
+                reusable.as_ref().unwrap().clone()
+            } else {
+                self.buffer(size, false)
+            };
             self.write_buffer(&buffer, 0, &uploads.bytes);
             Some(buffer)
         };
         let d = &self.0.device;
-        self.0.immediate(|cmd| unsafe {
+        self.0.record_uploads(|cmd| unsafe {
             for upload in &uploads.commands {
                 match upload {
                     Upload::Clear(texture) => {
@@ -528,14 +545,16 @@ impl Device {
                 }
             }
         });
-        // The upload submission has finished before staging memory or textures are released.
+        if uploads.bytes.capacity() <= MAX_RETAINED_UPLOAD_BYTES {
+            uploads.bytes.clear();
+            self.1.lock().unwrap().bytes = uploads.bytes;
+        }
+        Some(UploadBatch {
+            _staging: staging,
+            _commands: uploads.commands,
+        })
     }
-    pub fn pipeline(
-        &self,
-        format: TextureFormat,
-        text: bool,
-        image: bool,
-    ) -> Result<RenderPipeline> {
+    pub fn pipeline(&self, format: TextureFormat, text: bool) -> Result<RenderPipeline> {
         unsafe {
             let d = &self.0.device;
             let (vs, fs, vname, fname) = if !text {
@@ -544,13 +563,6 @@ impl Device {
                     include_bytes!(concat!(env!("OUT_DIR"), "/quad_fragment.spv")).as_slice(),
                     c"quad_vertex",
                     c"quad_fragment",
-                )
-            } else if image {
-                (
-                    include_bytes!(concat!(env!("OUT_DIR"), "/text_vertex.spv")).as_slice(),
-                    include_bytes!(concat!(env!("OUT_DIR"), "/image_fragment.spv")).as_slice(),
-                    c"text_vertex",
-                    c"image_fragment",
                 )
             } else {
                 (
@@ -766,6 +778,8 @@ pub struct Surface {
     rendered: Vec<vk::Semaphore>,
     fence: vk::Fence,
     submitted: bool,
+    uploads: Option<UploadBatch>,
+    upload_staging: Option<Buffer>,
     dirty: bool,
     requested: [u32; 2],
     #[cfg(feature = "perf")]
@@ -1008,6 +1022,8 @@ impl Surface {
                 rendered: vec![],
                 fence,
                 submitted: false,
+                uploads: None,
+                upload_staging: None,
                 dirty: true,
                 requested: [width, height],
                 #[cfg(feature = "perf")]
@@ -1161,6 +1177,7 @@ impl Surface {
                     .wait_for_fences(&[self.fence], true, u64::MAX)?;
             }
             self.submitted = false;
+            self.uploads = None;
             #[cfg(feature = "perf")]
             {
                 self.gpu_ns = self.timing.as_ref().map(GpuTiming::read).transpose()?;
@@ -1266,6 +1283,9 @@ pub struct RenderPass<'a> {
     index: u32,
 }
 impl RenderPass<'_> {
+    pub fn upload(&mut self, queue: &Queue) {
+        self.surface.uploads = queue.prepare_uploads(&mut self.surface.upload_staging);
+    }
     pub fn set_pipeline(&mut self, p: &RenderPipeline) {
         unsafe {
             self.surface.core.device.cmd_bind_pipeline(
@@ -1344,12 +1364,18 @@ impl RenderPass<'_> {
             d.reset_fences(&[s.fence])?;
             #[cfg(feature = "perf")]
             let submit_trace = ink_core::PerfTraceSection::new(b"Ink vkQueueSubmit\0");
+            let commands = [s.core.upload, s.command];
+            let commands = if s.uploads.is_some() {
+                &commands[..]
+            } else {
+                &commands[1..]
+            };
             d.queue_submit(
                 s.core.queue,
                 &[vk::SubmitInfo::default()
                     .wait_semaphores(&[s.acquired])
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                    .command_buffers(&[s.command])
+                    .command_buffers(commands)
                     .signal_semaphores(&[s.rendered[self.index as usize]])],
                 s.fence,
             )?;
