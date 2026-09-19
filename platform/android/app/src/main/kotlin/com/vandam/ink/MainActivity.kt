@@ -1410,17 +1410,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         private fun startFling(velocityY: Int) {
-            val startY = nativeScrollOffset(engineHandle).roundToInt()
-            lastFlingY = startY
+            // Prepending rows shifts content coordinates; clamp travel against the live layout.
+            lastFlingY = 0
             scroller.fling(
                 0,
-                startY,
+                0,
                 0,
                 velocityY,
                 0,
                 0,
-                0,
-                nativeScrollMaximum(engineHandle).roundToInt(),
+                Int.MIN_VALUE,
+                Int.MAX_VALUE,
             )
             postFrame()
         }
@@ -1563,12 +1563,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeScrollBy(handle: Long, delta: Float): Boolean
-
-        @JvmStatic
-        private external fun nativeScrollOffset(handle: Long): Float
-
-        @JvmStatic
-        private external fun nativeScrollMaximum(handle: Long): Float
 
         @JvmStatic
         private external fun nativeRender(handle: Long): String

@@ -3,6 +3,8 @@ import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, 
 import { useAction } from "./action";
 import { Button, Stack, Text } from "./index";
 
+const PAGE_AHEAD_ITEMS = 8;
+
 function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return createElement(Stack, { gap: 24 },
     createElement(Text, { size: 18 }, message),
@@ -72,14 +74,14 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
   const boundary = JSON.stringify([keys.length, keys.at(-1)]);
   useEffect(() => {
     if (!onLoadMore || !hasMore || load.status === "pending" || load.status === "error"
-      || window.revision !== revision || window.end < items.length || requested.current === boundary) return;
+      || window.revision !== revision || window.end + PAGE_AHEAD_ITEMS < items.length || requested.current === boundary) return;
     requested.current = boundary;
     load.run();
   }, [onLoadMore, hasMore, load.status, load.run, window, revision, items.length, boundary]);
   const firstBoundary = JSON.stringify([keys.length, keys[0]]);
   useEffect(() => {
     if (!onLoadOlder || !hasOlder || older.status === "pending" || older.status === "error"
-      || window.revision !== revision || window.start > 0 || olderRequested.current === firstBoundary) return;
+      || window.revision !== revision || window.start > PAGE_AHEAD_ITEMS || olderRequested.current === firstBoundary) return;
     olderRequested.current = firstBoundary;
     older.run();
   }, [onLoadOlder, hasOlder, older.status, older.run, window, revision, firstBoundary]);

@@ -95,6 +95,7 @@ const CONTENT_INSET_END: f32 = CONTENT_INSET_START;
 const CONTENT_TOP: f32 = 14.0;
 const CONTENT_BOTTOM: f32 = 20.0;
 const CONTENT_GAP: f32 = 47.0;
+const SCROLL_OVERSCAN: f32 = 2.0;
 const DECODED_IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
 const DECODED_IMAGE_CACHE_ENTRIES: usize = 256;
 const HEADER_HEIGHT: f32 = 50.0;
@@ -3480,8 +3481,8 @@ impl Engine {
         self.scene.scroll_clip = Some(scroll_clip);
         let previous_clip = self.clip;
         self.clip = Rect {
-            y: scroll_clip.y - scroll_clip.height,
-            height: scroll_clip.height * 3.0,
+            y: scroll_clip.y - scroll_clip.height * SCROLL_OVERSCAN,
+            height: scroll_clip.height * (1.0 + 2.0 * SCROLL_OVERSCAN),
             ..scroll_clip
         };
         self.scrolling = true;

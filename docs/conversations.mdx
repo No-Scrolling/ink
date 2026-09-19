@@ -156,7 +156,9 @@ Use `actions(message)` for extra message actions, `onAttach` for the plus button
 
 Set `rightAction={{ icon, onPress }}` to add a header action, as with [Screen](/screens).
 
-`onLoadOlder` returns a promise and prepends older messages; `hasOlder` says whether more remain. Ink preserves the scroll position. `loading` shows initial loading content; `sending` disables the send action.
+`onLoadOlder` returns a promise and prepends older messages; `hasOlder` says whether more remain. Ink loads history and nearby images ahead of view, preserving scroll position and momentum.
+
+`loading` shows initial loading content; `sending` disables the send action.
 
 `Message` is also available separately for custom screens.
 

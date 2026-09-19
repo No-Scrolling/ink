@@ -186,8 +186,8 @@ impl ListMetrics {
     }
 
     pub fn window(&self, offset: f32, height: f32) -> (usize, usize) {
-        let start = self.index_at((offset - height).max(0.0));
-        let end = (self.index_at(offset + height * 2.0) + 1).min(self.keys.len());
+        let start = self.index_at((offset - height * super::SCROLL_OVERSCAN).max(0.0));
+        let end = (self.index_at(offset + height * (1.0 + super::SCROLL_OVERSCAN)) + 1).min(self.keys.len());
         (start, end)
     }
 }
