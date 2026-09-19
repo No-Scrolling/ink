@@ -1122,7 +1122,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private val commitFrame = Runnable {
             commitFramePosted = false
             if (engineHandle != 0L && surfaceAttached && renderPending) {
-                if (canPresentCommit()) {
+                if (canPresentCommit() && nativeFrameReady(engineHandle)) {
                     renderPending = false
                     presentFrame()
                 } else {
@@ -1151,6 +1151,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
             framePosted = false
             if (!surfaceAttached || engineHandle == 0L) {
+                return@FrameCallback
+            }
+            // A second callback can arrive before the GPU finishes the previous frame.
+            // Keep pending work for the next vsync instead of blocking input dispatch.
+            if (!nativeFrameReady(engineHandle)) {
+                postFrame()
                 return@FrameCallback
             }
 
@@ -1515,6 +1521,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeResize(handle: Long, width: Int, height: Int)
+
+        @JvmStatic
+        private external fun nativeFrameReady(handle: Long): Boolean
 
         @JvmStatic
         private external fun nativeCanPresentPointerMove(handle: Long, id: Int, y: Float): Boolean

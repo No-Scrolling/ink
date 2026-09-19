@@ -1148,6 +1148,11 @@ impl Surface {
             Ok(())
         }
     }
+
+    pub fn frame_ready(&self) -> Result<bool> {
+        Ok(!self.submitted || unsafe { self.core.device.get_fence_status(self.fence)? })
+    }
+
     pub fn wait_for_frame(&mut self) -> Result<()> {
         if self.submitted {
             unsafe {

@@ -686,6 +686,11 @@ impl Renderer {
         self.surface.resize(self.config.width, self.config.height);
     }
 
+    pub fn frame_ready(&self) -> bool {
+        // Let render report device errors through its existing recovery path.
+        self.surface.frame_ready().unwrap_or(true)
+    }
+
     pub fn render(&mut self, scene: &Scene) -> Result<RenderOutcome> {
         match self.render_frame(scene) {
             Err(error) if gpu::surface_lost(&error) => Ok(RenderOutcome::SurfaceLost),
@@ -699,7 +704,11 @@ impl Renderer {
         #[cfg(feature = "perf")]
         let frame_trace = PerfTraceSection::new(b"Ink frame\0");
         // Shared buffers and cached textures cannot change until the previous draw completes.
+        #[cfg(feature = "perf")]
+        let wait_trace = PerfTraceSection::new(b"Ink previous frame\0");
         self.surface.wait_for_frame()?;
+        #[cfg(feature = "perf")]
+        drop(wait_trace);
         if scene.width == 0 || scene.height == 0 {
             return Ok(RenderOutcome::Skipped);
         }

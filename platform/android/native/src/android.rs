@@ -614,6 +614,22 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFrameReady(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+) -> jboolean {
+    engine(handle)
+        .and_then(|engine| engine.lock().ok())
+        .is_some_and(|engine| {
+            engine
+                .surface
+                .as_ref()
+                .is_none_or(|surface| surface.renderer.frame_ready())
+        }) as jboolean
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCanPresentPointerMove(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
