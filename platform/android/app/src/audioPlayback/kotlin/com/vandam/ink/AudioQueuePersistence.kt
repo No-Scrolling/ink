@@ -10,24 +10,30 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.util.UnstableApi
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal class AudioQueuePersistence(context: Context, private val name: String, private val player: Player) : Player.Listener {
+@UnstableApi
+internal class AudioQueuePersistence(context: Context, private val name: String, private val player: ExoPlayer, private val effects: AudioEffects) : Player.Listener {
     private val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
     private val positions = context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE)
     private val handler = Handler(Looper.getMainLooper())
     private var restoring = false
+    private var checkpointScheduled = false
     private val checkpoint = object : Runnable {
         override fun run() {
+            checkpointScheduled = false
             save()
-            if (player.isPlaying) handler.postDelayed(this, 5_000L)
+            scheduleCheckpoint()
         }
     }
 
     init { player.addListener(this) }
 
     fun restore() {
+        player.skipSilenceEnabled = preferences.getBoolean("skipSilence:$name", false)
         val saved = preferences.getString(name, null) ?: return
         restoring = true
         runCatching {
@@ -43,6 +49,7 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
                     .setMediaMetadata(MediaMetadata.Builder()
                         .setTitle(item.optString("title"))
                         .setArtist(item.optString("artist"))
+                        .setDurationMs(item.optLong("duration", 0).takeIf { it > 0 })
                         .setAlbumTitle(item.optString("album"))
                         .apply { item.optString("artwork").takeIf(String::isNotEmpty)?.let { setArtworkUri(Uri.parse(it)) } }
                         .setExtras(Bundle().apply { putString("ink.source", item.getString("source")) })
@@ -59,14 +66,27 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
         restoring = false
     }
 
+    override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) {
+        preferences.edit().putBoolean("skipSilence:$name", skipSilenceEnabled).apply()
+    }
+
     override fun onEvents(player: Player, events: Player.Events) {
         if (restoring) return
         if (events.contains(Player.EVENT_TIMELINE_CHANGED)) saveQueue()
         if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION,
                 Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED,
                 Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED)) save()
-        handler.removeCallbacks(checkpoint)
-        if (player.isPlaying) handler.postDelayed(checkpoint, 5_000L)
+        scheduleCheckpoint()
+    }
+
+    private fun scheduleCheckpoint() {
+        if (!player.isPlaying) {
+            handler.removeCallbacks(checkpoint)
+            checkpointScheduled = false
+        } else if (!checkpointScheduled) {
+            checkpointScheduled = true
+            handler.postDelayed(checkpoint, 30_000L)
+        }
     }
 
     fun close() {
@@ -77,6 +97,7 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
 
     private fun save() {
         if (restoring) return
+        effects.save()
         if (player.mediaItemCount == 0) {
             positions.edit().remove(name).apply()
             return
@@ -104,7 +125,8 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
                 .put("title", metadata.title?.toString().orEmpty())
                 .put("artist", metadata.artist?.toString().orEmpty())
                 .put("album", metadata.albumTitle?.toString().orEmpty())
-                .put("artwork", metadata.artworkUri?.toString().orEmpty()))
+                .put("artwork", metadata.artworkUri?.toString().orEmpty())
+                .put("duration", metadata.durationMs))
         }
         preferences.edit().putString(name, items.toString()).apply()
     }

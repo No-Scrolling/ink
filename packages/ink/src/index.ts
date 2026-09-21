@@ -15,6 +15,7 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   title?: string;
   centered?: boolean;
   wide?: boolean;
+  waitForImages?: boolean;
   leftAction?: { icon: IconAsset; onPress: () => void };
   rightAction?: { icon: IconAsset; onPress: () => void };
 }) {
@@ -79,6 +80,7 @@ export function Field(props: {
 
 export function Toggle(props: {
   label: string;
+  subtitle?: string;
   value: boolean;
   disabled?: boolean;
   onChange: (value: boolean) => void;

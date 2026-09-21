@@ -219,3 +219,16 @@ The choice lasts for the app session. Use [Store](/store) to save it between ses
 </Tabs>
 </div>
 </div>
+
+## Loading images
+
+Screens wait up to one second for their first visible images before appearing. Failed images do not block the screen. Images reached by scrolling load normally.
+
+To show content immediately:
+
+```tsx
+<Screen title="Show" waitForImages={false}>
+  <Image src={show.artwork} width={100} height={100} fit="cover" />
+  <Text>{show.title}</Text>
+</Screen>
+```

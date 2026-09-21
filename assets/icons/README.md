@@ -1,6 +1,6 @@
 # Material Symbols
 
-Ink uses Material Symbols Outlined at grade 0 and optical size 24. Header and general icons use weight 400, fill 0. Bottom navigation uses weight 400, fill 1. Keyboard vectors use weight 300. Only referenced symbols enter the APK; the font and unused symbols are excluded.
+Ink uses Material Symbols Outlined at grade 0 and optical size 24. Header and general icons use weight 400, fill 0. Bottom navigation uses weight 400, fill 1. Filled 5-, 10- and 30-second seek icons use weight 300. Keyboard vectors use weight 300. Only referenced symbols enter the APK; the font and unused symbols are excluded.
 
 The current snapshot is from Google `material-design-icons` commit `84ccef280841abfac506afc4ad4a2782f6d0a1d0`. Refresh the compiler font, codepoint map and keyboard vectors with:
 

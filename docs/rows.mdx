@@ -91,3 +91,25 @@ import spotify from "./assets/spotify.svg";
 <img src="/images/patterns/row-text.png" alt="Rows without images, including a title that wraps." width="1080" height="1240" />
 </div>
 </div>
+
+## Title icons
+
+<div className="pattern-example">
+<div>
+
+<p>Use <code>titleIcon</code> for a status inline with the title. Wrapped lines use the full row width.</p>
+
+```tsx
+import { checkCircleFilled } from "ink/icons";
+
+<Row title="A long episode title that wraps onto another line"
+  titleIcon={checkCircleFilled} subtitle="Finished" />
+```
+
+<p>Titles use Ink’s standard size of 26. Numbers in subtitles align automatically.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/row-title-icon.png" alt="A finished episode with an inline icon and a title wrapping across the full row width." width="1080" height="1240" />
+</div>
+</div>

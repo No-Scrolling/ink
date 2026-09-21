@@ -582,6 +582,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
+        nativeRequestHandler.removeCallbacks(revealImages)
         textInputAdapter.close()
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         if (usesPermissions) permissionsAdapter.stop()
@@ -1020,9 +1021,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    private val revealImages = Runnable {
+        if (engineHandle != 0L && surfaceAttached) inkView.requestFrame()
+    }
+
     private fun renderFrame() {
+        nativeRequestHandler.removeCallbacks(revealImages)
+        val imageWait = nativeImageWaitRemaining(engineHandle)
+        if (imageWait > 0) nativeRequestHandler.postDelayed(revealImages, imageWait)
         while (true) {
             val request = nativeRender(engineHandle)
+            if (request == "presented") {
+                textInputAdapter.framePresented()
+                return
+            }
             if (request.isEmpty()) return
 
             val firstBreak = request.indexOf('\n')
@@ -1523,6 +1535,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeResize(handle: Long, width: Int, height: Int)
+
+        @JvmStatic
+        private external fun nativeImageWaitRemaining(handle: Long): Long
 
         @JvmStatic
         private external fun nativeHasSceneAnimations(handle: Long): Boolean

@@ -5,6 +5,7 @@ import subprocess
 import zlib
 
 from fontTools.ttLib import TTFont
+from fontTools import subset
 from fontTools.varLib.instancer import instantiateVariableFont
 
 
@@ -28,6 +29,7 @@ def main() -> None:
         variants = (
             (0, 400, "MaterialSymbolsOutlined-400.ttf.zlib"),
             (1, 400, "MaterialSymbolsOutlined-Fill1-400.ttf.zlib"),
+            (1, 300, "MaterialSymbolsOutlined-Seek-Fill1-300.ttf.zlib"),
         )
         for fill, weight, filename in variants:
             font = TTFont(source)
@@ -36,6 +38,10 @@ def main() -> None:
                 {"FILL": fill, "GRAD": 0, "opsz": 24, "wght": weight},
                 inplace=True,
             )
+            if weight == 300:
+                subsetter = subset.Subsetter()
+                subsetter.populate(glyphs=[f"{direction}_{seconds}" for direction in ("replay", "forward") for seconds in (5, 10, 30)])
+                subsetter.subset(font)
             static_font = (
                 Path(temporary_directory)
                 / f"MaterialSymbolsOutlined-Fill{fill}-{weight}.ttf"

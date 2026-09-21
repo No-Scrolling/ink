@@ -11,6 +11,7 @@ internal interface TextInputAdapter {
     fun setLightAppearance(light: Boolean)
     fun dismiss(): Boolean
     fun syncContext(context: String) {}
+    fun framePresented() {}
     fun pause() { close() }
     fun close() {}
 }

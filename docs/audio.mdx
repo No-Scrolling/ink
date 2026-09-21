@@ -47,7 +47,7 @@ export function NowPlaying() {
     <Screen title="Now playing">
       <Text>{player.state.current?.title ?? "Nothing playing"}</Text>
       <Button onPress={() => toggle.run()} disabled={!player.state.ready}>
-        {player.state.playing ? "Pause" : "Play"}
+        {player.state.playWhenReady ? "Pause" : "Play"}
       </Button>
       {toggle.status === "error" && <Text>{toggle.error.message}</Text>}
     </Screen>
@@ -89,7 +89,40 @@ Detached playback continues after leaving the screen.
 
 Android can stop a detached session. Ink restores its queue, index, speed and progress in a paused state when you reconnect.
 
-Queue changes, seeks and pauses save immediately; progress saves every five seconds. `stop()` clears the queue and saved state.
+Queue changes, seeks and pauses save immediately; progress saves every 30 seconds. `stop()` clears the queue and saved position.
+
+### Playback speed
+
+```ts
+await player.setSpeed(1.25);
+```
+
+`state.speed` contains the current speed. The default is `1`; supported values are `0.25` to `4`.
+
+### Audio effects
+
+Both effects are off by default and saved per session. They work with streamed and local audio at any playback speed.
+
+| Effect | Behaviour |
+| --- | --- |
+| Silence trimming | Shortens quiet pauses without changing speech speed. |
+| Voice boost | Evens out speech volume and limits peaks. |
+
+```ts
+await player.setSkipSilence(true);
+await player.setVoiceBoost(true);
+```
+
+Read the settings from `state.skipSilence` and `state.voiceBoost`. `state.silenceSaved` is the approximate total time saved in milliseconds, adjusted for playback speed. It survives app restarts and excludes manual seeks.
+
+Connect a toggle with `useAction`:
+
+```tsx
+const silence = useAction((enabled: boolean) => player.setSkipSilence(enabled));
+
+<Toggle label="Smart speed" value={player.state.skipSilence}
+  onChange={silence.run} />
+```
 
 ### Sessions
 
@@ -123,7 +156,19 @@ async function playAlbum() {
 }
 ```
 
-`setQueue` replaces the current queue. Use your own audio URLs or bundled audio for `src`. Items can also include artwork.
+`setQueue` replaces the current queue. Use your own audio URLs or bundled audio for `src`. Items can also include artwork and a `duration` in milliseconds to display while loading.
+
+To set a queue without loading audio until playback or seeking, pass `prepare: false`:
+
+```ts
+await player.setQueue(tracks, { prepare: false });
+```
+
+Pass `startPosition` (milliseconds) to `setQueue` to resume without a separate seek.
+
+```ts
+await player.setQueue(episodes, { startIndex: 0, startPosition: 33 * 60_000 });
+```
 
 ### Seek
 
@@ -133,13 +178,25 @@ Positions are in milliseconds:
 await player.seek(30_000);
 ```
 
-`setQueue`, `play`, `pause`, `seek`, `next`, `previous` and `stop` return promises.
+Player commands return promises.
 
-### Playback state and errors
+### Playback state
 
-State includes readiness, current item, position, duration, buffering, playing and errors. Hardware keys, lock-screen controls and interruptions update it automatically.
+| Field | Meaning |
+| --- | --- |
+| `ready` | The player is connected and accepts commands. |
+| `current` | The current item, or `null` for an empty queue. |
+| `playing` | Audio is advancing. |
+| `playWhenReady` | Playback is requested, including while buffering. Use this for play/pause controls. |
+| `loading` | The current item is buffering before it first becomes ready. |
+| `buffering` | Audio is buffering, including during a seek. |
+| `ended` | Playback has reached the end of the queue. |
+| `position`, `duration` | Times in milliseconds. |
+| `error` | The playback error, or `null`. |
 
-Playback errors distinguish source, unsupported media and output failures. Deleted files and unavailable URLs produce errors. Ink does not automatically skip a failed item.
+Hardware keys, media controls and interruptions update state automatically. [Playing screen](/playing-screen) uses these fields directly.
+
+Playback errors identify source, unsupported-media and output failures. Ink does not automatically skip a failed item.
 
 ## Recording and analysis
 

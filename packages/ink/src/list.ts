@@ -3,7 +3,7 @@ import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, 
 import { useAction } from "./action";
 import { Button, Stack, Text } from "./index";
 
-const PAGE_AHEAD_ITEMS = 8;
+const OLDER_PAGE_AHEAD_ITEMS = 8;
 
 function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return createElement(Stack, { gap: 24 },
@@ -36,7 +36,7 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
     items: readonly T[]; keys: string[]; contentVersions: number[]; revision: number;
     records: Map<string, { item: T; version: number }>;
   } | null>(null);
-  const [window, setWindow] = useState({ start: initialEnd ? Math.max(0, items.length - 32) : 0, end: initialEnd ? items.length : 32, revision: 0 });
+  const [window, setWindow] = useState({ start: initialEnd ? Math.max(0, items.length - 32) : 0, end: initialEnd ? items.length : 32, revision: 0, nearEnd: false });
   const requested = useRef<string | null>(null);
   const load = useAction(() => onLoadMore?.());
   const olderRequested = useRef<string | null>(null);
@@ -64,7 +64,7 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
       const mapped = keys.indexOf(old.keys[window.start]);
       start = mapped < 0 ? Math.min(window.start, Math.max(0, items.length - 1)) : mapped;
       end = Math.min(start + window.end - window.start, items.length);
-      if (start !== window.start || end !== window.end) setWindow({ start, end, revision });
+      if (start !== window.start || end !== window.end) setWindow({ start, end, revision, nearEnd: false });
     }
     data = { items, keys, keyExtractor, contentVersions, revision, records, measurementKey };
   }
@@ -74,14 +74,14 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
   const boundary = JSON.stringify([keys.length, keys.at(-1)]);
   useEffect(() => {
     if (!onLoadMore || !hasMore || load.status === "pending" || load.status === "error"
-      || window.revision !== revision || window.end + PAGE_AHEAD_ITEMS < items.length || requested.current === boundary) return;
+      || window.revision !== revision || !window.nearEnd || requested.current === boundary) return;
     requested.current = boundary;
     load.run();
-  }, [onLoadMore, hasMore, load.status, load.run, window, revision, items.length, boundary]);
+  }, [onLoadMore, hasMore, load.status, load.run, window, revision, boundary]);
   const firstBoundary = JSON.stringify([keys.length, keys[0]]);
   useEffect(() => {
     if (!onLoadOlder || !hasOlder || older.status === "pending" || older.status === "error"
-      || window.revision !== revision || window.start > PAGE_AHEAD_ITEMS || olderRequested.current === firstBoundary) return;
+      || window.revision !== revision || window.start > OLDER_PAGE_AHEAD_ITEMS || olderRequested.current === firstBoundary) return;
     olderRequested.current = firstBoundary;
     older.run();
   }, [onLoadOlder, hasOlder, older.status, older.run, window, revision, firstBoundary]);
@@ -96,9 +96,9 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
     gap,
     followEnd,
     start,
-    onWindow(start: number, end: number, eventRevision: number) {
+    onWindow(start: number, end: number, eventRevision: number, nearEnd: boolean) {
       if (eventRevision !== revision) return;
-      setWindow(previous => previous.start === start && previous.end === end && previous.revision === eventRevision ? previous : { start, end, revision: eventRevision });
+      setWindow(previous => previous.start === start && previous.end === end && previous.revision === eventRevision && previous.nearEnd === nearEnd ? previous : { start, end, revision: eventRevision, nearEnd });
     },
   };
   const list = createElement("List", props, children);

@@ -10,13 +10,15 @@ export type PlayingScreenProps = {
   onTitlePress?: () => void;
   artists: readonly { name: string; onPress?: () => void }[];
   playing: boolean;
+  loading?: boolean;
+  buffering?: boolean;
   onPlayPause: () => void;
   position: number;
   duration: number;
   onSeek?: (position: number) => void;
   previous: TransportAction;
   next: TransportAction;
-  actions?: readonly { icon: IconAsset; selected?: boolean; disabled?: boolean; onPress: () => void }[];
+  actions?: readonly (({ icon: IconAsset; label?: never } | { label: string; icon?: never }) & { selected?: boolean; disabled?: boolean; onPress: () => void })[];
 };
 
 function time(milliseconds: number) {
@@ -27,7 +29,7 @@ function time(milliseconds: number) {
 const replayIcons = { 5: replay5Filled, 10: replay10Filled, 30: replay30Filled };
 const forwardIcons = { 5: forward5Filled, 10: forward10Filled, 30: forward30Filled };
 
-export function PlayingScreen({ image, preloadImages = [], title, onTitlePress, artists, playing, onPlayPause, position, duration, onSeek, previous, next, actions = [] }: PlayingScreenProps) {
+export function PlayingScreen({ image, preloadImages = [], title, onTitlePress, artists, playing, loading = false, buffering = false, onPlayPause, position, duration, onSeek, previous, next, actions = [] }: PlayingScreenProps) {
   if (!Number.isFinite(position) || !Number.isFinite(duration) || position < 0 || duration < 0) {
     throw new Error("Playback times must be finite, non-negative milliseconds");
   }
@@ -45,18 +47,18 @@ export function PlayingScreen({ image, preloadImages = [], title, onTitlePress, 
             createElement("PlayingLabel", { size: 14, text: artist.name }))),
         ),
         createElement(Stack, { gap: 1, align: "stretch" },
-          createElement("PlayingProgress", { playing, position: current / 1000, duration: duration / 1000, onSeek: onSeek && ((seconds: number) => onSeek(seconds * 1000)) }),
+          createElement("PlayingProgress", { playing: playing && !loading && !buffering, position: current / 1000, duration: duration / 1000, onSeek: onSeek && ((seconds: number) => onSeek(seconds * 1000)) }),
           createElement(Stack, { axis: "horizontal", justify: "space-between" },
             createElement(Text, { size: 12 }, time(current)),
             createElement(Text, { size: 12 }, time(duration))),
         ),
-        createElement("PlayingTransport", null,
+        createElement("PlayingTransport", { loading },
           control(previous.seconds ? replayIcons[previous.seconds] : skipPreviousFilled, previous),
           control(playing ? pauseFilled : playArrowFilled, { onPress: onPlayPause }),
           control(next.seconds ? forwardIcons[next.seconds] : skipNextFilled, next)),
       ),
-      createElement(Stack, { axis: "horizontal", align: "center", justify: actions.length === 1 ? "center" : "space-between" },
+      createElement("PlayingTransport", null,
         actions.map((action, index) => createElement("Pressable", { key: index, selected: action.selected, onPress: action.disabled ? undefined : action.onPress },
-          createElement("Icon", { tight: true, name: action.icon, size: 44, tone: "primary" })))),
+          action.label !== undefined ? createElement(Text, { size: 22, tabularNumbers: true }, action.label) : createElement("Icon", { tight: true, name: action.icon, size: 44, tone: "primary" })))),
     ));
 }

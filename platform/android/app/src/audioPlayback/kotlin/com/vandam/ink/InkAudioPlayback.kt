@@ -17,6 +17,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.ListenableFuture
 import java.io.File
 import org.json.JSONArray
@@ -141,22 +143,46 @@ private class AudioSessionPlayback(
             when (operation) {
                 "play" -> {
                     body.optJSONObject("item")?.let { setQueue(listOf(Item.from(it)), 0) }
-                    dispatch { if (it.mediaItemCount > 0) { takeFocus(); it.play() } }
+                    dispatch(::startPlayback)
                 }
                 "setQueue" -> setQueue(
                     Item.list(body.getJSONArray("items")),
                     body.optInt("startIndex"),
+                    body.optLong("startPosition", 0),
+                    body.optBoolean("prepare", true),
                 )
                 "pause" -> dispatch(Player::pause)
-                "toggle" -> dispatch { if (it.isPlaying) it.pause() else { takeFocus(); it.play() } }
+                "toggle" -> dispatch { if (it.playWhenReady && it.playbackState != Player.STATE_ENDED) it.pause() else startPlayback(it) }
                 "stop" -> clear()
                 "seekTo" -> dispatch {
                     it.seekTo(body.getDouble("value").toLong().coerceAtLeast(0))
+                    if (it.playbackState == Player.STATE_IDLE) it.prepare()
                 }
                 "skipBack" -> seekBy(-SKIP_INTERVAL_MS)
                 "skipForward" -> seekBy(SKIP_INTERVAL_MS)
                 "previous" -> dispatch(Player::seekToPreviousMediaItem)
                 "next" -> dispatch(Player::seekToNextMediaItem)
+                "setSkipSilence", "setVoiceBoost" -> {
+                    val enabled = body.getBoolean("value")
+                    val voice = operation == "setVoiceBoost"
+                    dispatch { player ->
+                        when (player) {
+                            is ExoPlayer -> {
+                                if (voice) effects.setVoiceBoost(enabled)
+                                else player.skipSilenceEnabled = enabled
+                            }
+                            is MediaController -> {
+                                val result = player.sendCustomCommand(SessionCommand(if (voice) VOICE_BOOST_COMMAND else SKIP_SILENCE_COMMAND, Bundle.EMPTY),
+                                    Bundle().apply { putBoolean(if (voice) VOICE_BOOST_EXTRA else SKIP_SILENCE_EXTRA, enabled) })
+                                result.addListener({
+                                    runCatching { check(result.get().resultCode == SessionResult.RESULT_SUCCESS) { "Could not change audio effect" } }
+                                        .onFailure { failure = Failure("unexpected", it.message ?: "Could not change audio effect", false) }
+                                    publish()
+                                }, activity.mainExecutor)
+                            }
+                        }
+                    }
+                }
                 "setSpeed" -> {
                     val speed = body.getDouble("value").toFloat()
                     require(speed in MIN_SPEED..MAX_SPEED) {
@@ -213,6 +239,17 @@ private class AudioSessionPlayback(
 
     override fun onPlaybackStateChanged(playbackState: Int) = publish()
 
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+        if (!detached) effects.countSavings = playWhenReady
+        publish()
+    }
+
+    override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) = publish()
+
+    override fun onEvents(player: Player, events: Player.Events) {
+        if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED)) publish()
+    }
+
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         handler.removeCallbacks(progress)
         if (isPlaying) {
@@ -236,9 +273,12 @@ private class AudioSessionPlayback(
         publish()
     }
 
+    private val effects = AudioEffects.get(activity, name)
+    private var readiness: AudioReadiness? = null
+
     private fun attachedPlayer(): Player {
         player?.let { return it }
-        val created = ExoPlayer.Builder(activity)
+        val created = ExoPlayer.Builder(activity, InkAudioRenderersFactory(activity, effects))
             .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
@@ -250,7 +290,8 @@ private class AudioSessionPlayback(
                     true,
                 )
             }
-        persistence = AudioQueuePersistence(activity, name, created).apply { restore() }
+        readiness = AudioReadiness { publish() }.also { created.addListener(it) }
+        persistence = AudioQueuePersistence(activity, name, created, effects).apply { restore() }
         connect(created)
         return created
     }
@@ -276,6 +317,9 @@ private class AudioSessionPlayback(
             activity,
             SessionToken(activity, ComponentName(activity, InkAudioService::class.java)),
         )
+            .setListener(object : MediaController.Listener {
+                override fun onExtrasChanged(controller: MediaController, extras: Bundle) = publish()
+            })
             .setConnectionHints(Bundle().apply {
                 putBoolean(CONTROLLER_HINT, true)
                 putString("ink.session", name)
@@ -317,16 +361,34 @@ private class AudioSessionPlayback(
         pending.clear()
         actions.forEach { it(connected) }
         publish()
+        handler.removeCallbacks(progress)
+        if (connected.isPlaying) handler.postDelayed(progress, PROGRESS_INTERVAL_MS)
     }
 
-    private fun setQueue(items: List<Item>, startIndex: Int) {
+    private fun startPlayback(player: Player) {
+        if (player.mediaItemCount == 0) return
+        val duration = player.duration.validTime()?.takeIf { it > 0 } ?: player.mediaMetadata.durationMs ?: 0
+        if (player.playbackState == Player.STATE_ENDED || (duration > 0 && player.currentPosition >= duration)) {
+            player.seekToDefaultPosition()
+        }
+        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+        takeFocus()
+        player.play()
+    }
+
+    private fun setQueue(items: List<Item>, startIndex: Int, startPosition: Long = 0, prepare: Boolean = true) {
         require(items.isNotEmpty()) { "Audio queues cannot be empty" }
+        require(startPosition >= 0) { "Start position must be non-negative" }
         require(startIndex in items.indices) { "Start index must reference an audio item" }
         val mediaItems = items.map { item -> item.mediaItem(activity) }
         failure = null
         dispatch { player ->
-            player.setMediaItems(mediaItems, startIndex, C.TIME_UNSET)
-            player.prepare()
+            if (!prepare) {
+                player.pause()
+                player.stop()
+            }
+            player.setMediaItems(mediaItems, startIndex, startPosition)
+            if (prepare) player.prepare()
         }
     }
 
@@ -360,6 +422,11 @@ private class AudioSessionPlayback(
         val state = JSONObject()
             .put("ready", !detached || player != null)
             .put("status", status(player))
+            .put("loading", player?.playbackState == Player.STATE_BUFFERING && when (player) {
+                is MediaController -> !player.sessionExtras.getBoolean(AUDIO_PREPARED_EXTRA)
+                else -> readiness?.prepared != true
+            })
+            .put("playWhenReady", player?.playWhenReady == true && player.playbackState != Player.STATE_ENDED)
             .put("id", mediaItem?.mediaId.orEmpty())
             .put("src", metadata?.extras?.getString(SOURCE_METADATA_KEY).orEmpty())
             .put("title", metadata?.title?.toString().orEmpty())
@@ -368,9 +435,16 @@ private class AudioSessionPlayback(
             .put("artwork", metadata?.artworkUri?.toString().orEmpty())
             .put("index", index)
             .put("positionMs", player?.currentPosition?.coerceAtLeast(0) ?: 0)
-            .put("durationMs", player?.duration?.validTime() ?: 0)
+            .put("durationMs", player?.duration?.validTime()?.takeIf { it > 0 } ?: metadata?.durationMs ?: 0)
             .put("bufferedMs", player?.bufferedPosition?.coerceAtLeast(0) ?: 0)
             .put("speed", player?.playbackParameters?.speed ?: 1f)
+            .put("silenceSavedMs", effects.silenceSavedMs)
+            .put("voiceBoost", if (player is MediaController) player.sessionExtras.getBoolean(VOICE_BOOST_EXTRA) else effects.voiceBoost)
+            .put("skipSilence", when (player) {
+                is ExoPlayer -> player.skipSilenceEnabled
+                is MediaController -> player.sessionExtras.getBoolean(SKIP_SILENCE_EXTRA)
+                else -> false
+            })
             .put(
                 "error",
                 inkError(
@@ -421,6 +495,7 @@ private class AudioSessionPlayback(
         val artist: String,
         val album: String,
         val artwork: String,
+        val duration: Long?,
     ) {
         fun mediaItem(activity: MainActivity): MediaItem {
             val uri = when {
@@ -438,6 +513,7 @@ private class AudioSessionPlayback(
             }
             val metadata = MediaMetadata.Builder()
                 .setTitle(title)
+                .setDurationMs(duration)
                 .setArtist(artist.ifEmpty { null })
                 .setAlbumTitle(album.ifEmpty { null })
                 .apply { if (artwork.isNotEmpty()) setArtworkUri(Uri.parse(artwork)) }
@@ -461,6 +537,9 @@ private class AudioSessionPlayback(
                     artist = value.optString("artist"),
                     album = value.optString("album"),
                     artwork = value.optString("artwork"),
+                    duration = if (value.has("duration")) value.getDouble("duration").also {
+                        require(it.isFinite() && it >= 0) { "Audio duration must be non-negative milliseconds" }
+                    }.toLong() else null,
                 )
             }
 

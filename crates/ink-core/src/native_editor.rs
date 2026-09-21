@@ -29,16 +29,24 @@ impl Engine {
             _ => "",
         };
         let y = rect.y + if input.scrolling { self.scroll_origin - self.scroll_offset } else { 0.0 };
-        let font = self.font.as_scaled(PxScale::from(self.scaled_font(TEXT_INPUT_TEXT_SIZE)));
+        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE).round();
+        let font = self.font.as_scaled(PxScale::from(font_size));
+        let hint = self.scene.colour(Colour::MUTED);
+        let srgb = |linear: f32| {
+            let value = if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1.0 / 2.4) - 0.055 };
+            (value * 255.0).round() as u32
+        };
+        let hint_colour = 0xff000000 | srgb(hint.red) << 16 | srgb(hint.green) << 8 | srgb(hint.blue);
         json!({
             "id": state.0,
             "text": text,
             "placeholder": placeholder,
+            "hintColour": hint_colour as i32,
             "cursor": text[..text_cursor_boundary(text, self.focused_input_cursor)].encode_utf16().count(),
             "nativeEditor": self.native_editor_state == Some(state),
             "editor": {
                 "x": rect.x, "y": y, "width": rect.width, "height": rect.height,
-                "fontSize": self.scaled_font(TEXT_INPUT_TEXT_SIZE)
+                "fontSize": font_size
                     * self.font.units_per_em().unwrap_or(self.font.height_unscaled()) / self.font.height_unscaled(),
                 "lineHeight": self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING),
                 "baseline": (rect.height - font.height()) / 2.0 + font.ascent(),

@@ -12,7 +12,7 @@ description: "Display artwork and playback controls."
 
 <p>Titles and artist names stay on one line and scroll when they don't fit.</p>
 
-<p>The progress bar animates between position updates while <code>playing</code> is true. Set it to false when paused or buffering.</p>
+<p>The progress bar animates between position updates while <code>playing</code> is true. Use <code>buffering</code> to pause the animation. Use <code>loading</code> during initial loading to hide seek controls and show “Loading...” in place of play/pause.</p>
 
 ```tsx
 import { PlayingScreen } from "ink";
@@ -23,6 +23,8 @@ import artwork from "../assets/wallsocket.jpg";
   title="Cops and robbers"
   artists={[{ name: "underscores" }]}
   playing={playing}
+  buffering={buffering}
+  loading={loading}
   onPlayPause={togglePlayback}
   position={position}
   duration={213000}
@@ -87,6 +89,8 @@ next={{ seconds: 30, onPress: () => seek(position + 30000) }}
 
 <p>Actions are spaced evenly at the bottom. Use <code>selected</code> for an underline, or change the icon.</p>
 
+<p>Use <code>label</code> instead of <code>icon</code> for text actions, such as playback speed or download progress. Numbers align automatically.</p>
+
 ```tsx
 import { repeatFilled, repeatOneFilled, shuffleFilled } from "ink/icons";
 
@@ -109,6 +113,8 @@ const actions = [
 </Tabs>
 </div>
 </div>
+
+With Audio, pass `playing={state.playWhenReady}`, `buffering={state.buffering}` and `loading={state.loading}`. Seeking keeps the pause icon visible; initial loading shows “Loading...”.
 
 ## Title and artists
 

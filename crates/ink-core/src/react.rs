@@ -68,6 +68,7 @@ enum HostKind {
     Button,
     Field,
     Row,
+    RowTitle,
     Message,
     MessageQuote,
     LinkPreview,
@@ -193,7 +194,7 @@ pub struct ReactTree {
     free_input_states: Vec<StateId>,
     active_screen: Option<usize>,
     scroll_positions: HashMap<usize, f32>,
-    list_windows: HashMap<usize, (usize, usize, u64)>,
+    list_windows: HashMap<usize, (usize, usize, u64, bool)>,
 }
 
 #[derive(Default)]
@@ -420,6 +421,7 @@ impl ReactTree {
             engine.react_list_positions.clear();
             engine.pointer_screen_changed();
             engine.focused_input = None;
+            engine.native_editor_state = None;
             engine.auto_focus_node = None;
             self.active_screen = Some(screen_id);
         }
@@ -446,6 +448,9 @@ impl ReactTree {
             engine.text_input_scroll_offsets.remove(&input.state);
             if engine.focused_input == Some(input.state) {
                 engine.focused_input = None;
+            }
+            if engine.native_editor_state == Some(input.state) {
+                engine.native_editor_state = None;
             }
             self.free_input_states.push(input.state);
             false
@@ -501,11 +506,13 @@ impl ReactTree {
         let mut events = Vec::new();
         for (id, top) in &engine.react_list_positions {
             let Some(metrics) = engine.list_metrics.get(id) else { continue; };
-            let (start, end) = metrics.window(clip.y + engine.scroll_offset - top, clip.height);
-            let window = (start, end, metrics.revision);
+            let offset = clip.y + engine.scroll_offset - top;
+            let (start, end) = metrics.window(offset, clip.height);
+            let near_end = offset + clip.height * 2.0 >= metrics.total();
+            let window = (start, end, metrics.revision, near_end);
             if self.list_windows.get(id) != Some(&window) {
                 self.list_windows.insert(*id, window);
-                events.push(json!({"type":"event", "id": id, "name":"onWindow", "args":[start, end, metrics.revision]}));
+                events.push(json!({"type":"event", "id": id, "name":"onWindow", "args":[start, end, metrics.revision, near_end]}));
             }
         }
         events
@@ -720,8 +727,9 @@ impl ReactTree {
             HostKind::MessageQuote => Node { identity: NodeIdentity(id), kind: NodeKind::MessageQuote { children: self.children(host, depth)? } },
             HostKind::LinkPreview => Node { identity: NodeIdentity(id), kind: NodeKind::LinkPreview { children: self.children(host, depth)? } },
             HostKind::PlayingTransport => {
-                ensure!(host.children.len() == 3, "Playing transport requires three controls");
-                Node { identity: NodeIdentity(id), kind: NodeKind::PlayingTransport { children: self.children(host, depth)? } }
+                let loading = props.get("loading") == Some(&Json::Bool(true));
+                ensure!(!loading || host.children.len() == 3, "Loading transport requires three controls");
+                Node { identity: NodeIdentity(id), kind: NodeKind::PlayingTransport { children: self.children(host, depth)?, loading } }
             },
             HostKind::PlayingLayout => {
                 ensure!(host.children.len() == 2, "Playing layout requires content and actions");
@@ -752,6 +760,12 @@ impl ReactTree {
             HostKind::PlayingProgress => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingProgress {
                 position: number(props, "position")?.unwrap_or(0.0), duration: number(props, "duration")?.unwrap_or(0.0), seek: props.get("onSeek") == Some(&Json::Bool(true)),
                 playing: props.get("playing") == Some(&Json::Bool(true)),
+            } },
+            HostKind::RowTitle => Node { identity: NodeIdentity(id), kind: NodeKind::RowTitle {
+                size: number(props, "size")?.unwrap_or(26.0),
+                text: string(props, "text").unwrap_or_default().to_owned(),
+                max_lines: number(props, "maxLines")?.map(|value| value.max(1.0) as u32),
+                children: self.children(host, depth)?,
             } },
             HostKind::Row => Node {
                 identity: NodeIdentity(id),
@@ -817,8 +831,9 @@ impl ReactTree {
                 } else {
                     Node::screen(self.children(host, depth)?, props.title, props.centered)
                 };
-                if let NodeKind::Screen { pinned_header, pinned_footer, wide, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
+                if let NodeKind::Screen { pinned_header, pinned_footer, wide, wait_for_images, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
                     *wide = props.wide;
+                    *wait_for_images = props.wait_for_images.unwrap_or(true);
                     *pinned_header = state.is_none() && props.pinned_header;
                     *pinned_footer = state.is_none() && props.pinned_footer;
                     *left = left_action;
@@ -999,6 +1014,7 @@ impl ReactTree {
                 Node {
                     identity: NodeIdentity(id),
                     kind: NodeKind::Toggle {
+                        subtitle: string(props, "subtitle").map(str::to_owned),
                         label: string(props, "label")
                             .context("Toggle requires a label")?
                             .to_owned(),
@@ -1051,6 +1067,8 @@ impl ReactTree {
 
 #[derive(Deserialize)]
 struct ScreenProps {
+    #[serde(rename = "waitForImages")]
+    wait_for_images: Option<bool>,
     title: Option<String>,
     #[serde(default)]
     wide: bool,
@@ -1114,6 +1132,7 @@ fn find_node(node: &Node, id: usize) -> Option<&Node> {
         | NodeKind::Pressable { children, .. }
         | NodeKind::Screen { children, .. }
         | NodeKind::MediaGridRow { children }
+        | NodeKind::RowTitle { children, .. }
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {
@@ -1137,6 +1156,7 @@ fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
         | NodeKind::Pressable { children, .. }
         | NodeKind::Screen { children, .. }
         | NodeKind::MediaGridRow { children }
+        | NodeKind::RowTitle { children, .. }
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {

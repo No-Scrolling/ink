@@ -16,7 +16,7 @@ use ink_core::{
     CameraPreviewKind, ControllerId, Engine, NativeRequestKind, PUBLIC_SANS, PointerOutcome,
     ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
 };
-use ink_renderer_vulkan::{RenderOutcome, Renderer, SystemGlyphRequest};
+use ink_renderer_vulkan::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
 use jni::objects::JByteArray;
 #[cfg(feature = "audio")]
@@ -309,17 +309,19 @@ impl AndroidEngine {
         self.engine.fail_native(request_id, error)
     }
 
-    fn render(&mut self) -> Option<SystemGlyphRequest> {
-        // Keep the last complete frame while rows or the camera review image load.
-        if !self.engine.list_viewports_ready() || !self.engine.camera_review_ready() {
-            return None;
+    fn render(&mut self) -> RenderOutcome {
+        // Keep the last complete frame until the new content is ready.
+        if !self.engine.list_viewports_ready() || !self.engine.camera_review_ready() || !self.engine.screen_images_ready() {
+            return RenderOutcome::Skipped;
         }
         let Some(surface) = &mut self.surface else {
-            return None;
+            return RenderOutcome::Skipped;
         };
         let mut surface_lost = false;
+        let mut presented = false;
         match surface.renderer.render(self.engine.scene()) {
             Ok(RenderOutcome::Presented) => {
+                presented = true;
                 #[cfg(feature = "presentation-timing")]
                 {
                     android_log(
@@ -357,7 +359,7 @@ impl AndroidEngine {
                 android_log(ANDROID_LOG_ERROR, "Vulkan surface was lost");
                 surface_lost = true;
             }
-            Ok(RenderOutcome::NeedsSystemGlyph(request)) => return Some(request),
+            Ok(RenderOutcome::NeedsSystemGlyph(request)) => return RenderOutcome::NeedsSystemGlyph(request),
             Err(error) => {
                 android_log(
                     ANDROID_LOG_ERROR,
@@ -422,7 +424,7 @@ impl AndroidEngine {
         if surface_lost {
             self.surface = None;
         }
-        None
+        if presented { RenderOutcome::Presented } else { RenderOutcome::Skipped }
     }
 
     fn install_system_glyph(&mut self, request_id: u64, pixels: &[u8]) {
@@ -613,6 +615,14 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageWaitRemaining(
+    _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
+) -> jlong {
+    engine(handle).and_then(|engine| engine.lock().ok())
+        .map_or(0, |engine| engine.engine.image_wait_remaining_ms() as jlong)
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeHasSceneAnimations(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
 ) -> jboolean {
@@ -757,19 +767,21 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
-    let request = if let Some(engine) = engine(handle)
+    let outcome = if let Some(engine) = engine(handle)
         && let Ok(mut engine) = engine.lock()
     {
         engine.render()
     } else {
-        None
+        RenderOutcome::Skipped
     };
-    let value = request.map_or_else(String::new, |request| {
-        format!(
+    let value = match outcome {
+        RenderOutcome::Presented => "presented".to_owned(),
+        RenderOutcome::NeedsSystemGlyph(request) => format!(
             "{}\n{}\n{}",
             request.id, request.pixel_size, request.grapheme,
-        )
-    });
+        ),
+        _ => String::new(),
+    };
     env.with_env(|env| env.new_string(value))
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }

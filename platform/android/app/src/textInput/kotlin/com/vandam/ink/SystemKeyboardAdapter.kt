@@ -57,8 +57,31 @@ private class SystemKeyboardAdapter(
     private var lightAppearance: Boolean? = null
     private var lineMeasurement: Triple<String, Int, Float>? = null
     private var measuredLineCount = 1
+    private var awaitingEditorDraw = false
+    private var hideAfterFrame = false
     private val publish = Runnable { publishEdit() }
+    private val editorDrawn = Runnable {
+        if (!active || !awaitingEditorDraw || inputId < 0) return@Runnable
+        awaitingEditorDraw = false
+        onEdit(TextEdit.Update(JSONObject().put("id", inputId).put("text", nativeText)
+            .put("nativeEditor", true).put("lines", measuredLines()).toString()))
+    }
+    private val hideEditor = Runnable {
+        if (hideAfterFrame) {
+            editor.visibility = View.GONE
+            inputId = -1
+            hideAfterFrame = false
+        }
+    }
     private val editor: EditText = object : EditText(ContextThemeWrapper(activity, R.style.Theme_Ink_TextEditor)) {
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            if (active && awaitingEditorDraw) {
+                removeCallbacks(editorDrawn)
+                post(editorDrawn)
+            }
+        }
+
         override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
             super.onLayout(changed, left, top, right, bottom)
             if (action != 0) translationY = nativeBaseline - baseline
@@ -107,13 +130,16 @@ private class SystemKeyboardAdapter(
         editor.visibility = View.GONE
         editor.background = null
         editor.typeface = activity.publicSansTypeface
+        // Match Ink's unhinted glyph metrics rather than Android's font shaping defaults.
+        editor.fontFeatureSettings = "'kern' 0, 'liga' 0"
+        editor.paint.hinting = android.graphics.Paint.HINTING_OFF
+        editor.paint.isSubpixelText = true
+        editor.paint.isLinearText = true
         editor.includeFontPadding = false
         editor.gravity = Gravity.TOP or Gravity.START
         editor.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
         editor.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         editor.setTextColor(Color.WHITE)
-        // Ink draws the placeholder in both states so its rasterisation stays consistent.
-        editor.setHintTextColor(Color.TRANSPARENT)
         editor.setHighlightColor(0x66888888)
         editor.isFocusableInTouchMode = true
         editor.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -241,10 +267,12 @@ private class SystemKeyboardAdapter(
 
     override fun syncContext(context: String) {
         if (context.isEmpty()) {
-            editor.visibility = View.GONE
-            inputId = -1
+            awaitingEditorDraw = false
+            hideAfterFrame = editor.visibility == View.VISIBLE
             return
         }
+        hideAfterFrame = false
+        editor.removeCallbacks(hideEditor)
         if (pending) return
         val data = JSONObject(context)
         val bounds = data.optJSONObject("editor") ?: return
@@ -270,6 +298,8 @@ private class SystemKeyboardAdapter(
         val text = data.getString("text")
         val placeholder = data.optString("placeholder")
         if (editor.hint?.toString() != placeholder) editor.hint = placeholder
+        val hintColour = data.getInt("hintColour")
+        if (editor.currentHintTextColor != hintColour) editor.setHintTextColor(hintColour)
         val cursor = data.getInt("cursor").coerceIn(0, text.length)
         syncing = true
         val changed = inputId != id
@@ -288,8 +318,18 @@ private class SystemKeyboardAdapter(
         nativeCursor = cursor
         syncing = false
         if ((changed || typeChanged) && editor.hasFocus()) inputMethod.restartInput(editor)
-        if (active && !data.optBoolean("nativeEditor")) onEdit(TextEdit.Update(JSONObject()
-            .put("id", id).put("text", text).put("nativeEditor", true).put("lines", measuredLines()).toString()))
+        if (active && !data.optBoolean("nativeEditor")) {
+            awaitingEditorDraw = true
+            editor.invalidate()
+        }
+    }
+
+    override fun framePresented() {
+        if (hideAfterFrame) {
+            // Keep the editor until the replacement Vulkan frame reaches the compositor.
+            editor.removeCallbacks(hideEditor)
+            editor.postOnAnimation(hideEditor)
+        }
     }
 
     private fun inputType(): Int = if (numeric) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT or
@@ -318,6 +358,11 @@ private class SystemKeyboardAdapter(
         publishEdit()
         sync(false, action, numeric)
         container.removeCallbacks(publish)
+        editor.removeCallbacks(editorDrawn)
+        editor.removeCallbacks(hideEditor)
+        awaitingEditorDraw = false
+        hideAfterFrame = false
+        editor.visibility = View.GONE
         imeVisible = false
         activity.setKeyboardInset(0)
     }

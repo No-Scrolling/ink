@@ -9,18 +9,26 @@ export interface AudioItem {
   artist?: string;
   album?: string;
   artwork?: string;
+  duration?: number;
 }
 export interface PlayerState {
   ready: boolean;
   playing: boolean;
+  playWhenReady: boolean;
   buffering: boolean;
+  loading: boolean;
+  ended: boolean;
   current: AudioItem | null;
   index: number;
   position: number;
   duration: number;
+  speed: number;
+  skipSilence: boolean;
+  voiceBoost: boolean;
+  silenceSaved: number;
   error: Error | null;
 }
-const initial: PlayerState = { ready: false, playing: false, buffering: false, current: null, index: -1, position: 0, duration: 0, error: null };
+const initial: PlayerState = { ready: false, playing: false, playWhenReady: false, buffering: false, loading: false, ended: false, current: null, index: -1, position: 0, duration: 0, speed: 1, skipSilence: false, voiceBoost: false, silenceSaved: 0, error: null };
 
 function decode(value: unknown): PlayerState {
   if (typeof value !== "object" || value === null) throw new NativeError("protocol", "Invalid player state");
@@ -30,7 +38,7 @@ function decode(value: unknown): PlayerState {
     if (typeof result !== "string") throw new NativeError("protocol", `Invalid player ${name}`);
     return result;
   };
-  const time = (name: string) => {
+  const number = (name: string) => {
     const result = field(name);
     if (typeof result !== "number" || !Number.isFinite(result) || result < 0) throw new NativeError("protocol", `Invalid player ${name}`);
     return result;
@@ -52,13 +60,19 @@ function decode(value: unknown): PlayerState {
   if (typeof index !== "number" || !Number.isSafeInteger(index) || index < -1) {
     throw new NativeError("protocol", "Invalid player queue index");
   }
+  const duration = number("durationMs");
   return {
     ready: field("ready") === true,
     playing: status === "playing",
+    playWhenReady: field("playWhenReady") === true,
     buffering: status === "loading",
+    loading: field("loading") === true,
+    ended: status === "ended",
     index,
-    current: src ? { id: text("id"), src, title: text("title"), artist: text("artist"), album: text("album"), artwork: text("artwork") } : null,
-    position: time("positionMs"), duration: time("durationMs"), error,
+    current: src ? { id: text("id"), src, title: text("title"), artist: text("artist"), album: text("album"), artwork: text("artwork"), duration } : null,
+    position: number("positionMs"), duration, speed: number("speed"),
+    skipSilence: field("skipSilence") === true, voiceBoost: field("voiceBoost") === true,
+    silenceSaved: number("silenceSavedMs"), error,
   };
 }
 
@@ -91,14 +105,22 @@ export function usePlayer(options: { session?: string; mode?: "attached" | "deta
       await controller.current.call(operation, payload);
     };
     return {
-      setQueue(items: readonly AudioItem[], options: { startIndex?: number } = {}) {
-        return call("setQueue", { items, startIndex: options.startIndex ?? 0 });
+      setQueue(items: readonly AudioItem[], options: { startIndex?: number; startPosition?: number; prepare?: boolean } = {}) {
+        const startPosition = options.startPosition ?? 0;
+        if (!Number.isFinite(startPosition) || startPosition < 0) return Promise.reject(new RangeError("Audio position must be a non-negative number of milliseconds"));
+        return call("setQueue", { items, startIndex: options.startIndex ?? 0, startPosition, prepare: options.prepare ?? true });
       },
       play: () => call("play"),
       playRecording: () => call("playRecording"),
       pause: () => call("pause"),
       toggle: () => call("toggle"),
       stop: () => call("stop"),
+      setSpeed(speed: number) {
+        if (!Number.isFinite(speed) || speed < 0.25 || speed > 4) return Promise.reject(new RangeError("Playback speed must be between 0.25 and 4"));
+        return call("setSpeed", { value: speed });
+      },
+      setVoiceBoost: (enabled: boolean) => call("setVoiceBoost", { value: enabled }),
+      setSkipSilence: (enabled: boolean) => call("setSkipSilence", { value: enabled }),
       next: () => call("next"),
       previous: () => call("previous"),
       seek(position: number) {

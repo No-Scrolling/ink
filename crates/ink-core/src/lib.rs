@@ -559,8 +559,9 @@ enum NodeKind {
     ConversationComposer { children: Vec<Node> },
     PlayingLayout { children: Vec<Node>, centred: bool, hide_controls: bool, bleed: bool },
     Pressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool, haptic: bool },
-    PlayingTransport { children: Vec<Node> },
+    PlayingTransport { children: Vec<Node>, loading: bool },
     PlayingLabel { text: String, size: f32 },
+    RowTitle { children: Vec<Node>, text: String, size: f32, max_lines: Option<u32> },
     PlayingProgress { position: f32, duration: f32, playing: bool, seek: bool },
     PitchIndicator { cents: Option<f32> },
     Row {
@@ -589,6 +590,7 @@ enum NodeKind {
         left_action: Option<(Mask, Action)>,
         right_action: Option<(Mask, Action)>,
         media_picker: bool,
+        wait_for_images: bool,
     },
     Stack {
         children: Vec<Node>,
@@ -654,6 +656,7 @@ enum NodeKind {
     },
     Toggle {
         label: String,
+        subtitle: Option<String>,
         value: bool,
         action: Option<Action>,
         off: Mask,
@@ -680,6 +683,7 @@ impl Node {
                 left_action: None,
                 right_action: None,
                 media_picker: false,
+                wait_for_images: true,
             },
         }
     }
@@ -1309,6 +1313,9 @@ pub struct Engine {
     retained_images: HashMap<NodeIdentity, ImageData>,
     visible_retained_images: BTreeSet<NodeIdentity>,
     visible_images: BTreeSet<RemoteImageKey>,
+    blocking_images: BTreeSet<RemoteImageKey>,
+    image_screens: HashMap<NodeIdentity, Option<Instant>>,
+    visible_image_screens: BTreeSet<NodeIdentity>,
     image_zooms: HashMap<NodeIdentity, ImageZoomState>,
     visible_zoom_images: BTreeSet<NodeIdentity>,
     image_pinch: Option<ImagePinch>,
@@ -1367,6 +1374,9 @@ impl Engine {
             retained_images: HashMap::new(),
             visible_retained_images: BTreeSet::new(),
             visible_images: BTreeSet::new(),
+            blocking_images: BTreeSet::new(),
+            image_screens: HashMap::new(),
+            visible_image_screens: BTreeSet::new(),
             marquees: HashMap::new(),
             playback_progress: HashMap::new(),
             image_zooms: HashMap::new(),
@@ -1408,6 +1418,19 @@ impl Engine {
         self.last_native_request
             .as_ref()
             .filter(|request| request.id == id)
+    }
+
+    pub fn screen_images_ready(&self) -> bool {
+        self.image_wait_remaining_ms() == 0
+    }
+
+    pub fn image_wait_remaining_ms(&self) -> u64 {
+        if !self.blocking_images.iter().any(|key| {
+            matches!(self.remote_images.get(key), Some(RemoteImageState::Loading { .. }))
+        }) { return 0; }
+        self.image_screens.values().flatten()
+            .map(|started| 1000_u64.saturating_sub(started.elapsed().as_millis() as u64))
+            .max().unwrap_or(0)
     }
 
     pub fn camera_review_ready(&self) -> bool {
@@ -1723,7 +1746,6 @@ impl Engine {
             );
         if blurred {
             self.focused_input = None;
-            self.native_editor_state = None;
         }
 
         let changes_layout = action.as_ref().is_some_and(Action::changes_layout);
@@ -1740,6 +1762,11 @@ impl Engine {
     }
 
     pub fn pointer_down(&mut self, id: i32, x: f32, y: f32) -> PointerOutcome {
+        if !self.screen_images_ready()
+            && !matches!(self.hit_region_at(x, y).map(|region| &region.action), Some(Action::Back))
+        {
+            return PointerOutcome::default();
+        }
         if self.gesture_owner.is_some() || self.image_pinch.is_some() {
             return PointerOutcome::default();
         }
@@ -2378,6 +2405,7 @@ impl Engine {
                 | NodeKind::Message { children, .. }
                 | NodeKind::MessageQuote { children, .. }
                 | NodeKind::LinkPreview { children, .. }
+                | NodeKind::RowTitle { children, .. }
                 | NodeKind::PlayingTransport { children, .. }
                 | NodeKind::PlayingLayout { children, .. }
                 | NodeKind::Pressable { children, .. }
@@ -2401,7 +2429,6 @@ impl Engine {
             TextEdit::Update(payload) => self.apply_editor_update(&payload),
             TextEdit::Submit | TextEdit::Dismiss => {
                 self.focused_input = None;
-                self.native_editor_state = None;
                 self.relayout_scene();
                 true
             }
@@ -2630,6 +2657,11 @@ impl Engine {
         self.scene.images.clear();
         self.scene.preloaded_images.clear();
         self.preloaded_images.clear();
+        if self.screen_images_ready() {
+            for started in self.image_screens.values_mut() { *started = None; }
+        }
+        self.blocking_images.clear();
+        self.visible_image_screens.clear();
         self.visible_retained_images.clear();
         self.pending_images.clear();
         self.scene.camera_portal = None;
@@ -2663,6 +2695,10 @@ impl Engine {
                 self.focus_text_input_at_end(state, action);
             }
         }
+        // Keep the native text on blur; switching inputs or screens releases it.
+        if self.focused_input.is_some() && self.native_editor_state != self.focused_input {
+            self.native_editor_state = None;
+        }
         self.clip = Rect {
             x: 0.0,
             y: 0.0,
@@ -2679,6 +2715,7 @@ impl Engine {
             },
         );
         self.root = root;
+        self.image_screens.retain(|id, _| self.visible_image_screens.contains(id));
         self.marquees.retain(|_, marquee| marquee.visible);
         self.playback_progress.retain(|_, progress| progress.visible);
         self.animate_scene();
@@ -2706,6 +2743,7 @@ impl Engine {
             | NodeKind::Message { children, .. }
             | NodeKind::MessageQuote { children, .. }
             | NodeKind::LinkPreview { children, .. }
+            | NodeKind::RowTitle { children, .. }
             | NodeKind::PlayingTransport { children, .. }
             | NodeKind::PlayingLayout { children, .. }
             | NodeKind::Pressable { children, .. }
@@ -2801,7 +2839,7 @@ impl Engine {
                 MeasuredSize { width: available.width, height }
             }
             NodeKind::Pressable { children, .. } => children.first().map(|child| self.measure(child, available)).unwrap_or_default(),
-            NodeKind::PlayingTransport { children } => MeasuredSize {
+            NodeKind::PlayingTransport { children, .. } => MeasuredSize {
                 width: available.width,
                 height: children.iter().map(|child| self.measure(child, available).height).fold(0.0, f32::max),
             },
@@ -2852,6 +2890,10 @@ impl Engine {
                         }
                     }
                 }
+            }
+            NodeKind::RowTitle { text, size, max_lines, .. } => {
+                let lines = self.wrap_inset_text(text, self.scaled_font(*size), available.width, *max_lines, false, &[], self.scaled(*size + 6.0));
+                MeasuredSize { width: available.width, height: (self.text_line_height(*size) * lines.len() as f32).min(available.height) }
             }
             NodeKind::PlayingLabel { text, size } => MeasuredSize {
                 width: self.text_width(text, self.scaled_font(*size)).min(available.width),
@@ -2973,14 +3015,15 @@ impl Engine {
                     (self.viewport.height as f32 - available.y).max(0.0)
                 },
             },
-            NodeKind::Toggle { label, .. } => {
+            NodeKind::Toggle { label, subtitle, .. } => {
                 let width = (available.width
                     - self.scaled(TOGGLE_START + TOGGLE_ICON_SIZE + TOGGLE_LINE_WIDTH + TOGGLE_LABEL_GAP))
                     .max(0.0);
                 let lines = self.wrap_text(label, self.scaled_font(DEFAULT_TEXT_SIZE), width, None, false);
                 MeasuredSize {
                     width: available.width,
-                    height: (self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32)
+                    height: (self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32
+                        + if subtitle.is_some() { self.text_line_height(16.0) } else { 0.0 })
                         .max(self.scaled(TOGGLE_HEIGHT))
                         .min(available.height),
                 }
@@ -3139,15 +3182,47 @@ impl Engine {
                 let y = available.y + if *centred { (available.height - size.height).max(0.0) / 2.0 } else { 0.0 };
                 self.layout(&children[0], Rect { y, height: size.height, ..available });
             }
-            NodeKind::PlayingTransport { children } => {
+            NodeKind::PlayingTransport { children, loading } => {
                 for (index, child) in children.iter().enumerate() {
-                    let size = self.measure(child, rect);
-                    let x = match index {
-                        0 => rect.x,
-                        1 => rect.x + (rect.width - size.width) / 2.0,
-                        _ => rect.x + rect.width - size.width,
+                    if *loading && index != 1 {
+                        continue;
+                    }
+                    let slot = rect.width / children.len() as f32;
+                    let size = self.measure(child, Rect { width: slot, ..rect });
+                    let x = if children.len() == 1 {
+                        rect.x + (rect.width - size.width) / 2.0
+                    } else {
+                        let fraction = index as f32 / (children.len() - 1) as f32;
+                        rect.x + fraction * (rect.width - size.width)
                     };
-                    self.layout(child, Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width: size.width, height: size.height });
+                    if index == 1 && *loading {
+                        let font_size = self.scaled_font(14.0);
+                        self.scene.text.push(TextRun {
+                            text: "Loading...".to_owned(),
+                            rect: Rect { y: rect.y + (rect.height - font_size) / 2.0, height: font_size, ..rect },
+                            clip: rect.intersection(self.clip), font_size,
+                            colour: self.scene.colour(Colour::WHITE),
+                            align: TextAlign::Centre, tabular_numbers: false, scrolling: self.scrolling,
+                        });
+                    } else {
+                        self.layout(child, Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width: size.width, height: size.height });
+                    }
+                }
+            }
+            NodeKind::RowTitle { children, text, size, max_lines } => {
+                let inset = self.scaled(*size + 6.0);
+                let line_height = self.text_line_height(*size);
+                let lines = self.wrap_inset_text(text, self.scaled_font(*size), rect.width, *max_lines, false, &[], inset);
+                if let Some(icon) = children.first() {
+                    let size = self.scaled(*size);
+                    self.layout(icon, Rect { y: rect.y + (line_height - size) / 2.0, width: size, height: size, ..rect });
+                }
+                for (index, line) in lines.iter().enumerate() {
+                    let inset = if index == 0 { inset } else { 0.0 };
+                    self.layout_text_lines(std::slice::from_ref(line), *size, TextAlign::Start, false, Rect {
+                        x: rect.x + inset, y: rect.y + index as f32 * line_height,
+                        width: (rect.width - inset).max(0.0), height: line_height.min((rect.height - index as f32 * line_height).max(0.0)),
+                    });
                 }
             }
             NodeKind::PlayingLabel { text, size } => {
@@ -3275,20 +3350,36 @@ impl Engine {
                 left_action,
                 right_action,
                 media_picker,
-            } => self.layout_screen(
-                children,
-                title.as_deref(),
-                *centred,
-                footer.as_ref(),
-                *pinned_header,
-                *pinned_footer,
-                *wide,
-                left_action.as_ref(),
-                right_action.as_ref(),
-                *media_picker,
-                screen_bottom_inset,
-                rect,
-            ),
+                wait_for_images,
+            } => {
+                if *wait_for_images { self.visible_image_screens.insert(node.identity); }
+                let waiting = *wait_for_images && self.image_screens.get(&node.identity) != Some(&None);
+                let pending_start = self.pending_images.len();
+                let image_start = self.scene.images.len();
+                self.layout_screen(
+                    children,
+                    title.as_deref(),
+                    *centred,
+                    footer.as_ref(),
+                    *pinned_header,
+                    *pinned_footer,
+                    *wide,
+                    left_action.as_ref(),
+                    right_action.as_ref(),
+                    *media_picker,
+                    screen_bottom_inset,
+                    rect,
+                );
+                if waiting && (self.scene.images.len() > image_start || self.pending_images.len() > pending_start) {
+                    let pending = &self.pending_images[pending_start..];
+                    let ready = !pending.iter().any(|image| {
+                        matches!(self.remote_images.get(&image.key), Some(RemoteImageState::Loading { .. }))
+                    });
+                    let started = self.image_screens.entry(node.identity).or_insert_with(|| Some(Instant::now()));
+                    if ready { *started = None; }
+                    self.blocking_images.extend(pending.iter().map(|image| image.key.clone()));
+                }
+            },
             NodeKind::Stack {
                 children,
                 axis,
@@ -3414,6 +3505,7 @@ impl Engine {
             }
             NodeKind::Toggle {
                 label,
+                subtitle,
                 value,
                 action,
                 off,
@@ -3422,6 +3514,7 @@ impl Engine {
                 let enabled = *value;
                 self.layout_toggle(
                     label,
+                    subtitle.as_deref(),
                     enabled,
                     action.as_ref(),
                     off.clone(),
@@ -4090,7 +4183,7 @@ impl Engine {
         for (index, (start, end)) in lines.iter().copied().enumerate() {
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
-                text: if showing_placeholder { placeholder.to_owned() } else if self.native_editor_state == Some(state) { String::new() } else { value[start..end].to_owned() },
+                text: if self.native_editor_state == Some(state) { String::new() } else if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
                 rect: Rect { y: (viewport.y + index as f32 * line_height - scroll_offset + baseline_offset).round(), height: line_height, ..viewport },
                 clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
                 align: TextAlign::Start, scrolling: self.scrolling,
@@ -4198,7 +4291,7 @@ impl Engine {
         let text_run = self.scene.text.len();
         self.scene.text.push(TextRun {
             tabular_numbers: false,
-            text: if self.native_editor_state == Some(state) && !showing_placeholder { String::new() } else { text.to_owned() },
+            text: if self.native_editor_state == Some(state) { String::new() } else { text.to_owned() },
             rect: Rect {
                 x: text_viewport.x - scroll_offset,
                 y: text_viewport.y.round(),
@@ -4267,6 +4360,7 @@ impl Engine {
     fn layout_toggle(
         &mut self,
         label: &str,
+        subtitle: Option<&str>,
         enabled: bool,
         action: Option<&Action>,
         off: Mask,
@@ -4345,15 +4439,21 @@ impl Engine {
         let label_font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
         let lines = self.wrap_text(label, label_font_size, label_rect.width, None, false);
         let text_height = self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32;
+        let subtitle_height = if subtitle.is_some() { self.text_line_height(16.0) } else { 0.0 };
+        let text_y = rect.y + (rect.height - text_height - subtitle_height).max(0.0) / 2.0;
         let start = self.scene.text.len();
         self.layout_text(
             label, None, TextAlign::Start, None, false,
             Rect {
-                y: rect.y + (rect.height - text_height).max(0.0) / 2.0,
+                y: text_y,
                 height: text_height.min(rect.height),
                 ..label_rect
             },
         );
+        if let Some(subtitle) = subtitle {
+            self.layout_text(subtitle, Some(16.0), TextAlign::Start, Some(1), true,
+                Rect { y: text_y + text_height, height: subtitle_height, ..label_rect });
+        }
         for run in &mut self.scene.text[start..] {
             run.colour = colour;
         }
@@ -4363,7 +4463,7 @@ impl Engine {
     }
 
     fn layout_tabs(&mut self, value: &usize, tabs: &[Tab], rect: Rect) {
-        let keyboard_visible = self.text_input_active();
+        let keyboard_visible = self.keyboard_inset > 0;
         let nav_height = if keyboard_visible {
             0.0
         } else {
@@ -4590,7 +4690,21 @@ impl Engine {
         tabular_numbers: bool,
         links: &[(std::ops::Range<usize>, Action)],
     ) -> Arc<[WrappedLine]> {
+        self.wrap_inset_text(text, font_size, available_width, max_lines, tabular_numbers, links, 0.0)
+    }
+
+    fn wrap_inset_text(
+        &mut self,
+        text: &str,
+        font_size: f32,
+        available_width: f32,
+        max_lines: Option<u32>,
+        tabular_numbers: bool,
+        links: &[(std::ops::Range<usize>, Action)],
+        first_line_inset: f32,
+    ) -> Arc<[WrappedLine]> {
         let key = TextWrapKey {
+            first_line_inset: first_line_inset.to_bits(),
             text: text.to_owned(),
             font_size: font_size.to_bits(),
             width: available_width.to_bits(),
@@ -4636,6 +4750,7 @@ impl Engine {
             }
             let mut start = 0;
             while start < paragraph.len() {
+                let available_width = (available_width - if lines.is_empty() { first_line_inset } else { 0.0 }).max(0.0);
                 let mut best = None;
                 let mut measured_end = start;
                 let mut measure = fonts::TextWidth::new(font_size, tabular_numbers);
@@ -4667,7 +4782,7 @@ impl Engine {
         {
             lines.truncate(max_lines);
             if let Some(line) = lines.last_mut() {
-                line.text = self.ellipsize_forced(&line.text, font_size, available_width, tabular_numbers);
+                line.text = self.ellipsize_forced(&line.text, font_size, (available_width - if max_lines == 1 { first_line_inset } else { 0.0 }).max(0.0), tabular_numbers);
                 line.width = text_width_with_numbers(&line.text, font_size, tabular_numbers);
                 line.wrapped = false;
             }
@@ -4866,6 +4981,7 @@ struct MeasuredSize {
 
 #[derive(Hash, PartialEq, Eq)]
 struct TextWrapKey {
+    first_line_inset: u32,
     text: String,
     font_size: u32,
     width: u32,
@@ -4926,6 +5042,7 @@ fn stretchable(node: &Node) -> bool {
             | NodeKind::ConversationComposer { .. }
             | NodeKind::Message { .. }
             | NodeKind::MessageQuote { .. }
+            | NodeKind::RowTitle { .. }
             | NodeKind::PlayingTransport { .. }
             | NodeKind::Row { .. }
             | NodeKind::Text { .. }

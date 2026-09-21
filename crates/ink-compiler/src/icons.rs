@@ -6,6 +6,8 @@ const MATERIAL_SYMBOLS_OUTLINED_FONT: &[u8] =
     include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-400.ttf.zlib");
 const MATERIAL_SYMBOLS_FILLED_FONT: &[u8] =
     include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-Fill1-400.ttf.zlib");
+const MATERIAL_SYMBOLS_SEEK_FONT: &[u8] =
+    include_bytes!("../../../assets/icons/MaterialSymbolsOutlined-Seek-Fill1-300.ttf.zlib");
 const MATERIAL_SYMBOLS_CODEPOINTS: &str =
     include_str!("../../../assets/icons/MaterialSymbolsOutlined.codepoints");
 
@@ -54,7 +56,8 @@ fn raster_variant(name: &str, logical_size: f32, filled: bool) -> Result<RasterI
         bail!("Material Symbol {name:?} exceeds Ink's maximum size");
     }
 
-    let font = material_symbols_font(filled)?;
+    let seek = filled && matches!(name, "replay_5" | "replay_10" | "replay_30" | "forward_5" | "forward_10" | "forward_30");
+    let font = material_symbols_font(filled, seek)?;
     let scaled = font.as_scaled(PxScale::from(dimension as f32));
     let glyph = scaled.glyph_id(character).with_scale(dimension as f32);
     let outlined = font
@@ -103,10 +106,13 @@ fn find(name: &str) -> Option<char> {
     })
 }
 
-fn material_symbols_font(filled: bool) -> Result<&'static FontArc> {
+fn material_symbols_font(filled: bool, seek: bool) -> Result<&'static FontArc> {
     static OUTLINED_FONT: OnceLock<Result<FontArc, String>> = OnceLock::new();
     static FILLED_FONT: OnceLock<Result<FontArc, String>> = OnceLock::new();
-    let (font, compressed) = if filled {
+    static SEEK_FONT: OnceLock<Result<FontArc, String>> = OnceLock::new();
+    let (font, compressed) = if seek {
+        (&SEEK_FONT, MATERIAL_SYMBOLS_SEEK_FONT)
+    } else if filled {
         (&FILLED_FONT, MATERIAL_SYMBOLS_FILLED_FONT)
     } else {
         (&OUTLINED_FONT, MATERIAL_SYMBOLS_OUTLINED_FONT)
