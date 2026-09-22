@@ -1,26 +1,14 @@
+import * as v from "valibot";
 import "@ink/network";
 import { resource } from "ink";
 
-export interface Todo {
-  userId: number;
-  id: number;
-  title: string;
-  completed: boolean;
-  note?: string | null;
-}
-export function decodeTodo(value: unknown): Todo {
-  if (typeof value !== "object" || value === null
-    || !("userId" in value) || typeof value.userId !== "number" || !Number.isSafeInteger(value.userId)
-    || !("id" in value) || typeof value.id !== "number" || !Number.isSafeInteger(value.id)
-    || !("title" in value) || typeof value.title !== "string"
-    || !("completed" in value) || typeof value.completed !== "boolean") throw new Error("Invalid todo response");
-  const todo: Todo = { userId: value.userId, id: value.id, title: value.title, completed: value.completed };
-  if ("note" in value) {
-    if (value.note !== null && typeof value.note !== "string") throw new Error("Invalid todo note");
-    todo.note = value.note;
-  }
-  return todo;
-}
+export const todoSchema = v.object({
+  userId: v.pipe(v.number(), v.safeInteger()),
+  id: v.pipe(v.number(), v.safeInteger()),
+  title: v.string(), completed: v.boolean(), note: v.optional(v.nullable(v.string())),
+});
+export type Todo = v.InferOutput<typeof todoSchema>;
+export const decodeTodo = v.parser(todoSchema);
 async function readTodo(id: number, signal?: AbortSignal) {
   const response = await fetch(`https://jsonplaceholder.typicode.com/todos/${id}`, { signal });
   if (!response.ok) throw new Error(`Todo ${id}: HTTP ${response.status}`);

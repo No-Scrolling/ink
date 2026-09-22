@@ -22,7 +22,8 @@
     "@ink/store": "workspace:*",
     "@ink/video": "workspace:*",
     "ink": "workspace:*",
-    "react": "19.2.8"
+    "react": "19.2.8",
+    "valibot": "1.5.0"
   },
   "devDependencies": {
     "typescript": "5.9.3",

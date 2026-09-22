@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import "@ink/network";
 export async function streamResponse(base: string, signal: AbortSignal) {
   const response = await fetch(`${base}/stream`, { signal });
@@ -74,10 +75,8 @@ export async function replayUpload(base: string, signal: AbortSignal) {
     method: "POST", body: new Blob([new Uint8Array(1024 * 1024).fill(7)]), signal,
   });
   const response = await fetch(request);
-  const value: unknown = await response.json();
-  if (!request.bodyUsed || !response.redirected || typeof value !== "object" || value === null
-    || !("length" in value) || value.length !== 1024 * 1024
-    || !("first" in value) || value.first !== 7 || !("last" in value) || value.last !== 7
-    || !("method" in value) || value.method !== "POST") throw new Error("Redirected upload did not match the original request");
+  if (!response.ok) throw new Error(`Upload failed (HTTP ${response.status})`);
+  v.parse(v.object({ length: v.literal(1024 * 1024), first: v.literal(7), last: v.literal(7), method: v.literal("POST") }), await response.json());
+  if (!request.bodyUsed || !response.redirected) throw new Error("Upload was not redirected");
   return "1 MiB POST replayed after HTTP 307; original request consumed";
 }

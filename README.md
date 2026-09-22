@@ -56,7 +56,8 @@ bun install
 Commands:
 
 - `ink create <directory>` creates an app outside the repository using the selected local SDK.
-- `ink check` checks TypeScript and bundles an app.
+- `ink lint` checks app source with Oxlint without changing files.
+- `ink check` formats app source with Oxfmt, runs the linter, then checks TypeScript and bundles the app.
 - `ink dev` installs a development host, then transfers bundle generations over ADB. Compatible component edits preserve React state; other JavaScript edits reload the runtime and native changes rebuild the APK. Use `--device <serial>` to select a device.
 - `ink build` creates an optimised, signed APK.
 - `ink info` shows bundle size, native capabilities and project details.

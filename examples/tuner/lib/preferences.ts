@@ -1,30 +1,18 @@
+import * as v from "valibot";
 import { createStore } from "@ink/store";
 
-export interface Preferences {
-  referenceHz: number;
-  flats: boolean;
-  showCents: boolean;
-  showFrequency: boolean;
-}
+const preferenceSchema = v.object({
+  referenceHz: v.pipe(v.number(), v.finite(), v.minValue(400), v.maxValue(480)),
+  flats: v.boolean(),
+  showCents: v.optional(v.boolean(), false),
+  showFrequency: v.optional(v.boolean(), false),
+});
+
+export type Preferences = v.InferOutput<typeof preferenceSchema>;
 
 export const preferences = createStore<Preferences>({
   key: "tuner.preferences",
   version: 1,
   initial: { referenceHz: 440, flats: false, showCents: false, showFrequency: false },
-  decode(value) {
-    if (typeof value !== "object" || value === null
-      || !("referenceHz" in value) || typeof value.referenceHz !== "number"
-      || !Number.isFinite(value.referenceHz) || value.referenceHz < 400 || value.referenceHz > 480
-      || !("flats" in value) || typeof value.flats !== "boolean"
-      || ("showCents" in value && typeof value.showCents !== "boolean")
-      || ("showFrequency" in value && typeof value.showFrequency !== "boolean")) {
-      throw new Error("Could not read tuner settings.");
-    }
-    return {
-      referenceHz: value.referenceHz,
-      flats: value.flats,
-      showCents: "showCents" in value && value.showCents === true,
-      showFrequency: "showFrequency" in value && value.showFrequency === true,
-    };
-  },
+  decode: v.parser(preferenceSchema),
 });

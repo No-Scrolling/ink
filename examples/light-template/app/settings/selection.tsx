@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useRef } from "react";
 import { ErrorState, LoadingState, Screen, SettingsChoices, back, useAction, useSnapshot } from "ink";
 import { selection, type Selection as Choice } from "../../data/settings";
 
 export default function Selection() {
   const choice = useSnapshot(selection);
   const reload = useAction(selection.get);
-  const [attempted, setAttempted] = useState<Choice>("Option 1");
+  const attempted = useRef<Choice>("Option 1");
   const save = useAction(async (value: Choice) => {
-    setAttempted(value);
+    attempted.current = value;
     await selection.set(value);
     back();
   });
@@ -19,7 +19,7 @@ export default function Selection() {
         onChange={save.run} />}
       {save.status === "pending" && <LoadingState label="" />}
       {save.status === "error" && <ErrorState message={`Could not save the selection. ${save.error.message}`}
-        onRetry={() => save.run(attempted)} />}
+        onRetry={() => save.run(attempted.current)} />}
       {choice.status === "error" && <ErrorState message={`Could not load the selection. ${choice.error.message}`}
         onRetry={() => reload.run()} />}
     </Screen>

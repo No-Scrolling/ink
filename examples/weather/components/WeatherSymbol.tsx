@@ -37,7 +37,7 @@ import sunriseDark from "../assets/weather/wi-sunrise-white.png";
 import sunsetLight from "../assets/weather/wi-sunset-black.png";
 import sunsetDark from "../assets/weather/wi-sunset-white.png";
 
-const weatherImages: Record<string, { dark: string; light: string }> = {
+const weatherImages = {
   sunny: { dark: daySunnyDark, light: daySunnyLight },
   clearNight: { dark: nightClearDark, light: nightClearLight },
   partlyCloudy: { dark: daySunnyOvercastDark, light: daySunnyOvercastLight },
@@ -58,6 +58,8 @@ const weatherImages: Record<string, { dark: string; light: string }> = {
   sunset: { dark: sunsetDark, light: sunsetLight },
 };
 
+const imagesByName = new Map(Object.entries(weatherImages));
+
 export function WeatherSymbol({
   code,
   isDay,
@@ -71,6 +73,6 @@ export function WeatherSymbol({
 }) {
   const scheme = useColourScheme();
   const key = kind ?? getWeatherIconKey(code ?? 3, isDay ?? 1);
-  const source = weatherImages[key] ?? weatherImages.cloud;
+  const source = imagesByName.get(key) ?? weatherImages.cloud;
   return <Image src={source[scheme]} width={size} height={size} fit="contain" />;
 }

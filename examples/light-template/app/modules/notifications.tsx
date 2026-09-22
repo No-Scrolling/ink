@@ -1,11 +1,12 @@
+import * as v from "valibot";
 import { lightos } from "@ink/lightos";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { notifications, useNotificationTap } from "@ink/notifications";
 import { Button, Field, Screen, Stack, useAction, useRouteParams } from "ink";
 
 export default function Notifications() {
-  const params = useRouteParams<{ source?: string }>();
-  const permission = useAction(useCallback(() => lightos.getPermission("notifications"), []));
+  const params = useRouteParams(v.parser(v.object({ source: v.fallback(v.optional(v.string()), undefined) })));
+  const permission = useAction(() => lightos.getPermission("notifications"));
   const request = useAction(async () => {
     await lightos.requestPermission("notifications");
     permission.run();
@@ -45,7 +46,7 @@ export default function Notifications() {
         href: { path: "/modules/notifications", params: { source: "exact-reminder" } },
         data: "exact",
       }))}>Exact in 15 Seconds</Button>
-      {typeof params.source === "string" && <Field label="Route source">{params.source}</Field>}
+      {params.source !== undefined && <Field label="Route source">{params.source}</Field>}
       {command.status === "error" && <Field label="Error">{command.error.message}</Field>}
       {tap.state.status === "ready" ? (
         <Stack gap={16}>

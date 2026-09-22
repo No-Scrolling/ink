@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { lightos } from "@ink/lightos";
 import { Button, Field, Screen, useAction } from "ink";
 
@@ -6,7 +6,7 @@ export default function Connection() {
   const version = useAction(lightos.getVersion);
   const preferences = useAction(lightos.getPreferences);
   const keyboard = useAction(lightos.getKeyboardOptions);
-  const camera = useAction(useCallback(() => lightos.getPermission("camera"), []));
+  const camera = useAction(() => lightos.getPermission("camera"));
   const request = useAction(async () => {
     await lightos.requestPermission("camera");
     camera.run();

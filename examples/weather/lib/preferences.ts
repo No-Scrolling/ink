@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { createStore } from "@ink/store";
 
 export const WEATHER_DETAILS = [
@@ -20,13 +21,13 @@ export const WEATHER_DETAILS = [
 ] as const;
 
 export type WeatherDetail = (typeof WEATHER_DETAILS)[number];
-export const DETAIL_LABELS: Record<WeatherDetail, string> = {
+export const DETAIL_LABELS = {
   Temp: "Temperature", "Feels Like": "Feels like", "Precip Chance": "Precip. chance",
   "Precip Amount": "Precip. amount", "Wind Speed": "Wind speed", "Wind Gusts": "Wind gusts",
   "UV Index": "UV index", Humidity: "Humidity", "Dew Point": "Dew point", "Cloud Cover": "Cloud cover",
   Visibility: "Visibility", Pressure: "Pressure", "AQI (US)": "AQI (US)",
   "AQI (EU)": "AQI (EU)", "PM2.5": "PM2.5", PM10: "PM10",
-};
+} satisfies Record<WeatherDetail, string>;
 
 export type TemperatureUnit = "Celsius" | "Fahrenheit";
 export type WindSpeedUnit = "km/h" | "m/s" | "mph" | "Knots";
@@ -64,67 +65,37 @@ const initial: WeatherPreferences = {
   savedLocations: [],
 };
 
-function isSavedLocation(value: unknown): value is SavedLocation {
-  if (typeof value !== "object" || value === null) return false;
-  const location = value as Record<string, unknown>;
-  return typeof location.id === "number"
-    && Number.isSafeInteger(location.id)
-    && typeof location.name === "string"
-    && (location.admin1 === undefined || typeof location.admin1 === "string")
-    && typeof location.country === "string"
-    && typeof location.latitude === "number"
-    && Number.isFinite(location.latitude)
-    && Math.abs(location.latitude) <= 90
-    && typeof location.longitude === "number"
-    && Number.isFinite(location.longitude)
-    && Math.abs(location.longitude) <= 180;
-}
+export const locationSchema = v.object({
+  id: v.pipe(v.number(), v.safeInteger()),
+  name: v.string(),
+  admin1: v.optional(v.string()),
+  country: v.string(),
+  latitude: v.pipe(v.number(), v.finite(), v.minValue(-90), v.maxValue(90)),
+  longitude: v.pipe(v.number(), v.finite(), v.minValue(-180), v.maxValue(180)),
+});
 
-function decodeDetails(value: unknown): WeatherDetail[] {
-  if (!Array.isArray(value)) throw new Error("Invalid weather details");
-  const details = value.filter((detail): detail is WeatherDetail =>
-    typeof detail === "string" && (WEATHER_DETAILS as readonly string[]).includes(detail),
-  );
-  const unique = [...new Set(details)];
-  if (unique.length === 0) return [...initial.selectedDetails];
-  return unique;
-}
+const details = v.pipe(
+  v.array(v.fallback(v.nullable(v.picklist(WEATHER_DETAILS)), null)),
+  v.transform(values => {
+    const selected = [...new Set(values.filter(value => value !== null))];
+    return selected.length ? selected : [...initial.selectedDetails];
+  }),
+);
 
 export const preferences = createStore<WeatherPreferences>({
   key: "weather.preferences",
   version: 1,
   initial,
-  decode(value) {
-    if (typeof value !== "object" || value === null) {
-      throw new Error("Could not read weather settings.");
-    }
-    const saved = value as Record<string, unknown>;
-    const temperatureUnit = saved.temperatureUnit;
-    const windSpeedUnit = saved.windSpeedUnit;
-    const precipitationUnit = saved.precipitationUnit;
-    const timeFormat = saved.timeFormat;
-    const mainLocation = saved.mainLocation;
-    const savedLocations = saved.savedLocations;
-    if ((temperatureUnit !== "Celsius" && temperatureUnit !== "Fahrenheit")
-      || (windSpeedUnit !== "km/h" && windSpeedUnit !== "m/s" && windSpeedUnit !== "mph" && windSpeedUnit !== "Knots")
-      || (precipitationUnit !== "Millimeter" && precipitationUnit !== "Inch")
-      || (timeFormat !== "24h" && timeFormat !== "12h")
-      || (mainLocation !== null && !isSavedLocation(mainLocation))
-      || !Array.isArray(savedLocations)
-      || savedLocations.some(location => !isSavedLocation(location))) {
-      throw new Error("Could not read weather settings.");
-    }
-    return {
-      invertColours: saved.invertColours === true,
-      temperatureUnit,
-      windSpeedUnit,
-      precipitationUnit,
-      timeFormat,
-      selectedDetails: decodeDetails(saved.selectedDetails),
-      mainLocation,
-      savedLocations,
-    };
-  },
+  decode: v.parser(v.object({
+    invertColours: v.fallback(v.boolean(), false),
+    temperatureUnit: v.picklist(["Celsius", "Fahrenheit"]),
+    windSpeedUnit: v.picklist(["km/h", "m/s", "mph", "Knots"]),
+    precipitationUnit: v.picklist(["Millimeter", "Inch"]),
+    timeFormat: v.picklist(["24h", "12h"]),
+    selectedDetails: details,
+    mainLocation: v.nullable(locationSchema),
+    savedLocations: v.array(locationSchema),
+  })),
 });
 
 export function formatLocationName(location: Pick<SavedLocation, "name" | "admin1" | "country">): string {

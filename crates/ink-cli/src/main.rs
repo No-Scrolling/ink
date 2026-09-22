@@ -4,6 +4,7 @@ mod cli;
 mod create;
 mod output;
 mod process;
+mod quality;
 mod watch;
 
 use std::{fs, path::Path};
@@ -38,8 +39,15 @@ fn run() -> Result<()> {
         InkCommand::Devices => list_devices(),
         InkCommand::Check => {
             let project = load_project(cli.directory.as_deref())?;
+            quality::format(&project, cli.verbose)?;
+            quality::lint(&project, cli.verbose)?;
             ink_compiler::check(&project)?;
             output::success(format!("{} is valid", project.name()));
+            Ok(())
+        }
+        InkCommand::Lint => {
+            let project = load_project(cli.directory.as_deref())?;
+            quality::lint(&project, cli.verbose)?;
             Ok(())
         }
         InkCommand::Build { debug } => {

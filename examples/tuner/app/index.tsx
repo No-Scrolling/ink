@@ -5,9 +5,7 @@ import { Screen, Stack, Text, navigate } from "ink";
 import { settings } from "ink/icons";
 import { useSettings } from "../lib/settings-context";
 
-const flatNames: Record<string, string> = {
-  "C#": "D♭", "D#": "E♭", "F#": "G♭", "G#": "A♭", "A#": "B♭",
-};
+const flatNames = new Map([["C#", "D♭"], ["D#", "E♭"], ["F#", "G♭"], ["G#", "A♭"], ["A#", "B♭"]]);
 const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export default function Tuner() {
@@ -50,7 +48,7 @@ export default function Tuner() {
   const deviation = (midi - nearest) * 100;
   const cents = Math.round(deviation);
   const name = noteNames[((nearest % 12) + 12) % 12];
-  const note = flats ? flatNames[name] ?? name : name.replace("#", "♯");
+  const note = flats ? flatNames.get(name) ?? name : name.replace("#", "♯");
   const octave = Math.floor(nearest / 12) - 1;
   const error = initialError ?? pitch.state.error?.message;
   const readings = [];

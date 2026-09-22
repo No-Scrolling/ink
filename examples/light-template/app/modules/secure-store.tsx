@@ -13,6 +13,8 @@ export default function SecureStore() {
     {read.status === "success" && <Text>{read.data}</Text>}
     {write.status === "success" && <Text>Secret saved</Text>}
     {remove.status === "success" && <Text>Secret removed</Text>}
-    {[write, read, remove].map((action, index) => action.status === "error" ? <Text key={index}>{action.error.message}</Text> : null)}
+    {write.status === "error" && <Text>{write.error.message}</Text>}
+    {read.status === "error" && <Text>{read.error.message}</Text>}
+    {remove.status === "error" && <Text>{remove.error.message}</Text>}
   </Screen>;
 }

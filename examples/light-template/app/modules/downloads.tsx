@@ -1,18 +1,15 @@
-import { useMemo } from "react";
+import * as v from "valibot";
 import { downloads } from "@ink/network/downloads";
 import { createStore } from "@ink/store";
 import { Button, Screen, Text, useAction, useSnapshot } from "ink";
 
 const lastDownload = createStore<string | null>({
   key: "example.download", version: 1, initial: null,
-  decode(value) {
-    if (value !== null && typeof value !== "string") throw new Error("Invalid saved download");
-    return value;
-  },
+  decode: v.parser(v.nullable(v.string())),
 });
 
 function Progress({ id }: { id: string }) {
-  const source = useMemo(() => downloads.observe(id), [id]);
+  const source = downloads.observe(id);
   const snapshot = useSnapshot(source);
   const action = useAction(async (operation: "pause" | "resume" | "cancel" | "remove") => {
     await downloads[operation](id);

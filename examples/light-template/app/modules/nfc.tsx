@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { nfc } from "@ink/nfc";
 import { Button, Field, Screen, Stack, useAction } from "ink";
 
 export default function Nfc() {
   const session = useRef<AbortController | null>(null);
-  const read = useCallback(() => {
+  const read = () => {
     const controller = new AbortController();
     session.current = controller;
     return nfc.read({ signal: controller.signal });
-  }, []);
+  };
   const tag = useAction(read);
   const raw = useAction(async (technology: "iso-dep" | "nfc-a") => {
     session.current?.abort();

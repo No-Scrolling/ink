@@ -33,8 +33,11 @@ pub enum InkCommand {
         #[arg(long, default_value = "com.example.inkapp")]
         package: String,
     },
-    /// Validate the application without producing build artefacts
+    /// Format, lint and type-check the application
     Check,
+
+    /// Lint the application without changing files
+    Lint,
 
     /// Build an optimised, release-signed APK
     Build {

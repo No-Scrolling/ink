@@ -70,7 +70,9 @@ export default function Files() {
           active.current = controller;
           const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]);
           try {
-            const blob = await (await fetch(file.src, { signal })).blob();
+            const source = await fetch(file.src, { signal });
+            if (!source.ok) throw new Error(`Could not read file (HTTP ${source.status})`);
+            const blob = await source.blob();
             const form = new FormData();
             form.append("name", file.name);
             form.append("file", blob, file.name);

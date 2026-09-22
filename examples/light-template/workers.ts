@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { lightos } from "@ink/lightos";
 import "@ink/network";
 import { notifications } from "@ink/notifications";
@@ -9,10 +10,7 @@ import { decodeTodo } from "./data/todos";
 
 export const refreshTodo = defineTask({
   id: "template.refresh-todo",
-  decode(input: unknown) {
-    if (input !== null) throw new Error("Background refresh takes no input");
-    return null;
-  },
+  decode: v.parser(v.null()),
   async run({ signal }) {
     try {
       const response = await fetch("https://jsonplaceholder.typicode.com/todos/1", { signal });
@@ -44,10 +42,7 @@ export const processPush = defineTask({
 
 export const inspectWorker = defineTask({
   id: "template.inspect-worker",
-  decode(input: unknown) {
-    if (input !== null) throw new Error("Worker inspection takes no input");
-    return null;
-  },
+  decode: v.parser(v.null()),
   async run({ signal }) {
     const permission = await lightos.getPermission("notifications");
     const exact = await lightos.canScheduleExact();

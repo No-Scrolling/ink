@@ -13,19 +13,20 @@ const account = createOAuthClient({
 
 export default function Accounts() {
   const session = useSnapshot(account);
-  const controller = useRef(new AbortController());
+  const controller = useRef<AbortController | null>(null);
   const [device, setDevice] = useState<DeviceSignIn | null>(null);
   useEffect(() => {
-    controller.current = new AbortController();
-    return () => controller.current.abort();
+    const active = new AbortController();
+    controller.current = active;
+    return () => active.abort();
   }, []);
   const start = useAction(async () => {
-    const pending = await account.startDeviceSignIn({ signal: controller.current.signal });
+    const pending = await account.startDeviceSignIn({ signal: controller.current?.signal });
     setDevice(pending);
-    try { await pending.complete({ signal: controller.current.signal }); }
+    try { await pending.complete({ signal: controller.current?.signal }); }
     finally { setDevice(null); }
   });
-  const browser = useAction(() => account.signIn({ signal: controller.current.signal }));
+  const browser = useAction(() => account.signIn({ signal: controller.current?.signal }));
   const token = useAction(async () => { await account.getAccessToken(); return "Access token ready"; });
   const signOut = useAction(async () => { await account.signOut(); setDevice(null); });
   return <Screen title="Accounts">
@@ -39,7 +40,10 @@ export default function Accounts() {
       <Text>{device.verificationUriComplete ?? device.verificationUri}</Text>
     </>}
     {token.status === "success" && <Text>{token.data}</Text>}
-    {[start, browser, token, signOut].map((action, index) => action.status === "error" ? <Text key={index}>{action.error.message}</Text> : null)}
+    {start.status === "error" && <Text>{start.error.message}</Text>}
+    {browser.status === "error" && <Text>{browser.error.message}</Text>}
+    {token.status === "error" && <Text>{token.error.message}</Text>}
+    {signOut.status === "error" && <Text>{signOut.error.message}</Text>}
     {session.status === "error" && <Text>{session.error.message}</Text>}
   </Screen>;
 }

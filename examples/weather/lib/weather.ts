@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import "@ink/network";
 
 import type {
@@ -63,103 +64,153 @@ export interface AirQualityData {
   };
 }
 
-type JsonRecord = Record<string, unknown>;
-
-function record(value: unknown, label: string): JsonRecord {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`Invalid ${label} response.`);
-  }
-  return value as JsonRecord;
-}
-
-function finiteNumber(value: unknown, label: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`Invalid ${label} value.`);
-  }
-  return value;
-}
-
-function numberArray(value: unknown, label: string): Array<number | null> {
-  if (!Array.isArray(value)) throw new Error(`Invalid ${label} data.`);
-  return value.map((item, index) => {
-    if (item === null) return null;
-    return finiteNumber(item, `${label}[${index}]`);
-  });
-}
-
-function stringArray(value: unknown, label: string): string[] {
-  if (!Array.isArray(value)) throw new Error(`Invalid ${label} data.`);
-  return value.map((item, index) => {
-    if (typeof item !== "string") throw new Error(`Invalid ${label}[${index}] value.`);
-    return item;
-  });
-}
-
-function readCurrent(response: JsonRecord): WeatherData["current"] {
-  const current = record(response.current, "current weather");
-  const time = current.time;
-  if (typeof time !== "string") throw new Error("Invalid current weather time.");
-  return {
-    time,
-    weatherCode: finiteNumber(current.weather_code, "weather code"),
-    temperature: finiteNumber(current.temperature_2m, "temperature"),
-    apparentTemperature: finiteNumber(current.apparent_temperature, "feels like"),
-    isDay: finiteNumber(current.is_day, "day state"),
-  };
-}
-
-function readHourly(response: JsonRecord): WeatherData["hourly"] {
-  const hourly = record(response.hourly, "hourly weather");
-  return {
-    time: stringArray(hourly.time, "hourly time"),
-    temperature: numberArray(hourly.temperature_2m, "hourly temperature"),
-    apparentTemperature: numberArray(hourly.apparent_temperature, "hourly feels like"),
-    precipitationProbability: numberArray(hourly.precipitation_probability, "precipitation chance"),
-    precipitation: numberArray(hourly.precipitation, "precipitation"),
-    weatherCode: numberArray(hourly.weather_code, "hourly weather code"),
-    windSpeed: numberArray(hourly.wind_speed_10m, "wind speed"),
-    windGusts: numberArray(hourly.wind_gusts_10m, "wind gusts"),
-    uvIndex: numberArray(hourly.uv_index, "UV index"),
-    humidity: numberArray(hourly.relative_humidity_2m, "humidity"),
-    dewPoint: numberArray(hourly.dew_point_2m, "dew point"),
-    cloudCover: numberArray(hourly.cloud_cover, "cloud cover"),
-    visibility: numberArray(hourly.visibility, "visibility"),
-    pressure: numberArray(hourly.surface_pressure, "pressure"),
-    isDay: numberArray(hourly.is_day, "day state"),
-  };
-}
-
-function readDaily(response: JsonRecord): WeatherData["daily"] {
-  const daily = record(response.daily, "daily weather");
-  return {
-    time: stringArray(daily.time, "daily time"),
-    temperatureMax: numberArray(daily.temperature_2m_max, "maximum temperature"),
-    temperatureMin: numberArray(daily.temperature_2m_min, "minimum temperature"),
-    weatherCode: numberArray(daily.weather_code, "daily weather code"),
-    apparentTemperatureMax: numberArray(daily.apparent_temperature_max, "maximum feels like"),
-    apparentTemperatureMin: numberArray(daily.apparent_temperature_min, "minimum feels like"),
-    precipitationProbability: numberArray(daily.precipitation_probability_max, "daily precipitation chance"),
-    uvIndex: numberArray(daily.uv_index_max, "daily UV index"),
-    precipitation: numberArray(daily.precipitation_sum, "daily precipitation"),
-    windSpeed: numberArray(daily.wind_speed_10m_max, "daily wind speed"),
-    windGusts: numberArray(daily.wind_gusts_10m_max, "daily wind gusts"),
-    humidity: numberArray(daily.relative_humidity_2m_mean, "daily humidity"),
-    dewPoint: numberArray(daily.dew_point_2m_mean, "daily dew point"),
-    cloudCover: numberArray(daily.cloud_cover_mean, "daily cloud cover"),
-    visibility: numberArray(daily.visibility_mean, "daily visibility"),
-    pressure: numberArray(daily.surface_pressure_mean, "daily pressure"),
-    sunrise: stringArray(daily.sunrise, "sunrise"),
-    sunset: stringArray(daily.sunset, "sunset"),
-  };
-}
-
-async function requestJson(url: string): Promise<{ response: Response; body: unknown }> {
+const finite = v.pipe(v.number(), v.finite());
+const numbers = v.array(v.nullable(finite));
+const currentSchema = v.pipe(
+  v.object({
+    time: v.string(),
+    weather_code: finite,
+    temperature_2m: finite,
+    apparent_temperature: finite,
+    is_day: finite,
+  }),
+  v.transform((value) => ({
+    time: value.time,
+    weatherCode: value.weather_code,
+    temperature: value.temperature_2m,
+    apparentTemperature: value.apparent_temperature,
+    isDay: value.is_day,
+  })),
+);
+const hourlySchema = v.pipe(
+  v.object({
+    time: v.array(v.string()),
+    temperature_2m: numbers,
+    apparent_temperature: numbers,
+    precipitation_probability: numbers,
+    precipitation: numbers,
+    weather_code: numbers,
+    wind_speed_10m: numbers,
+    wind_gusts_10m: numbers,
+    uv_index: numbers,
+    relative_humidity_2m: numbers,
+    dew_point_2m: numbers,
+    cloud_cover: numbers,
+    visibility: numbers,
+    surface_pressure: numbers,
+    is_day: numbers,
+  }),
+  v.transform((value) => ({
+    time: value.time,
+    temperature: value.temperature_2m,
+    apparentTemperature: value.apparent_temperature,
+    precipitationProbability: value.precipitation_probability,
+    precipitation: value.precipitation,
+    weatherCode: value.weather_code,
+    windSpeed: value.wind_speed_10m,
+    windGusts: value.wind_gusts_10m,
+    uvIndex: value.uv_index,
+    humidity: value.relative_humidity_2m,
+    dewPoint: value.dew_point_2m,
+    cloudCover: value.cloud_cover,
+    visibility: value.visibility,
+    pressure: value.surface_pressure,
+    isDay: value.is_day,
+  })),
+);
+const dailySchema = v.pipe(
+  v.object({
+    time: v.array(v.string()),
+    temperature_2m_max: numbers,
+    temperature_2m_min: numbers,
+    weather_code: numbers,
+    apparent_temperature_max: numbers,
+    apparent_temperature_min: numbers,
+    precipitation_probability_max: numbers,
+    uv_index_max: numbers,
+    precipitation_sum: numbers,
+    wind_speed_10m_max: numbers,
+    wind_gusts_10m_max: numbers,
+    relative_humidity_2m_mean: numbers,
+    dew_point_2m_mean: numbers,
+    cloud_cover_mean: numbers,
+    visibility_mean: numbers,
+    surface_pressure_mean: numbers,
+    sunrise: v.array(v.string()),
+    sunset: v.array(v.string()),
+  }),
+  v.transform((value) => ({
+    time: value.time,
+    temperatureMax: value.temperature_2m_max,
+    temperatureMin: value.temperature_2m_min,
+    weatherCode: value.weather_code,
+    apparentTemperatureMax: value.apparent_temperature_max,
+    apparentTemperatureMin: value.apparent_temperature_min,
+    precipitationProbability: value.precipitation_probability_max,
+    uvIndex: value.uv_index_max,
+    precipitation: value.precipitation_sum,
+    windSpeed: value.wind_speed_10m_max,
+    windGusts: value.wind_gusts_10m_max,
+    humidity: value.relative_humidity_2m_mean,
+    dewPoint: value.dew_point_2m_mean,
+    cloudCover: value.cloud_cover_mean,
+    visibility: value.visibility_mean,
+    pressure: value.surface_pressure_mean,
+    sunrise: value.sunrise,
+    sunset: value.sunset,
+  })),
+);
+const weatherSchema = v.object({
+  current: currentSchema,
+  hourly: hourlySchema,
+  daily: dailySchema,
+});
+const airSchema = v.object({
+  hourly: v.pipe(
+    v.object({
+      time: v.array(v.string()),
+      us_aqi: numbers,
+      european_aqi: numbers,
+      pm2_5: numbers,
+      pm10: numbers,
+    }),
+    v.transform((value) => ({
+      time: value.time,
+      usAqi: value.us_aqi,
+      europeanAqi: value.european_aqi,
+      pm25: value.pm2_5,
+      pm10: value.pm10,
+    })),
+  ),
+});
+const geocodingSchema = v.object({
+  results: v.optional(
+    v.array(
+      v.fallback(
+        v.nullable(
+          v.object({
+            id: v.number(),
+            name: v.string(),
+            latitude: v.number(),
+            longitude: v.number(),
+            country: v.string(),
+            country_code: v.string(),
+            admin1: v.fallback(v.optional(v.string()), undefined),
+          }),
+        ),
+        null,
+      ),
+    ),
+    [],
+  ),
+});
+async function requestJson(url: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
     const response = await fetch(url, { signal: controller.signal });
-    const body = await response.json();
-    return { response, body };
+    if (!response.ok) throw new Error(`Request failed (HTTP ${response.status}).`);
+    return await response.text();
   } finally {
     clearTimeout(timeout);
   }
@@ -204,10 +255,7 @@ export async function getWeatherData(
   ].join(","));
   const units = unitValues(temperatureUnit, windSpeedUnit, precipitationUnit);
   for (const [key, value] of Object.entries(units)) url.searchParams.set(key, value);
-  const { response, body: rawBody } = await requestJson(url.href);
-  if (!response.ok) throw new Error(`Weather unavailable (${response.status}).`);
-  const body = record(rawBody, "weather");
-  return { current: readCurrent(body), hourly: readHourly(body), daily: readDaily(body) };
+  return v.parse(weatherSchema, JSON.parse(await requestJson(url.href)));
 }
 
 export async function getAirQualityData(latitude: number, longitude: number): Promise<AirQualityData | null> {
@@ -218,19 +266,7 @@ export async function getAirQualityData(latitude: number, longitude: number): Pr
   url.searchParams.set("forecast_days", "7");
   url.searchParams.set("hourly", "us_aqi,european_aqi,pm2_5,pm10");
   try {
-    const { response, body: rawBody } = await requestJson(url.href);
-    if (!response.ok) return null;
-    const body = record(rawBody, "air quality");
-    const hourly = record(body.hourly, "air quality hourly");
-    return {
-      hourly: {
-        time: stringArray(hourly.time, "air quality time"),
-        usAqi: numberArray(hourly.us_aqi, "US AQI"),
-        europeanAqi: numberArray(hourly.european_aqi, "European AQI"),
-        pm25: numberArray(hourly.pm2_5, "PM2.5"),
-        pm10: numberArray(hourly.pm10, "PM10"),
-      },
-    };
+    return v.parse(airSchema, JSON.parse(await requestJson(url.href)));
   } catch {
     return null;
   }
@@ -252,28 +288,22 @@ export async function searchLocations(query: string): Promise<GeocodingResult[]>
   url.searchParams.set("count", "10");
   url.searchParams.set("language", "en");
   url.searchParams.set("format", "json");
-  const { response, body: rawBody } = await requestJson(url.href);
-  if (!response.ok) throw new Error(`Search unavailable (${response.status}).`);
-  const body = record(rawBody, "location search");
-  const results = body.results;
-  if (results === undefined) return [];
-  if (!Array.isArray(results)) throw new Error("Invalid location search results.");
-  return results.flatMap((item): GeocodingResult[] => {
-    if (typeof item !== "object" || item === null) return [];
-    const result = item as JsonRecord;
-    if (typeof result.id !== "number" || typeof result.name !== "string"
-      || typeof result.latitude !== "number" || typeof result.longitude !== "number"
-      || typeof result.country !== "string" || typeof result.country_code !== "string") return [];
-    return [{
-      id: result.id,
-      name: result.name,
-      latitude: result.latitude,
-      longitude: result.longitude,
-      country: result.country,
-      countryCode: result.country_code,
-      admin1: typeof result.admin1 === "string" ? result.admin1 : undefined,
-    }];
-  });
+  const body = v.parse(geocodingSchema, JSON.parse(await requestJson(url.href)));
+  return body.results.flatMap((result) =>
+    result
+      ? [
+          {
+            id: result.id,
+            name: result.name,
+            latitude: result.latitude,
+            longitude: result.longitude,
+            country: result.country,
+            countryCode: result.country_code,
+            admin1: result.admin1,
+          },
+        ]
+      : [],
+  );
 }
 
 export function formatNumber(value: number | null | undefined, decimals = 0): string {

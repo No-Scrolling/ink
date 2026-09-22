@@ -1,9 +1,9 @@
 import { lightos } from "@ink/lightos";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { Button, Field, Screen, useAction } from "ink";
 
 export default function Camera() {
-  const permission = useAction(useCallback(() => lightos.getPermission("camera"), []));
+  const permission = useAction(() => lightos.getPermission("camera"));
   const request = useAction(async () => {
     await lightos.requestPermission("camera");
     permission.run();
