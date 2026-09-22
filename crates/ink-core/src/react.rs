@@ -53,6 +53,10 @@ enum HostKind {
     Screen,
     ScreenState,
     Stack,
+    Canvas,
+    CanvasRectangle,
+    CanvasText,
+    CanvasIcon,
     Text,
     TextInput,
     Barcode,
@@ -323,6 +327,9 @@ impl ReactTree {
                         HostProps::new(node.kind, props)?
                     };
                     let mut target = id;
+                    if matches!(self.node(target)?.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
+                        target = self.node(target)?.parent.context("Canvas item requires a Canvas parent")?;
+                    }
                     while matches!(self.node(target)?.kind, HostKind::RawText | HostKind::Text) {
                         let Some(parent) = self.node(target)?.parent else {
                             break;
@@ -656,6 +663,58 @@ impl ReactTree {
         }
         let props = &host.props;
         let mut node = match host.kind {
+            HostKind::Canvas => {
+                let width = number(props, "width")?.context("Canvas requires width")?;
+                let height = number(props, "height")?.context("Canvas requires height")?;
+                ensure!(width > 0.0 && height > 0.0, "Canvas dimensions must be positive");
+                let mut drawings = Vec::with_capacity(host.children.len());
+                for child_id in &host.children {
+                    let child = self.node(*child_id)?;
+                    if child.hidden { continue; }
+                    let props = &child.props;
+                    let bounds = super::Rect {
+                        x: number(props, "x")?.context("Canvas item requires x")?,
+                        y: number(props, "y")?.context("Canvas item requires y")?,
+                        width: number(props, "width")?.context("Canvas item requires width")?,
+                        height: number(props, "height")?.context("Canvas item requires height")?,
+                    };
+                    let drawing = match child.kind {
+                        HostKind::CanvasIcon => super::canvas::Drawing::Icon {
+                            bounds,
+                            mask: self.icon(string(props, "name").context("CanvasIcon requires a name")?)?,
+                            colour: canvas_colour(props, "colour")?.unwrap_or(super::Colour::WHITE),
+                        },
+                        HostKind::CanvasRectangle => super::canvas::Drawing::Rectangle {
+                            bounds,
+                            fill: canvas_colour(props, "fill")?,
+                            stroke: canvas_colour(props, "stroke")?,
+                            stroke_width: number(props, "strokeWidth")?.unwrap_or(1.0),
+                            action: (props.get("onPress") == Some(&Json::Bool(true)))
+                                .then(|| event(*child_id, "onPress", vec![])),
+                            long_action: (props.get("onLongPress") == Some(&Json::Bool(true)))
+                                .then(|| event(*child_id, "onLongPress", vec![])),
+                            drag_action: (props.get("onDragEnter") == Some(&Json::Bool(true)))
+                                .then(|| event(*child_id, "onDragEnter", vec![])),
+                        },
+                        HostKind::CanvasText => super::canvas::Drawing::Text {
+                            bounds,
+                            text: string(props, "text").unwrap_or_default().to_owned(),
+                            size: number(props, "size")?.unwrap_or(26.0),
+                            tabular_numbers: props.get("tabularNumbers") == Some(&Json::Bool(true)),
+                            colour: canvas_colour(props, "colour")?.unwrap_or(super::Colour::WHITE),
+                            align: match string(props, "align").unwrap_or("center") {
+                                "start" => TextAlign::Start,
+                                "center" => TextAlign::Centre,
+                                "end" => TextAlign::End,
+                                _ => bail!("unsupported CanvasText alignment"),
+                            },
+                        },
+                        _ => bail!("Canvas accepts only Rectangle, CanvasText and CanvasIcon children"),
+                    };
+                    drawings.push(drawing);
+                }
+                Node { identity: NodeIdentity(id), kind: NodeKind::Canvas { width, height, drawings } }
+            }
             HostKind::List => {
                 let HostProps::List(list) = props else { bail!("List requires metadata"); };
                 let keys = list.keys.clone();
@@ -831,8 +890,9 @@ impl ReactTree {
                 } else {
                     Node::screen(self.children(host, depth)?, props.title, props.centered)
                 };
-                if let NodeKind::Screen { pinned_header, pinned_footer, wide, wait_for_images, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
+                if let NodeKind::Screen { pinned_header, pinned_footer, wide, bottom_inset, wait_for_images, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
                     *wide = props.wide;
+                    *bottom_inset = props.bottom_inset.unwrap_or(true);
                     *wait_for_images = props.wait_for_images.unwrap_or(true);
                     *pinned_header = state.is_none() && props.pinned_header;
                     *pinned_footer = state.is_none() && props.pinned_footer;
@@ -1067,6 +1127,8 @@ impl ReactTree {
 
 #[derive(Deserialize)]
 struct ScreenProps {
+    #[serde(rename = "bottomInset")]
+    bottom_inset: Option<bool>,
     #[serde(rename = "waitForImages")]
     wait_for_images: Option<bool>,
     title: Option<String>,
@@ -1100,6 +1162,19 @@ fn number(props: &HostProps, key: &str) -> Result<Option<f32>> {
 
 fn empty_screen() -> Node {
     Node::screen(vec![], None, false)
+}
+
+fn canvas_colour(props: &HostProps, key: &str) -> Result<Option<super::Colour>> {
+    let Some(value) = props.get(key) else { return Ok(None); };
+    let hex = value.as_str().and_then(|value| value.strip_prefix('#'))
+        .filter(|value| value.len() == 6 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .with_context(|| format!("{key} must be a #RRGGBB colour"))?;
+    let rgb = u32::from_str_radix(hex, 16)?;
+    Ok(Some(super::Colour::rgb(
+        ((rgb >> 16) & 255) as f32 / 255.0,
+        ((rgb >> 8) & 255) as f32 / 255.0,
+        (rgb & 255) as f32 / 255.0,
+    )))
 }
 
 pub(super) fn event(id: usize, name: &'static str, args: Vec<Json>) -> Action {

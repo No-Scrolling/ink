@@ -53,7 +53,7 @@ export async function collectIconSizes(ts, path, contents, materialIcons, resolv
     if (component === "Row" && attribute.name.text === "subtitleIcon") return 16;
     if (component === "Message" && attribute.name.text === "statusIcon") return 14;
     if (component === "Button" && attribute.name.text === "icon") return 40;
-    if (component === "Icon" && attribute.name.text === "name") {
+    if ((component === "Icon" || component === "CanvasIcon") && attribute.name.text === "name") {
       const size = attributes.properties.find(prop => ts.isJsxAttribute(prop) && prop.name.text === "size");
       if (!size) return 28;
       const value = size.initializer;

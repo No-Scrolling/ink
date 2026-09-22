@@ -136,6 +136,7 @@ struct BufferInner {
     core: Arc<Core>,
     buffer: vk::Buffer,
     memory: vk::DeviceMemory,
+    mapped: *mut u8,
     size: usize,
     set: vk::DescriptorSet,
 }
@@ -146,6 +147,7 @@ impl Drop for BufferInner {
             if self.set != vk::DescriptorSet::null() {
                 let _ = d.free_descriptor_sets(self.core.descriptors, &[self.set]);
             }
+            d.unmap_memory(self.memory);
             d.destroy_buffer(self.buffer, None);
             d.free_memory(self.memory, None);
         }
@@ -292,6 +294,8 @@ impl Device {
                 core: c.clone(),
                 buffer,
                 memory,
+                mapped: d.map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
+                    .expect("map buffer").cast(),
                 size,
                 set,
             }))
@@ -303,18 +307,9 @@ impl Device {
             if bytes.is_empty() {
                 return;
             }
-            let ptr = self
-                .0
-                .device
-                .map_memory(
-                    buffer.0.memory,
-                    offset,
-                    bytes.len() as u64,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .expect("map buffer");
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr.cast(), bytes.len());
-            self.0.device.unmap_memory(buffer.0.memory);
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr(), buffer.0.mapped.add(offset as usize), bytes.len(),
+            );
         }
     }
     pub fn texture(&self, width: u32, height: u32, mask: bool) -> Texture {

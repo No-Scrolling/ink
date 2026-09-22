@@ -15,6 +15,7 @@ use unicode_properties::emoji::{
 use unicode_segmentation::UnicodeSegmentation;
 
 mod fonts;
+mod canvas;
 pub use fonts::{font_for_character, tabular_digit_width, text_width, text_width_with_numbers};
 
 mod icon_assets;
@@ -551,6 +552,7 @@ struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
+    Canvas { width: f32, height: f32, drawings: Vec<canvas::Drawing> },
     MediaGridRow { children: Vec<Node> },
     MediaCell { source: ImageSource, selected: bool, video: bool, check: Mask, play: Mask, action: Option<Action> },
     Message { children: Vec<Node>, outgoing: bool },
@@ -587,6 +589,7 @@ enum NodeKind {
         pinned_header: bool,
         pinned_footer: bool,
         wide: bool,
+        bottom_inset: bool,
         left_action: Option<(Mask, Action)>,
         right_action: Option<(Mask, Action)>,
         media_picker: bool,
@@ -680,6 +683,7 @@ impl Node {
                 pinned_header: false,
                 pinned_footer: false,
                 wide: false,
+                bottom_inset: true,
                 left_action: None,
                 right_action: None,
                 media_picker: false,
@@ -1054,6 +1058,8 @@ struct HitRegion {
     rect: Rect,
     action: Action,
     long_action: Option<Action>,
+    drag_group: Option<NodeIdentity>,
+    drag_action: Option<Action>,
     scrolling: bool,
     preserve_input: bool,
     haptic: bool,
@@ -1165,6 +1171,7 @@ struct ImagePanPointer {
 
 #[derive(Clone, Copy, Debug)]
 enum Pointer {
+    CanvasDrag { group: NodeIdentity, previous: (f32, f32), target: Option<PressTarget> },
     Content(ContentPointer),
     TextInput(TextInputPointer),
     ImagePan(ImagePanPointer),
@@ -1846,6 +1853,8 @@ impl Engine {
         };
 
         match pointer {
+            Pointer::CanvasDrag { group, previous, target } =>
+                self.move_canvas_pointer(id, group, previous, target, x, y),
             Pointer::Content(pointer) => self.move_content_pointer(id, pointer, x, y, tap_slop),
             Pointer::TextInput(pointer) => self.move_text_input_pointer(id, pointer, x, y, tap_slop),
             Pointer::ImagePan(pointer) => {
@@ -1935,7 +1944,8 @@ impl Engine {
                     }) && self.focus_text_input(input, x, y)
                 }))
             }
-            Pointer::ScrollThumb { .. }
+            Pointer::CanvasDrag { .. }
+            | Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
             | Pointer::TextInput(_)
             | Pointer::ImagePan(_)
@@ -1961,12 +1971,14 @@ impl Engine {
         let Some(Pointer::Content(ContentPointer { dragging: false, cancelled: false, target: Some(target), .. })) = self.pointers.get(&id) else {
             return PointerOutcome::default();
         };
-        let action = self.hit_region_at(x, y)
-            .filter(|region| region.target == *target)
-            .and_then(|region| region.long_action.clone());
-        let Some(action) = action else { return PointerOutcome::default(); };
+        let region = self.hit_region_at(x, y).filter(|region| region.target == *target).cloned();
+        let Some(region) = region else { return PointerOutcome::default(); };
+        let Some(action) = region.long_action else { return PointerOutcome::default(); };
         self.pointers.clear();
         self.gesture_owner = Some(id);
+        if let Some(group) = region.drag_group {
+            self.pointers.insert(id, Pointer::CanvasDrag { group, previous: (x, y), target: Some(region.target) });
+        }
         let changes_layout = action.changes_layout();
         let activated = self.apply(action);
         if changes_layout { self.relayout_scene(); }
@@ -2629,6 +2641,7 @@ impl Engine {
                 if let Some(input) = input && !pointer.dragging { pointer.input = *input; }
                 input.is_some()
             },
+            Pointer::CanvasDrag { group, .. } => self.hit_regions.iter().any(|region| region.drag_group == Some(*group)),
             Pointer::ImagePan(pointer) => self.visible_zoom_images.contains(&pointer.image),
             Pointer::ScrollThumb { .. } | Pointer::ScrollTrack { .. } => self.scene.scroll_bar.is_some(),
             _ => true,
@@ -2769,6 +2782,7 @@ impl Engine {
             | NodeKind::PlayingLabel { .. }
             | NodeKind::PlayingProgress { .. }
             | NodeKind::PitchIndicator { .. }
+            | NodeKind::Canvas { .. }
             | NodeKind::Toggle { .. } => None,
         }
     }
@@ -2797,6 +2811,10 @@ impl Engine {
 
     fn measure_inner(&mut self, node: &Node, available: Rect) -> MeasuredSize {
         match &node.kind {
+            NodeKind::Canvas { width, height, .. } => {
+                let scale = self.viewport.scale.min(available.width / width).min(available.height / height);
+                MeasuredSize { width: width * scale, height: height * scale }
+            }
             NodeKind::MediaGridRow { .. } => MeasuredSize { width: available.width, height: available.width / 3.0 },
             NodeKind::MediaCell { .. } => MeasuredSize { width: available.width, height: available.width },
             NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end } => {
@@ -3069,6 +3087,7 @@ impl Engine {
             return;
         }
         match &node.kind {
+            NodeKind::Canvas { width, height, drawings } => self.layout_canvas(node.identity, *width, *height, drawings, rect),
             NodeKind::MediaGridRow { children } => {
                 let size = rect.width / 3.0;
                 for (column, child) in children.iter().enumerate() {
@@ -3351,6 +3370,7 @@ impl Engine {
                 right_action,
                 media_picker,
                 wait_for_images,
+                bottom_inset,
             } => {
                 if *wait_for_images { self.visible_image_screens.insert(node.identity); }
                 let waiting = *wait_for_images && self.image_screens.get(&node.identity) != Some(&None);
@@ -3367,7 +3387,7 @@ impl Engine {
                     left_action.as_ref(),
                     right_action.as_ref(),
                     *media_picker,
-                    screen_bottom_inset,
+                    screen_bottom_inset && *bottom_inset,
                     rect,
                 );
                 if waiting && (self.scene.images.len() > image_start || self.pending_images.len() > pending_start) {
@@ -4927,6 +4947,8 @@ impl Engine {
                 rect,
                 action,
                 long_action,
+                drag_group: None,
+                drag_action: None,
                 scrolling: self.scrolling,
                 preserve_input: false,
                 haptic: true,

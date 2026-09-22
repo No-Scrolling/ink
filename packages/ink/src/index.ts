@@ -15,6 +15,7 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   title?: string;
   centered?: boolean;
   wide?: boolean;
+  bottomInset?: boolean;
   waitForImages?: boolean;
   leftAction?: { icon: IconAsset; onPress: () => void };
   rightAction?: { icon: IconAsset; onPress: () => void };
@@ -25,16 +26,17 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   );
 }
 
-export function Stack({ onPress, ...props }: {
+export function Stack({ onPress, haptic, ...props }: {
   children?: ReactNode;
   axis?: "vertical" | "horizontal";
   gap?: number;
   align?: "start" | "center" | "end" | "stretch";
   justify?: "start" | "center" | "end" | "space-between";
   onPress?: () => void;
+  haptic?: boolean;
 }) {
   const stack = createElement("Stack", props);
-  return onPress ? createElement("Pressable", { onPress }, stack) : stack;
+  return onPress ? createElement("Pressable", { onPress, haptic }, stack) : stack;
 }
 
 export function Text(props: {
@@ -66,6 +68,7 @@ export function Button(props: {
 }
 
 export { Row, Image } from "./image";
+export { Canvas, Rectangle, CanvasText, CanvasIcon } from "./canvas";
 
 export function Field(props: {
   label: string;
