@@ -5,9 +5,10 @@ use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     ops::Range,
+    sync::Arc,
 };
 
-use ab_glyph::{Font, FontRef, GlyphId, PxScale, ScaleFont};
+use ab_glyph::{Font, FontArc, FontRef, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
@@ -17,7 +18,6 @@ use ink_core::{
 };
 #[cfg(feature = "perf")]
 use ink_core::{PerfTraceSection, perf_trace_counter};
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::system_glyph::{
     ATLAS_SIZE as SYSTEM_GLYPH_ATLAS_SIZE, CachedSystemGlyph, SystemGlyphAtlas, SystemGlyphRequest,
@@ -222,6 +222,15 @@ struct CachedGlyph {
 }
 
 #[derive(Clone, Copy)]
+struct CachedCharacter {
+    font_index: usize,
+    font: &'static FontArc,
+    id: GlyphId,
+    advance: f32,
+    bitmap: Option<CachedGlyph>,
+}
+
+#[derive(Clone, Copy)]
 struct CachedMask {
     atlas_x: u32,
     atlas_y: u32,
@@ -406,6 +415,7 @@ struct GlyphAtlas {
     texture: gpu::Texture,
     bind_group: gpu::BindGroup,
     glyphs: HashMap<(usize, GlyphId, u16), CachedGlyph>,
+    characters: HashMap<(char, u16), CachedCharacter>,
     masks: HashMap<u64, CachedMask>,
     cursor_x: u32,
     cursor_y: u32,
@@ -428,6 +438,7 @@ impl GlyphAtlas {
             texture,
             bind_group,
             glyphs: HashMap::new(),
+            characters: HashMap::new(),
             masks: HashMap::new(),
             cursor_x: 0,
             cursor_y: 0,
@@ -439,14 +450,32 @@ impl GlyphAtlas {
         })
     }
 
+    fn character(&mut self, queue: &gpu::Queue, character: char, size: u16) -> Result<CachedCharacter> {
+        if let Some(cached) = self.characters.get(&(character, size)) {
+            return Ok(*cached);
+        }
+        let (font_index, font) = font_for_character(character);
+        let id = font.glyph_id(character);
+        let cached = CachedCharacter {
+            font_index,
+            font,
+            id,
+            advance: font.as_scaled(PxScale::from(size as f32)).h_advance(id),
+            bitmap: self.glyph(queue, font_index, font, id, size)?,
+        };
+        if self.characters.len() == 4096 { self.characters.clear(); }
+        self.characters.insert((character, size), cached);
+        Ok(cached)
+    }
+
     fn glyph(
         &mut self,
         queue: &gpu::Queue,
-        character: char,
+        font_index: usize,
+        font: &impl Font,
+        id: GlyphId,
         size: u16,
     ) -> Result<Option<CachedGlyph>> {
-        let (font_index, font) = font_for_character(character);
-        let id = font.glyph_id(character);
         if let Some(glyph) = self.glyphs.get(&(font_index, id, size)) {
             return Ok(Some(*glyph));
         }
@@ -997,6 +1026,7 @@ impl Renderer {
                     self.prepared = PreparedScene::default();
                     if !reclaimed {
                         self.glyph_atlas.glyphs.clear();
+                        self.glyph_atlas.characters.clear();
                         self.glyph_atlas.masks.clear();
                         self.glyph_atlas.cursor_x = 0;
                         self.glyph_atlas.cursor_y = 0;
@@ -1179,7 +1209,7 @@ impl Renderer {
     }
 
     fn prepare_text_runs(&mut self, scene: &Scene) -> Result<Vec<PreparedTextRun>> {
-        let mut previous = HashMap::<String, Vec<PreparedTextRun>>::new();
+        let mut previous = HashMap::<Arc<str>, Vec<PreparedTextRun>>::new();
         for prepared in std::mem::take(&mut self.prepared.text_runs) {
             previous
                 .entry(prepared.run.text.clone())
@@ -1235,9 +1265,7 @@ impl Renderer {
             let size = run.font_size.round().clamp(1.0, u16::MAX as f32) as u16;
             let scaled = font.as_scaled(PxScale::from(size as f32));
             let justified_space = if run.align == TextAlign::Justify {
-                let spaces = run
-                    .text
-                    .graphemes(true)
+                let spaces = ink_core::text_graphemes(&run.text)
                     .filter(|grapheme| grapheme.chars().all(char::is_whitespace))
                     .count();
                 (spaces > 0).then(|| {
@@ -1264,7 +1292,7 @@ impl Renderer {
             };
             let baseline = run.rect.y + (run.rect.height - scaled.height()) / 2.0 + scaled.ascent();
             let mut previous = None;
-            for grapheme in run.text.graphemes(true) {
+            for grapheme in ink_core::text_graphemes(&run.text) {
                 if is_emoji_grapheme(grapheme) {
                     if let Some(glyph) = self.system_glyph_atlas.glyph(grapheme, size) {
                         let glyph_size = size as f32 * 0.9;
@@ -1286,14 +1314,16 @@ impl Renderer {
                     continue;
                 }
                 for character in grapheme.chars() {
-                    let (font_index, font) = font_for_character(character);
-                    let scaled = font.as_scaled(PxScale::from(size as f32));
-                    let id = scaled.glyph_id(character);
+                    let cached = self.glyph_atlas.character(&self.queue, character, size)?;
+                    let font_index = cached.font_index;
+                    let scaled = cached.font.as_scaled(PxScale::from(size as f32));
+                    let id = cached.id;
                     let tabular = run.tabular_numbers && character.is_ascii_digit();
+                    let glyph_advance = cached.advance;
                     let advance = if tabular {
                         tabular_digit_width(size as f32)
                     } else {
-                        scaled.h_advance(id)
+                        glyph_advance
                     };
                     if tabular {
                         previous = None;
@@ -1303,13 +1333,13 @@ impl Renderer {
                             pen_x += scaled.kern(previous_glyph, id);
                         }
                     }
-                    if let Some(glyph) = self.glyph_atlas.glyph(&self.queue, character, size)? {
+                    if let Some(glyph) = cached.bitmap {
                         push_text_quad(
                             &mut instances,
                             scene,
                             clip,
                             Rect {
-                                x: pen_x + glyph.offset_x + (advance - scaled.h_advance(id)) / 2.0,
+                                x: pen_x + glyph.offset_x + (advance - glyph_advance) / 2.0,
                                 y: baseline + glyph.offset_y,
                                 width: glyph.width as f32,
                                 height: glyph.height as f32,

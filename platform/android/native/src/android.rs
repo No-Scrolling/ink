@@ -38,11 +38,13 @@ const ANDROID_LOG_ERROR: c_int = 6;
 const POINTER_CHANGED: jint = 1;
 const POINTER_ACTIVATED: jint = 1 << 1;
 const POINTER_CAPTURED: jint = 1 << 2;
+const POINTER_HAPTIC: jint = 1 << 3;
 const LOG_TAG: &[u8] = b"Ink\0";
 static PANIC_HOOK: Once = Once::new();
 
 fn pointer_result(outcome: PointerOutcome) -> jint {
     (if outcome.changed { POINTER_CHANGED } else { 0 })
+        | (if outcome.haptic { POINTER_HAPTIC } else { 0 })
         | (if outcome.activated {
             POINTER_ACTIVATED
         } else {
@@ -174,7 +176,8 @@ impl AndroidEngine {
     }
 
     fn pointer(&mut self, action: i32, id: i32, x: f32, y: f32) -> jint {
-        #[cfg(feature = "presentation-timing")]
+        let _affinity = ink_runtime::cpu_affinity::prefer_performance();
+        #[cfg(feature = "bridge-timing")]
         if action == 1 {
             android_log(
                 ANDROID_LOG_INFO,
@@ -241,6 +244,7 @@ impl AndroidEngine {
     }
 
     fn scroll_by(&mut self, delta: f32) -> bool {
+        let _affinity = ink_runtime::cpu_affinity::prefer_performance();
         let changed = self.engine.scroll_by(delta);
         if changed
             && let Some(script) = &mut self.script
@@ -310,6 +314,7 @@ impl AndroidEngine {
     }
 
     fn render(&mut self) -> RenderOutcome {
+        let _affinity = ink_runtime::cpu_affinity::prefer_performance();
         // Keep the last complete frame until the new content is ready.
         if !self.engine.list_viewports_ready() || !self.engine.camera_review_ready() || !self.engine.screen_images_ready() {
             return RenderOutcome::Skipped;
@@ -322,6 +327,11 @@ impl AndroidEngine {
         match surface.renderer.render(self.engine.scene()) {
             Ok(RenderOutcome::Presented) => {
                 presented = true;
+                #[cfg(all(feature = "bridge-timing", not(feature = "presentation-timing")))]
+                android_log(
+                    ANDROID_LOG_INFO,
+                    &format!("Submitted scene={} ns={}", self.engine.scene().revision, benchmark_time_ns()),
+                );
                 #[cfg(feature = "presentation-timing")]
                 {
                     android_log(
@@ -912,7 +922,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest(
             loop {
                 let request = engine.engine.take_native_request()?;
                 if request.module() == "ink" && request.operation() == "event" {
-                    #[cfg(feature = "presentation-timing")]
+                    #[cfg(feature = "bridge-timing")]
                     android_log(
                         ANDROID_LOG_INFO,
                         &format!("ReactDispatch ns={}", benchmark_time_ns()),
@@ -1378,7 +1388,7 @@ fn android_log(priority: c_int, message: &str) {
     }
 }
 
-#[cfg(feature = "presentation-timing")]
+#[cfg(feature = "bridge-timing")]
 fn benchmark_time_ns() -> u64 {
     let mut time = libc::timespec {
         tv_sec: 0,

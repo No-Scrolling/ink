@@ -1,0 +1,23 @@
+{
+  "package": "com.vandam.benchmark.ink.paced",
+  "pid": "17237",
+  "scenario": "paced",
+  "actions": 1,
+  "seconds": 3.335,
+  "cpuMs": 3590.0,
+  "renderer": null,
+  "note": "Short iteration probe, not a paired benchmark or full compatibility check. Start each comparison at the same scroll position with the same cache state.",
+  "paced": {
+    "expectedUpdates": 180,
+    "commits": 180,
+    "submittedCommits": 180,
+    "unsubmittedCommits": 0,
+    "submissionsPerSecond": 60.23127001420329,
+    "submissionIntervalMs": {
+      "median": 16.550938,
+      "p95": 18.454375,
+      "maximum": 19.239479
+    },
+    "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+  }
+}

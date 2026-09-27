@@ -3,7 +3,6 @@ import type { IconAsset } from "./assets";
 import type { ReactNode } from "react";
 import { createElement } from "./react";
 import { navigate, type Destination } from "./navigation";
-import { openLink } from "./external";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
 export { resource, type ResourceSnapshot, type ResourceSource } from "./resource";
 export { useAction, type Action } from "./action";
@@ -27,7 +26,7 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   );
 }
 
-export function Stack({ onPress, haptic, ...props }: {
+export interface StackProps {
   children?: ReactNode;
   axis?: "vertical" | "horizontal";
   gap?: number;
@@ -35,12 +34,11 @@ export function Stack({ onPress, haptic, ...props }: {
   justify?: "start" | "center" | "end" | "space-between";
   onPress?: () => void;
   haptic?: boolean;
-}) {
-  const stack = createElement("Stack", props);
-  return onPress ? createElement("Pressable", { onPress, haptic }, stack) : stack;
 }
 
-export function Text(props: {
+export const Stack = "Stack";
+
+export interface TextProps {
   href?: string;
   onPress?: () => void;
   width?: number;
@@ -49,10 +47,18 @@ export function Text(props: {
   align?: "start" | "center" | "end" | "justify";
   maxLines?: number;
   tabularNumbers?: boolean;
-}) {
-  const { href, onPress, ...rest } = props;
-  if (href !== undefined && onPress) throw new Error("Text accepts either href or onPress");
-  return createElement("Text", { ...rest, onPress: href === undefined ? onPress : () => openLink(href) });
+}
+
+// A host element lets React reconcile text without an extra component wrapper.
+export const Text = "Text";
+
+declare module "react" {
+  namespace JSX {
+    interface IntrinsicElements {
+      Text: TextProps;
+      Stack: StackProps;
+    }
+  }
 }
 
 export function Button(props: {

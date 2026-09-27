@@ -1,4 +1,4 @@
-use std::{fs, marker::PhantomData, mem, rc::Rc};
+use std::{fs, marker::PhantomData, mem, rc::Rc, sync::OnceLock};
 
 const CPU_COUNT: usize = 1024;
 type CpuSet = [usize; CPU_COUNT / usize::BITS as usize];
@@ -18,12 +18,18 @@ fn apply(mask: &CpuSet) -> bool {
     unsafe { sched_setaffinity(0, mem::size_of_val(mask), mask.as_ptr()) == 0 }
 }
 
-pub(super) struct CpuPreference {
+/// Prefer the fastest permitted cores for this scope, restoring the thread mask on drop.
+pub fn prefer_performance() -> Option<AffinityGuard> {
+    static PREFERENCE: OnceLock<Option<CpuPreference>> = OnceLock::new();
+    PREFERENCE.get_or_init(CpuPreference::discover).as_ref()?.enter()
+}
+
+struct CpuPreference {
     preferred: CpuSet,
 }
 
 impl CpuPreference {
-    pub(super) fn discover() -> Option<Self> {
+    fn discover() -> Option<Self> {
         let allowed = allowed()?;
         let mut capacities = Vec::new();
         for cpu in 0..CPU_COUNT {
@@ -56,7 +62,7 @@ impl CpuPreference {
         Some(Self { preferred })
     }
 
-    pub(super) fn enter(&self) -> Option<AffinityGuard> {
+    fn enter(&self) -> Option<AffinityGuard> {
         let original = allowed()?;
         let preferred = std::array::from_fn(|i| original[i] & self.preferred[i]);
         if preferred == original || preferred.iter().all(|word| *word == 0) || !apply(&preferred) {
@@ -69,7 +75,7 @@ impl CpuPreference {
     }
 }
 
-pub(super) struct AffinityGuard {
+pub struct AffinityGuard {
     original: CpuSet,
     thread: PhantomData<Rc<()>>,
 }

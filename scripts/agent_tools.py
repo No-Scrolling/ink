@@ -89,6 +89,13 @@ def operation_path(identifier):
 
 
 def result_summary(kind, result):
+    if kind == "probe":
+        summary = {key: value for key, value in result.items() if key != "bridge"}
+        if "bridge" in result:
+            summary["bridge"] = {
+                key: value for key, value in result["bridge"].items() if key != "samples"
+            }
+        return summary
     if kind in {"bench", "stress"}:
         return result.get(
             "summary", {"acceptedSamples": len(result.get("samples", []))}
@@ -461,11 +468,12 @@ def build(op, args):
         if key not in {
             "INK_SPLIT_WEB",
             "INK_BENCHMARK",
+            "INK_BRIDGE_TIMING",
             "INK_PRESENTATION_TIMING",
             "INK_MEMORY_DIAGNOSTICS",
         } or value not in {"0", "1"}:
             raise ValueError(
-                "Build flags support INK_SPLIT_WEB, INK_BENCHMARK, INK_PRESENTATION_TIMING and INK_MEMORY_DIAGNOSTICS, each 0 or 1"
+                "Build flags support INK_SPLIT_WEB, INK_BENCHMARK, INK_BRIDGE_TIMING, INK_PRESENTATION_TIMING and INK_MEMORY_DIAGNOSTICS, each 0 or 1"
             )
         flags[key] = value
     environment = {k: v for k, v in os.environ.items() if not k.startswith("INK_")}
@@ -1036,11 +1044,13 @@ def worker(path):
     try:
         args = read_json(op.path / "request.json")
         from agent_stress import stress
+        from agent_probe import probe
 
         result = {
             "experiment": build,
             "bench": compare,
             "stress": lambda op, args: stress(sys.modules[__name__], op, args),
+            "probe": lambda op, args: probe(sys.modules[__name__], op, args),
             "memory": explain_memory,
             "image": inspect_image,
         }[args["command"]](op, args)
@@ -1093,7 +1103,7 @@ def parser():
         "--env",
         action="append",
         default=[],
-        help="INK_SPLIT_WEB, INK_BENCHMARK, INK_PRESENTATION_TIMING or INK_MEMORY_DIAGNOSTICS, each 0 or 1",
+        help="INK_SPLIT_WEB, INK_BENCHMARK, INK_BRIDGE_TIMING, INK_PRESENTATION_TIMING or INK_MEMORY_DIAGNOSTICS, each 0 or 1",
     )
     bench = commands.add_parser(
         "bench", help="Alternate baseline/candidate APKs on a reserved device"
@@ -1113,6 +1123,12 @@ def parser():
     stress.add_argument("--rounds", type=positive, default=1)
     stress.add_argument("--cycles", type=positive, default=10)
     stress.add_argument("--idle-seconds", type=positive, default=10)
+    probe = commands.add_parser("probe", help="Measure a short workload in a running benchmark build")
+    probe.add_argument("--serial", required=True)
+    probe.add_argument("--token", required=True)
+    probe.add_argument("--package", required=True)
+    probe.add_argument("--scenario", choices=["scroll", "scrollbar", "counter", "bridge", "updates", "paced"], default="scroll")
+    probe.add_argument("--seconds", type=int, choices=range(2, 11), default=3, metavar="2..10")
     memory = commands.add_parser(
         "memory", help="Explain live foreground process memory; read-only"
     )
@@ -1128,7 +1144,7 @@ def parser():
         "--threshold", type=int, choices=range(256), default=0, metavar="0..255"
     )
     image.add_argument("--ocr", action="store_true")
-    for command in [experiment, bench, stress, memory, image]:
+    for command in [experiment, bench, stress, probe, memory, image]:
         command.add_argument(
             "--background",
             action="store_true",

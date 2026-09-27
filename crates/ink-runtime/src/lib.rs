@@ -1,6 +1,5 @@
-mod allocation_pool;
 #[cfg(target_os = "android")]
-mod cpu_affinity;
+pub mod cpu_affinity;
 mod encoding;
 
 use std::{
@@ -224,10 +223,8 @@ fn run(
     load_web: Option<WebLoader>,
 ) -> Result<()> {
     #[cfg(target_os = "android")]
-    let cpu_preference = cpu_affinity::CpuPreference::discover();
-    #[cfg(target_os = "android")]
     let mut work_affinity = None;
-    let runtime = Runtime::new_with_alloc(allocation_pool::AllocationPool::new())?;
+    let runtime = Runtime::new()?;
     runtime.set_memory_limit(64 * 1024 * 1024);
     runtime.set_max_stack_size(512 * 1024);
     let interrupted = stopped.clone();
@@ -388,9 +385,7 @@ fn run(
         if let Some(message) = message {
             #[cfg(target_os = "android")]
             if work_affinity.is_none() {
-                work_affinity = cpu_preference
-                    .as_ref()
-                    .and_then(|preference| preference.enter());
+                work_affinity = cpu_affinity::prefer_performance();
             }
             context
                 .with(|ctx| {
@@ -411,6 +406,10 @@ fn run(
                 .min_by_key(|(id, deadline)| (**deadline, **id))
                 .map(|(&id, _)| id);
             if let Some(id) = due {
+                #[cfg(target_os = "android")]
+                if work_affinity.is_none() {
+                    work_affinity = cpu_affinity::prefer_performance();
+                }
                 timers.borrow_mut().remove(&id);
                 context
                     .with(|ctx| {

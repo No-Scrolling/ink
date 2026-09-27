@@ -1,0 +1,24 @@
+{
+  "old": {
+    "samples": 717,
+    "commits": 720,
+    "submitted": 717,
+    "ambiguous": 0,
+    "median": 19.240677,
+    "p95": 25.584584,
+    "min": 15.983906,
+    "max": 38.286354,
+    "under16": 1
+  },
+  "new": {
+    "samples": 720,
+    "commits": 720,
+    "submitted": 720,
+    "ambiguous": 0,
+    "median": 18.8180205,
+    "p95": 20.499792,
+    "min": 13.196979,
+    "max": 27.728698,
+    "under16": 7
+  }
+}

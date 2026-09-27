@@ -1130,11 +1130,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private var renderPending = false
         private var commitFramePosted = false
         private var touchActive = false
-        private var lastFrameNanos = 0L
         private val commitFrame = Runnable {
             commitFramePosted = false
             if (engineHandle != 0L && surfaceAttached && renderPending) {
                 if (canPresentCommit() && nativeFrameReady(engineHandle)) {
+                    if (framePosted) {
+                        choreographer.removeFrameCallback(frameCallback)
+                        framePosted = false
+                    }
                     renderPending = false
                     presentFrame()
                 } else {
@@ -1156,6 +1159,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private var previousImageTapY = 0f
         private var velocityTracker: VelocityTracker? = null
         private val frameCallback = Choreographer.FrameCallback {
+            if (BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FrameCallback ns=${System.nanoTime()}")
             // Include completed React work even if its handler is queued behind this frame.
             if (engineHandle != 0L && javascriptPending.get()) {
                 nativeRequestHandler.removeCallbacks(drainJavaScript)
@@ -1370,7 +1374,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         private fun processPointerResult(result: Int): Boolean {
             capturedGesture = capturedGesture || (result and POINTER_CAPTURED) != 0
-            if ((result and POINTER_ACTIVATED) != 0) {
+            if ((result and POINTER_HAPTIC) != 0) {
                 lightSdkAdapter.performHaptic(this)
             }
             if ((result and POINTER_ACTIVATED) != 0 ||
@@ -1392,14 +1396,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         fun requestCommitFrame() {
+            if (BuildConfig.INK_PRESENTATION_TIMING) {
+                Log.i("Ink", "CommitRequested ns=${System.nanoTime()} frame_posted=${if (framePosted) 1 else 0} touch_active=${if (touchActive) 1 else 0}")
+            }
             renderPending = true
             if (commitFramePosted) return
-            val frameInterval = (1_000_000_000L / (display?.refreshRate ?: 60f)).toLong()
-            // Avoid waiting for a new vsync after an idle commit. Ongoing work stays paced.
-            if (
-                surfaceAttached && canPresentCommit() &&
-                System.nanoTime() - lastFrameNanos >= frameInterval
-            ) {
+            // A completed commit can replace the queued frame once the GPU is ready.
+            if (surfaceAttached && canPresentCommit()) {
                 commitFramePosted = true
                 post(commitFrame)
             } else {
@@ -1408,10 +1411,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         private fun canPresentCommit(): Boolean =
-            !framePosted && !touchActive && !pinchActive && !hasPendingMove && scroller.isFinished
+            !touchActive && !pinchActive && !hasPendingMove && scroller.isFinished &&
+                !nativeHasSceneAnimations(engineHandle)
 
         private fun presentFrame() {
-            lastFrameNanos = System.nanoTime()
+            if (BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FrameStart ns=${System.nanoTime()}")
             renderFrame()
             postFrame()
         }
@@ -1472,6 +1476,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val POINTER_CHANGED = 1
         private const val POINTER_ACTIVATED = 1 shl 1
         private const val POINTER_CAPTURED = 1 shl 2
+        private const val POINTER_HAPTIC = 1 shl 3
         private const val RESOURCE_LOG_TAG = "InkResource"
         private const val LIGHT_SDK_MODULE = "light-sdk"
         private const val NETWORK_MODULE = "network"

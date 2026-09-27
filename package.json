@@ -8,6 +8,9 @@
     "examples/tuner",
     "examples/weather",
     "benchmarks/apps/ink-counter",
+    "benchmarks/apps/ink-bridge",
+    "benchmarks/apps/ink-updates",
+    "benchmarks/apps/ink-paced",
     "benchmarks/apps/ink-scroll",
     "benchmarks/apps/ink-stress"
   ],

@@ -1,0 +1,26 @@
+{
+  "sourceSha256": "b91e3b4bb804ae53da65bba8b358b9b93886059ef3cbd95ec0a00fe8be2ee0ba",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "24da5e719947a6943580c5f290828364ab0d1137c5f4006b285718d620519851"
+  },
+  "revision": "924c1d5c1d8847f2b180f9c9e7b8e6c34319a05b",
+  "flags": {
+    "INK_BRIDGE_TIMING": "1"
+  },
+  "signing": "generated Android development key",
+  "artifacts": {
+    "benchmarks/apps/ink-paced": {
+      "file": "0-ink-paced-benchmark-1.0.0-arm64.apk",
+      "sha256": "2557f4104d67e9792fb692cb5c7510a69c8ecf240f4a04b60347160b180f9356",
+      "bytes": 2743788,
+      "package": "com.vandam.benchmark.ink.paced",
+      "component": "com.vandam.benchmark.ink.paced/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

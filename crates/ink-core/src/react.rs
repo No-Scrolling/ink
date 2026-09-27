@@ -36,6 +36,10 @@ enum Operation {
         id: usize,
         parent: usize,
     },
+    Text {
+        ids: Vec<usize>,
+        values: Vec<Box<str>>,
+    },
     Hidden {
         id: usize,
         value: bool,
@@ -115,6 +119,7 @@ impl ListProps {
 enum HostProps {
     RawText(Box<str>),
     Text {
+        text: Box<str>,
         on_press: bool,
         width: Option<f32>,
         size: Option<f32>,
@@ -162,6 +167,7 @@ impl HostProps {
                 })
                 .transpose()?;
             return Ok(Self::Text {
+                text: string(&props, "text").unwrap_or("").into(),
                 on_press: props.get("onPress") == Some(&Json::Bool(true)),
                 width: number(&props, "width")?,
                 size: number(&props, "size")?,
@@ -239,6 +245,7 @@ impl ReactTree {
         let mut raw_text_nodes = 0;
         let mut raw_text_bytes = 0;
         let mut text_nodes = 0;
+        let mut inline_text_bytes = 0;
         let mut other_property_nodes = 0;
         let mut child_capacity_bytes = 0;
         for (id, node) in &self.nodes {
@@ -251,7 +258,10 @@ impl ReactTree {
                     raw_text_nodes += 1;
                     raw_text_bytes += text.len();
                 }
-                HostProps::Text { .. } => text_nodes += 1,
+                HostProps::Text { text, .. } => {
+                    text_nodes += 1;
+                    inline_text_bytes += text.len();
+                }
                 HostProps::Other(_) | HostProps::List(_) => other_property_nodes += 1,
             }
         }
@@ -261,6 +271,7 @@ impl ReactTree {
             "raw_text_nodes": raw_text_nodes,
             "raw_text_bytes": raw_text_bytes,
             "text_nodes": text_nodes,
+            "inline_text_bytes": inline_text_bytes,
             "other_property_nodes": other_property_nodes,
             "child_id_capacity_bytes": child_capacity_bytes,
         })
@@ -293,10 +304,11 @@ impl ReactTree {
     pub fn apply(&mut self, ReactCommit(operations): ReactCommit, engine: &mut Engine) -> Result<()> {
         let structural = operations
             .iter()
-            .any(|operation| !matches!(operation, Operation::Update { .. }));
+            .any(|operation| !matches!(operation, Operation::Update { .. } | Operation::Text { .. }));
         let mut targets = HashSet::new();
         let mut scroll_to_end = HashSet::new();
         let mut dismiss_keyboard = HashSet::new();
+        let mut inputs_changed = structural;
         for operation in operations {
             match operation {
                 Operation::Create { id, r#type, props } => {
@@ -316,6 +328,7 @@ impl ReactTree {
                 }
                 Operation::Update { id, props } => {
                     let node = self.node_mut(id)?;
+                    inputs_changed |= node.kind == HostKind::TextInput;
                     if node.kind == HostKind::Screen && props.get("dismissKeyboard").is_some()
                         && props.get("dismissKeyboard") != node.props.get("dismissKeyboard") {
                         dismiss_keyboard.insert(id);
@@ -329,23 +342,18 @@ impl ReactTree {
                     } else {
                         HostProps::new(node.kind, props)?
                     };
-                    let mut target = id;
-                    if matches!(self.node(target)?.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
-                        target = self.node(target)?.parent.context("Canvas item requires a Canvas parent")?;
-                    }
-                    while matches!(self.node(target)?.kind, HostKind::RawText | HostKind::Text) {
-                        let Some(parent) = self.node(target)?.parent else {
-                            break;
-                        };
-                        if !matches!(
-                            self.node(parent)?.kind,
-                            HostKind::Text | HostKind::Button | HostKind::Field
-                        ) {
-                            break;
+                    targets.insert(self.update_target(id)?);
+                }
+                Operation::Text { ids, values } => {
+                    ensure!(ids.len() == values.len(), "text update length mismatch");
+                    for (id, text) in ids.into_iter().zip(values) {
+                        let node = self.node_mut(id)?;
+                        match &mut node.props {
+                            HostProps::RawText(value) | HostProps::Text { text: value, .. } => *value = text,
+                            _ => bail!("text update requires a text node"),
                         }
-                        target = parent;
+                        targets.insert(self.update_target(id)?);
                     }
-                    targets.insert(target);
                 }
                 Operation::Hidden { id, value } => self.node_mut(id)?.hidden = value,
                 Operation::Insert { id, parent, before } => self.insert(id, parent, before)?,
@@ -359,8 +367,10 @@ impl ReactTree {
                 }
             }
         }
-        engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
-        self.sync_inputs(engine)?;
+        if structural {
+            engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
+        }
+        if inputs_changed { self.sync_inputs(engine)?; }
         if !structural && scroll_to_end.is_empty() && dismiss_keyboard.is_empty()
             && targets.iter().all(|id| {
                 self.nodes
@@ -368,28 +378,33 @@ impl ReactTree {
                     .is_some_and(|node| !matches!(node.kind, HostKind::Tabs | HostKind::Navigator | HostKind::Tab | HostKind::ScreenState))
             })
         {
-            let patches = targets
-                .into_iter()
-                .map(|id| self.render_node(id, 0).map(|node| (id, node)))
+            // Rebuilding a parent already includes its changed descendants.
+            let mut roots = Vec::new();
+            for &id in &targets {
+                let mut parent = self.node(id)?.parent;
+                while let Some(ancestor) = parent {
+                    if targets.contains(&ancestor) { break; }
+                    parent = self.node(ancestor)?.parent;
+                }
+                if parent.is_none() { roots.push(id); }
+            }
+            roots.sort_unstable();
+            let mut patches = roots.iter()
+                .map(|&id| self.render_node(id, 0))
                 .collect::<Result<Vec<_>>>()?;
-            if patches
-                .iter()
-                .all(|(id, node)| node.is_some() && find_node(&engine.root, *id).is_some())
-            {
-                for (id, node) in patches {
-                    let node = node.unwrap();
-                    if let Some(previous) = find_node_mut(&mut engine.root, id) {
-                        *previous = node;
+            if patches.iter().all(Option::is_some) {
+                replace_nodes(&mut engine.root, &roots, &mut patches);
+                if patches.iter().all(Option::is_none) {
+                    #[cfg(feature = "perf")]
+                    {
+                        engine.perf.incremental_rebuilds += 1;
                     }
+                    engine.relayout_scene();
+                    return Ok(());
                 }
-                #[cfg(feature = "perf")]
-                {
-                    engine.perf.incremental_rebuilds += 1;
-                }
-                engine.relayout_scene();
-                return Ok(());
             }
         }
+
         let roots = &self.node(0)?.children;
         ensure!(roots.len() <= 1, "an Ink app must have one root screen");
         let root = match roots.first() {
@@ -447,6 +462,18 @@ impl ReactTree {
         engine.root = root;
         engine.rebuild_scene();
         Ok(())
+    }
+
+    fn update_target(&self, mut id: usize) -> Result<usize> {
+        if matches!(self.node(id)?.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
+            id = self.node(id)?.parent.context("Canvas item requires a Canvas parent")?;
+        }
+        while matches!(self.node(id)?.kind, HostKind::RawText | HostKind::Text) {
+            let Some(parent) = self.node(id)?.parent else { break; };
+            if !matches!(self.node(parent)?.kind, HostKind::Text | HostKind::Button | HostKind::Field) { break; }
+            id = parent;
+        }
+        Ok(id)
     }
 
     fn sync_inputs(&mut self, engine: &mut Engine) -> Result<()> {
@@ -614,11 +641,10 @@ impl ReactTree {
         if let HostProps::RawText(text) = &node.props {
             return Ok(text.to_string());
         }
-        ensure!(
-            node.kind == HostKind::Text,
-            "text children must be strings or Text components"
-        );
-        let mut text = String::new();
+        let HostProps::Text { text: content, .. } = &node.props else {
+            bail!("text children must be strings or Text components");
+        };
+        let mut text = content.to_string();
         for child in &node.children {
             text.push_str(&self.text(*child, depth + 1)?);
         }
@@ -633,6 +659,7 @@ impl ReactTree {
         if let HostProps::RawText(text) = &node.props {
             *offset += text.len();
         } else {
+            if let HostProps::Text { text, .. } = &node.props { *offset += text.len(); }
             for child in &node.children { self.text_links(*child, depth + 1, offset, links)?; }
             if matches!(&node.props, HostProps::Text { on_press: true, .. }) {
                 links.push((start..*offset, event(id, "onPress", vec![])));
@@ -930,13 +957,24 @@ impl ReactTree {
                     "space-between" => Justification::SpaceBetween,
                     value => bail!("unsupported stack justification {value}"),
                 };
-                Node::stack(
+                let stack = Node::stack(
                     self.children(host, depth)?,
                     axis,
                     number(props, "gap")?,
                     align,
                     justify,
-                )
+                );
+                if props.get("onPress") == Some(&Json::Bool(true)) {
+                    Node { identity: NodeIdentity(id), kind: NodeKind::Pressable {
+                        haptic: props.get("haptic") != Some(&Json::Bool(false)),
+                        selected: false,
+                        long_action: None,
+                        children: vec![stack],
+                        action: Some(event(id, "onPress", vec![])),
+                    } }
+                } else {
+                    stack
+                }
             }
             HostKind::TextInput => {
                 let action = match string(props, "action").unwrap_or("search") {
@@ -1206,33 +1244,11 @@ fn event_operation(id: usize, name: &'static str, args: Vec<Json>) -> NativeOper
     operation
 }
 
-fn find_node(node: &Node, id: usize) -> Option<&Node> {
-    if node.identity.0 == id {
-        return Some(node);
-    }
-    match &node.kind {
-        NodeKind::ConversationComposer { children, .. }
-        | NodeKind::Message { children, .. }
-        | NodeKind::MessageQuote { children, .. }
-        | NodeKind::PlayingTransport { children, .. }
-        | NodeKind::PlayingLayout { children, .. }
-        | NodeKind::Pressable { children, .. }
-        | NodeKind::Screen { children, .. }
-        | NodeKind::MediaGridRow { children }
-        | NodeKind::RowTitle { children, .. }
-        | NodeKind::Row { children, .. }
-        | NodeKind::Stack { children, .. }
-        | NodeKind::ReactList { children, .. } => {
-            children.iter().find_map(|node| find_node(node, id))
-        }
-        NodeKind::Tabs { tabs, .. } => tabs.iter().find_map(|tab| find_node(&tab.screen, id)),
-        _ => None,
-    }
-}
-
-fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
-    if node.identity.0 == id {
-        return Some(node);
+fn replace_nodes(node: &mut Node, ids: &[usize], patches: &mut [Option<Node>]) {
+    if ids.is_empty() { return; }
+    if let Ok(index) = ids.binary_search(&node.identity.0) {
+        if let Some(replacement) = patches[index].take() { *node = replacement; }
+        return;
     }
     match &mut node.kind {
         NodeKind::ConversationComposer { children, .. }
@@ -1247,12 +1263,12 @@ fn find_node_mut(node: &mut Node, id: usize) -> Option<&mut Node> {
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {
-            children.iter_mut().find_map(|node| find_node_mut(node, id))
+            for child in children { replace_nodes(child, ids, patches); }
         }
-        NodeKind::Tabs { tabs, .. } => tabs
-            .iter_mut()
-            .find_map(|tab| find_node_mut(&mut tab.screen, id)),
-        _ => None,
+        NodeKind::Tabs { tabs, .. } => {
+            for tab in tabs { replace_nodes(&mut tab.screen, ids, patches); }
+        }
+        _ => {}
     }
 }
 

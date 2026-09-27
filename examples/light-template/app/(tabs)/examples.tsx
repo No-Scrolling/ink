@@ -9,6 +9,7 @@ export default function Examples() {
       <Button href="/display/icons">Icons</Button>
       <Button href="/display/links">Links</Button>
       <Button href="/display/emoji">Emoji</Button>
+      <Button href="/display/japanese">Japanese text</Button>
       <Button href="/display/local-images">Local images</Button>
       <Button href="/display/local-video">Local video</Button>
       <Button href="/settings/dynamic-ui">Dynamic UI</Button>

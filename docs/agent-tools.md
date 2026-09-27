@@ -46,13 +46,82 @@ scripts/agent-tools experiment --working-tree --app benchmarks/apps/ink-counter 
   --env INK_MEMORY_DIAGNOSTICS=1 --background
 ```
 
-Supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1`, `INK_PRESENTATION_TIMING=0|1` and `INK_MEMORY_DIAGNOSTICS=0|1`. Only supplied flags are inherited. Instrumentation adds logging and measurement overhead; use release builds without it for production memory and performance comparisons.
+Supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1`, `INK_BRIDGE_TIMING=0|1`, `INK_PRESENTATION_TIMING=0|1` and `INK_MEMORY_DIAGNOSTICS=0|1`. Only supplied flags are inherited. Instrumentation adds logging and measurement overhead; use release builds without it for production memory and performance comparisons.
+
+`INK_BRIDGE_TIMING=1` records the input, commit and software frame-submission markers without renderer profiling or driver presentation feedback. Prefer it for short React update comparisons. Missing renderer measurements are reported as `null`, not zero. Use identical instrumentation on both builds.
 
 `INK_PRESENTATION_TIMING=1` includes benchmark instrumentation and enables driver presentation timestamps where `VK_GOOGLE_display_timing` is supported. Logs connect native input handling, React scene revisions and presentation IDs to actual display times. Timing feedback arrives on later frames; allow extra interactions to collect the final measured frames. This measures software response, not touch sensing or physical panel response. Use ordinary `INK_BENCHMARK=1` builds for CPU profiling because presentation timing can add driver overhead. The `submit_present_ns` field measures combined submission and presentation wall time; scheduler traces separate CPU work from waiting.
 
 `ReactDispatch` records native event dispatch, `ReactReady` records an outgoing JavaScript message, and `ReactApply` starts applying a commit on the UI thread. A ready notification isn't necessarily a commit: match these stages within an isolated interaction.
 
 ## Paired benchmarks
+
+### React to native update timing
+
+The bridge fixture reuses the counter screen with a separate app ID. Build it once, reserve the emulator, and install it:
+
+```sh
+scripts/agent-tools experiment --working-tree --app benchmarks/apps/ink-bridge \
+  --env INK_PRESENTATION_TIMING=1 --background
+scripts/agent-tools wait EXPERIMENT_ID --timeout 60
+scripts/agent-tools device acquire --serial emulator-5554 --owner bridge-profile
+scripts/agent-tools device run --serial emulator-5554 --token RESERVATION_TOKEN \
+  --experiment EXPERIMENT_ID --app benchmarks/apps/ink-bridge
+```
+
+Use the experiment ID and reservation token returned by those commands. Wait until the build completes before installing. With the counter foregrounded, repeat this probe for each measurement:
+
+```sh
+scripts/agent-tools probe --serial emulator-5554 --token RESERVATION_TOKEN \
+  --package com.vandam.benchmark.ink.bridge --scenario bridge
+```
+
+The workload sends 15 taps over approximately three seconds, varying their timing across display phases instead of keeping a fixed relationship to 60 Hz. Each run saves `report.md`, `result.json`, `renderer.log` and `after.png` in its evidence directory. It reports sample counts, median, p95 and maximum durations and commit payload size. Samples require one dispatch, one commit and a matching submitted scene per tap; missing, ambiguous or out-of-order samples are rejected. At least five complete updates are required. This matching is intended for the isolated counter, not arbitrary apps with concurrent updates.
+
+| Stage | What the timer includes | Source files |
+| --- | --- | --- |
+| Input to dispatch | Native tap handling until the event is sent to JavaScript | `platform/android/native/src/android.rs` |
+| React and transport | JS event handling, React, constructing changes, JSON encoding and queue waits | `packages/ink/src/renderer.ts`, `crates/ink-runtime/src/lib.rs` |
+| JSON decode | Reading the message into Rust instructions and property maps | `platform/android/native/src/javascript.rs`, `crates/ink-core/src/react.rs` |
+| Decode to apply | Dispatch and timing-log overhead between parsing and applying | `platform/android/native/src/javascript.rs` |
+| Apply and layout | Updating the native React tree, rebuilding engine nodes and layout | `crates/ink-core/src/react.rs`, `crates/ink-core/src/lib.rs` |
+| Commit to frame submission | Frame scheduling, rendering and submitting the matching scene | `platform/android/app/src/main/kotlin/com/vandam/ink/MainActivity.kt`, `platform/android/native/src/android.rs`, `crates/ink-renderer-vulkan/src/compact.rs` |
+
+Builds with Kotlin scheduling markers further split the final interval into commit-to-request, request-to-drawing-start and drawing-start-to-submission. Driver presentation feedback is matched by presentation ID when available. It arrives on later frames, so the final updates may lack that measurement; sample counts are reported separately. Driver feedback still does not measure physical panel response.
+
+The total starts when native code receives pointer-up and ends when the matching frame has been submitted. It is not physical touch-to-display latency. Timings share Android's monotonic clock; instrumentation adds overhead. The React/transport duration does not separately attribute JavaScript computation, JSON encoding or waiting. Compare repeated runs using identical instrumentation; do not treat a three-second sample as a precise performance guarantee. Normal release builds omit the added decode timer.
+
+Release the reservation when finished; this also removes apps installed through that reservation:
+
+```sh
+scripts/agent-tools device release --serial emulator-5554 --token RESERVATION_TOKEN
+```
+
+### Bulk update probe
+
+`benchmarks/apps/ink-updates` mounts 1, 10, 100 or 500 text cells. These are deliberately not virtualised: the workload measures updates across a populated tree, including cells below the viewport. Build it with `INK_PRESENTATION_TIMING=1`, reserve the device and install the experiment as above. Select a count, then run:
+
+```sh
+scripts/agent-tools probe --serial LP3LHMA531900140 --token RESERVATION_TOKEN \
+  --package com.vandam.benchmark.ink.updates --scenario updates
+```
+
+The default three-second probe taps the refresh icon 15 times. `Resize on` also changes parent spacing on each update; Reverse and Hide/Show exercise reordering and React Activity. Use identical modes and warm-up runs for comparisons, then alternate baseline and candidate order. Timings combine React execution and transport; they do not isolate JSON encoding. See [the latest LP3 update comparison](../benchmarks/results/quickjs17-lp3-2026-09-27/report.md).
+
+For continuous throughput, build `benchmarks/apps/ink-paced` with `INK_BRIDGE_TIMING=1`. It starts with 500 mounted cells and Resize on. Run `probe` with its package `com.vandam.benchmark.ink.paced` and `--scenario paced`. The refresh action schedules 180 updates against a three-second, 60 Hz deadline sequence. Wait until the app is at rest before each run. The result reports matched submitted commits, their intervals and submission rate. These measure throughput, not individual update latency or physical display cadence; coalesced updates and long intervals remain visible in the counts and maximum interval. Keep the default three-second probe duration and initial fixture settings for comparisons.
+
+### Renderer probes and paired comparisons
+
+For fast iteration, use an already installed `INK_BENCHMARK=1` build on a scrollable page:
+
+```sh
+scripts/agent-tools probe --serial emulator-5554 --token RESERVATION_TOKEN \
+  --package com.vandam.benchmark.ink.rendererscroll
+```
+
+The default workload takes about three seconds: one slow drag down the list and one back. `--scenario counter` instead taps the counter's Increase button five times per second. `--seconds 2..10` changes the duration. It records process CPU time, renderer timings, uploads, cache misses, a screenshot and runtime errors. It requires your existing device reservation, checks foreground/process continuity and thermal status, and rejects missing frame instrumentation. It does not install, restart or remove the app. Begin comparisons at the same position and cache state, finish host builds first, and repeat promising results with the paired benchmark below. This is a quick regression probe, not a compatibility test or evidence of a small performance win.
+
+`--scenario scrollbar` drags the native thumb down and back at x=994, starting at y=560. Use the 500-cell update fixture at its initial scroll position so the first drag lands on the thumb. The ordinary scroll scenario drags the content instead. Check screenshots and thumb position before applying these coordinates to another screen. Renderer timings measure native processing, not finger-to-display latency.
 
 ```sh
 scripts/agent-tools bench --baseline BASELINE_ID --candidate CANDIDATE_ID \

@@ -23,6 +23,9 @@ val inkCapabilitiesFile = inkCapabilitiesManifest.map(::file)
 val inkBenchmark = providers.environmentVariable("INK_BENCHMARK")
     .map { it == "1" }
     .orElse(false)
+val inkBridgeTiming = providers.environmentVariable("INK_BRIDGE_TIMING")
+    .map { it == "1" }
+    .orElse(false)
 val inkPresentationTiming = providers.environmentVariable("INK_PRESENTATION_TIMING")
     .map { it == "1" }
     .orElse(false)
@@ -103,6 +106,7 @@ val inkFeatures = buildList {
 }
 val inkPermissionManifest = layout.buildDirectory.file("generated/ink/AndroidManifest.xml")
 val generateInkPermissionManifest by tasks.registering {
+    inputs.property("inkApplicationId", inkApplicationId)
     inputs.file(inkCapabilitiesFile)
     inputs.file(inkCapabilityCatalogueFile)
     inputs.property("permissions", inkPermissions.joinToString())
@@ -237,6 +241,7 @@ android {
 
     defaultConfig {
         buildConfigField("boolean", "INK_MEDIA_LIBRARY_ENABLED", inkUses("media-library").get().toString())
+        buildConfigField("boolean", "INK_PRESENTATION_TIMING", (inkBridgeTiming.get() || inkPresentationTiming.get()).toString())
         buildConfigField("boolean", "INK_CLEARTEXT_NETWORK_ENABLED", inkUsesCleartextNetwork.get().toString())
         buildConfigField("boolean", "INK_FILE_IMAGES_ENABLED", inkUses("file-images").get().toString())
         applicationId = inkApplicationId.get()
@@ -360,6 +365,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
     description = "Builds the Ink runtime for the LP3 arm64 ABI."
     workingDir(repositoryRoot)
     inputs.property("inkBenchmark", inkBenchmark)
+    inputs.property("inkBridgeTiming", inkBridgeTiming)
     inputs.property("inkPresentationTiming", inkPresentationTiming)
     inputs.property("inkMemoryDiagnostics", inkMemoryDiagnostics)
     inputs.property("inkBenchmarkRevision", inkBenchmarkRevision)
@@ -367,6 +373,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
     commandLine(buildList {
         addAll(listOf(
             "cargo", "ndk", "-t", "arm64-v8a",
+            "--platform", android.defaultConfig.minSdk.toString(),
             "-o", generatedJniRoot.get().dir(variant).asFile.absolutePath,
             "build", "-p", "ink-android",
         ))
@@ -378,6 +385,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
             "background" to inkUsesBackground,
             "camera-photo" to inkUsesPhotoCapture,
             "benchmark" to inkBenchmark,
+            "bridge-timing" to inkBridgeTiming,
             "presentation-timing" to inkPresentationTiming,
             "memory-diagnostics" to inkMemoryDiagnostics,
         )) {
@@ -389,6 +397,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
         val prebuilt = android.ndkDirectory.resolve("toolchains/llvm/prebuilt")
             .listFiles()!!.single { it.isDirectory }
         val sysroot = prebuilt.resolve("sysroot")
+        environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
         environment(
             "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android",
             "--sysroot=$sysroot -I$sysroot/usr/include/aarch64-linux-android",

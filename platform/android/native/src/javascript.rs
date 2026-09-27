@@ -108,7 +108,11 @@ impl ScriptRuntime {
                 Event::Stopped => {}
                 Event::Error(message) => bail!(message),
                 Event::Message(message) => {
+                    #[cfg(feature = "bridge-timing")]
+                    let decode_started = super::benchmark_time_ns();
                     let decoded: JavaScriptMessage = serde_json::from_slice(message.as_bytes())?;
+                    #[cfg(feature = "bridge-timing")]
+                    let decode_finished = super::benchmark_time_ns();
                     match decoded.r#type.as_str() {
                         "call" | "cancel" => self.calls.push(message),
                         "appearance" => {
@@ -120,7 +124,15 @@ impl ScriptRuntime {
                             changed |= engine.set_colour_scheme(light);
                         }
                         "commit" => {
-                            #[cfg(feature = "presentation-timing")]
+                            #[cfg(feature = "bridge-timing")]
+                            android_log(
+                                ANDROID_LOG_INFO,
+                                &format!(
+                                    "ReactDecode bytes={} ns={} end_ns={}",
+                                    message.len(), decode_started, decode_finished,
+                                ),
+                            );
+                            #[cfg(feature = "bridge-timing")]
                             android_log(
                                 ANDROID_LOG_INFO,
                                 &format!("ReactApply ns={}", super::benchmark_time_ns()),
@@ -129,7 +141,7 @@ impl ScriptRuntime {
                                 decoded.operations.context("React commit requires operations")?,
                                 engine,
                             )?;
-                            #[cfg(feature = "presentation-timing")]
+                            #[cfg(feature = "bridge-timing")]
                             android_log(
                                 ANDROID_LOG_INFO,
                                 &format!(
@@ -216,7 +228,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
     let runtime = AppRuntime::spawn_with_web_loader(
         source,
         move || {
-            #[cfg(feature = "presentation-timing")]
+            #[cfg(feature = "bridge-timing")]
             android_log(
                 ANDROID_LOG_INFO,
                 &format!("ReactReady ns={}", super::benchmark_time_ns()),
@@ -274,6 +286,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDrainJavaScript(
     let Some(mut script) = engine.script.take() else {
         return false as jboolean;
     };
+    let _affinity = ink_runtime::cpu_affinity::prefer_performance();
     match script.drain(&mut engine.engine) {
         Ok(changed) => {
             engine.script = Some(script);

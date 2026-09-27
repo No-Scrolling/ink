@@ -1,0 +1,77 @@
+[
+  {
+    "variant": "priority",
+    "warmup": true,
+    "id": "probe-20260927-212439-cd807ab3",
+    "samples": 180,
+    "ambiguous": 0,
+    "median": 19.170156,
+    "p95": 20.175469,
+    "min": 15.510104,
+    "max": 35.191094,
+    "under16": 1,
+    "paced": {
+      "expectedUpdates": 180,
+      "commits": 180,
+      "submittedCommits": 180,
+      "unsubmittedCommits": 0,
+      "submissionsPerSecond": 60.35560177908987,
+      "submissionIntervalMs": {
+        "median": 16.499323,
+        "p95": 18.192396,
+        "maximum": 21.077448
+      },
+      "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+    }
+  },
+  {
+    "variant": "priority",
+    "warmup": false,
+    "id": "probe-20260927-212444-7cf5d2cf",
+    "samples": 180,
+    "ambiguous": 0,
+    "median": 18.790677000000002,
+    "p95": 23.054427,
+    "min": 15.503334,
+    "max": 28.866823,
+    "under16": 1,
+    "paced": {
+      "expectedUpdates": 180,
+      "commits": 180,
+      "submittedCommits": 180,
+      "unsubmittedCommits": 0,
+      "submissionsPerSecond": 60.21523164199142,
+      "submissionIntervalMs": {
+        "median": 16.391407,
+        "p95": 20.222136,
+        "maximum": 23.26776
+      },
+      "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+    }
+  },
+  {
+    "variant": "priority",
+    "warmup": false,
+    "id": "probe-20260927-212449-d0283302",
+    "samples": 180,
+    "ambiguous": 0,
+    "median": 18.561849,
+    "p95": 22.653593,
+    "min": 15.892968,
+    "max": 28.155417,
+    "under16": 1,
+    "paced": {
+      "expectedUpdates": 180,
+      "commits": 180,
+      "submittedCommits": 180,
+      "unsubmittedCommits": 0,
+      "submissionsPerSecond": 60.175878945974134,
+      "submissionIntervalMs": {
+        "median": 16.404219,
+        "p95": 20.970833,
+        "maximum": 21.747084
+      },
+      "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+    }
+  }
+]

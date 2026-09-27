@@ -1,0 +1,4 @@
+name = "Ink Update Benchmark"
+package = "com.vandam.benchmark.ink.updates"
+version = "1.0.0"
+version_code = 1

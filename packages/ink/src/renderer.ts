@@ -3,6 +3,7 @@ import { createContext, type ReactNode } from "react";
 import Reconciler from "react-reconciler";
 import { ConcurrentRoot, DefaultEventPriority, DiscreteEventPriority } from "react-reconciler/constants";
 import { onNativeMessage } from "./native";
+import { openLink } from "./external";
 
 declare const __inkPost: (message: string) => void;
 
@@ -12,6 +13,7 @@ type Container = { id: number; children: Instance[] };
 type Operation =
   | { op: "create"; id: number; type: string; props: Props }
   | { op: "update"; id: number; props: Props }
+  | { op: "text"; ids: number[]; values: string[] }
   | { op: "insert"; id: number; parent: number; before: number | null }
   | { op: "remove"; id: number; parent: number }
   | { op: "hidden"; id: number; value: boolean };
@@ -23,19 +25,47 @@ let nextId = 1;
 let priority = DefaultEventPriority;
 const hostContext = {};
 
-function nativeProps(props: Props): Props {
+function queueText(id: number, text: string) {
+  let batch = operations[operations.length - 1];
+  if (batch?.op !== "text") {
+    batch = { op: "text", ids: [], values: [] };
+    operations.push(batch);
+  }
+  batch.ids.push(id);
+  batch.values.push(text);
+}
+
+function textContent(type: string, props: Props): string | null {
+  if (type !== "Text") return null;
+  const value = props.children;
+  return typeof value === "string" ? value : typeof value === "number" || typeof value === "bigint" ? String(value) : null;
+}
+
+function hostProps(type: string, props: Props): Props {
+  if (type !== "Text" || props.href === undefined) return props;
+  const { href, ...rest } = props;
+  return { ...rest, onPress: () => openLink(href as string) };
+}
+
+function nativeValue(value: unknown): unknown {
+  return typeof value === "function" ? true : value;
+}
+
+function nativeProps(props: Props, type: string): Props {
   const result: Props = {};
   for (const [name, value] of Object.entries(props)) {
     if (name === "children" || name === "ref" || value === undefined) continue;
     result[name] = typeof value === "function" ? true : value;
   }
+  const text = textContent(type, props);
+  if (text !== null) result.text = text;
   return result;
 }
 
 function publish(instance: Instance) {
   if (mounted.has(instance.id)) return;
   mounted.set(instance.id, instance);
-  operations.push({ op: "create", id: instance.id, type: instance.type, props: nativeProps(instance.props) });
+  operations.push({ op: "create", id: instance.id, type: instance.type, props: nativeProps(instance.props, instance.type) });
   for (const child of instance.children) {
     publish(child);
     operations.push({ op: "insert", id: child.id, parent: instance.id, before: null });
@@ -62,19 +92,52 @@ function remove(parent: Container, child: Instance) {
   forget(child);
 }
 
-function update(instance: Instance, props: Props) {
-  const previous = nativeProps(instance.props);
-  const next = nativeProps(props);
+function update(instance: Instance, _type: string, _oldProps: Props, props: Props) {
+  const previous = instance.props;
+  if (instance.type === "Text" && props.href !== undefined) props = hostProps(instance.type, props);
   instance.props = props;
-  if (Object.keys(previous).length !== Object.keys(next).length
-    || Object.keys(next).some(key => !Object.is(previous[key], next[key]))) {
-    if (instance.type === "List" && previous.revision === next.revision
-      && previous.keys === next.keys && previous.contentVersions === next.contentVersions) {
-      delete next.keys;
-      delete next.contentVersions;
+  if (instance.type === "Text") {
+    const children = props.children;
+    if (children !== previous.children) {
+      if (typeof children === "string") queueText(instance.id, children);
+      else if (typeof children === "number" || typeof children === "bigint") queueText(instance.id, String(children));
     }
-    operations.push({ op: "update", id: instance.id, props: next });
+    if (previous.size === props.size && previous.width === props.width
+      && previous.align === props.align && previous.maxLines === props.maxLines
+      && previous.tabularNumbers === props.tabularNumbers
+      && (previous.onPress === props.onPress || nativeValue(previous.onPress) === nativeValue(props.onPress))) return;
+    operations.push({ op: "update", id: instance.id, props: nativeProps(props, instance.type) });
+    return;
   }
+  let previousCount = 0;
+  let changed = false;
+  for (const name of Object.keys(previous)) {
+    const value = previous[name];
+    if (name === "children" || name === "ref" || value === undefined) continue;
+    previousCount++;
+    const next = props[name];
+    if (!Object.hasOwn(props, name) || !Object.is(
+      typeof value === "function" ? true : value,
+      typeof next === "function" ? true : next,
+    )) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) {
+    let nextCount = 0;
+    for (const name of Object.keys(props)) {
+      if (name !== "children" && name !== "ref" && props[name] !== undefined) nextCount++;
+    }
+    if (previousCount === nextCount) return;
+  }
+  const next = nativeProps(props, instance.type);
+  if (instance.type === "List" && nativeValue(previous.revision) === next.revision
+    && nativeValue(previous.keys) === next.keys && nativeValue(previous.contentVersions) === next.contentVersions) {
+    delete next.keys;
+    delete next.contentVersions;
+  }
+  operations.push({ op: "update", id: instance.id, props: next });
 }
 
 function hide(instance: Instance, value: boolean) {
@@ -101,11 +164,17 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
   supportsHydration: false,
   isPrimaryRenderer: true,
   supportsMicrotasks: true,
-  createInstance: (type, props) => ({ id: nextId++, type, props, children: [] }),
+  createInstance: (type, props) => ({ id: nextId++, type, props: hostProps(type, props), children: [] }),
   createTextInstance: text => ({ id: nextId++, type: "#text", props: { text }, children: [] }),
   appendInitialChild: (parent, child) => { parent.children.push(child); },
   finalizeInitialChildren: () => false,
-  shouldSetTextContent: () => false,
+  shouldSetTextContent: (type, props) => {
+    if (type === "Text" && props.href !== undefined && props.onPress) {
+      throw new Error("Text accepts either href or onPress");
+    }
+    const kind = typeof props.children;
+    return type === "Text" && (kind === "string" || kind === "number" || kind === "bigint");
+  },
   getRootHostContext: () => hostContext,
   getChildHostContext: () => hostContext,
   getPublicInstance: instance => instance,
@@ -141,9 +210,12 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
   insertInContainerBefore: insert,
   removeChild: remove,
   removeChildFromContainer: remove,
-  resetTextContent: instance => { instance.children = []; },
-  commitTextUpdate: (instance, _oldText, text) => update(instance, { text }),
-  commitUpdate: (instance, _type, _oldProps, props) => update(instance, props),
+  resetTextContent: instance => { queueText(instance.id, ""); },
+  commitTextUpdate: (instance, _oldText, text) => {
+    instance.props = { text };
+    queueText(instance.id, text);
+  },
+  commitUpdate: update,
   hideInstance: instance => hide(instance, true),
   hideTextInstance: instance => hide(instance, true),
   unhideInstance: instance => hide(instance, false),

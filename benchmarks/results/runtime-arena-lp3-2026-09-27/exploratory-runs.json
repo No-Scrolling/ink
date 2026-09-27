@@ -1,0 +1,772 @@
+{
+  "original-now": [
+    {
+      "id": "probe-20260927-210037-6a98c07d",
+      "variant": "original-now",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210042-5da45f76",
+      "variant": "original-now",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210047-07634b54",
+      "variant": "original-now",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "paced-comparison": [
+    {
+      "variant": "old",
+      "warmup": true,
+      "id": "probe-20260927-212028-cdb02237",
+      "samples": 178,
+      "ambiguous": 1,
+      "median": 19.151563,
+      "p95": 21.414271,
+      "min": 16.238541,
+      "max": 40.645052,
+      "under16": 0,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 179,
+        "submittedCommits": 179,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.14458354442322,
+        "submissionIntervalMs": {
+          "median": 16.3091665,
+          "p95": 20.486407,
+          "maximum": 21.417968
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "old",
+      "warmup": false,
+      "id": "probe-20260927-212033-4256d41a",
+      "samples": 179,
+      "ambiguous": 0,
+      "median": 20.298229,
+      "p95": 26.899479,
+      "min": 16.328854,
+      "max": 32.254791,
+      "under16": 0,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 179,
+        "unsubmittedCommits": 1,
+        "submissionsPerSecond": 59.94553229717959,
+        "submissionIntervalMs": {
+          "median": 16.5812755,
+          "p95": 19.250521,
+          "maximum": 30.615312
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "old",
+      "warmup": false,
+      "id": "probe-20260927-212038-830ba786",
+      "samples": 178,
+      "ambiguous": 0,
+      "median": 19.461119500000002,
+      "p95": 23.258646,
+      "min": 16.388854,
+      "max": 38.286354,
+      "under16": 0,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 178,
+        "unsubmittedCommits": 2,
+        "submissionsPerSecond": 59.739265122040486,
+        "submissionIntervalMs": {
+          "median": 16.481614,
+          "p95": 19.173177,
+          "maximum": 29.135261
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "new",
+      "warmup": true,
+      "id": "probe-20260927-212047-2bd44b71",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 19.1361725,
+      "p95": 20.599948,
+      "min": 13.791927,
+      "max": 34.109062,
+      "under16": 3,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.292271230925884,
+        "submissionIntervalMs": {
+          "median": 16.528698,
+          "p95": 19.212813,
+          "maximum": 22.43651
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "new",
+      "warmup": false,
+      "id": "probe-20260927-212052-6129979b",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.912162000000002,
+      "p95": 20.384167,
+      "min": 13.196979,
+      "max": 27.728698,
+      "under16": 5,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.16188149345925,
+        "submissionIntervalMs": {
+          "median": 16.542969,
+          "p95": 18.910625,
+          "maximum": 20.646406
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "new",
+      "warmup": false,
+      "id": "probe-20260927-212057-d5b46894",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.832395499999997,
+      "p95": 20.859375,
+      "min": 16.665834,
+      "max": 27.218646,
+      "under16": 0,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.17356525015145,
+        "submissionIntervalMs": {
+          "median": 16.650781,
+          "p95": 19.111823,
+          "maximum": 20.60276
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "new",
+      "warmup": true,
+      "id": "probe-20260927-212105-09aa3270",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.7745575,
+      "p95": 23.407968,
+      "min": 12.611667,
+      "max": 36.91474,
+      "under16": 2,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.39469114941933,
+        "submissionIntervalMs": {
+          "median": 16.443125,
+          "p95": 20.647916,
+          "maximum": 23.864739
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "new",
+      "warmup": false,
+      "id": "probe-20260927-212110-47709ac1",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.819010499999997,
+      "p95": 20.274844,
+      "min": 15.928906,
+      "max": 22.826041,
+      "under16": 1,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.091414920999455,
+        "submissionIntervalMs": {
+          "median": 16.695937,
+          "p95": 18.310469,
+          "maximum": 19.938177
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "new",
+      "warmup": false,
+      "id": "probe-20260927-212115-4a2185a8",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.633437999999998,
+      "p95": 20.367553,
+      "min": 15.800156,
+      "max": 23.421302,
+      "under16": 1,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.093580456233624,
+        "submissionIntervalMs": {
+          "median": 16.447292,
+          "p95": 18.854792,
+          "maximum": 20.245
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "old",
+      "warmup": true,
+      "id": "probe-20260927-212124-668da38f",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 19.235208,
+      "p95": 21.089167,
+      "min": 15.13224,
+      "max": 34.1125,
+      "under16": 1,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.32195372156393,
+        "submissionIntervalMs": {
+          "median": 16.441042,
+          "p95": 19.615938,
+          "maximum": 21.448906
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "old",
+      "warmup": false,
+      "id": "probe-20260927-212129-53c9c7bb",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.729141,
+      "p95": 21.338125,
+      "min": 15.983906,
+      "max": 25.584584,
+      "under16": 1,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.12236289373166,
+        "submissionIntervalMs": {
+          "median": 16.360833,
+          "p95": 19.413906,
+          "maximum": 21.194323
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "old",
+      "warmup": false,
+      "id": "probe-20260927-212135-c35da417",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 19.1473175,
+      "p95": 21.349271,
+      "min": 16.137865,
+      "max": 32.297188,
+      "under16": 0,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.25274069706116,
+        "submissionIntervalMs": {
+          "median": 16.274323,
+          "p95": 20.742916,
+          "maximum": 21.745104
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    }
+  ],
+  "new-b": [
+    {
+      "id": "probe-20260927-211938-5070e25f",
+      "variant": "new-b",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211943-0e52b8dd",
+      "variant": "new-b",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211948-0f97f6bb",
+      "variant": "new-b",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "ascii-graphemes": [
+    {
+      "id": "probe-20260927-205537-a26eaae9",
+      "variant": "ascii-graphemes",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-205542-9ef41f5e",
+      "variant": "ascii-graphemes",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-205547-526228db",
+      "variant": "ascii-graphemes",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "action-no-redraw": [
+    {
+      "id": "probe-20260927-210635-e32e9d28",
+      "variant": "action-no-redraw",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210640-ad013e7c",
+      "variant": "action-no-redraw",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210645-592631a3",
+      "variant": "action-no-redraw",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "quickjs-os": [
+    {
+      "id": "probe-20260927-211239-9acc069e",
+      "variant": "quickjs-os",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211244-93111d97",
+      "variant": "quickjs-os",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211249-371cfe66",
+      "variant": "quickjs-os",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "old-a": [
+    {
+      "id": "probe-20260927-211900-e11f38da",
+      "variant": "old-a",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211905-99f96f2e",
+      "variant": "old-a",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211910-42395aec",
+      "variant": "old-a",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "upstream-arena": [
+    {
+      "id": "probe-20260927-211715-f24263b7",
+      "variant": "upstream-arena",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211720-92411dcd",
+      "variant": "upstream-arena",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211725-b127cc0b",
+      "variant": "upstream-arena",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "property-cache": [
+    {
+      "id": "probe-20260927-205239-cbf6b644",
+      "variant": "property-cache",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-205244-b7e41f32",
+      "variant": "property-cache",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-205249-d29d0953",
+      "variant": "property-cache",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "reuse-text-buffers": [
+    {
+      "id": "probe-20260927-210842-ddb7c88b",
+      "variant": "reuse-text-buffers",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210847-0553c562",
+      "variant": "reuse-text-buffers",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210852-446cf72c",
+      "variant": "reuse-text-buffers",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "lean-o3": [
+    {
+      "id": "probe-20260927-211418-6ef1ef8d",
+      "variant": "lean-o3",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211423-529b639e",
+      "variant": "lean-o3",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211428-490fc2a4",
+      "variant": "lean-o3",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "fused-field": [
+    {
+      "id": "probe-20260927-205920-fb0df5ea",
+      "variant": "fused-field",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-205925-8f09646f",
+      "variant": "fused-field",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-205930-5d253101",
+      "variant": "fused-field",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "old-b": [
+    {
+      "id": "probe-20260927-211957-3d3dbe1f",
+      "variant": "old-b",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-212002-28d86a16",
+      "variant": "old-b",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-212007-3440efc5",
+      "variant": "old-b",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "ascii-only": [
+    {
+      "id": "probe-20260927-210317-12b33ff7",
+      "variant": "ascii-only",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210322-af2e1f49",
+      "variant": "ascii-only",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210327-c6f03c61",
+      "variant": "ascii-only",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "new-a": [
+    {
+      "id": "probe-20260927-211919-f827cdd6",
+      "variant": "new-a",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211924-ef427521",
+      "variant": "new-a",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211929-786825dc",
+      "variant": "new-a",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "paced-priority": [
+    {
+      "variant": "priority",
+      "warmup": true,
+      "id": "probe-20260927-212439-cd807ab3",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 19.170156,
+      "p95": 20.175469,
+      "min": 15.510104,
+      "max": 35.191094,
+      "under16": 1,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.35560177908987,
+        "submissionIntervalMs": {
+          "median": 16.499323,
+          "p95": 18.192396,
+          "maximum": 21.077448
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "priority",
+      "warmup": false,
+      "id": "probe-20260927-212444-7cf5d2cf",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.790677000000002,
+      "p95": 23.054427,
+      "min": 15.503334,
+      "max": 28.866823,
+      "under16": 1,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.21523164199142,
+        "submissionIntervalMs": {
+          "median": 16.391407,
+          "p95": 20.222136,
+          "maximum": 23.26776
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    },
+    {
+      "variant": "priority",
+      "warmup": false,
+      "id": "probe-20260927-212449-d0283302",
+      "samples": 180,
+      "ambiguous": 0,
+      "median": 18.561849,
+      "p95": 22.653593,
+      "min": 15.892968,
+      "max": 28.155417,
+      "under16": 1,
+      "paced": {
+        "expectedUpdates": 180,
+        "commits": 180,
+        "submittedCommits": 180,
+        "unsubmittedCommits": 0,
+        "submissionsPerSecond": 60.175878945974134,
+        "submissionIntervalMs": {
+          "median": 16.404219,
+          "p95": 20.970833,
+          "maximum": 21.747084
+        },
+        "note": "Software submission throughput for 180 scheduled 500-cell-and-resize updates. This is not per-update latency or physical display cadence. Fewer than 180 commits can indicate unfinished or batched updates."
+      }
+    }
+  ],
+  "glyph-slots": [
+    {
+      "id": "probe-20260927-210510-d123c617",
+      "variant": "glyph-slots",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210515-0073df13",
+      "variant": "glyph-slots",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-210519-762977e4",
+      "variant": "glyph-slots",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "no-syntax": [
+    {
+      "id": "probe-20260927-204653-fc79228b",
+      "variant": "no-syntax",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-204658-6914fb74",
+      "variant": "no-syntax",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-204703-6631a32d",
+      "variant": "no-syntax",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ],
+  "display-priority": [
+    {
+      "id": "probe-20260927-211515-1cc1155d",
+      "variant": "display-priority",
+      "warmup": true,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211520-b4757270",
+      "variant": "display-priority",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    },
+    {
+      "id": "probe-20260927-211525-a02c7dfe",
+      "variant": "display-priority",
+      "warmup": false,
+      "count": 500,
+      "resize": true
+    }
+  ]
+}

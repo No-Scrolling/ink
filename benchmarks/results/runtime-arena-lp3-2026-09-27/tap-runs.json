@@ -1,0 +1,86 @@
+[
+  {
+    "id": "probe-20260927-211900-e11f38da",
+    "variant": "old-a",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211905-99f96f2e",
+    "variant": "old-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211910-42395aec",
+    "variant": "old-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211919-f827cdd6",
+    "variant": "new-a",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211924-ef427521",
+    "variant": "new-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211929-786825dc",
+    "variant": "new-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211938-5070e25f",
+    "variant": "new-b",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211943-0e52b8dd",
+    "variant": "new-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211948-0f97f6bb",
+    "variant": "new-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-211957-3d3dbe1f",
+    "variant": "old-b",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-212002-28d86a16",
+    "variant": "old-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-212007-3440efc5",
+    "variant": "old-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  }
+]

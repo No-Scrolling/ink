@@ -1,0 +1,4 @@
+name = "Ink Bridge Benchmark"
+package = "com.vandam.benchmark.ink.bridge"
+version = "1.0.0"
+version_code = 1

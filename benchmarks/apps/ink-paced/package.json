@@ -1,0 +1,11 @@
+{
+  "name": "ink-paced-benchmark",
+  "private": true,
+  "dependencies": {
+    "ink": "workspace:*",
+    "react": "19.2.8"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  }
+}

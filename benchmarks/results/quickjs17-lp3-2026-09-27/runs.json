@@ -1,0 +1,86 @@
+[
+  {
+    "id": "probe-20260927-214214-0ad5ca5b",
+    "variant": "baseline-a",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214219-01d8107c",
+    "variant": "baseline-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214224-8ba74089",
+    "variant": "baseline-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214257-6e9740b4",
+    "variant": "candidate-a",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214301-fa656c13",
+    "variant": "candidate-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214306-0561433a",
+    "variant": "candidate-a",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214351-f613aed5",
+    "variant": "candidate-b",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214356-359769a0",
+    "variant": "candidate-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214401-e0036ac8",
+    "variant": "candidate-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214438-a68ee2cf",
+    "variant": "baseline-b",
+    "warmup": true,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214443-5e0ef9d9",
+    "variant": "baseline-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  },
+  {
+    "id": "probe-20260927-214448-67ad7f67",
+    "variant": "baseline-b",
+    "warmup": false,
+    "count": 500,
+    "resize": true
+  }
+]

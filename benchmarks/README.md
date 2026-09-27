@@ -11,6 +11,14 @@ Use `scripts/agent-tools` for builds and device runs. It records build hashes an
 
 Use the emulator for behaviour checks and the physical Light Phone III for performance results.
 
+## Current engine measurements
+
+- [QuickJS-ng 0.17.0 comparison](results/quickjs17-lp3-2026-09-27/report.md): latest engine, compatibility checks and 500-cell update measurements.
+- [Runtime optimisation profile](results/runtime-arena-lp3-2026-09-27/report.md): update waterfall, continuous workloads and scrollbar timings before the 0.17.0 upgrade.
+- [Native size profile](results/native-size-2026-09-27/report.md): earlier bundle-size investigation.
+
+Superseded intermediate reports have been removed. The stress and framework comparisons below cover different workloads and remain as historical baselines.
+
 ## Ink stress test
 
 The [stress app](apps/ink-stress/README.md) repeats navigation, image-heavy scrolling, failed refresh/retry and dataset changes. It checks visible content and collects scrolling, renderer, memory and idle measurements.

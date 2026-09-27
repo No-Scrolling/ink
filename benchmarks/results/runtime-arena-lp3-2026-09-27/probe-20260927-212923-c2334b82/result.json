@@ -1,0 +1,34 @@
+{
+  "package": "com.vandam.benchmark.ink.updates",
+  "pid": "13841",
+  "scenario": "scroll",
+  "actions": 2,
+  "seconds": 3.253,
+  "cpuMs": 800.0,
+  "renderer": {
+    "frames": 189,
+    "frameMs": {
+      "p95": 1.920208,
+      "maximum": 3.160052
+    },
+    "relayoutMs": {
+      "p95": 0.0,
+      "maximum": 1.350834
+    },
+    "prepareMs": {
+      "p95": 0.0,
+      "maximum": 1.085104
+    },
+    "uploadMs": {
+      "p95": 0.006979,
+      "maximum": 0.008593
+    },
+    "submit_presentMs": {
+      "p95": 1.098802,
+      "maximum": 1.718594
+    },
+    "uploadedBytes": 292272,
+    "cacheMisses": 0
+  },
+  "note": "Short iteration probe, not a paired benchmark or full compatibility check. Start each comparison at the same scroll position with the same cache state."
+}

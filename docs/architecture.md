@@ -24,6 +24,12 @@ The APK contains JavaScript source, icons, assets and the required native module
 
 Release builds load networking runtime code on first use. Set `INK_SPLIT_WEB=0` to disable this split for comparisons. General code splitting and downloading executable code after installation are not supported.
 
+### Native release builds
+
+Android releases use the speed-optimised `release` Cargo profile and the pinned toolchain's prebuilt standard library. Native libraries remain uncompressed in the APK so Android can map them directly.
+
+Gradle uses its configured Android NDK and the app's minimum Android API level for native compilation. Missing native symbols fail at link time instead of producing an APK that fails to load.
+
 ### Native modules
 
 Packages declare native requirements in `ink-native.json`. Ink combines these with capabilities configured by the app. A shared catalogue tells the compiler and Gradle which dependencies, permissions and Android sources to include.
@@ -35,6 +41,12 @@ For app-local Android code, an `android/build.gradle.kts` library can supply res
 ## Running an app
 
 React runs on a dedicated JavaScript thread. It manages app state and sends UI changes to Rust. Native API calls return promises so file and network operations do not block that thread.
+
+QuickJS-ng manages its small-object allocation directly. Ink uses the standard runtime allocator, with a 64 MiB JavaScript memory limit and a 512 KiB stack limit.
+
+The workspace pins `rquickjs-sys` to upstream commit `7a23f6f02f5396b41283b25a0d72f34d8982778e`, which bundles QuickJS-ng 0.17.0. The high-level bindings remain at rquickjs 0.14.0. Remove the Cargo patch when a published binding release includes this engine version.
+
+`Text` and `Stack` are typed React host elements, so neither needs a component wrapper. JSX and `createElement` use the same path; these exports are host names, not callable component functions. Primitive Text content lives on its host node, while mixed and nested text use child nodes. The renderer resolves Text's `href` into a press handler and checks that links do not also supply `onPress`. Native Stack handles its optional press behaviour.
 
 Rust measures text, positions components, handles gestures and draws the screen. It keeps the UI tree between updates and applies React changes in batches.
 
@@ -54,11 +66,19 @@ Scrolling continues natively while JavaScript is busy. New content and actions t
 
 Changes to existing elements update the affected parts of the native tree. Structural and navigation changes rebuild the tree. Both recalculate layout.
 
+Text changes send just the node ID and new text. Rust combines overlapping updates so rebuilding a parent also handles its changed children, then replaces the affected branches in one tree traversal. Text input synchronisation runs when inputs or the tree structure change, rather than on every text update.
+
+JavaScript compares native-relevant props before constructing an outgoing prop object. Changes to children or callback identity alone do not require that object; callback references still update in JavaScript so events use the latest handler.
+
+Adjacent text edits share one bridge operation. Native layout can measure a fixed-width, single-line text box without wrapping its contents first; drawing still handles wrapping, truncation and font fallback. Wrapped lines and prepared text share immutable strings to avoid copying them between caches and scenes.
+
 Images with fixed bounds can finish loading without recalculating layout.
 
 Lists render rows around the visible area and measure their heights automatically. Stable keys keep the scroll position when rows change. See [Lists](/lists).
 
-The renderer reuses prepared text and image geometry. Text, icons and images share one textured pipeline. It combines adjacent draws of the same image without changing their order. When idle, it can display an update immediately; gestures and ongoing frames use Android’s frame scheduler.
+The renderer reuses prepared text and image geometry. Text, icons and images share one textured pipeline. It combines adjacent draws of the same image without changing their order. A completed React update can replace a queued frame callback and render as soon as the GPU is ready. Active gestures, flings and scene animations stay paced by Android’s frame scheduler. Submission still goes through Android’s presentation pipeline; rendering immediately does not bypass the display’s refresh rate.
+
+Input activation, haptic feedback and scene changes are separate signals. A tap that only dispatches a React callback does not redraw the old scene; the completed commit requests its frame.
 
 An unchanged screen requests no rendering frames. Timers, network connections and media can still use CPU and power.
 

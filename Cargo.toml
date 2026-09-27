@@ -35,6 +35,8 @@ unicode-properties = { version = "0.1.4", default-features = false, features = [
 
 [patch.crates-io]
 ab_glyph = { path = "vendor/ab_glyph" }
+# QuickJS-ng 0.17.0; remove when a published rquickjs-sys includes it.
+rquickjs-sys = { git = "https://github.com/DelSkayn/rquickjs.git", rev = "7a23f6f02f5396b41283b25a0d72f34d8982778e" }
 
 [profile.release]
 codegen-units = 1

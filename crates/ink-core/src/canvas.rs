@@ -69,7 +69,7 @@ impl Engine {
                 Drawing::Text { bounds: area, text, size, colour, align, tabular_numbers } => {
                     let area = bounds(*area);
                     self.scene.text.push(TextRun {
-                        text: text.clone(), rect: area, clip: area.intersection(self.clip),
+                        text: text.as_str().into(), rect: area, clip: area.intersection(self.clip),
                         font_size: self.scaled_font(size * scale / self.viewport.scale),
                         colour: self.canvas_colour(*colour), align: *align,
                         tabular_numbers: *tabular_numbers, scrolling: self.scrolling,
@@ -99,7 +99,7 @@ impl Engine {
             last = Some(next);
         }
         self.pointers.insert(id, Pointer::CanvasDrag { group, previous: (x, y), target: last });
-        PointerOutcome { activated, ..PointerOutcome::default().captured() }
+        PointerOutcome { activated, haptic: activated, ..PointerOutcome::default().captured() }
     }
 
     fn canvas_quad(&mut self, rect: Rect, colour: Colour) {

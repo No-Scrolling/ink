@@ -5,6 +5,33 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{PUBLIC_SANS, is_emoji_grapheme};
 
+pub fn text_graphemes(text: &str) -> impl Iterator<Item = &str> {
+    enum Graphemes<'a> {
+        Ascii(&'a str),
+        Unicode(unicode_segmentation::Graphemes<'a>),
+    }
+
+    impl<'a> Iterator for Graphemes<'a> {
+        type Item = &'a str;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            match self {
+                Self::Ascii(text) => {
+                    if text.is_empty() { return None; }
+                    // CRLF is the only multi-byte grapheme entirely within ASCII.
+                    let length = if text.starts_with("\r\n") { 2 } else { 1 };
+                    let (grapheme, rest) = text.split_at(length);
+                    *text = rest;
+                    Some(grapheme)
+                }
+                Self::Unicode(text) => text.next(),
+            }
+        }
+    }
+
+    if text.is_ascii() { Graphemes::Ascii(text) } else { Graphemes::Unicode(text.graphemes(true)) }
+}
+
 pub fn font_for_character(character: char) -> (usize, &'static FontArc) {
     static PRIMARY: OnceLock<FontArc> = OnceLock::new();
     let primary = PRIMARY.get_or_init(|| {
@@ -97,7 +124,7 @@ impl TextWidth {
     }
 
     pub fn push(&mut self, text: &str) -> f32 {
-        for grapheme in text.graphemes(true) {
+        for grapheme in text_graphemes(text) {
             if is_emoji_grapheme(grapheme) {
                 self.previous = None;
                 self.width += self.size;

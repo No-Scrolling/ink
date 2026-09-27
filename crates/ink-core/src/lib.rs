@@ -16,7 +16,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 mod fonts;
 mod canvas;
-pub use fonts::{font_for_character, tabular_digit_width, text_width, text_width_with_numbers};
+pub use fonts::{font_for_character, tabular_digit_width, text_graphemes, text_width, text_width_with_numbers};
 
 mod icon_assets;
 mod list;
@@ -929,7 +929,7 @@ pub struct Quad {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextRun {
-    pub text: String,
+    pub text: Arc<str>,
     pub rect: Rect,
     pub clip: Rect,
     pub font_size: f32,
@@ -1111,8 +1111,10 @@ struct TextInputLayout {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PointerOutcome {
+    /// The native scene changed; dispatching a callback alone does not redraw it.
     pub changed: bool,
     pub activated: bool,
+    pub haptic: bool,
     pub captured: bool,
 }
 
@@ -1121,6 +1123,7 @@ impl PointerOutcome {
         Self {
             changed,
             activated: false,
+            haptic: false,
             captured: false,
         }
     }
@@ -1129,6 +1132,7 @@ impl PointerOutcome {
         Self {
             changed,
             activated: changed,
+            haptic: changed,
             captured: false,
         }
     }
@@ -1926,15 +1930,17 @@ impl Engine {
                 target,
                 ..
             }) => {
-                if self.hit_region_at(x, y).map(|region| region.target) != target {
+                let region = self.hit_region_at(x, y);
+                if region.map(|region| region.target) != target {
                     return PointerOutcome::default();
                 }
                 let revision = self.scene.revision;
-                let haptic = self.hit_region_at(x, y).is_some_and(|region| region.haptic);
+                let haptic = region.is_some_and(|region| region.haptic);
                 let activated = self.tap(x, y);
                 PointerOutcome {
-                    changed: activated || self.scene.revision != revision,
-                    activated: activated && haptic,
+                    changed: self.scene.revision != revision,
+                    activated,
+                    haptic: activated && haptic,
                     captured: false,
                 }
             }
@@ -1977,7 +1983,7 @@ impl Engine {
                 self.focus_text_input(input, x, y);
                 self.pointers.clear();
                 self.gesture_owner = Some(id);
-                return PointerOutcome { changed: true, activated: true, captured: true };
+                return PointerOutcome { changed: true, activated: true, haptic: true, captured: true };
             }
             return PointerOutcome::default();
         }
@@ -1995,7 +2001,7 @@ impl Engine {
         let changes_layout = action.changes_layout();
         let activated = self.apply(action);
         if changes_layout { self.relayout_scene(); }
-        PointerOutcome { changed: changes_layout && activated, activated, captured: true }
+        PointerOutcome { changed: changes_layout && activated, activated, haptic: activated, captured: true }
     }
 
     pub fn pointer_cancel(&mut self) {
@@ -2942,6 +2948,14 @@ impl Engine {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font_size = self.scaled_font(size);
                 let fixed_width = width.map(|width| self.scaled(width.max(0.0)).min(available.width));
+                if let Some(width) = fixed_width
+                    && *max_lines == Some(1)
+                {
+                    return MeasuredSize {
+                        width,
+                        height: self.text_line_height(size).min(available.height),
+                    };
+                }
                 let lines = self.wrap_linked_text(text, font_size, fixed_width.unwrap_or(available.width), *max_lines, *tabular_numbers, links);
                 let line_height = self.text_line_height(size);
                 MeasuredSize {
@@ -3230,7 +3244,7 @@ impl Engine {
                     if index == 1 && *loading {
                         let font_size = self.scaled_font(14.0);
                         self.scene.text.push(TextRun {
-                            text: "Loading...".to_owned(),
+                            text: "Loading...".into(),
                             rect: Rect { y: rect.y + (rect.height - font_size) / 2.0, height: font_size, ..rect },
                             clip: rect.intersection(self.clip), font_size,
                             colour: self.scene.colour(Colour::WHITE),
@@ -3265,7 +3279,7 @@ impl Engine {
                 let distance = width + self.scaled(25.0);
                 let speed = self.scaled(24.0);
                 self.scene.text.push(TextRun {
-                    text: text.clone(), rect: Rect { width: width.max(rect.width), ..rect },
+                    text: text.as_str().into(), rect: Rect { width: width.max(rect.width), ..rect },
                     clip: rect.intersection(self.clip), font_size,
                     colour: self.scene.colour(Colour::WHITE),
                     align: if overflow { TextAlign::Start } else { TextAlign::Centre },
@@ -3448,7 +3462,7 @@ impl Engine {
                     let line_height = self.text_line_height(size);
                     let mut offset = 0;
                     for (index, line) in lines.iter().enumerate() {
-                        let Some(relative) = text[offset..].find(&line.text) else { break; };
+                        let Some(relative) = text[offset..].find(line.text.as_ref()) else { break; };
                         let start = offset + relative;
                         let end = start + line.text.len();
                         let inset = match align { TextAlign::Centre => (rect.width - line.width) / 2.0, TextAlign::End => rect.width - line.width, _ => 0.0 };
@@ -3636,7 +3650,7 @@ impl Engine {
             let font_size = self.scaled_font(HEADER_TEXT_SIZE);
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
-                text: self.ellipsize(title, font_size, title_rect.width),
+                text: self.ellipsize(title, font_size, title_rect.width).into(),
                 rect: title_rect,
                 clip: self.clip,
                 font_size,
@@ -4074,7 +4088,7 @@ impl Engine {
         let text_width = self.text_width(&visible_label, font_size);
         self.scene.text.push(TextRun {
             tabular_numbers: false,
-            text: visible_label,
+            text: visible_label.into(),
             rect: text_rect,
             clip: self.clip,
             font_size,
@@ -4144,7 +4158,7 @@ impl Engine {
         let label_font_size = self.scaled_font(FIELD_LABEL_SIZE);
         self.scene.text.push(TextRun {
             tabular_numbers: false,
-            text: self.ellipsize(label, label_font_size, rect.width),
+            text: self.ellipsize(label, label_font_size, rect.width).into(),
             rect: Rect {
                 height: label_height,
                 ..rect
@@ -4224,7 +4238,7 @@ impl Engine {
         for (index, (start, end)) in lines.iter().copied().enumerate() {
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
-                text: if self.native_editor_state == Some(state) { String::new() } else if showing_placeholder { placeholder.to_owned() } else { value[start..end].to_owned() },
+                text: if self.native_editor_state == Some(state) { "" } else if showing_placeholder { placeholder } else { &value[start..end] }.into(),
                 rect: Rect { y: (viewport.y + index as f32 * line_height - scroll_offset + baseline_offset).round(), height: line_height, ..viewport },
                 clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
                 align: TextAlign::Start, scrolling: self.scrolling,
@@ -4271,7 +4285,7 @@ impl Engine {
             };
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
-                text: text.to_owned(),
+                text: text.into(),
                 rect: bounds,
                 clip: bounds.intersection(self.clip),
                 font_size,
@@ -4332,7 +4346,7 @@ impl Engine {
         let text_run = self.scene.text.len();
         self.scene.text.push(TextRun {
             tabular_numbers: false,
-            text: if self.native_editor_state == Some(state) { String::new() } else { text.to_owned() },
+            text: if self.native_editor_state == Some(state) { "" } else { text }.into(),
             rect: Rect {
                 x: text_viewport.x - scroll_offset,
                 y: text_viewport.y.round(),
@@ -4746,7 +4760,7 @@ impl Engine {
     ) -> Arc<[WrappedLine]> {
         let key = TextWrapKey {
             first_line_inset: first_line_inset.to_bits(),
-            text: text.to_owned(),
+            text: text.into(),
             font_size: font_size.to_bits(),
             width: available_width.to_bits(),
             max_lines,
@@ -4768,7 +4782,7 @@ impl Engine {
             paragraph_offset += paragraph.len() + 1;
             if paragraph.is_empty() {
                 lines.push(WrappedLine {
-                    text: String::new(),
+                    text: "".into(),
                     width: 0.0,
                     wrapped: false,
                 });
@@ -4811,7 +4825,7 @@ impl Engine {
                     (end, end, text_width_with_numbers(&paragraph[start..end], font_size, tabular_numbers))
                 });
                 lines.push(WrappedLine {
-                    text: paragraph[start..display_end].to_owned(),
+                    text: paragraph[start..display_end].into(),
                     width,
                     wrapped: end < paragraph.len(),
                 });
@@ -4823,7 +4837,7 @@ impl Engine {
         {
             lines.truncate(max_lines);
             if let Some(line) = lines.last_mut() {
-                line.text = self.ellipsize_forced(&line.text, font_size, (available_width - if max_lines == 1 { first_line_inset } else { 0.0 }).max(0.0), tabular_numbers);
+                line.text = self.ellipsize_forced(&line.text, font_size, (available_width - if max_lines == 1 { first_line_inset } else { 0.0 }).max(0.0), tabular_numbers).into();
                 line.width = text_width_with_numbers(&line.text, font_size, tabular_numbers);
                 line.wrapped = false;
             }
@@ -4992,7 +5006,7 @@ fn text_cursor_boundary(text: &str, cursor: usize) -> usize {
 }
 
 pub fn is_emoji_grapheme(grapheme: &str) -> bool {
-    if grapheme.is_empty() || grapheme.chars().any(is_text_presentation_selector) {
+    if grapheme.is_ascii() || grapheme.chars().any(is_text_presentation_selector) {
         return false;
     }
 
@@ -5034,7 +5048,7 @@ struct TextWrapKey {
 }
 
 struct WrappedLine {
-    text: String,
+    text: Arc<str>,
     width: f32,
     wrapped: bool,
 }

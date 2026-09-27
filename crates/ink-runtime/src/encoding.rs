@@ -18,8 +18,9 @@ fn decode<'js>(
     fatal: bool,
     stream: bool,
 ) -> Result<Array<'js>> {
-    let bytes = input
-        .as_bytes()
+    // No JavaScript runs while these bytes are borrowed; own the decoded text
+    // before creating the result in the JS heap.
+    let bytes = unsafe { input.as_bytes() }
         .ok_or_else(|| Exception::throw_type(&ctx, "Detached input buffer"))?;
     let mut consumed = 0;
     while consumed < bytes.len() {
@@ -39,8 +40,9 @@ fn decode<'js>(
             }
         }
     }
+    let decoded = String::from_utf8_lossy(&bytes[..consumed]).into_owned();
     let result = Array::new(ctx)?;
-    result.set(0, String::from_utf8_lossy(&bytes[..consumed]).as_ref())?;
+    result.set(0, decoded)?;
     result.set(1, consumed)?;
     Ok(result)
 }
