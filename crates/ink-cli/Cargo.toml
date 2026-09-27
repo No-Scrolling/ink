@@ -10,8 +10,9 @@ name = "ink"
 path = "src/main.rs"
 
 [dependencies]
-anyhow.workspace = true
+anyhow = { workspace = true, features = ["std"] }
 clap.workspace = true
+crossterm = "0.29"
 indicatif.workspace = true
 ink-compiler = { path = "../ink-compiler" }
 owo-colors.workspace = true

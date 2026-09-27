@@ -8,6 +8,8 @@ export function Barcode(props: {
   value: string;
   /** Display width in Ink layout units; height follows the generated code. */
   size: number;
+  /** Print the encoded value beneath a linear barcode. */
+  showValue?: boolean;
 }) {
   if (!supportedFormats.includes(props.format)) throw new Error("Unsupported barcode format");
   if (!props.value.length) throw new Error("Barcode value must not be empty");

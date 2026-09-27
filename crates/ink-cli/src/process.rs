@@ -1,16 +1,9 @@
-use std::{
-    process::{Command, Stdio},
-    time::{Duration, Instant},
-};
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 
-use crate::output;
-
-pub fn run(command: &mut Command, message: &str, verbose: bool) -> Result<Duration> {
-    let started = Instant::now();
+pub fn run_quiet(command: &mut Command, message: &str, verbose: bool) -> Result<()> {
     if verbose {
-        output::info(message);
         let status = command
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
@@ -21,21 +14,16 @@ pub fn run(command: &mut Command, message: &str, verbose: bool) -> Result<Durati
             bail!("{message} failed with {status}");
         }
     } else {
-        let progress = output::spinner(message);
         let result = command
             .output()
-            .with_context(|| format!("could not start {}", program_name(command)));
-        progress.finish_and_clear();
-        let result = result?;
+            .with_context(|| format!("could not start {}", program_name(command)))?;
         if !result.status.success() {
             print_bytes(&result.stdout);
             print_bytes(&result.stderr);
             bail!("{message} failed with {}", result.status);
         }
     }
-    let elapsed = started.elapsed();
-    output::success(format!("{message} in {}", output::duration(elapsed)));
-    Ok(elapsed)
+    Ok(())
 }
 
 fn print_bytes(bytes: &[u8]) {

@@ -73,8 +73,9 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
     }
 
     private fun allowedImageUrl(url: String): Boolean =
-        url.startsWith(HTTPS_PREFIX) || BuildConfig.DEBUG && url.startsWith("http://") &&
-            Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2")
+        url.startsWith(HTTPS_PREFIX) || url.startsWith("http://") &&
+            (BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED || BuildConfig.DEBUG &&
+                Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2"))
 
     override fun cancel(requestId: Long) {
         if (streamTransport.isInitialized()) streams.cancel(requestId)

@@ -25,7 +25,7 @@ mod native_editor;
 mod react;
 
 pub use icon_assets::ReactIcon;
-pub use react::ReactTree;
+pub use react::{ReactCommit, ReactTree};
 
 #[cfg(all(feature = "perf", target_os = "android"))]
 #[link(name = "android")]
@@ -584,6 +584,7 @@ enum NodeKind {
     Screen {
         children: Vec<Node>,
         title: Option<String>,
+        background: Option<Colour>,
         centred: bool,
         footer: Option<(String, Option<Action>)>,
         pinned_header: bool,
@@ -626,6 +627,7 @@ enum NodeKind {
         icon: Option<Mask>,
         underline: bool,
         action: Option<Action>,
+        long_action: Option<Action>,
     },
     Field {
         label: String,
@@ -678,6 +680,7 @@ impl Node {
             kind: NodeKind::Screen {
                 children,
                 title,
+                background: None,
                 centred,
                 footer: None,
                 pinned_header: false,
@@ -770,6 +773,7 @@ impl Node {
                 icon,
                 underline,
                 action,
+                long_action: None,
             },
         }
     }
@@ -895,6 +899,15 @@ impl Colour {
     pub const BLACK: Self = Self::rgb(0.0, 0.0, 0.0);
     pub const WHITE: Self = Self::rgb(1.0, 1.0, 1.0);
     pub const MUTED: Self = Self::rgb(64.0 / 255.0, 64.0 / 255.0, 64.0 / 255.0);
+
+    fn to_linear(self) -> Self {
+        let channel = |value: f32| if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        };
+        Self { red: channel(self.red), green: channel(self.green), blue: channel(self.blue), ..self }
+    }
 
     pub const fn rgb(red: f32, green: f32, blue: f32) -> Self {
         Self {
@@ -3371,7 +3384,13 @@ impl Engine {
                 media_picker,
                 wait_for_images,
                 bottom_inset,
+                background,
             } => {
+                if let Some(colour) = background {
+                    self.scene.quads.push(Quad {
+                        rect, clip: self.clip, colour: self.scene.colour(*colour), scrolling: false,
+                    });
+                }
                 if *wait_for_images { self.visible_image_screens.insert(node.identity); }
                 let waiting = *wait_for_images && self.image_screens.get(&node.identity) != Some(&None);
                 let pending_start = self.pending_images.len();
@@ -3469,7 +3488,8 @@ impl Engine {
                 icon,
                 underline,
                 action,
-            } => self.layout_button(label, icon.clone(), *underline, action, rect),
+                long_action,
+            } => self.layout_button(label, icon.clone(), *underline, action, long_action, rect),
             NodeKind::Field {
                 label,
                 value,
@@ -4021,6 +4041,7 @@ impl Engine {
         icon: Option<Mask>,
         underline: bool,
         action: &Option<Action>,
+        long_action: &Option<Action>,
         rect: Rect,
     ) {
         let colour = self.scene.colour(if action.is_some() { Colour::WHITE } else { Colour::MUTED });
@@ -4076,7 +4097,7 @@ impl Engine {
             });
         }
         if let Some(action) = action {
-            self.push_hit_region(rect, action.clone());
+            self.push_press_region(rect, action.clone(), long_action.clone());
         }
     }
 

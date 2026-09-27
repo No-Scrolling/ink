@@ -57,3 +57,11 @@ export default function Code() {
 Supported formats: `qr`, `aztec`, `data-matrix`, `pdf417`, `ean-13`, `ean-8`, `upc-a`, `upc-e`, `code-39`, `code-93`, `code-128`, `itf` and `codabar`.
 
 Preserve the payload exactly, including leading zeros and letter case. Ink generates the code natively and includes its white border. See [Barcodes and passes](/barcode) for scanning.
+
+## Barcode values
+
+Use `showValue` to print the value beneath a linear barcode. QR and other two-dimensional codes remain unchanged.
+
+```tsx
+<Barcode format="code-128" value="001234567890" size={320} showValue />
+```

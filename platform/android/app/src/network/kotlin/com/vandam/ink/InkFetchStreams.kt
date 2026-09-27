@@ -110,7 +110,11 @@ internal class InkFetchStreams(
                     .put("url", url).put("headers", JSONArray().put(JSONArray().put("content-type").put("image/jpeg")))
                     .put("stream", stream.key).toString()))
             } else {
-                require(url.startsWith("https://") || BuildConfig.DEBUG && url.startsWith("http://") && Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2")) { "Network requests require HTTPS" }
+                require(url.startsWith("https://") || url.startsWith("http://") &&
+                    (BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED || BuildConfig.DEBUG &&
+                        Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2"))) {
+                    "HTTP requests require the network-cleartext capability"
+                }
                 val method = data.optString("method", "GET")
                 require(Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+").matches(method) && method.uppercase() !in setOf("CONNECT", "TRACE", "TRACK"))
                 val builder = engine.newUrlRequestBuilder(url, executor, stream).setHttpMethod(method)

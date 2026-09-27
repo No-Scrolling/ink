@@ -1,6 +1,10 @@
 package com.vandam.ink
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.Typeface
 import android.graphics.Color
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -61,7 +65,21 @@ private class InkBarcodeAdapter(private val activity: MainActivity) : BarcodeAda
                 val left = horizontalBorder * scale
                 val top = verticalBorder * scale
                 val bitmapWidth = width + left * 2
-                val bitmapHeight = height + top * 2
+                val label = if (linear && source.optBoolean("showValue")) Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.BLACK
+                    typeface = Typeface.MONOSPACE
+                    textAlign = Paint.Align.CENTER
+                    textSize = pixels * 0.05f
+                    val available = bitmapWidth - pixels * 0.04f
+                    val measured = measureText(value)
+                    if (measured > available) textSize *= available / measured
+                } else null
+                val labelGap = (pixels * 0.02f).toInt()
+                val labelBounds = Rect()
+                label?.getTextBounds(value, 0, value.length, labelBounds)
+                val labelHeight = if (label != null) labelBounds.height() + labelGap * 2 else 0
+                val barcodeHeight = height + if (label != null) top else top * 2
+                val bitmapHeight = barcodeHeight + labelHeight
                 val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
                 try {
                     val row = IntArray(bitmapWidth)
@@ -73,6 +91,9 @@ private class InkBarcodeAdapter(private val activity: MainActivity) : BarcodeAda
                             row[x] = if (black) Color.BLACK else Color.WHITE
                         }
                         bitmap.setPixels(row, 0, bitmapWidth, 0, y, bitmapWidth, 1)
+                    }
+                    label?.let { paint ->
+                        Canvas(bitmap).drawText(value, bitmapWidth / 2f, (barcodeHeight + labelGap - labelBounds.top).toFloat(), paint)
                     }
                     val target = File.createTempFile("ink-barcode-", ".png", activity.cacheDir)
                     file = target

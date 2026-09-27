@@ -17,7 +17,9 @@ use ink_compiler::Project;
 fn main() {
     output::initialise();
     if let Err(error) = run() {
-        output::error(format!("{error:#}"));
+        if !error.is::<output::ReportedError>() {
+            output::error(format!("{error:#}"));
+        }
         std::process::exit(1);
     }
 }
@@ -39,11 +41,7 @@ fn run() -> Result<()> {
         InkCommand::Devices => list_devices(),
         InkCommand::Check => {
             let project = load_project(cli.directory.as_deref())?;
-            quality::format(&project, cli.verbose)?;
-            quality::lint(&project, cli.verbose)?;
-            ink_compiler::check(&project)?;
-            output::success(format!("{} is valid", project.name()));
-            Ok(())
+            quality::check(&project, cli.verbose)
         }
         InkCommand::Lint => {
             let project = load_project(cli.directory.as_deref())?;
@@ -58,14 +56,22 @@ fn run() -> Result<()> {
                 android::Profile::Release
             };
             let artifact = android::build(&project, profile, cli.verbose)?;
-            let output_path = android::copy_build(&project, profile, &artifact)?;
-            output::success(format!(
-                "Built {} {} in {} ({})",
-                project.name(),
-                project.version(),
-                output::duration(artifact.duration),
-                output_path.display()
-            ));
+            let output_path = match android::copy_build(&project, profile, &artifact) {
+                Ok(path) => path,
+                Err(error) => {
+                    output::tree_root_field("APK", "failed", true);
+                    return Err(error);
+                }
+            };
+            let size = fs::metadata(&output_path)?.len();
+            let relative = output_path
+                .strip_prefix(project.root())
+                .expect("build output is inside the project");
+            output::tree_root_field(
+                "APK",
+                format!("{} · {}", relative.display(), file_size(size)),
+                true,
+            );
             Ok(())
         }
         InkCommand::Dev { device, once, logs } => {
@@ -75,7 +81,7 @@ fn run() -> Result<()> {
         InkCommand::Logs { device, resources } => {
             let project = load_project(cli.directory.as_deref())?;
             let device = android::select_device(device.as_deref())?;
-            output::info(format!("Using {}", device.description()));
+            println!("{} · logs · {}\n", project.name(), device.name());
             android::stream_logs(&device, project.package(), resources)
         }
         InkCommand::Info => {
@@ -92,63 +98,35 @@ fn develop(project: Project, requested_device: Option<&str>, once: bool, logs: b
 fn list_devices() -> Result<()> {
     let devices = android::connected_devices()?;
     let remembered = android::remembered_device();
+    println!("Android devices");
     if devices.is_empty() {
-        output::warning("No Android devices found");
+        output::tree_section("None connected", true);
         return Ok(());
     }
-    for device in devices {
-        let marker = if remembered.as_deref() == Some(&device.serial) {
-            "*"
+    let count = devices.len();
+    for (index, device) in devices.into_iter().enumerate() {
+        let name = if device.serial.starts_with("emulator-") {
+            "Emulator".to_owned()
         } else {
-            " "
+            device.name()
         };
-        println!("{marker} {}", device.description());
-    }
-    if remembered.is_some() {
-        println!("\n* remembered device");
+        let is_remembered = remembered.as_deref() == Some(device.serial.as_str());
+        let is_ready = device.ready();
+        let mut detail = device.serial;
+        if !is_ready {
+            detail.push_str(&format!(" · {}", device.state));
+        }
+        if is_remembered {
+            detail.push_str(" · remembered");
+        }
+        output::tree_root_field(&name, detail, index + 1 == count);
     }
     Ok(())
 }
 
 fn show_info(project: &Project) -> Result<()> {
     let app = ink_compiler::inspect(project)?;
-    output::field("Application", project.name());
-    output::field("Package", project.package());
-    output::field(
-        "Version",
-        format!("{} ({})", project.version(), project.version_code()),
-    );
-    output::field("Source", project.source_path().display().to_string());
-    output::field("Light server", project.light_server());
-    output::field("Target", "Android arm64");
-    output::field("Ink", env!("CARGO_PKG_VERSION"));
-    output::field("Runtime", "React / QuickJS-ng");
-    output::field(
-        "JavaScript",
-        format!("{} bytes (minified)", app.javascript_bytes),
-    );
-    output::field("Resolved inputs", app.resolved_inputs.to_string());
-    output::field("Imported media", app.asset_count.to_string());
-    output::field("Icon variants", app.icon_variants.to_string());
-    output::field(
-        "Capabilities",
-        if app.capabilities.is_empty() {
-            "None".to_owned()
-        } else {
-            app.capabilities.join(", ")
-        },
-    );
-    for detail in &app.capability_details {
-        output::field("", detail);
-    }
-    output::field(
-        "Signing",
-        project
-            .release_signing()
-            .map(|signing| format!("{} ({})", signing.key_alias, signing.keystore.display()))
-            .unwrap_or_else(|| "Not configured".to_owned()),
-    );
-
+    let builds = build_summaries(&project.root().join("dist"))?;
     let devices = android::connected_devices()?;
     let remembered = android::remembered_device();
     let device = remembered
@@ -159,26 +137,79 @@ fn show_info(project: &Project) -> Result<()> {
             let first = ready.next()?;
             ready.next().is_none().then_some(first)
         });
-    output::field(
-        "Device",
-        device
-            .map(android::Device::description)
-            .unwrap_or_else(|| "None selected".to_owned()),
-    );
 
-    let builds = build_summaries(&project.root().join("dist"))?;
-    output::field(
-        "Builds",
-        if builds.is_empty() {
-            "None".to_owned()
-        } else {
-            builds.join(", ")
-        },
+    println!(
+        "{} · {} ({})",
+        project.name(),
+        project.version(),
+        project.version_code()
     );
+    output::tree_root_field("Package", project.package(), false);
+    output::tree_root_field("Ink", env!("CARGO_PKG_VERSION"), false);
+    output::tree_section("Build", false);
+    output::tree_field(
+        false,
+        false,
+        "JavaScript",
+        file_size(app.javascript_bytes as u64),
+    );
+    if let Some(signing) = project.release_signing() {
+        output::tree_field(false, false, "Signing", &signing.key_alias);
+    }
+    let debug_suffix = format!("-{}-arm64-debug.apk", project.version());
+    let release_suffix = format!("-{}-arm64.apk", project.version());
+    let current_builds: Vec<_> = builds
+        .iter()
+        .filter(|build| {
+            build.name.ends_with(&debug_suffix) || build.name.ends_with(&release_suffix)
+        })
+        .collect();
+    if current_builds.is_empty() {
+        output::tree_field(false, true, "APKs", "None");
+    } else {
+        for (index, build) in current_builds.iter().enumerate() {
+            let label = if build.name.ends_with(&debug_suffix) {
+                "Debug APK"
+            } else {
+                "Release APK"
+            };
+            output::tree_field(
+                false,
+                index + 1 == current_builds.len(),
+                label,
+                file_size(build.size),
+            );
+        }
+    }
+    let capabilities = app.capabilities.join(", ");
+    let capabilities = if capabilities.is_empty() {
+        "None".to_owned()
+    } else if capabilities.len() > 60 {
+        format!("{} enabled", app.capabilities.len())
+    } else {
+        capabilities
+    };
+    output::tree_root_field("Capabilities", capabilities, false);
+    let device = device
+        .map(|device| {
+            let remembered = if remembered.as_deref() == Some(&device.serial) {
+                " · remembered"
+            } else {
+                ""
+            };
+            format!("{}{}", device.name(), remembered)
+        })
+        .unwrap_or_else(|| "None selected".to_owned());
+    output::tree_root_field("Device", device, true);
     Ok(())
 }
 
-fn build_summaries(directory: &Path) -> Result<Vec<String>> {
+struct BuildSummary {
+    name: String,
+    size: u64,
+}
+
+fn build_summaries(directory: &Path) -> Result<Vec<BuildSummary>> {
     if !directory.is_dir() {
         return Ok(Vec::new());
     }
@@ -194,9 +225,12 @@ fn build_summaries(directory: &Path) -> Result<Vec<String>> {
             .file_name()
             .expect("directory entries have file names")
             .to_string_lossy();
-        builds.push(format!("{file_name} ({})", file_size(size)));
+        builds.push(BuildSummary {
+            name: file_name.into_owned(),
+            size,
+        });
     }
-    builds.sort();
+    builds.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(builds)
 }
 

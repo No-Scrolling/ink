@@ -40,20 +40,23 @@ internal class InkAudioService : MediaSessionService() {
         sessions[name]?.let { return it.session }
         if (sessions.size >= 8) return null
         val effects = AudioEffects.get(this, name)
-        val player = ExoPlayer.Builder(this, InkAudioRenderersFactory(this, effects)).setHandleAudioBecomingNoisy(true).build().apply {
-            setAudioAttributes(AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(controllerInfo.connectionHints.getInt(CONTENT_TYPE_HINT, C.AUDIO_CONTENT_TYPE_MUSIC))
-                .build(), true)
-            addListener(object : Player.Listener {
-                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                    effects.countSavings = playWhenReady
-                    if (playWhenReady) sessions.filterKeys { it != name }.values.forEach { it.player.pause() }
-                    refreshIdleStop()
-                }
-                override fun onIsPlayingChanged(isPlaying: Boolean) = refreshIdleStop()
-            })
-        }
+        val player = ExoPlayer.Builder(this, InkAudioRenderersFactory(this, effects))
+            .setMediaSourceFactory(audioMediaSourceFactory(this))
+            .setHandleAudioBecomingNoisy(true)
+            .build().apply {
+                setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(controllerInfo.connectionHints.getInt(CONTENT_TYPE_HINT, C.AUDIO_CONTENT_TYPE_MUSIC))
+                    .build(), true)
+                addListener(object : Player.Listener {
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        effects.countSavings = playWhenReady
+                        if (playWhenReady) sessions.filterKeys { it != name }.values.forEach { it.player.pause() }
+                        refreshIdleStop()
+                    }
+                    override fun onIsPlayingChanged(isPlaying: Boolean) = refreshIdleStop()
+                })
+            }
         val persistence = AudioQueuePersistence(this, name, player, effects).apply { restore() }
         lateinit var readiness: AudioReadiness
         fun publishEffects(session: MediaSession) {

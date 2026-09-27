@@ -69,6 +69,7 @@ val inkUsesLightSdk = inkUses("light-sdk")
 val inkUsesLightSdkRingtone = inkUses("light-sdk-ringtone")
 val inkUsesLightSdkPush = inkUses("light-sdk-push")
 val inkUsesNetwork = inkUses("network")
+val inkUsesCleartextNetwork = inkUses("network-cleartext")
 val inkUsesAudio = inkUses("audio")
 val inkUsesAudioPlayback = inkUses("audio-playback")
 val inkUsesExternal = inkUses("external")
@@ -236,6 +237,7 @@ android {
 
     defaultConfig {
         buildConfigField("boolean", "INK_MEDIA_LIBRARY_ENABLED", inkUses("media-library").get().toString())
+        buildConfigField("boolean", "INK_CLEARTEXT_NETWORK_ENABLED", inkUsesCleartextNetwork.get().toString())
         buildConfigField("boolean", "INK_FILE_IMAGES_ENABLED", inkUses("file-images").get().toString())
         applicationId = inkApplicationId.get()
         minSdk = 34
@@ -309,7 +311,9 @@ android {
             }
         }
         if (inkUsesLightSdkPush.get() || inkUsesNetwork.get()) {
-            getByName("main").res.srcDir("src/networkSecurity/res")
+            getByName("main").res.srcDir(
+                if (inkUsesCleartextNetwork.get()) "src/networkCleartext/res" else "src/networkSecurity/res",
+            )
         }
         getByName("debug").jniLibs.srcDir(generatedJniRoot.map { it.dir("debug") })
         getByName("release").jniLibs.srcDir(generatedJniRoot.map { it.dir("release") })

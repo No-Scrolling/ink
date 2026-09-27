@@ -101,12 +101,20 @@ pub fn inputs_changed(before: &Snapshot, after: &Snapshot) -> bool {
     })
 }
 
-pub fn wait(root: &Path, baseline: &Snapshot) -> Result<Snapshot> {
+pub fn wait(
+    root: &Path,
+    baseline: &Snapshot,
+    mut on_tick: impl FnMut() -> Result<bool>,
+) -> Result<()> {
     loop {
         thread::sleep(POLL_INTERVAL);
+        if on_tick()? {
+            return Ok(());
+        }
         let current = capture(root)?;
         if &current != baseline {
-            return settle(root, current);
+            settle(root, current)?;
+            return Ok(());
         }
     }
 }

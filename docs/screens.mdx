@@ -175,6 +175,16 @@ export default function Layout() {
 
 Screens and lists share a default gap of 47 logical units. `Stack` accepts `gap`, `align` and `justify`. Use `gap={0}` for compact groups; do not add padding around content already padded by the screen.
 
+### Background
+
+Set `background` to a `#RRGGBB` colour to fill the screen, including its header. Text keeps the current colour scheme. The background follows colour-scheme inversion, like Canvas colours.
+
+```tsx
+<Screen title="Railcard" background="#D35600">
+  <Text>Card details</Text>
+</Screen>
+```
+
 ### Bottom spacing
 
 <div className="pattern-example">

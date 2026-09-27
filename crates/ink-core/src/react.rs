@@ -12,6 +12,10 @@ use super::{
 };
 
 #[derive(Deserialize)]
+#[serde(transparent)]
+pub struct ReactCommit(Vec<Operation>);
+
+#[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "lowercase")]
 enum Operation {
     Create {
@@ -286,8 +290,7 @@ impl ReactTree {
             .with_context(|| format!("icon {name:?} was not bundled; import its reference from ink/icons"))
     }
 
-    pub fn apply(&mut self, operations: Json, engine: &mut Engine) -> Result<()> {
-        let operations: Vec<Operation> = serde_json::from_value(operations)?;
+    pub fn apply(&mut self, ReactCommit(operations): ReactCommit, engine: &mut Engine) -> Result<()> {
         let structural = operations
             .iter()
             .any(|operation| !matches!(operation, Operation::Update { .. }));
@@ -862,8 +865,11 @@ impl ReactTree {
                     ensure!(props.get("onRightPress") == Some(&Json::Bool(true)), "Screen right action requires onPress");
                     Ok((self.icon(icon)?, event(id, "onRightPress", vec![])))
                 }).transpose()?;
+                let background = canvas_colour(props, "background")?.map(super::Colour::to_linear);
                 let props = props.object().context("invalid Screen properties")?;
-                let props: ScreenProps = serde_json::from_value(Json::Object(props.clone()))?;
+                let props = ScreenProps::deserialize(serde::de::value::MapDeserializer::<_, serde_json::Error>::new(
+                    props.iter().map(|(key, value)| (key.as_str(), value)),
+                ))?;
                 let mut state = None;
                 for child_id in &host.children {
                     let child = self.node(*child_id)?;
@@ -890,7 +896,8 @@ impl ReactTree {
                 } else {
                     Node::screen(self.children(host, depth)?, props.title, props.centered)
                 };
-                if let NodeKind::Screen { pinned_header, pinned_footer, wide, bottom_inset, wait_for_images, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
+                if let NodeKind::Screen { background: screen_background, pinned_header, pinned_footer, wide, bottom_inset, wait_for_images, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
+                    *screen_background = background;
                     *wide = props.wide;
                     *bottom_inset = props.bottom_inset.unwrap_or(true);
                     *wait_for_images = props.wait_for_images.unwrap_or(true);
@@ -963,7 +970,7 @@ impl ReactTree {
                 let format = string(props, "format").context("Barcode requires a format")?;
                 let size = number(props, "size")?.context("Barcode requires a size")?;
                 ensure!(size > 0.0 && size <= 1080.0, "Invalid barcode size");
-                let source = serde_json::json!({ "value": value, "format": format, "size": size })
+                let source = serde_json::json!({ "value": value, "format": format, "size": size, "showValue": props.get("showValue") == Some(&Json::Bool(true)) })
                     .to_string();
                 Node::image(
                     ImageSource::Native("barcode".into(), source),
@@ -1101,14 +1108,19 @@ impl ReactTree {
                         action,
                     )
                 } else {
-                    Node::button(
+                    let mut button = Node::button(
                         label,
                         string(props, "icon")
                             .map(|name| self.icon(name))
                             .transpose()?,
                         props.get("selected") == Some(&Json::Bool(true)),
                         action,
-                    )
+                    );
+                    if let NodeKind::Button { action, long_action, .. } = &mut button.kind {
+                        *long_action = (action.is_some() && props.get("onLongPress") == Some(&Json::Bool(true)))
+                            .then(|| event(id, "onLongPress", vec![]));
+                    }
+                    button
                 }
             }
             kind => bail!("unsupported Ink component {kind:?}"),

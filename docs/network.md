@@ -7,6 +7,17 @@ Use `@ink/network` for `fetch`, response streams, `Blob`, `File`, `FormData` and
 
 Import it in each module that uses these APIs.
 
+For services that require unencrypted HTTP, opt in explicitly in `ink.toml`:
+
+```toml
+capabilities = ["network-cleartext"]
+```
+
+This includes `network` and permits cleartext traffic throughout the app, including
+podcast feeds, downloads and audio playback. Audio can also follow redirects between
+HTTP and HTTPS. Without this capability, remote audio requires HTTPS and cleartext
+network traffic remains restricted to local development hosts.
+
 ## Make a request
 
 ```ts

@@ -79,19 +79,7 @@ private class InkCodeScannerFeature(
             return
         }
         val decoded = runCatching {
-            val bytes = luminance(image)
-            decode(
-                PlanarYUVLuminanceSource(
-                    bytes,
-                    image.width,
-                    image.height,
-                    0,
-                    0,
-                    image.width,
-                    image.height,
-                    false,
-                ),
-            )
+            decode(luminance(image), image.width, image.height)
         }
         image.close()
         decoded.onSuccess { result ->
@@ -146,20 +134,26 @@ private class InkCodeScannerFeature(
         return output
     }
 
-    private fun decode(source: PlanarYUVLuminanceSource): Result? {
-        var candidate = source
-        repeat(4) {
-            try {
-                return reader.decodeWithState(BinaryBitmap(HybridBinarizer(candidate)))
+    private fun decode(bytes: ByteArray, width: Int, height: Int): Result? {
+        fun attempt(data: ByteArray, w: Int, h: Int): Result? {
+            val source = PlanarYUVLuminanceSource(data, w, h, 0, 0, w, h, false)
+            return try {
+                reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
             } catch (_: ReaderException) {
+                null
+            } finally {
                 reader.reset()
             }
-            if (!candidate.isRotateSupported) {
-                return null
-            }
-            candidate = candidate.rotateCounterClockwise() as PlanarYUVLuminanceSource
         }
-        return null
+        attempt(bytes, width, height)?.let { return it }
+        // ZXing reverses scan lines itself, but camera YUV sources cannot rotate.
+        val rotated = ByteArray(bytes.size)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                rotated[(width - x - 1) * height + y] = bytes[y * width + x]
+            }
+        }
+        return attempt(rotated, height, width)
     }
 
     private fun fail(kind: String, message: String, retryable: Boolean) {

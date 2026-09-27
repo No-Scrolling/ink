@@ -9,9 +9,10 @@ export type ReorderListProps<T> = {
   getLabel: (item: T) => string;
   onChange: (items: T[]) => void;
   multiline?: boolean;
+  gap?: number;
 };
 
-export function ReorderList<T>({ items, keyExtractor, getLabel, onChange, multiline = false }: ReorderListProps<T>) {
+export function ReorderList<T>({ items, keyExtractor, getLabel, onChange, multiline = false, gap }: ReorderListProps<T>) {
   function move(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= items.length) return;
@@ -23,6 +24,7 @@ export function ReorderList<T>({ items, keyExtractor, getLabel, onChange, multil
   return createElement(List<T>, {
     items,
     keyExtractor,
+    gap,
     measurementKey: multiline ? "multiline" : "single-line",
     renderItem: (item, index) => createElement(Stack, {
       axis: "horizontal", align: "center", justify: "space-between",

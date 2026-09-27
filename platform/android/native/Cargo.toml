@@ -26,6 +26,7 @@ ink-runtime = { path = "../../../crates/ink-runtime" }
 anyhow.workspace = true
 ink-audio = { path = "../../../crates/ink-audio", optional = true }
 serde_json.workspace = true
+serde.workspace = true
 ink-renderer-vulkan = { path = "../../../crates/ink-renderer-vulkan" }
 
 [target.'cfg(target_os = "android")'.dependencies]

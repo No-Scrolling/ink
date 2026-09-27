@@ -70,13 +70,6 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
         directory.join(".gitignore"),
         "node_modules/\n.ink/\ndist/\n*.jks\n*.keystore\n",
     )?;
-    fs::write(
-        directory.join("README.md"),
-        format!(
-            "# {title}\n\nFrom this directory:\n\n```sh\nbun install\n{0}/scripts/ink check\n{0}/scripts/ink devices\n{0}/scripts/ink dev --device <serial>\n```\n\nReplace `<serial>` with a device listed by `devices`. Edit `app/index.tsx` while `dev` runs.\n\nThis app uses the local SDK at `{0}`. Package overrides keep added Ink modules on that checkout. Add modules with `bun add @ink/store@0.1.0`.\n\nWhen adding `app/(tabs)/index.tsx`, move or remove `app/index.tsx`: both name the home route.\n\nSee the SDK’s `docs/installation.md` for setup and `docs/release.md` for signing and installation. Keep signing keys and passwords out of version control.\n",
-            sdk.display(),
-        ),
-    )?;
     super::output::success(format!(
         "Created {}. Run bun install in {}",
         title,

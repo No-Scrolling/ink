@@ -133,3 +133,13 @@ import { add, playArrowFilled, replayFilled, shuffleFilled, skipNextFilled, skip
 <img src="/images/patterns/button-long.png" alt="A long button label truncated with an ellipsis." width="1080" height="1240" />
 </div>
 </div>
+
+## Long press
+
+Use `onLongPress` for an additional action, such as opening an options menu. A long press does not trigger `onPress`.
+
+```tsx
+<Button onPress={openPass} onLongPress={openOptions}>
+  Membership
+</Button>
+```

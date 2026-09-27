@@ -13,6 +13,7 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   children?: ReactNode;
   header?: ReactNode;
   title?: string;
+  background?: string;
   centered?: boolean;
   wide?: boolean;
   bottomInset?: boolean;
@@ -57,6 +58,7 @@ export function Text(props: {
 export function Button(props: {
   children?: ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   href?: Destination;
   disabled?: boolean;
   selected?: boolean;

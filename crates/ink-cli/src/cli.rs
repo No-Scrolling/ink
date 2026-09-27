@@ -46,7 +46,8 @@ pub enum InkCommand {
         debug: bool,
     },
 
-    /// Build, install and launch on a connected Android device
+    /// Build, install and watch on a connected Android device
+    #[command(after_help = "While watching: a opens the app, r reloads it, Ctrl-C stops Ink.")]
     Dev {
         /// Select a device by its serial or a unique name
         #[arg(long, value_name = "DEVICE")]

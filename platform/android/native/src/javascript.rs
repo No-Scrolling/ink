@@ -1,22 +1,49 @@
 use std::sync::mpsc::Receiver;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 #[cfg(feature = "audio")]
 use ink_core::StateValue;
-use ink_core::{Engine, ReactTree, TextEdit};
+use ink_core::{Engine, ReactCommit, ReactTree, TextEdit};
 use ink_runtime::{AppRuntime, Event};
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jlong};
-use jni::{EnvUnowned, jni_sig, jni_str};
+use jni::EnvUnowned;
+use serde::Deserialize;
+#[cfg(feature = "audio")]
 use serde_json::Value;
 
 use super::{ANDROID_LOG_ERROR, ANDROID_LOG_INFO, android_log, engine};
+
+jni::bind_java_type! {
+    InkActivity => com.vandam.ink.MainActivity,
+    methods {
+        fn on_javascript_ready {
+            sig = (),
+            name = "onJavaScriptReady",
+        },
+        fn load_web_runtime {
+            sig = () -> JString,
+            name = "loadWebRuntime",
+            non_null = true,
+        },
+    },
+}
 
 pub(super) struct ScriptRuntime {
     runtime: AppRuntime,
     events: Receiver<Event>,
     tree: ReactTree,
-    calls: Vec<Value>,
+    calls: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JavaScriptMessage {
+    r#type: String,
+    operations: Option<ReactCommit>,
+    colour_scheme: Option<String>,
+    level: Option<String>,
+    message: Option<String>,
 }
 
 impl ScriptRuntime {
@@ -81,24 +108,27 @@ impl ScriptRuntime {
                 Event::Stopped => {}
                 Event::Error(message) => bail!(message),
                 Event::Message(message) => {
-                    let mut message: Value = serde_json::from_slice(message.as_bytes())?;
-                    match message["type"].as_str() {
-                        Some("call" | "cancel") => self.calls.push(message),
-                        Some("appearance") => {
-                            let light = match message["colourScheme"].as_str() {
+                    let decoded: JavaScriptMessage = serde_json::from_slice(message.as_bytes())?;
+                    match decoded.r#type.as_str() {
+                        "call" | "cancel" => self.calls.push(message),
+                        "appearance" => {
+                            let light = match decoded.colour_scheme.as_deref() {
                                 Some("light") => true,
                                 Some("dark") => false,
                                 _ => bail!("invalid colour scheme"),
                             };
                             changed |= engine.set_colour_scheme(light);
                         }
-                        Some("commit") => {
+                        "commit" => {
                             #[cfg(feature = "presentation-timing")]
                             android_log(
                                 ANDROID_LOG_INFO,
                                 &format!("ReactApply ns={}", super::benchmark_time_ns()),
                             );
-                            self.tree.apply(message["operations"].take(), engine)?;
+                            self.tree.apply(
+                                decoded.operations.context("React commit requires operations")?,
+                                engine,
+                            )?;
                             #[cfg(feature = "presentation-timing")]
                             android_log(
                                 ANDROID_LOG_INFO,
@@ -110,16 +140,16 @@ impl ScriptRuntime {
                             );
                             changed = true;
                         }
-                        Some("log") => android_log(
-                            if message["level"] == "error" {
+                        "log" => android_log(
+                            if decoded.level.as_deref() == Some("error") {
                                 ANDROID_LOG_ERROR
                             } else {
                                 ANDROID_LOG_INFO
                             },
-                            message["message"].as_str().unwrap_or(""),
+                            decoded.message.as_deref().unwrap_or(""),
                         ),
-                        Some("error") => {
-                            bail!("{}", message["message"].as_str().unwrap_or("React failed"))
+                        "error" => {
+                            bail!("{}", decoded.message.as_deref().unwrap_or("React failed"))
                         }
                         _ => bail!("unknown JavaScript message"),
                     }
@@ -163,7 +193,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
                 source.try_to_string(env)?,
                 env.convert_byte_array(&icons)?,
                 env.get_java_vm()?,
-                env.new_global_ref(activity)?,
+                env.new_global_ref(env.cast_local::<InkActivity>(activity)?)?,
             )))
         })
         .resolve::<jni::errors::LogErrorAndDefault>();
@@ -191,30 +221,13 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
                 ANDROID_LOG_INFO,
                 &format!("ReactReady ns={}", super::benchmark_time_ns()),
             );
-            let result: jni::errors::Result<()> = vm.attach_current_thread(|env| {
-                env.call_method(
-                    activity.as_ref(),
-                    jni_str!("onJavaScriptReady"),
-                    jni_sig!(() -> void),
-                    &[],
-                )?;
-                Ok(())
-            });
-            if let Err(error) = result {
+            if let Err(error) = vm.attach_current_thread(|env| activity.on_javascript_ready(env)) {
                 android_log(ANDROID_LOG_ERROR, &error.to_string());
             }
         },
         move || {
             let source = loader_vm.attach_current_thread(|env| -> jni::errors::Result<String> {
-                let source = env
-                    .call_method(
-                        loader_activity.as_ref(),
-                        jni_str!("loadWebRuntime"),
-                        jni_sig!(() -> java.lang.String),
-                        &[],
-                    )?
-                    .l()?;
-                env.cast_local::<JString>(source)?.try_to_string(env)
+                loader_activity.load_web_runtime(env)?.try_to_string(env)
             })?;
             Ok(source)
         },
@@ -292,7 +305,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptCall
                 .map(|script| std::mem::take(&mut script.calls))
         })
         .unwrap_or_default();
-    env.with_env(|env| env.new_string(Value::Array(calls).to_string()))
+    env.with_env(|env| env.new_string(format!("[{}]", calls.join(","))))
         .resolve::<jni::errors::LogErrorAndDefault>()
 }
 

@@ -248,6 +248,13 @@
         "disabled": "noNetwork"
       }
     },
+    "network-cleartext": {
+      "cost": "unencrypted HTTP transport",
+      "dependencies": [
+        "network"
+      ],
+      "permissions": []
+    },
     "nfc": {
       "cost": "NFC adapter and hardware permission",
       "dependencies": [],

@@ -279,6 +279,7 @@ private class AudioSessionPlayback(
     private fun attachedPlayer(): Player {
         player?.let { return it }
         val created = ExoPlayer.Builder(activity, InkAudioRenderersFactory(activity, effects))
+            .setMediaSourceFactory(audioMediaSourceFactory(activity))
             .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
@@ -500,6 +501,12 @@ private class AudioSessionPlayback(
         fun mediaItem(activity: MainActivity): MediaItem {
             val uri = when {
                 src.startsWith("https://") -> Uri.parse(src)
+                src.startsWith("http://") -> {
+                    require(BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED) {
+                        "HTTP audio requires the network-cleartext capability"
+                    }
+                    Uri.parse(src)
+                }
                 src.startsWith("asset:///") -> activity.bundledAudioUri(src)
                 src.startsWith("ink-file://") -> Uri.fromFile(InkManagedFiles(activity).resolve(src))
                 src.startsWith(RECORDING_PREFIX) -> {

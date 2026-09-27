@@ -34,6 +34,7 @@ pub enum Capability {
     MediaLibrary,
     MicrophonePermission,
     Network,
+    NetworkCleartext,
     Nfc,
     NotificationPermission,
     Notifications,
