@@ -1,7 +1,6 @@
 import { URLSearchParams } from "whatwg-url";
 import { ReadableStream } from "web-streams-polyfill";
-import { callNative } from "ink/native";
-import { fromByteArray, toByteArray } from "base64-js";
+import { callNativeBytes } from "ink/native";
 
 type BlobPart = string | ArrayBuffer | ArrayBufferView | Blob;
 type NativePart = { src: string; offset: number; size: number };
@@ -29,13 +28,13 @@ export class Blob {
     Object.defineProperty(blob, "size", { value: size });
     return blob;
   }
-  nativeParts(): Iterable<{ bytes: string } | NativePart> | undefined {
+  nativeParts(): Iterable<{ bytes: Uint8Array } | NativePart> | undefined {
     if (!this.#parts.some(part => !(part instanceof Uint8Array))) return undefined;
     const parts = this.#parts;
     return (function* () {
       for (const part of parts) {
         if (part instanceof Uint8Array) {
-          for (let offset = 0; offset < part.length; offset += 32768) yield { bytes: fromByteArray(part.subarray(offset, offset + 32768)) };
+          for (let offset = 0; offset < part.length; offset += 32768) yield { bytes: part.subarray(offset, offset + 32768) };
         } else yield part;
       }
     })();
@@ -76,7 +75,7 @@ export class Blob {
         const part = parts[index];
         const end = Math.min(offset + 32 * 1024, partSize(part));
         const bytes = part instanceof Uint8Array ? part.slice(offset, end)
-          : toByteArray(await callNative("network", "stream-file-read", { src: part.src, offset: part.offset + offset, size: end - offset }));
+          : (await callNativeBytes("network", "stream-file-read-bytes", { src: part.src, offset: part.offset + offset, size: end - offset })).bytes;
         if (bytes.length !== end - offset) throw new TypeError("Managed file changed while reading");
         controller.enqueue(bytes);
         offset = end;

@@ -1,0 +1,3 @@
+[env]
+# Apple Clang's smaller interpreter loops are faster; keep release -O3.
+CFLAGS_aarch64_apple_darwin = "-fno-unroll-loops"

@@ -1,0 +1,42 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -335,6 +335,7 @@
+ } JSClass;
+ 
+ struct JSRuntime {
++    uint64_t ink_field_counts[65536];
+     JSMallocFunctions mf;
+     JSMallocState malloc_state;
+     JSArenaState arena_state;
+@@ -2638,6 +2639,14 @@
+ 
+ void JS_FreeRuntime(JSRuntime *rt)
+ {
++    for (unsigned ink_atom = 0; ink_atom < 65536; ink_atom++) {
++        if (rt->ink_field_counts[ink_atom]) {
++            fprintf(stderr, "INK_FIELD_COUNT %u %llu\n", ink_atom,
++                (unsigned long long)rt->ink_field_counts[ink_atom]);
++            JS_FreeAtomRT(rt, ink_atom);
++        }
++    }
++
+     struct list_head *el, *el1;
+     bool leak = false;
+     int i;
+@@ -19553,6 +19562,16 @@
+                 JSShapeProperty *prs;
+ 
+                 atom = get_u32(pc);
++                if (atom < 65536) {
++                    if (!rt->ink_field_counts[atom]) {
++                        char ink_name[128];
++                        JS_DupAtom(ctx, atom);
++                        fprintf(stderr, "INK_FIELD_NAME %u %s\n", atom,
++                            JS_AtomGetStr(ctx, ink_name, sizeof(ink_name), atom));
++                    }
++                    rt->ink_field_counts[atom]++;
++                }
++
+                 pc += 4;
+ 
+                 obj = sp[-1];

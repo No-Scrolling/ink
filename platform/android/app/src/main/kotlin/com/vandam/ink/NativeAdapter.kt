@@ -7,6 +7,7 @@ internal typealias NativeResultHandler = (NativeResult) -> Unit
 internal fun javascriptResult(id: Long, result: NativeResult): String {
     val response = JSONObject().put("type", "result").put("id", id)
     when (result) {
+        is NativeResult.Binary -> response.put("value", result.value)
         is NativeResult.Success -> response.put("value", result.value)
         is NativeResult.Bytes -> response.put("value", result.value.toString(Charsets.UTF_8))
         is NativeResult.Failure -> response
@@ -32,11 +33,20 @@ internal interface NativeAdapter {
         payload: String,
         complete: NativeResultHandler,
     )
+    fun executeBytes(requestId: Long, operation: String, payload: String, bytes: ByteArray, complete: NativeResultHandler) {
+        complete(NativeResult.Failure(NativeErrorKind.PROTOCOL, "This operation does not accept binary data", false))
+    }
     fun cancel(requestId: Long)
+}
+
+internal interface NativeControllerAdapter : NativeAdapter {
+    fun executeController(controller: Long, operation: String, payload: String, complete: NativeResultHandler)
 }
 
 internal sealed interface NativeResult {
     data class Success(val value: String) : NativeResult
+
+    data class Binary(val value: String, val bytes: ByteArray) : NativeResult
 
     data class Bytes(val value: ByteArray) : NativeResult
 

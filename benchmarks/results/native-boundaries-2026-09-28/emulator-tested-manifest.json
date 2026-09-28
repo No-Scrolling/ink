@@ -1,0 +1,27 @@
+{
+  "sourceSha256": "acdc3882124e891a41c5c2fd71c4b24f6e96d33ce402d5c37c500137c7496e68",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "06994138aee85fe252c1c0864e6b6c380efb6d9c0090cfc9c11af7bf2436b100"
+  },
+  "revision": "2aed8a13d9d2205a31aaef21fefb908a0345a7ae",
+  "flags": {
+    "INK_SPLIT_WEB": "0",
+    "INK_BRIDGE_TIMING": "1"
+  },
+  "signing": "generated Android development key",
+  "artifacts": {
+    "examples/light-template": {
+      "file": "0-ink-boundary-checks-0.1.0-arm64.apk",
+      "sha256": "b85b544529404cf03ee9db547e06cd827f707022105f692f520130bb1e423825",
+      "bytes": 33455225,
+      "package": "com.vandam.benchmark.ink.boundaries",
+      "component": "com.vandam.benchmark.ink.boundaries/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

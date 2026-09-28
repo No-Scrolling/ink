@@ -4,35 +4,40 @@ import Reconciler from "react-reconciler";
 import { ConcurrentRoot, DefaultEventPriority, DiscreteEventPriority } from "react-reconciler/constants";
 import { onNativeMessage } from "./native";
 import { openLink } from "./external";
+import { listPatch, type NativeListItem } from "./list-patch";
+import { allocateHostId, dispatchHostAction, takeViewUpdates, type ViewUpdate } from "./host";
 
+declare const __inkCommit: (operations: Operation[]) => void;
 declare const __inkPost: (message: string) => void;
 
 type Props = Record<string, unknown>;
 type Instance = { id: number; type: string; props: Props; children: Instance[] };
 type Container = { id: number; children: Instance[] };
 type Operation =
+  | ViewUpdate
   | { op: "create"; id: number; type: string; props: Props }
   | { op: "update"; id: number; props: Props }
-  | { op: "text"; ids: number[]; values: string[] }
+  | { op: "text"; changes: (number | string)[] }
   | { op: "insert"; id: number; parent: number; before: number | null }
   | { op: "remove"; id: number; parent: number }
   | { op: "hidden"; id: number; value: boolean };
 
 const mounted = new Map<number, Instance>();
 let operations: Operation[] = [];
+let textChanges: (number | string)[] | undefined;
 let commitScheduled = false;
-let nextId = 1;
 let priority = DefaultEventPriority;
 const hostContext = {};
 
-function queueText(id: number, text: string) {
-  let batch = operations[operations.length - 1];
-  if (batch?.op !== "text") {
-    batch = { op: "text", ids: [], values: [] };
-    operations.push(batch);
-  }
-  batch.ids.push(id);
-  batch.values.push(text);
+function queue(operation: Operation, preserveTextBatch = false) {
+  if (!preserveTextBatch) textChanges = undefined;
+  operations.push(operation);
+}
+
+function createTextBatch() {
+  const changes: (number | string)[] = [];
+  operations.push({ op: "text", changes });
+  return textChanges = changes;
 }
 
 function textContent(type: string, props: Props): string | null {
@@ -53,8 +58,10 @@ function nativeValue(value: unknown): unknown {
 
 function nativeProps(props: Props, type: string): Props {
   const result: Props = {};
-  for (const [name, value] of Object.entries(props)) {
-    if (name === "children" || name === "ref" || value === undefined) continue;
+  for (const name of Object.keys(props)) {
+    if (name === "children" || name === "ref") continue;
+    const value = props[name];
+    if (value === undefined) continue;
     result[name] = typeof value === "function" ? true : value;
   }
   const text = textContent(type, props);
@@ -65,10 +72,10 @@ function nativeProps(props: Props, type: string): Props {
 function publish(instance: Instance) {
   if (mounted.has(instance.id)) return;
   mounted.set(instance.id, instance);
-  operations.push({ op: "create", id: instance.id, type: instance.type, props: nativeProps(instance.props, instance.type) });
+  queue({ op: "create", id: instance.id, type: instance.type, props: nativeProps(instance.props, instance.type) });
   for (const child of instance.children) {
     publish(child);
-    operations.push({ op: "insert", id: child.id, parent: instance.id, before: null });
+    queue({ op: "insert", id: child.id, parent: instance.id, before: null });
   }
 }
 
@@ -78,7 +85,7 @@ function insert(parent: Container, child: Instance, before?: Instance) {
   const index = before ? parent.children.indexOf(before) : parent.children.length;
   parent.children.splice(index, 0, child);
   publish(child);
-  operations.push({ op: "insert", id: child.id, parent: parent.id, before: before?.id ?? null });
+  queue({ op: "insert", id: child.id, parent: parent.id, before: before?.id ?? null });
 }
 
 function forget(instance: Instance) {
@@ -88,38 +95,85 @@ function forget(instance: Instance) {
 
 function remove(parent: Container, child: Instance) {
   parent.children.splice(parent.children.indexOf(child), 1);
-  operations.push({ op: "remove", id: child.id, parent: parent.id });
+  queue({ op: "remove", id: child.id, parent: parent.id });
   forget(child);
 }
 
-function update(instance: Instance, _type: string, _oldProps: Props, props: Props) {
+function sameListValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((value, index) => sameListValue(value, b[index]));
+  if (Array.isArray(b)) return false;
+  const previous = a as Props, next = b as Props;
+  const keys = Object.keys(previous);
+  return keys.length === Object.keys(next).length && keys.every(key => Object.hasOwn(next, key) && sameListValue(previous[key], next[key]));
+}
+
+function compiledListUpdate(previous: Props, props: Props): Props | null {
+  type Item = NativeListItem;
+  const before = previous.items as Item[], after = props.items as Item[];
+  const patch = listPatch(before, after);
+  let byKey: Map<string, Item> | undefined;
+  let reordered = patch ? patch.keys !== undefined : before.length !== after.length;
+  const changes = patch?.changes ?? [];
+  for (let index = 0; !patch && before !== after && index < after.length; index++) {
+    const item = after[index];
+    let old: Item | undefined = before[index];
+    if (old?.key !== item.key) {
+      reordered = true;
+      byKey ??= new Map(before.map(item => [item.key, item]));
+      old = byKey.get(item.key);
+    }
+    if (!old || !sameListValue(old.measurementKey, item.measurementKey) || !sameListValue(old.values, item.values)) changes.push(item);
+  }
+  const next = nativeProps(props, "NativeList");
+  delete next.items;
+  delete next.template;
+  const metadataChanged = Object.keys({ ...previous, ...props }).some(name =>
+    name !== "items" && name !== "template" && !Object.is(nativeValue(previous[name]), nativeValue(props[name])));
+  if (!changes.length && !reordered && !metadataChanged) return null;
+  next.itemChanges = changes;
+  if (reordered) next.itemKeys = patch?.keys ?? after.map(item => item.key);
+  return next;
+}
+
+function update(instance: Instance, type: string, _oldProps: Props, props: Props) {
   const previous = instance.props;
-  if (instance.type === "Text" && props.href !== undefined) props = hostProps(instance.type, props);
+  const isText = type === "Text";
+  if (isText && props.href !== undefined) props = hostProps(type, props);
   instance.props = props;
-  if (instance.type === "Text") {
+  if (type === "NativeList" && props.keyField === "key" && previous.template === props.template) {
+    const next = compiledListUpdate(previous, props);
+    if (next) queue({ op: "update", id: instance.id, props: next }, true);
+    return;
+  }
+  if (isText) {
+    if (previous.size !== props.size || previous.width !== props.width
+      || previous.align !== props.align || previous.maxLines !== props.maxLines
+      || previous.tabularNumbers !== props.tabularNumbers
+      || (previous.onPress !== props.onPress && nativeValue(previous.onPress) !== nativeValue(props.onPress))) {
+      queue({ op: "update", id: instance.id, props: nativeProps(props, type) });
+      return;
+    }
     const children = props.children;
     if (children !== previous.children) {
-      if (typeof children === "string") queueText(instance.id, children);
-      else if (typeof children === "number" || typeof children === "bigint") queueText(instance.id, String(children));
+      if (typeof children === "string") return (textChanges ?? createTextBatch()).push(instance.id, children);
+      if (typeof children === "number" || typeof children === "bigint") return (textChanges ?? createTextBatch()).push(instance.id, String(children));
     }
-    if (previous.size === props.size && previous.width === props.width
-      && previous.align === props.align && previous.maxLines === props.maxLines
-      && previous.tabularNumbers === props.tabularNumbers
-      && (previous.onPress === props.onPress || nativeValue(previous.onPress) === nativeValue(props.onPress))) return;
-    operations.push({ op: "update", id: instance.id, props: nativeProps(props, instance.type) });
     return;
   }
   let previousCount = 0;
   let changed = false;
   for (const name of Object.keys(previous)) {
+    if (name === "children" || name === "ref") continue;
     const value = previous[name];
-    if (name === "children" || name === "ref" || value === undefined) continue;
+    if (value === undefined) continue;
     previousCount++;
     const next = props[name];
-    if (!Object.hasOwn(props, name) || !Object.is(
+    if (!Object.is(
       typeof value === "function" ? true : value,
       typeof next === "function" ? true : next,
-    )) {
+    ) || !Object.hasOwn(props, name)) {
       changed = true;
       break;
     }
@@ -131,17 +185,18 @@ function update(instance: Instance, _type: string, _oldProps: Props, props: Prop
     }
     if (previousCount === nextCount) return;
   }
-  const next = nativeProps(props, instance.type);
-  if (instance.type === "List" && nativeValue(previous.revision) === next.revision
+  const next = nativeProps(props, type);
+  if (type === "List" && nativeValue(previous.revision) === next.revision
     && nativeValue(previous.keys) === next.keys && nativeValue(previous.contentVersions) === next.contentVersions) {
     delete next.keys;
     delete next.contentVersions;
   }
-  operations.push({ op: "update", id: instance.id, props: next });
+  // Other node props cannot overwrite a pending text value.
+  queue({ op: "update", id: instance.id, props: next }, type !== "#text");
 }
 
 function hide(instance: Instance, value: boolean) {
-  operations.push({ op: "hidden", id: instance.id, value });
+  queue({ op: "hidden", id: instance.id, value });
 }
 
 function errorMessage(error: unknown, info: { componentStack?: string | null }) {
@@ -164,16 +219,17 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
   supportsHydration: false,
   isPrimaryRenderer: true,
   supportsMicrotasks: true,
-  createInstance: (type, props) => ({ id: nextId++, type, props: hostProps(type, props), children: [] }),
-  createTextInstance: text => ({ id: nextId++, type: "#text", props: { text }, children: [] }),
+  createInstance: (type, props) => ({ id: allocateHostId(), type, props: hostProps(type, props), children: [] }),
+  createTextInstance: text => ({ id: allocateHostId(), type: "#text", props: { text }, children: [] }),
   appendInitialChild: (parent, child) => { parent.children.push(child); },
   finalizeInitialChildren: () => false,
   shouldSetTextContent: (type, props) => {
-    if (type === "Text" && props.href !== undefined && props.onPress) {
+    if (type !== "Text") return false;
+    if (props.href !== undefined && props.onPress) {
       throw new Error("Text accepts either href or onPress");
     }
     const kind = typeof props.children;
-    return type === "Text" && (kind === "string" || kind === "number" || kind === "bigint");
+    return kind === "string" || kind === "number" || kind === "bigint";
   },
   getRootHostContext: () => hostContext,
   getChildHostContext: () => hostContext,
@@ -188,9 +244,11 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
       while (reconciler.flushPassiveEffects()) {}
       reconciler.flushSyncWork();
       const committed = operations;
+      committed.push(...takeViewUpdates());
       operations = [];
+      textChanges = undefined;
       commitScheduled = false;
-      if (committed.length) __inkPost(JSON.stringify({ type: "commit", operations: committed }));
+      if (committed.length) __inkCommit(committed);
     });
   },
   preparePortalMount: () => {},
@@ -210,10 +268,10 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
   insertInContainerBefore: insert,
   removeChild: remove,
   removeChildFromContainer: remove,
-  resetTextContent: instance => { queueText(instance.id, ""); },
+  resetTextContent: instance => { (textChanges ?? createTextBatch()).push(instance.id, ""); },
   commitTextUpdate: (instance, _oldText, text) => {
     instance.props = { text };
-    queueText(instance.id, text);
+    (textChanges ?? createTextBatch()).push(instance.id, text);
   },
   commitUpdate: update,
   hideInstance: instance => hide(instance, true),
@@ -244,7 +302,7 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
 
 export function dispatchEvent(id: number, name: string, args: unknown[]) {
   const handler = mounted.get(id)?.props[name];
-  if (typeof handler !== "function") return;
+  if (typeof handler !== "function") return dispatchHostAction(id, name, args);
   const previous = priority;
   priority = DiscreteEventPriority;
   try {

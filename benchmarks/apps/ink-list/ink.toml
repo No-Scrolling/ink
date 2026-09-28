@@ -1,0 +1,4 @@
+name = "Ink List Benchmark"
+package = "com.vandam.benchmark.ink.list"
+version = "1.0.0"
+version_code = 1

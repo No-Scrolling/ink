@@ -1,0 +1,16 @@
+[package]
+name = "ink-headless"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+serde.workspace = true
+serde_json.workspace = true
+ink-compiler = { path = "../../crates/ink-compiler" }
+ink-core = { path = "../../crates/ink-core" }
+ink-runtime = { path = "../../crates/ink-runtime" }
+ink-protocol = { path = "../../crates/ink-protocol" }

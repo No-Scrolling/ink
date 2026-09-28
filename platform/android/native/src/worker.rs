@@ -7,7 +7,7 @@ use std::{
 use ink_runtime::{AppRuntime, Event};
 use jni::{
     EnvUnowned,
-    objects::{JClass, JString},
+    objects::{JByteArray, JClass, JString},
     sys::{jboolean, jlong},
 };
 use serde_json::json;
@@ -100,6 +100,7 @@ pub extern "system" fn Java_com_vandam_ink_InkWorker_nativeNext<'local>(
             .ok()
     });
     let message = match event {
+        Some(Event::Commit(_)) => json!({ "type": "worker-error", "message": "workers cannot render" }).to_string(),
         Some(Event::Message(message)) => message,
         Some(Event::Error(message)) => {
             json!({ "type": "worker-error", "message": message }).to_string()
@@ -122,4 +123,25 @@ pub extern "system" fn Java_com_vandam_ink_InkWorker_nativeStop(
         .ok()
         .and_then(|mut workers| workers.active.remove(&handle));
     drop(worker);
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_InkWorker_nativeTakeJavaScriptBytes<'local>(
+    mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong, id: jlong,
+) -> JByteArray<'local> {
+    let bytes = worker(handle).and_then(|worker| worker.runtime.take_bytes(id as u64));
+    match bytes {
+        Some(bytes) => env.with_env(|env| env.byte_array_from_slice(&bytes)).resolve::<jni::errors::LogErrorAndDefault>(),
+        None => JByteArray::default(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_InkWorker_nativeJavaScriptReceiveBytes(
+    mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, message: JString<'_>, bytes: JByteArray<'_>,
+) -> jboolean {
+    let (message, bytes) = env.with_env(|env| -> jni::errors::Result<_> {
+        Ok((message.try_to_string(env)?, env.convert_byte_array(&bytes)?))
+    }).resolve::<jni::errors::LogErrorAndDefault>();
+    (worker(handle).is_some_and(|worker| worker.runtime.send_bytes(message, bytes).is_ok())) as jboolean
 }

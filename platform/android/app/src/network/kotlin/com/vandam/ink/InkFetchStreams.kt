@@ -31,18 +31,18 @@ internal class InkFetchStreams(
     private val pending = mutableMapOf<Long, Stream>()
     private val expiry = Runnable { expire() }
 
-    @Synchronized fun execute(id: Long, operation: String, payload: String, complete: NativeResultHandler) {
+    @Synchronized fun execute(id: Long, operation: String, payload: String, complete: NativeResultHandler, inputBytes: ByteArray? = null) {
         try {
             val data = JSONObject(payload)
             when (operation) {
-                "stream-file-read" -> {
+                "stream-file-read", "stream-file-read-bytes" -> {
                     val source = InkManagedFiles(context).resolve(data.getString("src"))
                     val offset = data.getLong("offset")
                     val size = data.getInt("size")
                     require(offset >= 0 && size in 0..32768 && offset <= source.length() - size) { "Invalid attachment range" }
                     val bytes = ByteArray(size)
                     RandomAccessFile(source, "r").use { it.seek(offset); it.readFully(bytes) }
-                    complete(NativeResult.Success(Base64.encodeToString(bytes, Base64.NO_WRAP)))
+                    complete(if (operation.endsWith("-bytes")) NativeResult.Binary("", bytes) else NativeResult.Success(Base64.encodeToString(bytes, Base64.NO_WRAP)))
                 }
                 "stream-upload-open" -> {
                     require(uploads.size < 8) { "Too many pending uploads" }
@@ -54,7 +54,7 @@ internal class InkFetchStreams(
                 "stream-upload-write" -> {
                     val upload = requireNotNull(uploads[data.getString("upload")]) { "Upload is closed" }
                     val file = upload.file
-                    val bytes = Base64.decode(data.getString("bytes"), Base64.DEFAULT)
+                    val bytes = inputBytes ?: Base64.decode(data.getString("bytes"), Base64.DEFAULT)
                     require(bytes.size <= 32768 && (upload.managed || file.length() + bytes.size <= 64L * 1024 * 1024)) { "Upload exceeds 64 MiB" }
                     file.appendBytes(bytes)
                     file.setLastModified(System.currentTimeMillis())
@@ -78,7 +78,7 @@ internal class InkFetchStreams(
                     complete(NativeResult.Success("null"))
                 }
                 "stream-open" -> open(id, data, complete)
-                "stream-read" -> requireNotNull(streams[data.getString("stream")]) { "Response stream is closed" }.read(id, complete)
+                "stream-read", "stream-read-bytes" -> requireNotNull(streams[data.getString("stream")]) { "Response stream is closed" }.read(id, operation.endsWith("-bytes"), complete)
                 "stream-close" -> {
                     streams.remove(data.getString("stream"))?.close()
                     complete(NativeResult.Success("null"))
@@ -166,16 +166,18 @@ internal class InkFetchStreams(
         var fileInput: InputStream? = null
         var readerId: Long? = null
         var reader: NativeResultHandler? = null
+        var binaryReader = false
         var touched = System.currentTimeMillis()
         private val buffer = ByteBuffer.allocateDirect(32768)
         private var terminal: NativeResult? = null
         private var closed = false
 
-        fun read(id: Long, complete: NativeResultHandler) {
+        fun read(id: Long, binary: Boolean, complete: NativeResultHandler) {
             require(reader == null) { "Response already has a pending read" }
             touched = System.currentTimeMillis()
             readerId = id
             reader = complete
+            binaryReader = binary
             pending[id] = this
             terminal?.let { deliver(it); return }
             val input = fileInput
@@ -193,6 +195,8 @@ internal class InkFetchStreams(
             } else request?.read(buffer)
         }
         fun deliver(result: NativeResult) {
+            val delivered = if (result is NativeResult.Binary && !binaryReader)
+                NativeResult.Success(JSONObject(result.value).put("bytes", Base64.encodeToString(result.bytes, Base64.NO_WRAP)).toString()) else result
             val callback = reader
             val id = readerId
             readerId = null
@@ -201,7 +205,7 @@ internal class InkFetchStreams(
             // Deliver outside the stream lock to avoid reversing that lock order.
             if (callback != null && id != null) handler.post {
                 synchronized(this@InkFetchStreams) { pending.remove(id) }
-                callback(result)
+                callback(delivered)
             }
         }
         fun close() {
@@ -243,7 +247,7 @@ internal class InkFetchStreams(
         }
         override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {}
     }
-    private fun chunk(bytes: ByteArray, done: Boolean) = NativeResult.Success(JSONObject().put("done", done).put("bytes", Base64.encodeToString(bytes, Base64.NO_WRAP)).toString())
+    private fun chunk(bytes: ByteArray, done: Boolean) = NativeResult.Binary(JSONObject().put("done", done).toString(), bytes)
     private fun failure(message: String) = NativeResult.Failure(NativeErrorKind.UNAVAILABLE, message, false)
 }
 

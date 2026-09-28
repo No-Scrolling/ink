@@ -6,6 +6,8 @@ use ink_core::{ControllerId, StateValue};
 struct Processor {
     enabled: bool,
     inner: Box<dyn AudioProcessor>,
+    status_only: bool,
+    status: String,
 }
 
 #[derive(Default)]
@@ -16,12 +18,12 @@ pub struct AudioRuntime {
 
 impl AudioRuntime {
     pub fn activate(&mut self, controller: ControllerId, kind: &str, config: &str) -> bool {
+        let config = serde_json::from_str::<serde_json::Value>(config).unwrap_or_default();
         let inner: Box<dyn AudioProcessor> = match kind {
             "level" => Box::new(LevelProcessor::new()),
             "pitch" => {
-                let reference_hz = serde_json::from_slice::<serde_json::Value>(config.as_bytes())
-                    .ok()
-                    .and_then(|value| value.get("referenceHz")?.as_f64())
+                let reference_hz = config.get("referenceHz")
+                    .and_then(serde_json::Value::as_f64)
                     .unwrap_or(440.0);
                 Box::new(PitchProcessor::new(reference_hz))
             }
@@ -30,6 +32,8 @@ impl AudioRuntime {
         let mut processor = Processor {
             enabled: false,
             inner,
+            status_only: config.get("updates").and_then(serde_json::Value::as_str) == Some("status"),
+            status: String::new(),
         };
         if let Some(format) = self.format {
             processor.inner.configure(format);
@@ -49,6 +53,7 @@ impl AudioRuntime {
             return false;
         };
         processor.enabled = enabled;
+        if !enabled { processor.status.clear(); }
         true
     }
 
@@ -56,7 +61,7 @@ impl AudioRuntime {
         &mut self,
         samples: &[i16],
         sample_rate: u32,
-        mut publish: impl FnMut(ControllerId, StateValue) -> bool,
+        mut publish: impl FnMut(ControllerId, StateValue, bool) -> bool,
     ) -> bool {
         let format = AudioFormat {
             sample_rate,
@@ -73,7 +78,15 @@ impl AudioRuntime {
             if processor.enabled
                 && let Some(value) = processor.inner.process(samples)
             {
-                changed |= publish(*controller, value);
+                let status = match &value {
+                    StateValue::Object(fields) => fields.iter().find_map(|(key, value)| match (key.as_str(), value) {
+                        ("status", StateValue::String(status)) => Some(status.as_str()), _ => None,
+                    }).unwrap_or_default(),
+                    _ => "",
+                };
+                let notify = !processor.status_only || processor.status != status;
+                if processor.status != status { processor.status = status.to_owned(); }
+                changed |= publish(*controller, value, notify);
             }
         }
         changed

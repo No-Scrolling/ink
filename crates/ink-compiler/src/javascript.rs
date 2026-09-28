@@ -55,6 +55,7 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
     let builder = project.root().join(".ink/build.js");
     write_if_changed(&builder, include_bytes!("bundle-javascript.js"))?;
     write_if_changed(&project.root().join(".ink/icon-usage.js"), include_bytes!("icon-usage.js"))?;
+    write_if_changed(&project.root().join(".ink/native-lists.js"), include_bytes!("native-lists.js"))?;
     write_if_changed(&project.root().join(".ink/file-routes.js"), include_bytes!("file-routes.js"))?;
     run(Command::new("bun")
         .current_dir(project.root())

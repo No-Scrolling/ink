@@ -1,15 +1,11 @@
-import { useState } from "react";
-import { Button, Screen, Stack, Text } from "ink";
+import { nativeView } from "ink/view";
 
-export default function Counter() {
-  const [count, setCount] = useState(0);
-
-  return (
-    <Screen title="Counter" centered>
-      <Stack gap={16} align="center">
-        <Text size={40}>Count: {count}</Text>
-        <Button onPress={() => setCount(count + 1)}>Increase</Button>
-      </Stack>
-    </Screen>
+export default nativeView(view => {
+  const count = view.value(0);
+  const label = view.derive([count], () => `Count: ${count.get()}`);
+  return view.node("Screen", { title: "Counter", centered: true },
+    view.node("Stack", { gap: 16, align: "center" },
+      view.node("Text", { size: 40, text: label }),
+      view.node("Button", { onPress: () => count.set(count.get() + 1) }, view.node("Text", { text: "Increase" }))),
   );
-}
+});

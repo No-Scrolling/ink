@@ -11,6 +11,10 @@ fn main() -> Result<()> {
     let (_runtime, events) = AppRuntime::spawn(source)?;
     for event in events {
         match event {
+            Event::Commit(commit) => println!(
+                "{}",
+                serde_json::json!({"type":"commit","operations":commit})
+            ),
             Event::Message(message) => println!("{message}"),
             Event::Error(message) => bail!("{message}"),
             Event::Stopped => break,

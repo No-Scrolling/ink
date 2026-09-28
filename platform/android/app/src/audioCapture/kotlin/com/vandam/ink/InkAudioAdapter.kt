@@ -23,16 +23,25 @@ internal fun createAudioAdapter(
 private class InkAudioAdapter(
     private val activity: MainActivity,
     processSamples: (ShortArray, Int) -> Unit,
-    updateController: (Long, String) -> Unit,
+    private val updateController: (Long, String) -> Unit,
     activateProcessor: (Long, String, String) -> Boolean,
     deactivateProcessor: (Long) -> Unit,
     setProcessorEnabled: (Long, Boolean) -> Boolean,
 ) : AudioAdapter {
     private val controllers = mutableMapOf<Long, String>()
+    private val statusOnly = mutableSetOf<Long>()
+    private val lastStatus = mutableMapOf<Long, String>()
     private val playback = createAudioPlayback(activity, updateController)
-    private val microphone = createAudioMicrophone(activity, processSamples, updateController,
+    private val microphone = createAudioMicrophone(activity, processSamples, ::updateCapture,
         activateProcessor, deactivateProcessor, setProcessorEnabled) { recording.active }
-    private val recording: AudioRecording = createAudioRecording(activity, updateController) { microphone.active }
+    private val recording: AudioRecording = createAudioRecording(activity, ::updateCapture) { microphone.active }
+
+    private fun updateCapture(controller: Long, value: String) {
+        activity.updateCaptureState(controller, value)
+        val status = JSONObject(value).optString("status")
+        val previous = lastStatus.put(controller, status)
+        if (controller !in statusOnly || status != previous || status != "recording") updateController(controller, value)
+    }
 
     override fun execute(
         requestId: Long,
@@ -81,7 +90,10 @@ private class InkAudioAdapter(
         recording.stop()
         playback.stop()
         microphone.stop()
+        controllers.keys.forEach(activity::removeCaptureState)
         controllers.clear()
+        statusOnly.clear()
+        lastStatus.clear()
     }
 
     private fun activate(
@@ -95,6 +107,7 @@ private class InkAudioAdapter(
         }
         val kind = recipe.optString(KIND)
         val config = recipe.optJSONObject(CONFIG)?.toString() ?: "{}"
+        if (recipe.optJSONObject(CONFIG)?.optString("updates") == "status") statusOnly.add(controller)
         val result = when (kind) {
             in SUPPORTED_PROCESSORS -> microphone.activate(controller, kind, config)
             PLAYER -> playback.activate(controller, config)
@@ -102,6 +115,9 @@ private class InkAudioAdapter(
             else -> protocol("Unknown audio controller: $kind")
         }
         if (result is NativeResult.Failure) {
+            statusOnly.remove(controller)
+            lastStatus.remove(controller)
+            activity.removeCaptureState(controller)
             complete(result)
             return
         }
@@ -116,6 +132,9 @@ private class InkAudioAdapter(
             RECORDER -> recording.deactivate()
             null -> Unit
         }
+        statusOnly.remove(controller)
+        lastStatus.remove(controller)
+        activity.removeCaptureState(controller)
         complete(NativeResult.Success(""))
     }
 

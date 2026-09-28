@@ -11,13 +11,23 @@ Use `scripts/agent-tools` for builds and device runs. It records build hashes an
 
 Use the emulator for behaviour checks and the physical Light Phone III for performance results.
 
+For fast CPU-path iteration, use the [headless update harness](headless/README.md): `scripts/agent-tools headless --hyperfine --background`. It runs the real React-to-scene path and validates updates without Android. Verify promising changes on the physical phone before making device-performance claims.
+
 ## Current engine measurements
+
+- [Momentum-scroll image fix](results/fling-images-2026-09-28/README.md): confirmed stalled requests, frame-boundary fix and emulator reproduction.
+
+- [Incremental list updates](results/incremental-lists-2026-09-28/README.md): sparse transfer and callback correctness.
+
+- [Automatic native lists](results/default-lists-2026-09-28/README.md): public API compatibility, native window updates and emulator checks.
+- [Native controls and bindings](results/lp3-validation-2026-09-28/native-controls/README.md): current architecture, paired CPU measurements and LP3 validation.
+- [Rust/JavaScript ownership](../docs/runtime-ownership.md): current boundaries and remaining opportunities.
 
 - [QuickJS-ng 0.17.0 comparison](results/quickjs17-lp3-2026-09-27/report.md): latest engine, compatibility checks and 500-cell update measurements.
 - [Runtime optimisation profile](results/runtime-arena-lp3-2026-09-27/report.md): update waterfall, continuous workloads and scrollbar timings before the 0.17.0 upgrade.
 - [Native size profile](results/native-size-2026-09-27/report.md): earlier bundle-size investigation.
 
-Superseded intermediate reports have been removed. The stress and framework comparisons below cover different workloads and remain as historical baselines.
+Superseded intermediate reports have been removed. See the [retention record](results/cleanup-2026-09-28.md). The stress and framework comparisons below cover different workloads and remain as historical baselines.
 
 ## Ink stress test
 
@@ -69,3 +79,5 @@ These are not measurements of time to interactive, peak memory, battery drain or
 `measure.ts` is the comparison harness invoked by agent-tools. `measure-builds.sh` collects build measurements. `measure-ink.sh` and `verify.ts` are older Ink-only counter helpers, not the stress test; the direct device runner requires manual reservation and cleanup. Prefer the agent-tools entry points above.
 
 Only the latest results for each suite are retained.
+
+Latest list update: [compiler-directed projection reuse](results/list-projection-2026-09-28/README.md), including paired CPU timings and compatibility checks.

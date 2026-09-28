@@ -1,64 +1,73 @@
-import { createElement } from "react";
-import { Screen, Stack, Text, type IconAsset } from "./index";
+import { createElement, useRef } from "react";
+import { Screen, ErrorState, type IconAsset } from "./index";
+import { useAction } from "./action";
 import { forward10Filled, forward30Filled, forward5Filled, pauseFilled, playArrowFilled, replay10Filled, replay30Filled, replay5Filled, skipNextFilled, skipPreviousFilled } from "./icons";
 
-type TransportAction = { seconds?: 5 | 10 | 30; onPress: () => void; onLongPress?: () => void; disabled?: boolean };
+type PlaybackAction = () => void | Promise<void>;
+export interface Playback {
+  readonly state: { position: number; duration: number; playWhenReady: boolean; loading?: boolean; buffering?: boolean; speed?: number };
+  readonly clock?: { readonly controller: number };
+  toggle(): void | Promise<void>;
+  seek(position: number): void | Promise<void>;
+  seekBy?(offset: number): void | Promise<void>;
+  previous?(): void | Promise<void>;
+  next?(): void | Promise<void>;
+}
+
+type TransportAction = { seconds?: 5 | 10 | 30; onPress?: PlaybackAction; onLongPress?: PlaybackAction; disabled?: boolean };
 export type PlayingScreenProps = {
   image?: string;
   preloadImages?: readonly string[];
   title: string;
   onTitlePress?: () => void;
   artists: readonly { name: string; onPress?: () => void }[];
-  playing: boolean;
-  loading?: boolean;
-  buffering?: boolean;
-  onPlayPause: () => void;
-  position: number;
-  duration: number;
-  onSeek?: (position: number) => void;
-  previous: TransportAction;
-  next: TransportAction;
-  actions?: readonly (({ icon: IconAsset; label?: never } | { label: string; icon?: never }) & { selected?: boolean; disabled?: boolean; onPress: () => void })[];
+  playback: Playback;
+  previous?: TransportAction;
+  next?: TransportAction;
+  actions?: readonly (({ icon: IconAsset; label?: never } | { label: string; icon?: never }) & { selected?: boolean; disabled?: boolean; onPress: PlaybackAction })[];
 };
-
-function time(milliseconds: number) {
-  const seconds = Math.floor(milliseconds / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
 
 const replayIcons = { 5: replay5Filled, 10: replay10Filled, 30: replay30Filled };
 const forwardIcons = { 5: forward5Filled, 10: forward10Filled, 30: forward30Filled };
 
-export function PlayingScreen({ image, preloadImages = [], title, onTitlePress, artists, playing, loading = false, buffering = false, onPlayPause, position, duration, onSeek, previous, next, actions = [] }: PlayingScreenProps) {
+export function PlayingScreen({ image, preloadImages = [], title, onTitlePress, artists, playback, previous = {}, next = {}, actions = [] }: PlayingScreenProps) {
+  const retry = useRef<PlaybackAction>(() => {});
+  const command = useAction(async (operation: PlaybackAction) => {
+    retry.current = operation;
+    await operation();
+  });
+  const run = command.run;
+  const transport = (action: TransportAction, direction: -1 | 1): PlaybackAction | undefined => {
+    if (action.onPress) return action.onPress;
+    const seconds = action.seconds;
+    const seekBy = playback.seekBy;
+    if (seconds) return seekBy && (() => seekBy.call(playback, direction * seconds * 1000));
+    const move = direction === -1 ? playback.previous : playback.next;
+    return move && (() => move.call(playback));
+  };
+  const previousPress = transport(previous, -1);
+  const nextPress = transport(next, 1);
+  const bind = (operation: PlaybackAction | undefined) => operation && (() => run(operation));
+  const { position, duration, playWhenReady: playing, loading = false, buffering = false, speed = 1 } = playback.state;
+  const clock = playback.clock;
+  if (command.status === "error") return createElement(Screen, { title: "Playback" },
+    createElement(ErrorState, { message: command.error.message, onRetry: () => run(retry.current) }));
   if (!Number.isFinite(position) || !Number.isFinite(duration) || position < 0 || duration < 0) {
     throw new Error("Playback times must be finite, non-negative milliseconds");
   }
-  const current = Math.min(position, duration);
-  const control = (icon: IconAsset, { onPress, onLongPress, disabled }: TransportAction) =>
-    createElement("Pressable", { onPress: disabled ? undefined : onPress, onLongPress: disabled ? undefined : onLongPress },
-      createElement("Icon", { tight: true, name: icon, size: 56, tone: disabled ? "muted" : "primary" }));
-  return createElement(Screen, null,
-    createElement("PlayingLayout", { centered: !image },
-      createElement(Stack, { gap: 16, align: "stretch" },
-        image && createElement(Stack, { align: "center" }, createElement("Image", { src: image, width: 200, height: 200, fit: "cover", retainWhileLoading: true, preload: preloadImages.slice(0, 2) })),
-        createElement(Stack, { gap: 0, align: "center" },
-          createElement("Pressable", { onPress: onTitlePress }, createElement("PlayingLabel", { size: 22, text: title })),
-          artists.map((artist, index) => createElement("Pressable", { key: index, onPress: artist.onPress },
-            createElement("PlayingLabel", { size: 14, text: artist.name }))),
-        ),
-        createElement(Stack, { gap: 1, align: "stretch" },
-          createElement("PlayingProgress", { playing: playing && !loading && !buffering, position: current / 1000, duration: duration / 1000, onSeek: onSeek && ((seconds: number) => onSeek(seconds * 1000)) }),
-          createElement(Stack, { axis: "horizontal", justify: "space-between" },
-            createElement(Text, { size: 12 }, time(current)),
-            createElement(Text, { size: 12 }, time(duration))),
-        ),
-        createElement("PlayingTransport", { loading },
-          control(previous.seconds ? replayIcons[previous.seconds] : skipPreviousFilled, previous),
-          control(playing ? pauseFilled : playArrowFilled, { onPress: onPlayPause }),
-          control(next.seconds ? forwardIcons[next.seconds] : skipNextFilled, next)),
-      ),
-      createElement("PlayingTransport", null,
-        actions.map((action, index) => createElement("Pressable", { key: index, selected: action.selected, onPress: action.disabled ? undefined : action.onPress },
-          action.label !== undefined ? createElement(Text, { size: 22, tabularNumbers: true }, action.label) : createElement("Icon", { tight: true, name: action.icon, size: 44, tone: "primary" })))),
-    ));
+  return createElement("PlayingScreen", {
+    image, preloadImages, title, onTitlePress, playing, loading, buffering, position, duration, clock: clock?.controller, speed,
+    artists: artists.map(artist => ({ name: artist.name, interactive: !!artist.onPress })),
+    onArtistPress: (index: number) => artists[index]?.onPress?.(),
+    onPlayPause: () => run(() => playback.toggle()), onSeek: (seconds: number) => run(() => playback.seek(seconds * 1000)),
+    previousIcon: previous.seconds ? replayIcons[previous.seconds] : skipPreviousFilled,
+    previousDisabled: previous.disabled || !previousPress,
+    onPreviousPress: bind(previousPress), onPreviousLongPress: bind(previous.onLongPress),
+    nextIcon: next.seconds ? forwardIcons[next.seconds] : skipNextFilled,
+    nextDisabled: next.disabled || !nextPress,
+    onNextPress: bind(nextPress), onNextLongPress: bind(next.onLongPress),
+    playIcon: playArrowFilled, pauseIcon: pauseFilled,
+    actions: actions.map(({ onPress, ...action }) => action),
+    onActionPress: (index: number) => { const action = actions[index]; if (action) run(action.onPress); },
+  });
 }

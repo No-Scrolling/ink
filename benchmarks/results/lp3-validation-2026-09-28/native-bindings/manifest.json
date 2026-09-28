@@ -1,0 +1,40 @@
+{
+  "sourceSha256": "a7ba4f78fe6ca794a17ab3360fa4024eaf5386cd60eb519808d21d48ea71387d",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "20f8257359f6538459b679fb73f100ce8fb3ad0d7912690c5e1e6c164ac51aa2"
+  },
+  "revision": "2aed8a13d9d2205a31aaef21fefb908a0345a7ae",
+  "flags": {
+    "INK_BRIDGE_TIMING": "1"
+  },
+  "signing": "generated Android development key",
+  "artifacts": {
+    "benchmarks/apps/ink-views": {
+      "file": "0-ink-view-benchmark-1.0.0-arm64.apk",
+      "sha256": "d7a1d10dcd4e68f4ca2fc70335420f27d9c73589640cc260bc0422094e12573d",
+      "bytes": 2726892,
+      "package": "com.vandam.benchmark.ink.views",
+      "component": "com.vandam.benchmark.ink.views/com.vandam.ink.MainActivity"
+    },
+    "examples/counter": {
+      "file": "1-counter-0.1.0-arm64.apk",
+      "sha256": "2203987d062ab410f7918ec62c57e632142a985771d10b3a8b717272fdb7a8fc",
+      "bytes": 2732116,
+      "package": "com.vandam.benchmark.ink.nativeviews.counter",
+      "component": "com.vandam.benchmark.ink.nativeviews.counter/com.vandam.ink.MainActivity"
+    },
+    "examples/light-template": {
+      "file": "2-ink-template-0.1.0-arm64.apk",
+      "sha256": "87781f98729ba6b4da8bb4a8d944dfccd1c1a7261bc5b693eb22dede24837bb2",
+      "bytes": 33304571,
+      "package": "com.vandam.benchmark.ink.nativeviews.template",
+      "component": "com.vandam.benchmark.ink.nativeviews.template/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

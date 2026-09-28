@@ -14,8 +14,12 @@ use unicode_properties::emoji::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+pub use ink_protocol::SmolStr;
+
 mod fonts;
 mod canvas;
+mod capture;
+pub use capture::CaptureKind;
 pub use fonts::{font_for_character, tabular_digit_width, text_graphemes, text_width, text_width_with_numbers};
 
 mod icon_assets;
@@ -325,7 +329,7 @@ pub enum Action {
         state: StateId,
     },
     Native {
-        operation: NativeOperation,
+        operation: Arc<NativeOperation>,
     },
     FocusTextInput {
         state: StateId,
@@ -564,8 +568,9 @@ enum NodeKind {
     PlayingTransport { children: Vec<Node>, loading: bool },
     PlayingLabel { text: String, size: f32 },
     RowTitle { children: Vec<Node>, text: String, size: f32, max_lines: Option<u32> },
-    PlayingProgress { position: f32, duration: f32, playing: bool, seek: bool },
+    PlayingProgress { position: f32, duration: f32, playing: bool, seek: bool, show_times: bool, clock: Option<u64>, speed: f32 },
     PitchIndicator { cents: Option<f32> },
+    CaptureReadout { controller: u64, kind: CaptureKind },
     Row {
         children: Vec<Node>,
         has_image: bool,
@@ -581,21 +586,7 @@ enum NodeKind {
         gap: f32,
         follow_end: bool,
     },
-    Screen {
-        children: Vec<Node>,
-        title: Option<String>,
-        background: Option<Colour>,
-        centred: bool,
-        footer: Option<(String, Option<Action>)>,
-        pinned_header: bool,
-        pinned_footer: bool,
-        wide: bool,
-        bottom_inset: bool,
-        left_action: Option<(Mask, Action)>,
-        right_action: Option<(Mask, Action)>,
-        media_picker: bool,
-        wait_for_images: bool,
-    },
+    Screen(Box<ScreenNode>),
     Stack {
         children: Vec<Node>,
         axis: Axis,
@@ -606,7 +597,7 @@ enum NodeKind {
     Text {
         links: Vec<(std::ops::Range<usize>, Action)>,
         width: Option<f32>,
-        text: String,
+        text: SmolStr,
         font_size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
@@ -673,11 +664,28 @@ enum NodeKind {
     },
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct ScreenNode {
+    children: Vec<Node>,
+    title: Option<String>,
+    background: Option<Colour>,
+    centred: bool,
+    footer: Option<(String, Option<Action>)>,
+    pinned_header: bool,
+    pinned_footer: bool,
+    wide: bool,
+    bottom_inset: bool,
+    left_action: Option<(Mask, Action)>,
+    right_action: Option<(Mask, Action)>,
+    media_picker: bool,
+    wait_for_images: bool,
+}
+
 impl Node {
     pub fn screen(children: Vec<Self>, title: Option<String>, centred: bool) -> Self {
         Self {
             identity: NodeIdentity(0),
-            kind: NodeKind::Screen {
+            kind: NodeKind::Screen(Box::new(ScreenNode {
                 children,
                 title,
                 background: None,
@@ -691,7 +699,7 @@ impl Node {
                 right_action: None,
                 media_picker: false,
                 wait_for_images: true,
-            },
+            })),
         }
     }
 
@@ -715,7 +723,7 @@ impl Node {
     }
 
     pub fn text(
-        text: String,
+        text: SmolStr,
         font_size: Option<f32>,
         align: TextAlign,
         max_lines: Option<u32>,
@@ -929,7 +937,7 @@ pub struct Quad {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextRun {
-    pub text: Arc<str>,
+    pub text: SmolStr,
     pub rect: Rect,
     pub clip: Rect,
     pub font_size: f32,
@@ -1281,7 +1289,22 @@ struct Marquee {
     visible: bool,
 }
 
+fn playback_time(seconds: u64) -> String {
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+#[derive(Clone)]
+struct PlaybackClock {
+    position: f32,
+    duration: f32,
+    playing: bool,
+    speed: f32,
+    started: Instant,
+}
+
 struct PlaybackProgress {
+    clock: Option<u64>,
+    speed: f32,
     position: f32,
     duration: f32,
     playing: bool,
@@ -1289,11 +1312,12 @@ struct PlaybackProgress {
     quad: usize,
     width: f32,
     visible: bool,
+    elapsed_label: Option<(usize, u64)>,
 }
 
 impl PlaybackProgress {
     fn current(&self) -> f32 {
-        let elapsed = if self.playing { self.started.elapsed().as_secs_f32() } else { 0.0 };
+        let elapsed = if self.playing { self.started.elapsed().as_secs_f32() * self.speed } else { 0.0 };
         (self.position + elapsed).min(self.duration)
     }
 
@@ -1306,6 +1330,8 @@ pub struct Engine {
     root: Node,
     marquees: HashMap<NodeIdentity, Marquee>,
     playback_progress: HashMap<NodeIdentity, PlaybackProgress>,
+    playback_clocks: HashMap<u64, PlaybackClock>,
+    capture_readings: capture::CaptureReadings,
     state: Vec<StateValue>,
     viewport: Viewport,
     keyboard_inset: u32,
@@ -1349,7 +1375,7 @@ pub struct Engine {
     back_icon: Option<Mask>,
     navigation_handler: Option<(Mask, NativeOperation)>,
     font: FontRef<'static>,
-    wrapped_text: HashMap<TextWrapKey, (Arc<[WrappedLine]>, bool)>,
+    wrapped_text: HashMap<TextWrapKey, (WrappedLines, bool), ahash::RandomState>,
     #[cfg(feature = "perf")]
     perf: CorePerfMetrics,
     #[cfg(feature = "perf")]
@@ -1403,6 +1429,8 @@ impl Engine {
             visible_image_screens: BTreeSet::new(),
             marquees: HashMap::new(),
             playback_progress: HashMap::new(),
+            playback_clocks: HashMap::new(),
+            capture_readings: capture::CaptureReadings::default(),
             image_zooms: HashMap::new(),
             visible_zoom_images: BTreeSet::new(),
             image_pinch: None,
@@ -1412,7 +1440,7 @@ impl Engine {
             back_icon: None,
             navigation_handler: None,
             font: FontRef::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid"),
-            wrapped_text: HashMap::new(),
+            wrapped_text: HashMap::default(),
             #[cfg(feature = "perf")]
             perf: CorePerfMetrics::default(),
             #[cfg(feature = "perf")]
@@ -2440,11 +2468,11 @@ impl Engine {
                 | NodeKind::PlayingTransport { children, .. }
                 | NodeKind::PlayingLayout { children, .. }
                 | NodeKind::Pressable { children, .. }
-                | NodeKind::Screen { children, .. }
                 | NodeKind::MediaGridRow { children }
                 | NodeKind::Row { children, .. }
                 | NodeKind::Stack { children, .. }
                 | NodeKind::ReactList { children, .. } => children.iter().find_map(|child| find(child, target)),
+                NodeKind::Screen(screen) => screen.children.iter().find_map(|child| find(child, target)),
                 NodeKind::Tabs { tabs, .. } => tabs.iter().find_map(|tab| find(&tab.screen, target)),
                 _ => None,
             }
@@ -2480,6 +2508,31 @@ impl Engine {
             || self.playback_progress.values().any(PlaybackProgress::animating)
     }
 
+    pub fn update_playback_clock(&mut self, controller: u64, position: f32, duration: f32, playing: bool, speed: f32) -> bool {
+        if controller == 0 || !position.is_finite() || !duration.is_finite() || !speed.is_finite()
+            || position < 0.0 || duration < 0.0 || speed <= 0.0 { return false; }
+        let started = Instant::now();
+        self.playback_clocks.insert(controller, PlaybackClock { position, duration, playing, speed, started });
+        let mut visible = false;
+        let mut duration_changed = false;
+        for progress in self.playback_progress.values_mut().filter(|progress| progress.clock == Some(controller)) {
+            visible |= progress.visible;
+            duration_changed |= progress.duration != duration;
+            progress.position = position; progress.duration = duration; progress.playing = playing;
+            progress.speed = speed; progress.started = started;
+        }
+        if visible && duration_changed { self.rebuild_scene(); }
+        visible
+    }
+
+    pub fn remove_playback_clock(&mut self, controller: u64) {
+        self.playback_clocks.remove(&controller);
+        for progress in self.playback_progress.values_mut().filter(|progress| progress.clock == Some(controller)) {
+            progress.position = progress.current();
+            progress.playing = false;
+        }
+    }
+
     pub fn animate_scene(&mut self) -> bool {
         let mut changed = false;
         for marquee in self.marquees.values().filter(|marquee| marquee.visible) {
@@ -2493,9 +2546,18 @@ impl Engine {
                 run.rect.x = x;
             }
         }
-        for progress in self.playback_progress.values().filter(|progress| progress.visible) {
+        for progress in self.playback_progress.values_mut().filter(|progress| progress.visible) {
+            let current = progress.current();
+            if let Some((run, seconds)) = &mut progress.elapsed_label {
+                let next = current.max(0.0).floor() as u64;
+                if next != *seconds {
+                    self.scene.text[*run].text = playback_time(next).into();
+                    *seconds = next;
+                    changed = true;
+                }
+            }
             let width = if progress.duration > 0.0 {
-                progress.width * (progress.current() / progress.duration).clamp(0.0, 1.0)
+                progress.width * (current / progress.duration).clamp(0.0, 1.0)
             } else { 0.0 };
             let quad = &mut self.scene.quads[progress.quad];
             let right = quad.rect.x + width;
@@ -2563,7 +2625,7 @@ impl Engine {
                 self.focus_text_input_at_end(state, action);
                 true
             }
-            Action::Native { operation } => self.queue_native_action(operation),
+            Action::Native { operation } => self.queue_native_action(Arc::unwrap_or_clone(operation)),
             Action::Back => self.pop_route(),
         }
     }
@@ -2683,6 +2745,7 @@ impl Engine {
         self.react_list_positions.clear();
         self.scene.quads.clear();
         self.scene.text.clear();
+        self.clear_capture_runs();
         for marquee in self.marquees.values_mut() { marquee.visible = false; }
         for progress in self.playback_progress.values_mut() { progress.visible = false; }
         self.scene.masks.clear();
@@ -2779,13 +2842,13 @@ impl Engine {
             | NodeKind::PlayingTransport { children, .. }
             | NodeKind::PlayingLayout { children, .. }
             | NodeKind::Pressable { children, .. }
-            | NodeKind::Screen { children, .. }
             | NodeKind::MediaGridRow { children }
             | NodeKind::Row { children, .. }
             | NodeKind::Stack { children, .. }
             | NodeKind::ReactList { children, .. } => {
                 children.iter().find_map(|child| self.auto_focus(child))
             }
+            NodeKind::Screen(screen) => screen.children.iter().find_map(|child| self.auto_focus(child)),
             NodeKind::Tabs { value, tabs } => self
                 .active_tab_index(value, tabs.len())
                 .and_then(|active| self.auto_focus(&tabs[active].screen)),
@@ -2801,6 +2864,7 @@ impl Engine {
             | NodeKind::PlayingLabel { .. }
             | NodeKind::PlayingProgress { .. }
             | NodeKind::PitchIndicator { .. }
+            | NodeKind::CaptureReadout { .. }
             | NodeKind::Canvas { .. }
             | NodeKind::Toggle { .. } => None,
         }
@@ -2836,7 +2900,7 @@ impl Engine {
             }
             NodeKind::MediaGridRow { .. } => MeasuredSize { width: available.width, height: available.width / 3.0 },
             NodeKind::MediaCell { .. } => MeasuredSize { width: available.width, height: available.width },
-            NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end } => {
+            NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end, .. } => {
                 let mut metrics = self.list_metrics.remove(&node.identity.0).unwrap_or_default();
                 metrics.prepare(keys, content_versions, *revision, available.width, self.scaled(*gap), self.scaled(40.0));
                 metrics.mounted = *start..*start + children.len();
@@ -2869,6 +2933,7 @@ impl Engine {
                 let inset = self.scaled(10.0);
                 let size = children.first().map(|child| self.measure(child, Rect { width: (available.width - inset).max(0.0), ..available })).unwrap_or_default();
                 MeasuredSize { width: (size.width + inset).min(available.width), height: size.height }
+
             }
             NodeKind::ConversationComposer { children } => {
                 let width = (available.width - self.scaled(40.0 * (children.len() - 1) as f32)).max(0.0);
@@ -2880,14 +2945,18 @@ impl Engine {
                 width: available.width,
                 height: children.iter().map(|child| self.measure(child, available).height).fold(0.0, f32::max),
             },
-            NodeKind::PlayingProgress { .. } => MeasuredSize { width: available.width, height: self.scaled(6.0) },
+            NodeKind::PlayingProgress { show_times, .. } => MeasuredSize {
+                width: available.width,
+                height: self.scaled(6.0) + if *show_times { self.scaled(1.0) + self.text_line_height(12.0) } else { 0.0 },
+            },
             NodeKind::PitchIndicator { .. } => MeasuredSize { width: available.width, height: self.scaled(40.0) },
+            NodeKind::CaptureReadout { kind, .. } => MeasuredSize { width: available.width, height: self.text_line_height(kind.size()) },
             NodeKind::Row { children, has_image, .. } => {
                 let image_width = if *has_image { self.scaled(65.0).min(available.width) } else { 0.0 };
                 let text = children.last().map(|child| self.measure(child, Rect { width: (available.width - image_width).max(0.0), ..available })).unwrap_or_default();
                 MeasuredSize { width: available.width, height: text.height.max(self.scaled(50.0)).min(available.height) }
             }
-            NodeKind::PlayingLayout { .. } | NodeKind::Screen { .. } | NodeKind::Tabs { .. } => MeasuredSize {
+            NodeKind::PlayingLayout { .. } | NodeKind::Screen(_) | NodeKind::Tabs { .. } => MeasuredSize {
                 width: available.width,
                 height: available.height,
             },
@@ -3102,7 +3171,7 @@ impl Engine {
         if self.scrolling
             && !matches!(
                 &node.kind,
-                NodeKind::Screen { .. }
+                NodeKind::Screen(_)
                     | NodeKind::Stack { .. }
                     | NodeKind::MediaGridRow { .. }
                     | NodeKind::MediaCell { .. }
@@ -3163,6 +3232,7 @@ impl Engine {
                         ..rect
                     });
                 }
+
             }
 
             NodeKind::ConversationComposer { children } => {
@@ -3324,6 +3394,7 @@ impl Engine {
                 }
                 if let Some(child) = children.first() { self.layout(child, rect); }
             }
+            NodeKind::CaptureReadout { controller, kind } => self.layout_capture(*controller, *kind, rect),
             NodeKind::PitchIndicator { cents } => {
                 let active = cents.map(|value| {
                     if value.abs() <= 5.0 { 12.0 } else { (value + 50.0) / 100.0 * 24.0 }
@@ -3343,10 +3414,16 @@ impl Engine {
                     });
                 }
             }
-            NodeKind::PlayingProgress { position, duration, playing, seek } => {
+            NodeKind::PlayingProgress { position, duration, playing, seek, show_times, clock, speed } => {
+                let anchor = clock.and_then(|id| self.playback_clocks.get(&id)).cloned();
+                let position = anchor.as_ref().map(|value| &value.position).unwrap_or(position);
+                let duration = anchor.as_ref().map(|value| &value.duration).unwrap_or(duration);
+                let playing = anchor.as_ref().map(|value| &value.playing).unwrap_or(playing);
+                let speed = anchor.as_ref().map(|value| value.speed).unwrap_or(*speed);
+                let bar = Rect { height: self.scaled(6.0), ..rect };
                 let ratio = if *duration > 0.0 { (position / duration).clamp(0.0, 1.0) } else { 0.0 };
                 for (width, height) in [(rect.width, self.scaled(2.0)), (rect.width * ratio, self.scaled(6.0))] {
-                    self.scene.quads.push(Quad { rect: Rect { y: rect.y + (rect.height - height) / 2.0, width, height, ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
+                    self.scene.quads.push(Quad { rect: Rect { y: bar.y + (bar.height - height) / 2.0, width, height, ..bar }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
                 }
                 let quad = self.scene.quads.len() - 1;
                 let mut edge = self.scene.quads[quad].clone();
@@ -3354,20 +3431,34 @@ impl Engine {
                 edge.colour.alpha = 0.0;
                 self.scene.quads.push(edge);
                 let progress = self.playback_progress.entry(node.identity).or_insert_with(|| PlaybackProgress {
-                    position: *position, duration: *duration, playing: *playing,
+                    position: *position, duration: *duration, playing: *playing, clock: *clock, speed,
                     started: Instant::now(), quad, width: rect.width, visible: true,
+                    elapsed_label: None,
                 });
-                if (progress.position, progress.duration, progress.playing) != (*position, *duration, *playing) {
+                if (progress.position, progress.duration, progress.playing, progress.speed) != (*position, *duration, *playing, speed) {
                     progress.position = *position;
                     progress.duration = *duration;
                     progress.playing = *playing;
                     progress.started = Instant::now();
                 }
+                progress.clock = *clock;
+                progress.speed = speed;
+                if let Some(anchor) = &anchor { progress.started = anchor.started; }
                 progress.quad = quad;
                 progress.width = rect.width;
                 progress.visible = true;
+                progress.elapsed_label = None;
+                let current = progress.current().max(0.0).floor() as u64;
+                if *show_times {
+                    let run = self.scene.text.len();
+                    let label = Rect { y: rect.y + self.scaled(7.0), height: self.text_line_height(12.0), ..rect };
+                    self.layout_text(&playback_time(current), Some(12.0), TextAlign::Start, Some(1), true, label);
+                    let elapsed_run = (self.scene.text.len() > run).then_some((run, current));
+                    self.layout_text(&playback_time(duration.max(0.0).floor() as u64), Some(12.0), TextAlign::End, Some(1), true, label);
+                    self.playback_progress.get_mut(&node.identity).unwrap().elapsed_label = elapsed_run;
+                }
                 if *seek && *duration > 0.0 {
-                    self.push_hit_region(Rect { y: rect.y - self.scaled(15.0), height: self.scaled(36.0), ..rect }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
+                    self.push_hit_region(Rect { y: bar.y - self.scaled(15.0), height: self.scaled(36.0), ..bar }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
                 }
             }
             NodeKind::Row { children, has_image, action, long_action } => {
@@ -3385,21 +3476,22 @@ impl Engine {
                 }
                 if let Some(action) = action { self.push_press_region(rect, action.clone(), long_action.clone()); }
             }
-            NodeKind::Screen {
-                children,
-                title,
-                centred,
-                footer,
-                pinned_header,
-                pinned_footer,
-                wide,
-                left_action,
-                right_action,
-                media_picker,
-                wait_for_images,
-                bottom_inset,
-                background,
-            } => {
+            NodeKind::Screen(screen) => {
+                let ScreenNode {
+                    children,
+                    title,
+                    centred,
+                    footer,
+                    pinned_header,
+                    pinned_footer,
+                    wide,
+                    left_action,
+                    right_action,
+                    media_picker,
+                    wait_for_images,
+                    bottom_inset,
+                    background,
+                } = screen.as_ref();
                 if let Some(colour) = background {
                     self.scene.quads.push(Quad {
                         rect, clip: self.clip, colour: self.scene.colour(*colour), scrolling: false,
@@ -3462,7 +3554,7 @@ impl Engine {
                     let line_height = self.text_line_height(size);
                     let mut offset = 0;
                     for (index, line) in lines.iter().enumerate() {
-                        let Some(relative) = text[offset..].find(line.text.as_ref()) else { break; };
+                        let Some(relative) = text[offset..].find(line.text.as_str()) else { break; };
                         let start = offset + relative;
                         let end = start + line.text.len();
                         let inset = match align { TextAlign::Centre => (rect.width - line.width) / 2.0, TextAlign::End => rect.width - line.width, _ => 0.0 };
@@ -4199,7 +4291,7 @@ impl Engine {
                     .filter(|end| *end > start)
                     .take_while(|end| self.text_width(&paragraph[start..*end], font_size) <= width)
                     .last()
-                    .unwrap_or_else(|| self.forced_text_break(paragraph, start, font_size, width, false));
+                    .unwrap_or_else(|| Self::forced_text_break(paragraph, start, font_size, width, false));
                 lines.push((offset + start, offset + end));
                 start = end;
             }
@@ -4732,7 +4824,7 @@ impl Engine {
         available_width: f32,
         max_lines: Option<u32>,
         tabular_numbers: bool,
-    ) -> Arc<[WrappedLine]> {
+    ) -> WrappedLines {
         self.wrap_linked_text(text, font_size, available_width, max_lines, tabular_numbers, &[])
     }
 
@@ -4744,7 +4836,7 @@ impl Engine {
         max_lines: Option<u32>,
         tabular_numbers: bool,
         links: &[(std::ops::Range<usize>, Action)],
-    ) -> Arc<[WrappedLine]> {
+    ) -> WrappedLines {
         self.wrap_inset_text(text, font_size, available_width, max_lines, tabular_numbers, links, 0.0)
     }
 
@@ -4757,7 +4849,7 @@ impl Engine {
         tabular_numbers: bool,
         links: &[(std::ops::Range<usize>, Action)],
         first_line_inset: f32,
-    ) -> Arc<[WrappedLine]> {
+    ) -> WrappedLines {
         let key = TextWrapKey {
             first_line_inset: first_line_inset.to_bits(),
             text: text.into(),
@@ -4767,9 +4859,25 @@ impl Engine {
             tabular_numbers,
             links: links.iter().map(|(range, _)| range.clone()).collect(),
         };
-        if let Some((lines, used)) = self.wrapped_text.get_mut(&key) {
-            *used = true;
-            return lines.clone();
+        let entry = match self.wrapped_text.entry(key) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let (lines, used) = entry.get_mut();
+                *used = true;
+                return lines.clone();
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => entry,
+        };
+        // Short labels that fit need no line-break candidates or truncation.
+        if text.len() <= 64 && links.is_empty() && !text.contains('\n') && max_lines != Some(0) {
+            let display = text.trim_end();
+            let width = text_width_with_numbers(display, font_size, tabular_numbers);
+            if width <= (available_width - first_line_inset).max(0.0) {
+                let lines = WrappedLines::Single(WrappedLine {
+                    text: display.into(), width, wrapped: false,
+                });
+                entry.insert((lines.clone(), true));
+                return lines;
+            }
         }
         let unbroken_links = links.iter().filter_map(|(range, _)| {
             (text_width_with_numbers(&text[range.clone()], font_size, tabular_numbers) <= available_width)
@@ -4821,7 +4929,7 @@ impl Engine {
                 }
 
                 let (end, display_end, width) = best.unwrap_or_else(|| {
-                    let end = self.forced_text_break(paragraph, start, font_size, available_width, tabular_numbers);
+                    let end = Self::forced_text_break(paragraph, start, font_size, available_width, tabular_numbers);
                     (end, end, text_width_with_numbers(&paragraph[start..end], font_size, tabular_numbers))
                 });
                 lines.push(WrappedLine {
@@ -4837,18 +4945,17 @@ impl Engine {
         {
             lines.truncate(max_lines);
             if let Some(line) = lines.last_mut() {
-                line.text = self.ellipsize_forced(&line.text, font_size, (available_width - if max_lines == 1 { first_line_inset } else { 0.0 }).max(0.0), tabular_numbers).into();
+                line.text = Self::ellipsize_forced(&line.text, font_size, (available_width - if max_lines == 1 { first_line_inset } else { 0.0 }).max(0.0), tabular_numbers).into();
                 line.width = text_width_with_numbers(&line.text, font_size, tabular_numbers);
                 line.wrapped = false;
             }
         }
-        let lines: Arc<[WrappedLine]> = lines.into();
-        self.wrapped_text.insert(key, (lines.clone(), true));
+        let lines: WrappedLines = lines.into();
+        entry.insert((lines.clone(), true));
         lines
     }
 
     fn forced_text_break(
-        &self,
         text: &str,
         start: usize,
         font_size: f32,
@@ -4913,12 +5020,12 @@ impl Engine {
         if self.text_width(text, font_size) <= available_width {
             return text.to_owned();
         }
-        self.ellipsize_forced(text, font_size, available_width, false)
+        Self::ellipsize_forced(text, font_size, available_width, false)
     }
 
-    fn ellipsize_forced(&self, text: &str, font_size: f32, available_width: f32, tabular_numbers: bool) -> String {
+    fn ellipsize_forced(text: &str, font_size: f32, available_width: f32, tabular_numbers: bool) -> String {
         let ellipsis = '…';
-        let ellipsis_width = self.text_width("…", font_size);
+        let ellipsis_width = text_width("…", font_size);
         let mut visible = text.to_owned();
         while !visible.is_empty()
             && text_width_with_numbers(&visible, font_size, tabular_numbers) + ellipsis_width > available_width
@@ -5039,7 +5146,7 @@ struct MeasuredSize {
 #[derive(Hash, PartialEq, Eq)]
 struct TextWrapKey {
     first_line_inset: u32,
-    text: String,
+    text: SmolStr,
     font_size: u32,
     width: u32,
     max_lines: Option<u32>,
@@ -5047,10 +5154,38 @@ struct TextWrapKey {
     links: Vec<std::ops::Range<usize>>,
 }
 
+#[derive(Clone)]
 struct WrappedLine {
-    text: Arc<str>,
+    text: SmolStr,
     width: f32,
     wrapped: bool,
+}
+
+#[derive(Clone)]
+enum WrappedLines {
+    Single(WrappedLine),
+    Multiple(Arc<[WrappedLine]>),
+}
+
+impl std::ops::Deref for WrappedLines {
+    type Target = [WrappedLine];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Single(line) => std::slice::from_ref(line),
+            Self::Multiple(lines) => lines,
+        }
+    }
+}
+
+impl From<Vec<WrappedLine>> for WrappedLines {
+    fn from(mut lines: Vec<WrappedLine>) -> Self {
+        if lines.len() == 1 {
+            Self::Single(lines.pop().unwrap())
+        } else {
+            Self::Multiple(lines.into())
+        }
+    }
 }
 
 fn trim_whitespace_end(text: &str, start: usize, end: usize) -> usize {

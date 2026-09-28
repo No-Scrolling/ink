@@ -6,6 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./renderer": "./src/renderer.ts",
+    "./view": "./src/view.ts",
+    "./internal/list": "./src/native-list.ts",
     "./native": "./src/native.ts",
     "./native/controller": "./src/controller.ts",
     "./assets": "./src/assets.ts",

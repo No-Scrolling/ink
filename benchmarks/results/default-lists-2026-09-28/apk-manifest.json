@@ -1,0 +1,31 @@
+{
+  "sourceSha256": "5a66f38cefc0c00033b0fc3058a424a790dd2a394a158b5cf770f17aeb123035",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "6da9cf08a1db9a11a27d73e4b2ff5378af86adbff2d6bbd05c71bf976b9353b7"
+  },
+  "revision": "2aed8a13d9d2205a31aaef21fefb908a0345a7ae",
+  "flags": {},
+  "signing": "generated Android development key",
+  "artifacts": {
+    "benchmarks/apps/ink-list": {
+      "file": "0-ink-list-benchmark-1.0.0-arm64.apk",
+      "sha256": "34b3bbf245d6b15083a6bb72620fd03c0d585b6fd0274f6d1f508e4deb7db63f",
+      "bytes": 3160728,
+      "package": "com.vandam.benchmark.ink.list",
+      "component": "com.vandam.benchmark.ink.list/com.vandam.ink.MainActivity"
+    },
+    "examples/light-template": {
+      "file": "1-ink-template-0.1.0-arm64.apk",
+      "sha256": "99f99e46b3fb79c96c6a0cffa4c55ae9849d79dd5331fe7a9c5ad457f1765f89",
+      "bytes": 33387923,
+      "package": "com.vandam.benchmark.ink.defaultlist.template",
+      "component": "com.vandam.benchmark.ink.defaultlist.template/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

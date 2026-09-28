@@ -64,6 +64,18 @@ impl HeightIndex {
         }
     }
 
+    fn invalidate(&mut self, row: usize) {
+        let Some(height) = self.measured[row].take() else { return; };
+        self.total -= f64::from(height);
+        self.count -= 1;
+        let mut node = row + 1;
+        while node < self.sums.len() {
+            self.sums[node] -= f64::from(height);
+            self.counts[node] -= 1;
+            node += node & node.wrapping_neg();
+        }
+    }
+
     fn prefix(&self, mut end: usize) -> (f64, usize) {
         let (mut sum, mut count) = (0.0, 0);
         while end > 0 {
@@ -76,6 +88,18 @@ impl HeightIndex {
 }
 
 impl ListMetrics {
+    pub fn patch(&mut self, previous_revision: u64, revision: u64, rows: &[usize]) {
+        if self.revision != previous_revision { return; }
+        for &row in rows {
+            for (width, index) in &mut self.widths {
+                self.heights.remove(&(self.keys[row].clone(), *width, self.versions[row]));
+                index.invalidate(row);
+            }
+            self.versions[row] = revision;
+        }
+        self.revision = revision;
+    }
+
     pub fn prepare(
         &mut self,
         keys: &[String],

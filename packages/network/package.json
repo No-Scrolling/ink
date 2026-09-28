@@ -8,7 +8,6 @@
     "./downloads": "./src/downloads.ts"
   },
   "dependencies": {
-    "base64-js": "1.5.1",
     "web-streams-polyfill": "4.3.0",
     "whatwg-url": "14.2.0",
     "@types/whatwg-url": "13.0.0"

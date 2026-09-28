@@ -1,0 +1,39 @@
+--- a/crates/ink-core/src/react.rs
++++ b/crates/ink-core/src/react.rs
+@@ -228,7 +228,12 @@
+         let structural = operations
+             .iter()
+             .any(|operation| !matches!(operation, Operation::Update { .. } | Operation::Text { .. }));
+-        let mut targets = FxHashSet::default();
++        let target_count = operations.iter().map(|operation| match operation {
++            Operation::Text { ids, .. } => ids.len(),
++            Operation::Update { .. } => 1,
++            _ => 0,
++        }).sum();
++        let mut targets = FxHashSet::with_capacity_and_hasher(target_count, Default::default());
+         let mut scroll_to_end = FxHashSet::default();
+         let mut dismiss_keyboard = FxHashSet::default();
+         let mut inputs_changed = structural;
+@@ -388,13 +393,17 @@
+     }
+ 
+     fn update_target(&self, mut id: usize) -> Result<usize> {
+-        if matches!(self.node(id)?.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
+-            id = self.node(id)?.parent.context("Canvas item requires a Canvas parent")?;
++        let mut node = self.node(id)?;
++        if matches!(node.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
++            id = node.parent.context("Canvas item requires a Canvas parent")?;
++            node = self.node(id)?;
+         }
+-        while matches!(self.node(id)?.kind, HostKind::RawText | HostKind::Text) {
+-            let Some(parent) = self.node(id)?.parent else { break; };
+-            if !matches!(self.node(parent)?.kind, HostKind::Text | HostKind::Button | HostKind::Field) { break; }
++        while matches!(node.kind, HostKind::RawText | HostKind::Text) {
++            let Some(parent) = node.parent else { break; };
++            let parent_node = self.node(parent)?;
++            if !matches!(parent_node.kind, HostKind::Text | HostKind::Button | HostKind::Field) { break; }
+             id = parent;
++            node = parent_node;
+         }
+         Ok(id)
+     }

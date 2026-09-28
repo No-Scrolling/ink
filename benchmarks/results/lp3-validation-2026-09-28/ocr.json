@@ -1,0 +1,434 @@
+[
+  {
+    "id": "probe-20260928-110211-9f38dda4",
+    "variant": "candidate",
+    "block": 0,
+    "warmup": true,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110639-4080c01f",
+      "status": "complete",
+      "cursor": "1790590000.0046651",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103407,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 15 updates",
+          "100",
+          "500",
+          "Resize on",
+          "000:15 001:16 002:17 003:18 004:19 005:20 006:21 007:22 008:23 009:24"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110639-4080c01f"
+    }
+  },
+  {
+    "id": "probe-20260928-110216-b52cc42d",
+    "variant": "candidate",
+    "block": 0,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110640-9c70c397",
+      "status": "complete",
+      "cursor": "1790590000.555747",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 105011,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 30 updates",
+          "500",
+          "Resize on",
+          "000:30 001:31 002:32 003:33 004:34 005:35 006:36 007:37 008:38 009:39"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110640-9c70c397"
+    }
+  },
+  {
+    "id": "probe-20260928-110221-29e92ef3",
+    "variant": "candidate",
+    "block": 0,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110640-66aa7575",
+      "status": "complete",
+      "cursor": "1790590001.111199",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103787,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 45 updates",
+          "500",
+          "Resize on",
+          "000:45 001:46 002:47 003:48 004:49 005:50 006:51 007:52 008:53 009:54"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110640-66aa7575"
+    }
+  },
+  {
+    "id": "probe-20260928-110232-76d2a8b6",
+    "variant": "baseline",
+    "block": 1,
+    "warmup": true,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110641-61afda03",
+      "status": "complete",
+      "cursor": "1790590001.659032",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103407,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 15 updates",
+          "100",
+          "500",
+          "Resize on",
+          "000:15 001:16 002:17 003:18 004:19 005:20 006:21 007:22 008:23 009:24"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110641-61afda03"
+    }
+  },
+  {
+    "id": "probe-20260928-110237-29bdf667",
+    "variant": "baseline",
+    "block": 1,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110641-5cfa5d3b",
+      "status": "complete",
+      "cursor": "1790590002.2013361",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 105011,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 30 updates",
+          "500",
+          "Resize on",
+          "000:30 001:31 002:32 003:33 004:34 005:35 006:36 007:37 008:38 009:39"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110641-5cfa5d3b"
+    }
+  },
+  {
+    "id": "probe-20260928-110242-de9dc525",
+    "variant": "baseline",
+    "block": 1,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110642-949732fb",
+      "status": "complete",
+      "cursor": "1790590002.7416089",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103787,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 45 updates",
+          "500",
+          "Resize on",
+          "000:45 001:46 002:47 003:48 004:49 005:50 006:51 007:52 008:53 009:54"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110642-949732fb"
+    }
+  },
+  {
+    "id": "probe-20260928-110252-71d0a49d",
+    "variant": "baseline",
+    "block": 2,
+    "warmup": true,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110642-75374448",
+      "status": "complete",
+      "cursor": "1790590003.290331",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103407,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 15 updates",
+          "100",
+          "500",
+          "Resize on",
+          "000:15 001:16 002:17 003:18 004:19 005:20 006:21 007:22 008:23 009:24"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110642-75374448"
+    }
+  },
+  {
+    "id": "probe-20260928-110257-7a34e42c",
+    "variant": "baseline",
+    "block": 2,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110643-0e2a1194",
+      "status": "complete",
+      "cursor": "1790590003.8232582",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 105011,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 30 updates",
+          "500",
+          "Resize on",
+          "000:30 001:31 002:32 003:33 004:34 005:35 006:36 007:37 008:38 009:39"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110643-0e2a1194"
+    }
+  },
+  {
+    "id": "probe-20260928-110302-d9268078",
+    "variant": "baseline",
+    "block": 2,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110643-02bb039c",
+      "status": "complete",
+      "cursor": "1790590004.3808131",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103787,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 45 updates",
+          "500",
+          "Resize on",
+          "000:45 001:46 002:47 003:48 004:49 005:50 006:51 007:52 008:53 009:54"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110643-02bb039c"
+    }
+  },
+  {
+    "id": "probe-20260928-110312-5f6652a6",
+    "variant": "candidate",
+    "block": 3,
+    "warmup": true,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110644-f8add7e3",
+      "status": "complete",
+      "cursor": "1790590004.9346821",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103407,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 15 updates",
+          "100",
+          "500",
+          "Resize on",
+          "000:15 001:16 002:17 003:18 004:19 005:20 006:21 007:22 008:23 009:24"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110644-f8add7e3"
+    }
+  },
+  {
+    "id": "probe-20260928-110317-2a46a2a9",
+    "variant": "candidate",
+    "block": 3,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110644-31015d8f",
+      "status": "complete",
+      "cursor": "1790590005.47193",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 105011,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 30 updates",
+          "500",
+          "Resize on",
+          "000:30 001:31 002:32 003:33 004:34 005:35 006:36 007:37 008:38 009:39"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110644-31015d8f"
+    }
+  },
+  {
+    "id": "probe-20260928-110322-a636d229",
+    "variant": "candidate",
+    "block": 3,
+    "warmup": false,
+    "count": 500,
+    "resize": true,
+    "screenshotOcr": {
+      "id": "image-20260928-110645-3a162a36",
+      "status": "complete",
+      "cursor": "1790590006.02351",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 103787,
+        "colouredPixels": 0,
+        "text": [
+          "Update benchmark",
+          "1",
+          "10",
+          "100",
+          "Reverse",
+          "Hide",
+          "500 cells \u2022 45 updates",
+          "500",
+          "Resize on",
+          "000:45 001:46 002:47 003:48 004:49 005:50 006:51 007:52 008:53 009:54"
+        ],
+        "textTruncated": true
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-110645-3a162a36"
+    }
+  }
+]

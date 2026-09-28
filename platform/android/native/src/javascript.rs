@@ -40,7 +40,6 @@ pub(super) struct ScriptRuntime {
 #[serde(rename_all = "camelCase")]
 struct JavaScriptMessage {
     r#type: String,
-    operations: Option<ReactCommit>,
     colour_scheme: Option<String>,
     level: Option<String>,
     message: Option<String>,
@@ -53,26 +52,26 @@ impl ScriptRuntime {
     }
 
     #[cfg(feature = "audio")]
-    pub(super) fn notify_controller(&self, id: u64, value: StateValue) -> Result<()> {
+    pub(super) fn notify_controller(&self, id: u64, value: Value) -> Result<()> {
         self.send(
-            serde_json::json!({ "type": "controller", "id": id, "value": state_json(value) })
+            serde_json::json!({ "type": "controller", "id": id, "value": value })
                 .to_string(),
         )
     }
 
     pub(super) fn send(&self, message: String) -> Result<()> {
-        self.runtime.send(message)
+        self.runtime.send(self.tree.route_native_message(message)?)
     }
 
-    pub(super) fn notify_inputs(&mut self, engine: &Engine) -> Result<()> {
+    pub(super) fn notify_inputs(&mut self, engine: &mut Engine) -> Result<()> {
         for event in self.tree.input_events(engine) {
             self.send(event.to_string())?;
         }
         self.notify_viewports(engine)
     }
 
-    fn notify_viewports(&mut self, engine: &Engine) -> Result<()> {
-        for event in self.tree.viewport_events(engine) {
+    fn notify_viewports(&mut self, engine: &mut Engine) -> Result<()> {
+        for event in self.tree.viewport_events(engine)? {
             let id = event["id"].as_u64().expect("viewport event has a list ID");
             self.runtime.send_latest(id, event.to_string())?;
         }
@@ -97,6 +96,25 @@ impl ScriptRuntime {
         Ok(changed)
     }
 
+    fn apply(&mut self, commit: ReactCommit, engine: &mut Engine) -> Result<()> {
+        #[cfg(feature = "bridge-timing")]
+        android_log(
+            ANDROID_LOG_INFO,
+            &format!("ReactApply ns={}", super::benchmark_time_ns()),
+        );
+        self.tree.apply(commit, engine)?;
+        #[cfg(feature = "bridge-timing")]
+        android_log(
+            ANDROID_LOG_INFO,
+            &format!(
+                "ReactCommit scene={} ns={}",
+                engine.scene().revision,
+                super::benchmark_time_ns(),
+            ),
+        );
+        Ok(())
+    }
+
     fn drain(&mut self, engine: &mut Engine) -> Result<bool> {
         let mut changed = false;
         for _ in 0..256 {
@@ -107,12 +125,20 @@ impl ScriptRuntime {
                 Event::Ready => android_log(ANDROID_LOG_INFO, "JavaScript app ready"),
                 Event::Stopped => {}
                 Event::Error(message) => bail!(message),
+                Event::Commit(commit) => {
+                    #[cfg(feature = "bridge-timing")]
+                    {
+                        let now = super::benchmark_time_ns();
+                        android_log(
+                            ANDROID_LOG_INFO,
+                            &format!("ReactDecode bytes=0 ns={now} end_ns={now}"),
+                        );
+                    }
+                    self.apply(commit, engine)?;
+                    changed = true;
+                }
                 Event::Message(message) => {
-                    #[cfg(feature = "bridge-timing")]
-                    let decode_started = super::benchmark_time_ns();
                     let decoded: JavaScriptMessage = serde_json::from_slice(message.as_bytes())?;
-                    #[cfg(feature = "bridge-timing")]
-                    let decode_finished = super::benchmark_time_ns();
                     match decoded.r#type.as_str() {
                         "call" | "cancel" => self.calls.push(message),
                         "appearance" => {
@@ -122,35 +148,6 @@ impl ScriptRuntime {
                                 _ => bail!("invalid colour scheme"),
                             };
                             changed |= engine.set_colour_scheme(light);
-                        }
-                        "commit" => {
-                            #[cfg(feature = "bridge-timing")]
-                            android_log(
-                                ANDROID_LOG_INFO,
-                                &format!(
-                                    "ReactDecode bytes={} ns={} end_ns={}",
-                                    message.len(), decode_started, decode_finished,
-                                ),
-                            );
-                            #[cfg(feature = "bridge-timing")]
-                            android_log(
-                                ANDROID_LOG_INFO,
-                                &format!("ReactApply ns={}", super::benchmark_time_ns()),
-                            );
-                            self.tree.apply(
-                                decoded.operations.context("React commit requires operations")?,
-                                engine,
-                            )?;
-                            #[cfg(feature = "bridge-timing")]
-                            android_log(
-                                ANDROID_LOG_INFO,
-                                &format!(
-                                    "ReactCommit scene={} ns={}",
-                                    engine.scene().revision,
-                                    super::benchmark_time_ns(),
-                                ),
-                            );
-                            changed = true;
                         }
                         "log" => android_log(
                             if decoded.level.as_deref() == Some("error") {
@@ -174,7 +171,7 @@ impl ScriptRuntime {
 }
 
 #[cfg(feature = "audio")]
-fn state_json(value: StateValue) -> Value {
+pub(super) fn state_json(value: StateValue) -> Value {
     match value {
         StateValue::Null => Value::Null,
         StateValue::Number(value) => Value::from(value),
@@ -371,4 +368,54 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRefreshJavaScript(
     let Some(engine) = engine(handle) else { return false as jboolean; };
     let Ok(engine) = engine.lock() else { return false as jboolean; };
     engine.script.as_ref().is_some_and(|script| script.runtime.evaluate_development(source).is_ok()) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptBytes<'local>(
+    mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong, id: jlong,
+) -> JByteArray<'local> {
+    let bytes = engine(handle).and_then(|engine| engine.lock().ok()).and_then(|engine| engine.script.as_ref().and_then(|script| script.runtime.take_bytes(id as u64)));
+    match bytes {
+        Some(bytes) => env.with_env(|env| env.byte_array_from_slice(&bytes)).resolve::<jni::errors::LogErrorAndDefault>(),
+        None => JByteArray::default(),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceiveBytes(
+    mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, message: JString<'_>, bytes: JByteArray<'_>,
+) -> jboolean {
+    let (message, bytes) = env.with_env(|env| -> jni::errors::Result<_> {
+        Ok((message.try_to_string(env)?, env.convert_byte_array(&bytes)?))
+    }).resolve::<jni::errors::LogErrorAndDefault>();
+    (engine(handle).and_then(|engine| engine.lock().ok()).is_some_and(|engine| engine.script.as_ref().is_some_and(|script| script.runtime.send_bytes(message, bytes).is_ok()))) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCaptureState(
+    mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong, value: JString<'_>,
+) -> jboolean {
+    let value = env.with_env(|env| value.try_to_string(env)).resolve::<jni::errors::LogErrorAndDefault>();
+    engine(handle).and_then(|engine| engine.lock().ok()).is_some_and(|mut engine| {
+        if value.is_empty() { engine.engine.remove_capture_state(controller as u64); return false; }
+        serde_json::from_str(&value).ok().is_some_and(|value| engine.engine.update_capture_state(controller as u64, &value))
+    }) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePlaybackClock(
+    _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong,
+    position: f32, duration: f32, playing: jboolean, speed: f32,
+) -> jboolean {
+    engine(handle).and_then(|engine| engine.lock().ok()).is_some_and(|mut engine|
+        engine.engine.update_playback_clock(controller as u64, position, duration, playing, speed)) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRemovePlaybackClock(
+    _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong,
+) {
+    if let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) {
+        engine.engine.remove_playback_clock(controller as u64);
+    }
 }

@@ -55,6 +55,11 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
                     }
                     "call" -> {
                         val id = event.getLong("id")
+                        val bytes = if (event.optBoolean("binary")) nativeTakeJavaScriptBytes(runtime, id) else null
+                        if (event.optBoolean("binary") && bytes == null) {
+                            reply(runtime, id, NativeResult.Failure(NativeErrorKind.PROTOCOL, "Missing binary request data", false))
+                            continue
+                        }
                         val operation = event.getString("operation")
                         val module = event.getString("module")
                         val adapter = when (module) {
@@ -79,8 +84,9 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
                             continue
                         }
                         requests.execute(id, event.optLong("timeoutMs", 30_000), { adapter.cancel(id) }) { complete ->
-                            adapter.execute(id, if (module == "permissions") "permission-status" else operation,
-                                (event.opt("payload") ?: JSONObject.NULL).toString(), complete)
+                            val payload = (event.opt("payload") ?: JSONObject.NULL).toString()
+                            if (bytes != null) adapter.executeBytes(id, operation, payload, bytes, complete)
+                            else adapter.execute(id, if (module == "permissions") "permission-status" else operation, payload, complete)
                         }
                     }
                     else -> error("Unknown background JavaScript message")
@@ -101,7 +107,7 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
 
     private fun reply(runtime: Long, id: Long, result: NativeResult) {
         val message = javascriptResult(id, result)
-        if (runtime > 0 && handle.get() == runtime && !nativeReceive(runtime, message)) {
+        if (runtime > 0 && handle.get() == runtime && !(if (result is NativeResult.Binary) nativeJavaScriptReceiveBytes(runtime, message, result.bytes) else nativeReceive(runtime, message))) {
             Log.e("InkWorker", "Could not deliver native result to worker")
             close()
         }
@@ -125,6 +131,8 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
         init { System.loadLibrary("ink_android") }
         @JvmStatic private external fun nativeStart(source: String): Long
         @JvmStatic private external fun nativeNext(handle: Long): String
+        @JvmStatic private external fun nativeTakeJavaScriptBytes(handle: Long, id: Long): ByteArray?
+        @JvmStatic private external fun nativeJavaScriptReceiveBytes(handle: Long, message: String, bytes: ByteArray): Boolean
         @JvmStatic private external fun nativeReceive(handle: Long, message: String): Boolean
         @JvmStatic private external fun nativeStop(handle: Long)
     }

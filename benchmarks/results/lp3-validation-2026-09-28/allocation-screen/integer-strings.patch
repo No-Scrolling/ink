@@ -1,0 +1,38 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -335,6 +335,7 @@
+ } JSClass;
+ 
+ struct JSRuntime {
++    JSValue ink_integer_strings[1024];
+     JSMallocFunctions mf;
+     JSMallocState malloc_state;
+     JSArenaState arena_state;
+@@ -2638,6 +2639,9 @@
+ 
+ void JS_FreeRuntime(JSRuntime *rt)
+ {
++    for (unsigned i = 0; i < 1024; i++)
++        JS_FreeValueRT(rt, rt->ink_integer_strings[i]);
++
+     struct list_head *el, *el1;
+     bool leak = false;
+     int i;
+@@ -14603,6 +14607,17 @@
+     case JS_TAG_STRING_ROPE:
+         return js_linearize_string_rope(ctx, val);
+     case JS_TAG_INT:
++        if ((uint32_t)JS_VALUE_GET_INT(val) < 1024) {
++            JSValue *cached = &ctx->rt->ink_integer_strings[JS_VALUE_GET_INT(val)];
++            if (JS_IsString(*cached))
++                return js_dup(*cached);
++            len = i32toa(buf, JS_VALUE_GET_INT(val));
++            JSValue text = js_new_string8_len(ctx, buf, len);
++            if (JS_IsException(text))
++                return text;
++            *cached = text;
++            return js_dup(text);
++        }
+         len = i32toa(buf, JS_VALUE_GET_INT(val));
+         return js_new_string8_len(ctx, buf, len);
+     case JS_TAG_BOOL:

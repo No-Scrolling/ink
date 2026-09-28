@@ -1,6 +1,8 @@
 /// <reference path="./assets.d.ts" />
 import type { IconAsset } from "./assets";
 import type { ReactNode } from "react";
+import type {} from "react/jsx-runtime";
+import type {} from "react/jsx-dev-runtime";
 import { createElement } from "./react";
 import { navigate, type Destination } from "./navigation";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
@@ -58,6 +60,19 @@ declare module "react" {
       Text: TextProps;
       Stack: StackProps;
     }
+  }
+}
+
+// The automatic JSX runtime can resolve a different React type instance in linked apps.
+declare module "react/jsx-runtime" {
+  namespace JSX {
+    interface IntrinsicElements { Text: TextProps; Stack: StackProps; }
+  }
+}
+
+declare module "react/jsx-dev-runtime" {
+  namespace JSX {
+    interface IntrinsicElements { Text: TextProps; Stack: StackProps; }
   }
 }
 
@@ -119,7 +134,7 @@ export {
 } from "./patterns";
 
 export { findIcon, type IconAsset } from "./assets";
-export { PlayingScreen, type PlayingScreenProps } from "./playing";
+export { PlayingScreen, type PlayingScreenProps, type Playback } from "./playing";
 export { ConversationScreen, Message, type ConversationScreenProps, type ConversationMessage, type MessageProps, type MessageAction, type ReplyPreview } from "./conversation";
 export { openURL, share } from "./external";
 export { LinkPreview, type LinkPreviewData, type LinkPreviewProps } from "./link-preview";

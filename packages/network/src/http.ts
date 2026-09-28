@@ -1,8 +1,7 @@
-import { fromByteArray, toByteArray } from "base64-js";
 import { ReadableStream } from "web-streams-polyfill";
-import { callNative, NativeError } from "ink/native";
+import { callNative, callNativeBytes, NativeError } from "ink/native";
 
-interface HttpRequest { url: string; method: string; headers: Readonly<Record<string, string>>; nativeParts?: Iterable<{ bytes: string } | { src: string; offset: number; size: number }> }
+interface HttpRequest { url: string; method: string; headers: Readonly<Record<string, string>>; nativeParts?: Iterable<{ bytes: Uint8Array } | { src: string; offset: number; size: number }> }
 interface HttpResponse { status: number; statusText: string; url: string; headers: [string, string][]; body: ReadableStream<Uint8Array> | null }
 
 export async function requestHttp(request: HttpRequest, body: ReadableStream<Uint8Array> | null, signal: AbortSignal): Promise<HttpResponse> {
@@ -13,7 +12,7 @@ export async function requestHttp(request: HttpRequest, body: ReadableStream<Uin
     try {
       if (request.nativeParts) {
         for (const part of request.nativeParts) {
-          if ("bytes" in part) await callNative("network", "stream-upload-write", { upload, bytes: part.bytes }, { signal });
+          if ("bytes" in part) await callNativeBytes("network", "stream-upload-write", { upload }, { signal, bytes: part.bytes });
           else for (let offset = 0; offset < part.size; offset += 32768) {
             await callNative("network", "stream-upload-file", { upload, src: part.src, offset: part.offset + offset, size: Math.min(32768, part.size - offset) }, { signal });
           }
@@ -24,7 +23,7 @@ export async function requestHttp(request: HttpRequest, body: ReadableStream<Uin
           if (done) break;
           if (!(value instanceof Uint8Array)) throw new TypeError("Upload streams must contain Uint8Array chunks");
           for (let offset = 0; offset < value.length; offset += 32 * 1024) {
-            await callNative("network", "stream-upload-write", { upload, bytes: fromByteArray(value.subarray(offset, offset + 32 * 1024)) }, { signal });
+            await callNativeBytes("network", "stream-upload-write", { upload }, { signal, bytes: value.subarray(offset, offset + 32 * 1024) });
           }
         }
       }
@@ -67,11 +66,11 @@ export async function requestHttp(request: HttpRequest, body: ReadableStream<Uin
     },
     async pull(controller) {
       try {
-        const chunk: unknown = JSON.parse(await callNative("network", "stream-read", { stream }, { signal }));
-        if (typeof chunk !== "object" || chunk === null || !("done" in chunk) || typeof chunk.done !== "boolean"
-          || !("bytes" in chunk) || typeof chunk.bytes !== "string") throw new NativeError("protocol", "Invalid HTTP stream chunk");
+        const result = await callNativeBytes("network", "stream-read-bytes", { stream }, { signal });
+        const chunk: unknown = JSON.parse(result.value);
+        if (typeof chunk !== "object" || chunk === null || !("done" in chunk) || typeof chunk.done !== "boolean") throw new NativeError("protocol", "Invalid HTTP stream chunk");
         if (chunk.done) { await close(); controller.close(); }
-        else controller.enqueue(toByteArray(chunk.bytes));
+        else controller.enqueue(result.bytes);
       } catch (error) { await close().catch(() => {}); controller.error(error); }
     },
     cancel: close,

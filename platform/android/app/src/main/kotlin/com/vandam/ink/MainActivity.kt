@@ -387,6 +387,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 "maps" -> mapsAdapter.executeController(0, -controller, "deactivate", "{}", complete)
                 "video" -> videoAdapter.executeController(0, -controller, "deactivate", "{}", complete)
                 "downloads" -> downloadsAdapter.executeController(-controller, "deactivate", "{}", complete)
+                else -> (appNativeAdapters[module] as? NativeControllerAdapter)?.executeController(-controller, "deactivate", "{}", complete)
             }
         }
         javascriptControllers.clear()
@@ -402,6 +403,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val id = call.getLong("id")
         if (call.getString("type") == "cancel") {
             javascriptRequests.cancel(id)
+            return
+        }
+        val bytes = if (call.optBoolean("binary")) nativeTakeJavaScriptBytes(engineHandle, id) else null
+        if (call.optBoolean("binary") && bytes == null) {
+            sendJavaScriptResult(id, NativeResult.Failure(NativeErrorKind.PROTOCOL, "Missing binary request data", false))
             return
         }
         val module = call.getString("module")
@@ -462,15 +468,33 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                         if (operation == OPEN_OPERATION) openCameraController(-id, -controller, payload, finish)
                         else cameraAdapter.executeController(-id, -controller, operation, payload, finish)
                     }
-                    else -> finish(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Unsupported controller module: $module", false))
+                    else -> if (adapter is NativeControllerAdapter) adapter.executeController(-controller, operation, payload, finish)
+                        else finish(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Unsupported controller module: $module", false))
                 }
             } else {
-                adapter.execute(-id, operation, payload, complete)
+                if (bytes != null) adapter.executeBytes(-id, operation, payload, bytes, complete)
+                else adapter.execute(-id, operation, payload, complete)
             }
         }
     }
 
-    private fun updateController(controller: Long, value: String) {
+    internal fun updatePlaybackClock(controller: Long, position: Long, duration: Long, playing: Boolean, speed: Float) {
+        if (engineHandle != 0L && nativePlaybackClock(engineHandle, controller, position / 1000f, duration / 1000f, playing, speed)) inkView.requestFrame()
+    }
+
+    internal fun removePlaybackClock(controller: Long) {
+        if (engineHandle != 0L) nativeRemovePlaybackClock(engineHandle, controller)
+    }
+
+    internal fun updateCaptureState(controller: Long, value: String) {
+        if (engineHandle != 0L && nativeCaptureState(engineHandle, -controller, value)) inkView.requestFrame()
+    }
+
+    internal fun removeCaptureState(controller: Long) {
+        if (engineHandle != 0L) nativeCaptureState(engineHandle, -controller, "")
+    }
+
+    internal fun updateController(controller: Long, value: String) {
         runOnUiThread {
             if (engineHandle != 0L && javascriptControllers.containsKey(-controller)) {
                 val event = JSONObject().put("type", "controller").put("id", -controller)
@@ -487,7 +511,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun sendJavaScriptResult(id: Long, result: NativeResult) {
         if (engineHandle == 0L) return
-        nativeJavaScriptReceive(engineHandle, javascriptResult(id, result))
+        val message = javascriptResult(id, result)
+        if (result is NativeResult.Binary) {
+            if (!nativeJavaScriptReceiveBytes(engineHandle, message, result.bytes)) Log.e("Ink", "Could not deliver native binary result")
+        } else nativeJavaScriptReceive(engineHandle, message)
     }
 
     fun onJavaScriptReady() {
@@ -979,7 +1006,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         logResource("$outcome $requestId $label ${elapsed}ms")
         val changed = when (result) {
-            is NativeResult.Success, is NativeResult.Bytes -> nativeCompleteAction(engineHandle, requestId)
+            is NativeResult.Success, is NativeResult.Bytes, is NativeResult.Binary -> nativeCompleteAction(engineHandle, requestId)
             is NativeResult.Pixels -> nativeCompletePixels(engineHandle, requestId, result.width, result.height, result.rgba)
             is NativeResult.File -> {
                 completeImage(requestId, result)
@@ -1415,6 +1442,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 !nativeHasSceneAnimations(engineHandle)
 
         private fun presentFrame() {
+            // Native-only scrolling can queue image loads without a touch or React commit.
+            drainNativeRequests()
+            if (textInputAdapter.hasEditor) syncTextInput()
             if (BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FrameStart ns=${System.nanoTime()}")
             renderFrame()
             postFrame()
@@ -1520,6 +1550,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         @JvmStatic
         private external fun nativeTakeJavaScriptCalls(handle: Long): String
+
+        @JvmStatic
+        private external fun nativeTakeJavaScriptBytes(handle: Long, id: Long): ByteArray?
+
+        @JvmStatic
+        private external fun nativeJavaScriptReceiveBytes(handle: Long, message: String, bytes: ByteArray): Boolean
+
+        @JvmStatic
+        private external fun nativePlaybackClock(handle: Long, controller: Long, position: Float, duration: Float, playing: Boolean, speed: Float): Boolean
+        @JvmStatic
+        private external fun nativeCaptureState(handle: Long, controller: Long, value: String): Boolean
+
+        @JvmStatic
+        private external fun nativeRemovePlaybackClock(handle: Long, controller: Long)
 
         @JvmStatic
         private external fun nativeJavaScriptReceive(handle: Long, message: String)

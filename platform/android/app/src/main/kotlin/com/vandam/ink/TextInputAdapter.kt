@@ -7,6 +7,7 @@ internal sealed interface TextEdit {
 }
 
 internal interface TextInputAdapter {
+    val hasEditor: Boolean get() = false
     fun sync(active: Boolean, action: Int, numeric: Boolean)
     fun setLightAppearance(light: Boolean)
     fun dismiss(): Boolean

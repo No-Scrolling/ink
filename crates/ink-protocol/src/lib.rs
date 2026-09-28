@@ -1,0 +1,95 @@
+pub use smol_str::SmolStr;
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value as Json};
+
+#[derive(Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct ReactCommit(pub Vec<Operation>);
+
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum Operation {
+    Create {
+        id: usize,
+        r#type: HostKind,
+        props: Map<String, Json>,
+    },
+    Update {
+        id: usize,
+        props: Map<String, Json>,
+    },
+    Insert {
+        id: usize,
+        parent: usize,
+        before: Option<usize>,
+    },
+    Remove {
+        id: usize,
+        parent: usize,
+    },
+    Text {
+        ids: Vec<usize>,
+        values: Vec<SmolStr>,
+    },
+    Hidden {
+        id: usize,
+        value: bool,
+    },
+    Values {
+        view: usize,
+        values: Vec<(usize, Json)>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum HostKind {
+    #[default]
+    #[serde(skip)]
+    Root,
+    #[serde(rename = "#text")]
+    RawText,
+    NativeView,
+    NativeList,
+    PlayingScreen,
+    List,
+    Navigator,
+    Tab,
+    Tabs,
+    Confirmation,
+    Screen,
+    ScreenState,
+    Stack,
+    Canvas,
+    CanvasRectangle,
+    CanvasText,
+    CanvasIcon,
+    Text,
+    TextInput,
+    Barcode,
+    CameraPreview,
+    MapView,
+    VideoView,
+    MediaPickerScreen,
+    MediaGridRow,
+    MediaCell,
+    Image,
+    Icon,
+    Toggle,
+    Button,
+    Field,
+    Row,
+    RowTitle,
+    Message,
+    MessageContent,
+    MessageQuote,
+    LinkPreview,
+    ConversationComposer,
+    PlayingLayout,
+    PlayingTransport,
+    Pressable,
+    PlayingProgress,
+    PlayingLabel,
+    PitchIndicator,
+    CaptureReadout,
+}

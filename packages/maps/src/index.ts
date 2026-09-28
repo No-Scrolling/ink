@@ -6,6 +6,15 @@ import { attachNativeController } from "ink/native/controller";
 export interface Coordinate { latitude: number; longitude: number }
 export interface MapCamera { centre: Coordinate; zoom: number }
 export interface MapMarker extends Coordinate { id: string; label?: string }
+type MapUpdate = { styleURL: string; colourScheme: string; markers: MapMarker[] };
+function sameUpdate(previous: MapUpdate, next: MapUpdate) {
+  return previous.styleURL === next.styleURL && previous.colourScheme === next.colourScheme
+    && previous.markers.length === next.markers.length && previous.markers.every((marker, index) => {
+      const other = next.markers[index];
+      return marker.id === other.id && marker.latitude === other.latitude && marker.longitude === other.longitude
+        && marker.label === other.label;
+    });
+}
 type Attachment = ReturnType<typeof attachNativeController>;
 const attachmentKey = Symbol("map attachment");
 export interface MapController {
@@ -58,19 +67,22 @@ export function MapView({ styleURL: customStyleURL, initialCentre, initialZoom =
   const [error, setError] = useState<Error | null>(null);
   if (!styleURL.startsWith("https://")) throw new TypeError("Map styleURL must use HTTPS");
   const ids = new Set<string>();
-  const update = JSON.stringify({ styleURL, colourScheme, markers: markers.map(marker => {
+  const nextUpdate = { styleURL, colourScheme, markers: markers.map(marker => {
     if (!marker.id || ids.has(marker.id)) throw new TypeError("Map markers require unique non-empty IDs");
     ids.add(marker.id);
     return { id: marker.id, ...coordinate(marker), ...(marker.label === undefined ? {} : { label: marker.label }) };
-  }) });
-  const latestUpdate = useRef(update);
-  latestUpdate.current = update;
+  }) };
+  const latestUpdate = useRef(nextUpdate);
+  if (!sameUpdate(latestUpdate.current, nextUpdate)) latestUpdate.current = nextUpdate;
+  const update = latestUpdate.current;
+  const sent = useRef<MapUpdate | null>(null);
   useEffect(() => {
     if (mapController[attachmentKey].current) throw new Error("A map controller can only belong to one MapView");
     setError(null);
     setId(null);
     let active = true;
-    const attachment = attachNativeController("maps", { ...initial.current, ...JSON.parse(latestUpdate.current) }, value => {
+    sent.current = latestUpdate.current;
+    const attachment = attachNativeController("maps", { ...initial.current, ...latestUpdate.current }, value => {
       if (!active) return;
       if (typeof value !== "object" || value === null || !("type" in value)) {
         setError(new NativeError("protocol", "Invalid map event"));
@@ -102,7 +114,10 @@ export function MapView({ styleURL: customStyleURL, initialCentre, initialZoom =
   useEffect(() => {
     let active = true;
     const attachment = mapController[attachmentKey].current;
-    if (attachment) void attachment.call("update", JSON.parse(update)).catch(failure => { if (active) setError(failure); });
+    if (attachment && sent.current !== update) {
+      sent.current = update;
+      void attachment.call("update", update).catch(failure => { if (active) setError(failure); });
+    }
     return () => { active = false; };
   }, [mapController, update]);
   if (error) return createElement(Field, { label: "Map" }, error.message);

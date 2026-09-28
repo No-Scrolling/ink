@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="index" value="1" />
+    <long name="position" value="4999" />
+    <boolean name="shuffle" value="true" />
+    <int name="repeat" value="2" />
+</map>

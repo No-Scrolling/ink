@@ -1,0 +1,8 @@
+Emulator 36.6.11 crashed during synthetic audio injection.
+{'codes': '0x0000000000000001, 0x0000000000000058', 'rawCodes': [1, 88], 'type': 'EXC_BAD_ACCESS', 'signal': 'SIGSEGV', 'subtype': 'KERN_INVALID_ADDRESS at 0x0000000000000058'}
+audio_forwarder_enable
+android::qemu::QemuAudioInputEngine::start(android::emulation::AudioCapturer*)
+android::emulation::control::QemuAudioInputStream::QemuAudioInputStream(android::emulation::control::AudioFormat, std::__1::chrono::duration<long long, std::__1::ratio<1l, 1000l>>, std::__1::chrono::duration<long long, std::__1::ratio<1l, 1000l>>)
+android::emulation::control::EmulatorControllerImpl::injectAudio(grpc::ServerContext*, grpc::ServerReader<android::emulation::control::AudioPacket>*, google::protobuf::Empty*)
+grpc::internal::ClientStreamingHandler<android::emulation::control::EmulatorController::Service, android::emulation::control::AudioPacket, google::protobuf::Empty>::RunHandler(grpc::internal::MethodHandler::HandlerParameter const&)
+grpc::Server::SyncRequest::ContinueRunAfterInterception()

@@ -94,7 +94,7 @@ private class AudioSessionPlayback(
     private val handler = Handler(Looper.getMainLooper())
     private val progress = object : Runnable {
         override fun run() {
-            publish()
+            updateClocks()
             if (player?.isPlaying == true) {
                 handler.postDelayed(this, PROGRESS_INTERVAL_MS)
             }
@@ -141,6 +141,9 @@ private class AudioSessionPlayback(
         return runCatching {
             val body = JSONObject(payload.ifEmpty { "{}" })
             when (operation) {
+                "getState" -> return NativeResult.Success(snapshot().toString())
+                "seekBy" -> seekBy(body.getLong("value"))
+                "replaceSource" -> replaceSource(body)
                 "play" -> {
                     body.optJSONObject("item")?.let { setQueue(listOf(Item.from(it)), 0) }
                     dispatch(::startPlayback)
@@ -220,6 +223,7 @@ private class AudioSessionPlayback(
             return
         }
         controllers.remove(controller)
+        activity.removePlaybackClock(-controller)
         if (controllers.isEmpty()) release()
     }
 
@@ -247,7 +251,7 @@ private class AudioSessionPlayback(
     override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) = publish()
 
     override fun onEvents(player: Player, events: Player.Events) {
-        if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED)) publish()
+        if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED, Player.EVENT_POSITION_DISCONTINUITY)) publish()
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -393,6 +397,30 @@ private class AudioSessionPlayback(
         }
     }
 
+    private fun replaceSource(body: JSONObject) {
+        require(!body.has("position") || !body.has("offset")) { "Choose a position or an offset" }
+        dispatch { player ->
+            val current = requireNotNull(player.currentMediaItem) { "No current audio item" }
+            require(current.mediaId == body.getString("id")) { "The current audio item has changed" }
+            val metadata = current.mediaMetadata
+            val duration = player.duration.validTime().takeIf { it > 0 } ?: metadata.durationMs ?: 0
+            val position = if (body.has("position")) body.getDouble("position").also {
+                require(it.isFinite() && it >= 0) { "Audio position must be non-negative milliseconds" }
+            }.toLong() else player.currentPosition + body.optLong("offset", 0)
+            val replacement = Item(current.mediaId, body.getString("src"), metadata.title?.toString().orEmpty(),
+                metadata.artist?.toString().orEmpty(), metadata.albumTitle?.toString().orEmpty(),
+                metadata.artworkUri?.toString().orEmpty(), duration.takeIf { it > 0 }).mediaItem(activity)
+            val index = player.currentMediaItemIndex
+            val prepare = body.optBoolean("prepare", true)
+            val playWhenReady = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+            if (!prepare) { player.pause(); player.stop() }
+            player.replaceMediaItem(index, replacement)
+            player.seekTo(index, position.coerceIn(0, duration.takeIf { it > 0 } ?: Long.MAX_VALUE))
+            if (prepare && player.playbackState == Player.STATE_IDLE) player.prepare()
+            player.playWhenReady = prepare && playWhenReady
+        }
+    }
+
     private fun clear() {
         failure = null
         dispatch { player ->
@@ -410,8 +438,22 @@ private class AudioSessionPlayback(
         }
     }
 
+    private fun updateClocks() {
+        if (controllers.isEmpty()) return
+        val player = player
+        val duration = player?.duration?.validTime()?.takeIf { it > 0 } ?: player?.currentMediaItem?.mediaMetadata?.durationMs ?: 0
+        controllers.forEach { activity.updatePlaybackClock(-it, player?.currentPosition?.coerceAtLeast(0) ?: 0,
+            duration, player?.isPlaying == true, player?.playbackParameters?.speed ?: 1f) }
+    }
+
     private fun publish() {
         if (controllers.isEmpty()) return
+        updateClocks()
+        val encoded = snapshot().toString()
+        controllers.forEach { updateController(it, encoded) }
+    }
+
+    private fun snapshot(): JSONObject {
         val player = player
         val mediaItem = player?.currentMediaItem
         val metadata = mediaItem?.mediaMetadata
@@ -420,7 +462,7 @@ private class AudioSessionPlayback(
             ?.currentMediaItemIndex
             ?.takeIf { it >= 0 }
             ?: -1
-        val state = JSONObject()
+        return JSONObject()
             .put("ready", !detached || player != null)
             .put("status", status(player))
             .put("loading", player?.playbackState == Player.STATE_BUFFERING && when (player) {
@@ -454,8 +496,6 @@ private class AudioSessionPlayback(
                     failure?.retryable ?: false,
                 ),
             )
-        val encoded = state.toString()
-        controllers.forEach { updateController(it, encoded) }
     }
 
     private fun status(player: Player?): String = when {
@@ -469,6 +509,7 @@ private class AudioSessionPlayback(
     }
 
     private fun release() {
+        controllers.forEach { activity.removePlaybackClock(-it) }
         handler.removeCallbacks(progress)
         pending.clear()
         connection?.let(MediaController::releaseFuture)

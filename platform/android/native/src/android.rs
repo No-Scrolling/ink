@@ -165,7 +165,7 @@ impl AndroidEngine {
 
     fn notify_layout_inputs(&mut self) {
         if let Some(script) = &mut self.script
-            && let Err(error) = script.notify_inputs(&self.engine)
+            && let Err(error) = script.notify_inputs(&mut self.engine)
         {
             android_log(
                 ANDROID_LOG_ERROR,
@@ -201,7 +201,7 @@ impl AndroidEngine {
         };
         if outcome.changed
             && let Some(script) = &mut self.script
-            && let Err(error) = script.notify_inputs(&self.engine)
+            && let Err(error) = script.notify_inputs(&mut self.engine)
         {
             android_log(
                 ANDROID_LOG_ERROR,
@@ -248,7 +248,7 @@ impl AndroidEngine {
         let changed = self.engine.scroll_by(delta);
         if changed
             && let Some(script) = &mut self.script
-            && let Err(error) = script.notify_inputs(&self.engine)
+            && let Err(error) = script.notify_inputs(&mut self.engine)
         {
             android_log(
                 ANDROID_LOG_ERROR,
@@ -283,17 +283,20 @@ impl AndroidEngine {
     #[cfg(feature = "audio")]
     fn process_audio(&mut self, samples: &[i16], sample_rate: u32) -> bool {
         self.audio
-            .process(samples, sample_rate, |controller, value| {
-                if let Some(script) = &self.script
+            .process(samples, sample_rate, |controller, value, notify| {
+                let id = (controller.index() as i64).unsigned_abs();
+                let value = javascript::state_json(value);
+                let changed = self.engine.update_capture_state(id, &value);
+                if notify && let Some(script) = &self.script
                     && let Err(error) =
-                        script.notify_controller((controller.index() as i64).unsigned_abs(), value)
+                        script.notify_controller(id, value)
                 {
                     android_log(
                         ANDROID_LOG_ERROR,
                         &format!("Audio state delivery failed: {error:#}"),
                     );
                 }
-                false
+                changed
             })
     }
 

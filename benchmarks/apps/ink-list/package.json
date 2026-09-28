@@ -1,0 +1,1 @@
+{"name":"ink-list-benchmark","version":"1.0.0","private":true,"scripts":{"check":"tsc --noEmit"},"dependencies":{"ink":"workspace:*","react":"19.2.8"},"devDependencies":{"@types/react":"19.2.18","typescript":"5.9.3"}}

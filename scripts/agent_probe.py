@@ -100,9 +100,9 @@ def bridge_metrics(log):
         "updates": len(accepted),
         "rejected": len(samples) - len(accepted),
         "milliseconds": timing,
-        "medianCommitBytes": statistics.median(sample["bytes"] for sample in accepted),
+        "medianCommitBytes": statistics.median(sample["bytes"] for sample in accepted) if all(sample["bytes"] for sample in accepted) else None,
         "samples": samples,
-        "note": "Isolated counter or update-fixture interactions only. React and transport combines JS execution, JSON encoding and queue waits. Driver presentation timestamps are reported separately when available; delayed feedback can leave the final frames unmeasured. Neither submission nor driver timing measures the physical panel. Instrumentation adds overhead.",
+        "note": "Isolated counter or update-fixture interactions only. React and transport combines JS execution, commit conversion and queue waits. Native batches have no JSON document; their decode duration is zero and commit bytes are unavailable. Driver presentation timestamps are reported separately when available; delayed feedback can leave the final frames unmeasured. Neither submission nor driver timing measures the physical panel. Instrumentation adds overhead.",
     }
 
 
@@ -214,7 +214,8 @@ def probe(tools, op, args):
             "# React to native update",
             "",
             f"Accepted updates: {bridge['updates']}; rejected: {bridge['rejected']}.",
-            f"Median commit payload: {bridge['medianCommitBytes']:g} bytes.",
+            (f"Median JSON commit payload: {bridge['medianCommitBytes']:g} bytes."
+             if bridge["medianCommitBytes"] is not None else "Native commits: no JSON document or decode step."),
             "",
             "| Stage | Samples | Median (ms) | p95 (ms) | Maximum (ms) |",
             "| --- | ---: | ---: | ---: | ---: |",

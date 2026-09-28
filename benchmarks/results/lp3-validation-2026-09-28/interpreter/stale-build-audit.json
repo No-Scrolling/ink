@@ -1,0 +1,22 @@
+{
+  "mac": {
+    "cache": {
+      "run": "headless-20260928-120046-3bd843e3",
+      "sha256": "352e9fdddfd26afeb010e1edbb5f8ef44e885a76cbc1c8dae122c3782130a6eb"
+    },
+    "invalidFusion": {
+      "run": "headless-20260928-121145-bda7818c",
+      "sha256": "352e9fdddfd26afeb010e1edbb5f8ef44e885a76cbc1c8dae122c3782130a6eb"
+    }
+  },
+  "android": {
+    "cache": {
+      "run": "headless-20260928-120323-743b9de6",
+      "sha256": "4b2f3cb1509dc43142a30316050bde2f7b92b4ac66278be45b324615a4ac7bfe"
+    },
+    "invalidFusion": {
+      "run": "headless-20260928-121617-1a10480a",
+      "sha256": "4b2f3cb1509dc43142a30316050bde2f7b92b4ac66278be45b324615a4ac7bfe"
+    }
+  }
+}

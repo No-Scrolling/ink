@@ -1,7 +1,6 @@
-import { fromByteArray, toByteArray } from "base64-js";
 import { URL } from "whatwg-url";
 import { Blob } from "./blob";
-import { callNative } from "ink/native";
+import { callNative, callNativeBytes } from "ink/native";
 
 export class MessageEvent extends Event {
   readonly data: unknown;
@@ -79,7 +78,8 @@ export class WebSocket extends EventTarget {
     try {
       const socket = await this.#socket;
       while (this.readyState !== WebSocket.CLOSED) {
-        const batch: { events: Record<string, unknown>[]; bufferedAmount: number } = JSON.parse(await callNative("network", "socket-read", { socket }));
+        const result = await callNativeBytes("network", "socket-read-bytes", { socket });
+        const batch: { events: Record<string, unknown>[]; bufferedAmount: number } = JSON.parse(result.value);
         this.#nativeQueued = batch.bufferedAmount;
         for (const event of batch.events) {
           if (event.type === "open") {
@@ -91,7 +91,9 @@ export class WebSocket extends EventTarget {
             let data: string | Blob | ArrayBuffer;
             if (typeof event.text === "string") data = event.text;
             else {
-              const bytes = toByteArray(String(event.bytes));
+              const offset = Number(event.offset), length = Number(event.length);
+              if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0 || offset + length > result.bytes.length) throw new TypeError("Invalid WebSocket binary range");
+              const bytes = result.bytes.subarray(offset, offset + length);
               data = this.binaryType === "arraybuffer" ? new Uint8Array(bytes).buffer : new Blob([bytes]);
             }
             this.#dispatch("message", { data, origin: new URL(this.url).origin, lastEventId: "", ports: [] });
@@ -120,7 +122,7 @@ export class WebSocket extends EventTarget {
     if (this.readyState !== WebSocket.OPEN) return;
     this.#outgoing = this.#outgoing.then(async () => {
       try {
-        this.#nativeQueued = Number(await callNative("network", "socket-send", { socket: await this.#socket, text: typeof data === "string", bytes: fromByteArray(await blob.bytes()) }));
+        this.#nativeQueued = Number((await callNativeBytes("network", "socket-send", { socket: await this.#socket, text: typeof data === "string" }, { bytes: await blob.bytes() })).value);
       } finally { this.#queued -= blob.size; }
     }).catch(error => { this.#dispatch("error", { error }); this.close(); });
   }

@@ -32,6 +32,25 @@
         "react": "19.2.8",
       },
     },
+    "benchmarks/apps/ink-list": {
+      "name": "ink-list-benchmark",
+      "version": "1.0.0",
+      "dependencies": {
+        "ink": "workspace:*",
+        "react": "19.2.8",
+      },
+      "devDependencies": {
+        "@types/react": "19.2.18",
+        "typescript": "5.9.3",
+      },
+    },
+    "benchmarks/apps/ink-native-controls": {
+      "name": "ink-native-controls-benchmark",
+      "dependencies": {
+        "ink": "workspace:*",
+        "react": "19.2.8",
+      },
+    },
     "benchmarks/apps/ink-paced": {
       "name": "ink-paced-benchmark",
       "dependencies": {
@@ -55,6 +74,13 @@
     },
     "benchmarks/apps/ink-updates": {
       "name": "ink-updates-benchmark",
+      "dependencies": {
+        "ink": "workspace:*",
+        "react": "19.2.8",
+      },
+    },
+    "benchmarks/apps/ink-views": {
+      "name": "ink-views-benchmark",
       "dependencies": {
         "ink": "workspace:*",
         "react": "19.2.8",
@@ -228,7 +254,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@types/whatwg-url": "13.0.0",
-        "base64-js": "1.5.1",
         "web-streams-polyfill": "4.3.0",
         "whatwg-url": "14.2.0",
       },
@@ -492,8 +517,6 @@
 
     "@typescript-eslint/types": ["@typescript-eslint/types@8.70.1", "", {}, "sha512-Dm1ypdhhrGCTyyehxElhgJ6kgk8MVCv5qXdoOVqPr1uqk42jX8KjrZqhROvdShczA8qrDoYiOWn1ykWlx2k81Q=="],
 
-    "base64-js": ["base64-js@1.5.1", "", {}, "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA=="],
-
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
@@ -516,6 +539,10 @@
 
     "ink-light-template-example": ["ink-light-template-example@workspace:examples/light-template"],
 
+    "ink-list-benchmark": ["ink-list-benchmark@workspace:benchmarks/apps/ink-list"],
+
+    "ink-native-controls-benchmark": ["ink-native-controls-benchmark@workspace:benchmarks/apps/ink-native-controls"],
+
     "ink-paced-benchmark": ["ink-paced-benchmark@workspace:benchmarks/apps/ink-paced"],
 
     "ink-scroll-benchmark": ["ink-scroll-benchmark@workspace:benchmarks/apps/ink-scroll"],
@@ -525,6 +552,8 @@
     "ink-tuner-example": ["ink-tuner-example@workspace:examples/tuner"],
 
     "ink-updates-benchmark": ["ink-updates-benchmark@workspace:benchmarks/apps/ink-updates"],
+
+    "ink-views-benchmark": ["ink-views-benchmark@workspace:benchmarks/apps/ink-views"],
 
     "ink-weather-example": ["ink-weather-example@workspace:examples/weather"],
 

@@ -1,0 +1,4 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="podcasts">[{&quot;uri&quot;:&quot;http:\/\/10.0.2.2:8787\/audio.mp3&quot;,&quot;id&quot;:&quot;migration-next&quot;,&quot;source&quot;:&quot;http:\/\/10.0.2.2:8787\/audio.mp3&quot;,&quot;title&quot;:&quot;Next episode&quot;,&quot;artist&quot;:&quot;&quot;,&quot;album&quot;:&quot;&quot;,&quot;artwork&quot;:&quot;&quot;,&quot;duration&quot;:150726}]</string>
+</map>

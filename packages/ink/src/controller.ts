@@ -9,7 +9,7 @@ onNativeMessage("controller", message => {
 });
 
 export function attachNativeController(
-  module: "audio" | "notifications" | "camera" | "maps" | "video" | "downloads",
+  module: string,
   recipe: unknown,
   observe: (value: unknown) => void,
 ) {

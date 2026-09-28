@@ -2,6 +2,7 @@ import { dirname, resolve, relative, extname } from "node:path";
 import { realpath } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { collectIconSizes } from "./icon-usage.js";
+import { compileNativeLists } from "./native-lists.js";
 const [root, entry, output, profile = "release"] = Bun.argv.slice(2);
 const development = profile === "development";
 if (entry.endsWith("/entry.tsx")) {
@@ -22,6 +23,7 @@ Object.assign(environment, process.env);
 const publicEnvironment = Object.fromEntries(Object.entries(environment).filter(([key]) => key.startsWith("INK_PUBLIC_")));
 const capabilities = new Set();
 const moduleCapabilities = new Map();
+const inspectedNativeModules = new Set();
 const assets = new Map();
 const icons = new Map();
 const svgIcons = new Map();
@@ -94,7 +96,7 @@ async function inspect(path) {
       if (declaration) {
         const module = relative(directory, path).replaceAll("\\", "/");
         const names = [...(declaration.modules["*"] ?? []), ...(declaration.modules[module] ?? [])];
-        moduleCapabilities.set(path, names);
+        moduleCapabilities.set(path, [...new Set([...(moduleCapabilities.get(path) ?? []), ...names])]);
         if (development) for (const name of names) capabilities.add(name);
       }
       if (pkg.name === "@ink/network" && path === resolve(directory, "src/index.ts")) networkEntry = path;
@@ -147,6 +149,24 @@ function buildOptions(bootstrap = false) { return {
       await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
+      if (!inspectedNativeModules.has(path) && /TextInput|Image|PlayingScreen/.test(contents)) {
+        inspectedNativeModules.add(path);
+        const source = ts.createSourceFile(path, contents, ts.ScriptTarget.Latest, true);
+        const requirements = new Set(moduleCapabilities.get(path) ?? []);
+        function visit(node) {
+          if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+              && node.expression.name.text === "node" && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+            switch (node.arguments[0].text) {
+              case "TextInput": requirements.add("text-input"); break;
+              case "Image": case "PlayingScreen": requirements.add("image"); requirements.add("network"); break;
+            }
+          }
+          ts.forEachChild(node, visit);
+        }
+        visit(source);
+        moduleCapabilities.set(path, [...requirements]);
+        if (development) for (const name of requirements) capabilities.add(name);
+      }
       if (!inspectedIconModules.has(path) && (contents.includes("ink/icons") || contents.includes(".svg"))) {
         inspectedIconModules.add(path);
         const sizes = await collectIconSizes(ts, path, contents, materialIcons,
@@ -154,6 +174,7 @@ function buildOptions(bootstrap = false) { return {
         for (const [reference, size] of sizes) iconSizes.set(reference, Math.max(iconSizes.get(reference) ?? 0, size));
       }
       let compilerMap;
+      contents = compileNativeLists(ts, path, contents);
       const appSource = path.startsWith(root + "/") && !path.includes("/node_modules/") && !path.includes("/.ink/");
       const refresh = development && !bootstrap && !path.includes("/node_modules/");
       if (appSource || refresh) {

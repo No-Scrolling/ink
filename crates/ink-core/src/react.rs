@@ -1,97 +1,26 @@
 use std::{collections::{HashMap, HashSet}, sync::{Arc, OnceLock}};
 
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
 use crate::ReactIcon;
 use serde_json::{Map, Value as Json, json};
 
 use super::{
-    Action, Alignment, Axis, CameraPreviewKind, ControllerId, Engine, ImageFit, ImageSource,
+    Action, Alignment, Axis, CameraPreviewKind, CaptureKind, ControllerId, Engine, ImageFit, ImageSource,
     Justification, Mask, NativeOperation, Node, NodeIdentity, NodeKind, StateId, StateValue, Tab,
     TextAlign, TextInputAction, Tone,
 };
 
-#[derive(Deserialize)]
-#[serde(transparent)]
-pub struct ReactCommit(Vec<Operation>);
-
-#[derive(Deserialize)]
-#[serde(tag = "op", rename_all = "lowercase")]
-enum Operation {
-    Create {
-        id: usize,
-        r#type: HostKind,
-        props: Map<String, Json>,
-    },
-    Update {
-        id: usize,
-        props: Map<String, Json>,
-    },
-    Insert {
-        id: usize,
-        parent: usize,
-        before: Option<usize>,
-    },
-    Remove {
-        id: usize,
-        parent: usize,
-    },
-    Text {
-        ids: Vec<usize>,
-        values: Vec<Box<str>>,
-    },
-    Hidden {
-        id: usize,
-        value: bool,
-    },
-}
-
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
-enum HostKind {
-    #[default]
-    #[serde(skip)]
-    Root,
-    #[serde(rename = "#text")]
-    RawText,
-    List,
-    Navigator,
-    Tab,
-    Tabs,
-    Confirmation,
-    Screen,
-    ScreenState,
-    Stack,
-    Canvas,
-    CanvasRectangle,
-    CanvasText,
-    CanvasIcon,
-    Text,
-    TextInput,
-    Barcode,
-    CameraPreview,
-    MapView,
-    VideoView,
-    MediaPickerScreen,
-    MediaGridRow,
-    MediaCell,
-    Image,
-    Icon,
-    Toggle,
-    Button,
-    Field,
-    Row,
-    RowTitle,
-    Message,
-    MessageQuote,
-    LinkPreview,
-    ConversationComposer,
-    PlayingLayout,
-    PlayingTransport,
-    Pressable,
-    PlayingProgress,
-    PlayingLabel,
-    PitchIndicator,
-}
+pub use ink_protocol::ReactCommit;
+use ink_protocol::{HostKind, Operation};
+mod view;
+use view::BoundView;
+mod native_list;
+use native_list::{NativeList, RowEvent};
+mod playing;
+mod message;
 
 struct ListProps {
     props: Map<String, Json>,
@@ -117,9 +46,9 @@ impl ListProps {
 }
 
 enum HostProps {
-    RawText(Box<str>),
+    RawText(super::SmolStr),
     Text {
-        text: Box<str>,
+        text: super::SmolStr,
         on_press: bool,
         width: Option<f32>,
         size: Option<f32>,
@@ -146,7 +75,7 @@ impl HostProps {
             let Some(Json::String(text)) = props.remove("text") else {
                 bail!("invalid React text");
             };
-            return Ok(Self::RawText(text.into_boxed_str()));
+            return Ok(Self::RawText(text.into()));
         }
         let props = Self::Other(props);
         if kind == HostKind::Text {
@@ -202,13 +131,19 @@ struct HostNode {
 }
 
 pub struct ReactTree {
-    nodes: HashMap<usize, HostNode>,
+    nodes: FxHashMap<usize, HostNode>,
     icons: HashMap<String, IconVariants>,
-    inputs: HashMap<usize, InputBinding>,
+    inputs: FxHashMap<usize, InputBinding>,
     free_input_states: Vec<StateId>,
     active_screen: Option<usize>,
-    scroll_positions: HashMap<usize, f32>,
-    list_windows: HashMap<usize, (usize, usize, u64, bool)>,
+    scroll_positions: FxHashMap<usize, f32>,
+    list_windows: FxHashMap<usize, (usize, usize, u64, bool)>,
+    views: FxHashMap<usize, BoundView>,
+    native_lists: FxHashMap<usize, NativeList>,
+    native_events: FxHashMap<usize, RowEvent>,
+    next_native_id: usize,
+    playing_ids: FxHashMap<usize, Vec<usize>>,
+    message_ids: FxHashMap<usize, Vec<usize>>,
 }
 
 #[derive(Default)]
@@ -228,13 +163,19 @@ struct InputBinding {
 impl Default for ReactTree {
     fn default() -> Self {
         Self {
-            nodes: HashMap::from([(0, HostNode::default())]),
+            nodes: [(0, HostNode::default())].into_iter().collect(),
             icons: HashMap::new(),
-            inputs: HashMap::new(),
+            inputs: FxHashMap::default(),
             free_input_states: Vec::new(),
             active_screen: None,
-            scroll_positions: HashMap::new(),
-            list_windows: HashMap::new(),
+            scroll_positions: FxHashMap::default(),
+            list_windows: FxHashMap::default(),
+            views: FxHashMap::default(),
+            native_lists: FxHashMap::default(),
+            native_events: FxHashMap::default(),
+            next_native_id: usize::MAX,
+            playing_ids: FxHashMap::default(),
+            message_ids: FxHashMap::default(),
         }
     }
 }
@@ -302,12 +243,19 @@ impl ReactTree {
     }
 
     pub fn apply(&mut self, ReactCommit(operations): ReactCommit, engine: &mut Engine) -> Result<()> {
+        let operations = self.expand_views(operations)?;
+        let operations = self.expand_native_lists(operations, engine)?;
         let structural = operations
             .iter()
             .any(|operation| !matches!(operation, Operation::Update { .. } | Operation::Text { .. }));
-        let mut targets = HashSet::new();
-        let mut scroll_to_end = HashSet::new();
-        let mut dismiss_keyboard = HashSet::new();
+        let target_count = operations.iter().map(|operation| match operation {
+            Operation::Text { ids, .. } => ids.len(),
+            Operation::Update { .. } => 1,
+            _ => 0,
+        }).sum();
+        let mut targets = FxHashSet::with_capacity_and_hasher(target_count, Default::default());
+        let mut scroll_to_end = FxHashSet::default();
+        let mut dismiss_keyboard = FxHashSet::default();
         let mut inputs_changed = structural;
         for operation in operations {
             match operation {
@@ -317,6 +265,7 @@ impl ReactTree {
                         "duplicate React node {id}"
                     );
                     ensure!(self.nodes.len() < 100_000, "React tree is too large");
+                    if r#type == HostKind::MessageContent { self.prepare_message(id, &props)?; }
                     self.nodes.insert(
                         id,
                         HostNode {
@@ -327,6 +276,7 @@ impl ReactTree {
                     );
                 }
                 Operation::Update { id, props } => {
+                    if self.node(id)?.kind == HostKind::MessageContent { self.prepare_message(id, &props)?; }
                     let node = self.node_mut(id)?;
                     inputs_changed |= node.kind == HostKind::TextInput;
                     if node.kind == HostKind::Screen && props.get("dismissKeyboard").is_some()
@@ -356,6 +306,7 @@ impl ReactTree {
                     }
                 }
                 Operation::Hidden { id, value } => self.node_mut(id)?.hidden = value,
+                Operation::Values { .. } => unreachable!("view values are expanded before applying"),
                 Operation::Insert { id, parent, before } => self.insert(id, parent, before)?,
                 Operation::Remove { id, parent } => {
                     ensure!(
@@ -465,13 +416,17 @@ impl ReactTree {
     }
 
     fn update_target(&self, mut id: usize) -> Result<usize> {
-        if matches!(self.node(id)?.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
-            id = self.node(id)?.parent.context("Canvas item requires a Canvas parent")?;
+        let mut node = self.node(id)?;
+        if matches!(node.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
+            id = node.parent.context("Canvas item requires a Canvas parent")?;
+            node = self.node(id)?;
         }
-        while matches!(self.node(id)?.kind, HostKind::RawText | HostKind::Text) {
-            let Some(parent) = self.node(id)?.parent else { break; };
-            if !matches!(self.node(parent)?.kind, HostKind::Text | HostKind::Button | HostKind::Field) { break; }
+        while matches!(node.kind, HostKind::RawText | HostKind::Text) {
+            let Some(parent) = node.parent else { break; };
+            let parent_node = self.node(parent)?;
+            if !matches!(parent_node.kind, HostKind::Text | HostKind::Button | HostKind::Field) { break; }
             id = parent;
+            node = parent_node;
         }
         Ok(id)
     }
@@ -516,7 +471,7 @@ impl ReactTree {
                 InputBinding {
                     state,
                     value: String::new(),
-                    event_count: 0,
+                    event_count: count,
                 }
             });
             // A delayed React commit must not replace newer native keystrokes.
@@ -534,11 +489,12 @@ impl ReactTree {
         Ok(())
     }
 
-    pub fn viewport_events(&mut self, engine: &Engine) -> Vec<Json> {
+    pub fn viewport_events(&mut self, engine: &mut Engine) -> Result<Vec<Json>> {
+        self.refresh_native_lists(engine)?;
         self.list_windows
             .retain(|id, _| self.nodes.contains_key(id));
         let Some(clip) = engine.scene.scroll_clip else {
-            return vec![];
+            return Ok(vec![]);
         };
         let mut events = Vec::new();
         for (id, top) in &engine.react_list_positions {
@@ -546,13 +502,17 @@ impl ReactTree {
             let offset = clip.y + engine.scroll_offset - top;
             let (start, end) = metrics.window(offset, clip.height);
             let near_end = offset + clip.height * 2.0 >= metrics.total();
+            if let Some(list) = self.native_lists.get_mut(id) {
+                list.boundary_events(*id, start, near_end, &mut events);
+                continue;
+            }
             let window = (start, end, metrics.revision, near_end);
             if self.list_windows.get(id) != Some(&window) {
                 self.list_windows.insert(*id, window);
                 events.push(json!({"type":"event", "id": id, "name":"onWindow", "args":[start, end, metrics.revision, near_end]}));
             }
         }
-        events
+        Ok(events)
     }
 
     pub fn input_events(&mut self, engine: &Engine) -> Vec<Json> {
@@ -626,44 +586,36 @@ impl ReactTree {
 
     fn remove(&mut self, id: usize) {
         if let Some(node) = self.nodes.remove(&id) {
+            self.native_lists.remove(&id);
+            self.native_events.remove(&id);
+            self.playing_ids.remove(&id);
+            self.message_ids.remove(&id);
+            if node.kind == HostKind::NativeView {
+                self.views.retain(|_, view| view.root != id);
+            }
             for child in node.children {
                 self.remove(child);
             }
         }
     }
 
-    fn text(&self, id: usize, depth: usize) -> Result<String> {
-        ensure!(depth < 256, "React text is too deep");
-        let node = self.node(id)?;
-        if node.hidden {
-            return Ok(String::new());
-        }
-        if let HostProps::RawText(text) = &node.props {
-            return Ok(text.to_string());
-        }
-        let HostProps::Text { text: content, .. } = &node.props else {
-            bail!("text children must be strings or Text components");
-        };
-        let mut text = content.to_string();
-        for child in &node.children {
-            text.push_str(&self.text(*child, depth + 1)?);
-        }
-        Ok(text)
-    }
-
-    fn text_links(&self, id: usize, depth: usize, offset: &mut usize, links: &mut Vec<(std::ops::Range<usize>, Action)>) -> Result<()> {
+    fn append_text(&self, id: usize, depth: usize, text: &mut String, mut links: Option<&mut Vec<(std::ops::Range<usize>, Action)>>) -> Result<()> {
         ensure!(depth < 256, "React text is too deep");
         let node = self.node(id)?;
         if node.hidden { return Ok(()); }
-        let start = *offset;
-        if let HostProps::RawText(text) = &node.props {
-            *offset += text.len();
-        } else {
-            if let HostProps::Text { text, .. } = &node.props { *offset += text.len(); }
-            for child in &node.children { self.text_links(*child, depth + 1, offset, links)?; }
-            if matches!(&node.props, HostProps::Text { on_press: true, .. }) {
-                links.push((start..*offset, event(id, "onPress", vec![])));
+        let start = text.len();
+        match &node.props {
+            HostProps::RawText(content) => text.push_str(content),
+            HostProps::Text { text: content, on_press, .. } => {
+                text.push_str(content);
+                for child in &node.children {
+                    self.append_text(*child, depth + 1, text, links.as_deref_mut())?;
+                }
+                if *on_press && let Some(links) = links {
+                    links.push((start..text.len(), event(id, "onPress", vec![])));
+                }
             }
+            _ => bail!("text children must be strings or Text components"),
         }
         Ok(())
     }
@@ -680,16 +632,32 @@ impl ReactTree {
             align,
             max_lines,
             tabular_numbers,
-            ..
+            text: content,
+            on_press,
         } = &host.props
         {
-            let mut node = Node::text(self.text(id, depth)?, *size, *align, *max_lines, *tabular_numbers);
+            let mut text_links = Vec::new();
+            let text = if host.children.is_empty() {
+                if *on_press {
+                    text_links.push((0..content.len(), event(id, "onPress", vec![])));
+                }
+                content.clone()
+            } else {
+                let mut text = String::new();
+                self.append_text(id, depth, &mut text, Some(&mut text_links))?;
+                text.into()
+            };
+            let mut node = Node::text(text, *size, *align, *max_lines, *tabular_numbers);
             if let NodeKind::Text { width: node_width, links, .. } = &mut node.kind {
                 *node_width = *width;
-                self.text_links(id, depth, &mut 0, links)?;
+                *links = text_links;
             }
             node.identity = NodeIdentity(id);
             return Ok(Some(node));
+        }
+        if host.kind == HostKind::NativeView {
+            ensure!(host.children.len() == 1, "NativeView requires one root");
+            return self.render_node(host.children[0], depth + 1);
         }
         let props = &host.props;
         let mut node = match host.kind {
@@ -745,6 +713,8 @@ impl ReactTree {
                 }
                 Node { identity: NodeIdentity(id), kind: NodeKind::Canvas { width, height, drawings } }
             }
+            HostKind::NativeList => return self.render_native_list(id, host, depth),
+            HostKind::PlayingScreen => return self.render_playing(id, host),
             HostKind::List => {
                 let HostProps::List(list) = props else { bail!("List requires metadata"); };
                 let keys = list.keys.clone();
@@ -801,8 +771,8 @@ impl ReactTree {
                     Some(title.to_owned()),
                     false,
                 );
-                if let NodeKind::Screen { footer, .. } = &mut screen.kind {
-                    *footer = Some((label.to_owned(),
+                if let NodeKind::Screen(screen) = &mut screen.kind {
+                    screen.footer = Some((label.to_owned(),
                         (props.get("pending") != Some(&Json::Bool(true)))
                             .then(|| event(id, "onConfirm", vec![]))));
                 }
@@ -812,6 +782,7 @@ impl ReactTree {
                 ensure!((2..=3).contains(&host.children.len()), "Composer requires two or three children");
                 Node { identity: NodeIdentity(id), kind: NodeKind::ConversationComposer { children: self.children(host, depth)? } }
             },
+            HostKind::MessageContent => return self.render_message(id, host),
             HostKind::Message => Node { identity: NodeIdentity(id), kind: NodeKind::Message { children: self.children(host, depth)?, outgoing: props.get("outgoing") == Some(&Json::Bool(true)) } },
             HostKind::MessageQuote => Node { identity: NodeIdentity(id), kind: NodeKind::MessageQuote { children: self.children(host, depth)? } },
             HostKind::LinkPreview => Node { identity: NodeIdentity(id), kind: NodeKind::LinkPreview { children: self.children(host, depth)? } },
@@ -839,6 +810,15 @@ impl ReactTree {
                 long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
                 children: self.children(host, depth)?, action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
             } },
+            HostKind::CaptureReadout => Node { identity: NodeIdentity(id), kind: NodeKind::CaptureReadout {
+                controller: props.get("controller").and_then(Json::as_u64).filter(|id| *id > 0 && *id <= 9_007_199_254_740_991).context("Invalid capture controller")?,
+                kind: match string(props, "kind") {
+                    Some("recorder") => CaptureKind::Recording,
+                    Some("level") => CaptureKind::Level,
+                    Some("pitch") => CaptureKind::Pitch,
+                    _ => bail!("Invalid capture readout"),
+                },
+            } },
             HostKind::PitchIndicator => Node { identity: NodeIdentity(id), kind: NodeKind::PitchIndicator {
                 cents: props.get("cents").filter(|value| !value.is_null()).map(|value| {
                     let cents = value.as_f64().context("PitchIndicator requires numeric cents")?;
@@ -847,8 +827,10 @@ impl ReactTree {
                 }).transpose()?,
             } },
             HostKind::PlayingProgress => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingProgress {
-                position: number(props, "position")?.unwrap_or(0.0), duration: number(props, "duration")?.unwrap_or(0.0), seek: props.get("onSeek") == Some(&Json::Bool(true)),
+                position: playback_seconds(props, "position", 1.0)?, duration: playback_seconds(props, "duration", 1.0)?, seek: props.get("onSeek") == Some(&Json::Bool(true)),
                 playing: props.get("playing") == Some(&Json::Bool(true)),
+                show_times: props.get("showTimes") == Some(&Json::Bool(true)),
+                clock: props.get("clock").and_then(Json::as_u64), speed: playback_speed(props)?,
             } },
             HostKind::RowTitle => Node { identity: NodeIdentity(id), kind: NodeKind::RowTitle {
                 size: number(props, "size")?.unwrap_or(26.0),
@@ -908,14 +890,14 @@ impl ReactTree {
                 let mut screen = if let Some((state_id, state)) = state {
                     let message = string(&state.props, "message").context("Screen state requires a message")?;
                     let mut screen = Node::screen(
-                        vec![Node::text(message.to_owned(), Some(18.0), TextAlign::Centre, None, false)],
+                        vec![Node::text(message.into(), Some(18.0), TextAlign::Centre, None, false)],
                         props.title,
                         true,
                     );
                     if let Some(label) = string(&state.props, "retryLabel") {
                         ensure!(state.props.get("onRetry") == Some(&Json::Bool(true)), "Error state requires onRetry");
-                        if let NodeKind::Screen { footer, .. } = &mut screen.kind {
-                            *footer = Some((label.to_owned(), (state.props.get("disabled") != Some(&Json::Bool(true)))
+                        if let NodeKind::Screen(screen) = &mut screen.kind {
+                            screen.footer = Some((label.to_owned(), (state.props.get("disabled") != Some(&Json::Bool(true)))
                                 .then(|| event(state_id, "onRetry", vec![]))));
                         }
                     }
@@ -923,16 +905,16 @@ impl ReactTree {
                 } else {
                     Node::screen(self.children(host, depth)?, props.title, props.centered)
                 };
-                if let NodeKind::Screen { background: screen_background, pinned_header, pinned_footer, wide, bottom_inset, wait_for_images, left_action: left, right_action: action, media_picker, .. } = &mut screen.kind {
-                    *screen_background = background;
-                    *wide = props.wide;
-                    *bottom_inset = props.bottom_inset.unwrap_or(true);
-                    *wait_for_images = props.wait_for_images.unwrap_or(true);
-                    *pinned_header = state.is_none() && props.pinned_header;
-                    *pinned_footer = state.is_none() && props.pinned_footer;
-                    *left = left_action;
-                    *action = right_action;
-                    *media_picker = host.kind == HostKind::MediaPickerScreen;
+                if let NodeKind::Screen(screen) = &mut screen.kind {
+                    screen.background = background;
+                    screen.wide = props.wide;
+                    screen.bottom_inset = props.bottom_inset.unwrap_or(true);
+                    screen.wait_for_images = props.wait_for_images.unwrap_or(true);
+                    screen.pinned_header = state.is_none() && props.pinned_header;
+                    screen.pinned_footer = state.is_none() && props.pinned_footer;
+                    screen.left_action = left_action;
+                    screen.right_action = right_action;
+                    screen.media_picker = host.kind == HostKind::MediaPickerScreen;
                 }
                 screen
             }
@@ -1134,7 +1116,7 @@ impl ReactTree {
             HostKind::Button | HostKind::Field => {
                 let mut label = String::new();
                 for child in &host.children {
-                    label.push_str(&self.text(*child, depth + 1)?);
+                    self.append_text(*child, depth + 1, &mut label, None)?;
                 }
                 let action = (props.get("onPress") == Some(&Json::Bool(true))
                     && props.get("disabled") != Some(&Json::Bool(true)))
@@ -1196,6 +1178,13 @@ fn string<'a>(props: &'a HostProps, key: &str) -> Option<&'a str> {
     props.get(key).and_then(Json::as_str)
 }
 
+fn playback_seconds(props: &HostProps, key: &str, units_per_second: f64) -> Result<f32> {
+    let Some(value) = props.get(key) else { return Ok(0.0); };
+    let value = value.as_f64().with_context(|| format!("invalid playback {key}"))? / units_per_second;
+    ensure!(value.is_finite() && value >= 0.0 && value <= f32::MAX as f64, "invalid playback {key}");
+    Ok(value as f32)
+}
+
 fn number(props: &HostProps, key: &str) -> Result<Option<f32>> {
     props
         .get(key)
@@ -1229,7 +1218,7 @@ fn canvas_colour(props: &HostProps, key: &str) -> Result<Option<super::Colour>> 
 
 pub(super) fn event(id: usize, name: &'static str, args: Vec<Json>) -> Action {
     Action::Native {
-        operation: event_operation(id, name, args),
+        operation: event_operation(id, name, args).into(),
     }
 }
 
@@ -1257,13 +1246,15 @@ fn replace_nodes(node: &mut Node, ids: &[usize], patches: &mut [Option<Node>]) {
         | NodeKind::PlayingTransport { children, .. }
         | NodeKind::PlayingLayout { children, .. }
         | NodeKind::Pressable { children, .. }
-        | NodeKind::Screen { children, .. }
         | NodeKind::MediaGridRow { children }
         | NodeKind::RowTitle { children, .. }
         | NodeKind::Row { children, .. }
         | NodeKind::Stack { children, .. }
         | NodeKind::ReactList { children, .. } => {
             for child in children { replace_nodes(child, ids, patches); }
+        }
+        NodeKind::Screen(screen) => {
+            for child in &mut screen.children { replace_nodes(child, ids, patches); }
         }
         NodeKind::Tabs { tabs, .. } => {
             for tab in tabs { replace_nodes(&mut tab.screen, ids, patches); }
@@ -1292,4 +1283,10 @@ fn image_source(src: &str) -> Result<ImageSource> {
     } else {
         bail!("Image sources must be bundled assets, managed files or HTTPS URLs");
     })
+}
+
+fn playback_speed(props: &HostProps) -> Result<f32> {
+    let speed = props.get("speed").map(|value| value.as_f64().context("invalid playback speed")).transpose()?.unwrap_or(1.0);
+    ensure!(speed.is_finite() && (0.25..=4.0).contains(&speed), "invalid playback speed");
+    Ok(speed as f32)
 }

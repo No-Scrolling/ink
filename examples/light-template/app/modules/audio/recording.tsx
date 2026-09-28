@@ -1,8 +1,8 @@
-import { useRecorder } from "@ink/audio/recording";
+import { RecordingDuration, useRecorder } from "@ink/audio/recording";
 import { Button, Field, Screen, useAction } from "ink";
 
 export default function Recording() {
-  const recorder = useRecorder();
+  const recorder = useRecorder({ updates: "status" });
   const command = useAction((run: () => Promise<void>) => run());
   const disabled = !recorder.ready;
 
@@ -14,7 +14,7 @@ export default function Recording() {
       ) : recorder.state.status === "ready" ? (
         <Field label="Saved recording">{recorder.state.recording?.duration ?? 0} ms</Field>
       ) : (
-        <Field label="Duration">{recorder.state.duration} ms</Field>
+        <RecordingDuration recorder={recorder} />
       )}
       <Button disabled={disabled} onPress={() => command.run(recorder.start)}>Start Recording</Button>
       <Button disabled={disabled} onPress={() => command.run(recorder.stop)}>Save Recording</Button>

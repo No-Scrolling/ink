@@ -11,6 +11,8 @@ export interface AudioItem {
   artwork?: string;
   duration?: number;
 }
+export type SourceReplacement = { prepare?: boolean } & ({ position?: number; offset?: never } | { offset: number; position?: never });
+
 export interface PlayerState {
   ready: boolean;
   playing: boolean;
@@ -105,6 +107,24 @@ export function usePlayer(options: { session?: string; mode?: "attached" | "deta
       await controller.current.call(operation, payload);
     };
     return {
+      async getState(): Promise<PlayerState> {
+        const active = controller.current;
+        if (!active || !current.current.ready) throw new NativeError("unavailable", "Audio player is not ready");
+        return decode(JSON.parse(await active.call("getState")));
+      },
+      seekBy(offset: number) {
+        if (!Number.isSafeInteger(offset)) return Promise.reject(new RangeError("Seek offset must be a safe integer in milliseconds"));
+        return call("seekBy", { value: offset });
+      },
+      replaceSource(id: string, src: string, options: SourceReplacement = {}) {
+        if (options.position !== undefined && (!Number.isFinite(options.position) || options.position < 0)) {
+          return Promise.reject(new RangeError("Audio position must be non-negative milliseconds"));
+        }
+        if (options.offset !== undefined && !Number.isSafeInteger(options.offset)) {
+          return Promise.reject(new RangeError("Seek offset must be a safe integer in milliseconds"));
+        }
+        return call("replaceSource", { id, src, ...options });
+      },
       setQueue(items: readonly AudioItem[], options: { startIndex?: number; startPosition?: number; prepare?: boolean } = {}) {
         const startPosition = options.startPosition ?? 0;
         if (!Number.isFinite(startPosition) || startPosition < 0) return Promise.reject(new RangeError("Audio position must be a non-negative number of milliseconds"));
@@ -129,5 +149,5 @@ export function usePlayer(options: { session?: string; mode?: "attached" | "deta
       },
     };
   }, []);
-  return { state, ...commands };
+  return { state, clock: controller.current ? { controller: controller.current.id } : undefined, ...commands };
 }

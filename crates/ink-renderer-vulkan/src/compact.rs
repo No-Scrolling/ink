@@ -5,14 +5,13 @@ use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     ops::Range,
-    sync::Arc,
 };
 
 use ab_glyph::{Font, FontArc, FontRef, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
-    Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene,
+    Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene, SmolStr,
     TextAlign, TextRun, font_for_character, is_emoji_grapheme, tabular_digit_width,
     text_width_with_numbers,
 };
@@ -1209,7 +1208,7 @@ impl Renderer {
     }
 
     fn prepare_text_runs(&mut self, scene: &Scene) -> Result<Vec<PreparedTextRun>> {
-        let mut previous = HashMap::<Arc<str>, Vec<PreparedTextRun>>::new();
+        let mut previous = HashMap::<SmolStr, Vec<PreparedTextRun>>::new();
         for prepared in std::mem::take(&mut self.prepared.text_runs) {
             previous
                 .entry(prepared.run.text.clone())

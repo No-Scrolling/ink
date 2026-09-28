@@ -97,6 +97,7 @@ private class InkVideoAdapter(
         private var ready = false
         private var rendered = false
         private var ended = false
+        private var buffering = false
         private var closed = false
         private var mounted = false
         private var autoPlay = true
@@ -105,7 +106,7 @@ private class InkVideoAdapter(
         private val tick = object : Runnable {
             override fun run() {
                 if (closed || !ready) return
-                publish()
+                updateClock()
                 if (player.isPlaying) handler.postDelayed(this, 250)
             }
         }
@@ -128,6 +129,10 @@ private class InkVideoAdapter(
                     rendered = true
                     view.alpha = 1f
                     publish()
+                    true
+                } else if (what == MediaPlayer.MEDIA_INFO_BUFFERING_START || what == MediaPlayer.MEDIA_INFO_BUFFERING_END) {
+                    buffering = what == MediaPlayer.MEDIA_INFO_BUFFERING_START
+                    updateClock()
                     true
                 } else if (what == MediaPlayer.MEDIA_INFO_VIDEO_NOT_PLAYING) {
                     if (!closed && ready) player.pause()
@@ -154,6 +159,7 @@ private class InkVideoAdapter(
             ready = false
             autoPlay = false
             handler.removeCallbacks(tick)
+            activity.removePlaybackClock(-controller)
             container.keepScreenOn = false
             audio.abandonAudioFocusRequest(focus)
             update(controller, JSONObject().put("error", message).toString())
@@ -201,6 +207,7 @@ private class InkVideoAdapter(
             container.keepScreenOn = true
             handler.removeCallbacks(tick)
             handler.post(tick)
+            publish()
         }
         fun pause() {
             if (closed) return
@@ -219,13 +226,21 @@ private class InkVideoAdapter(
             }
         }
         private fun publish() {
+            updateClock()
             playIcon.visibility = if (ready && rendered && !player.isPlaying) View.VISIBLE else View.GONE
             if (!closed) update(controller, JSONObject().put("ready", ready).put("rendered", rendered)
                 .put("position", if (ready) (if (ended) player.duration else player.currentPosition) / 1000.0 else 0).put("duration", if (ready) player.duration / 1000.0 else 0).toString())
         }
+        private fun updateClock() {
+            if (closed || !ready) return
+            activity.updatePlaybackClock(-controller,
+                (if (ended) player.duration else player.currentPosition).coerceAtLeast(0).toLong(),
+                player.duration.coerceAtLeast(0).toLong(), player.isPlaying && !buffering, 1f)
+        }
         fun close() {
             pause()
             closed = true
+            activity.removePlaybackClock(-controller)
             ready = false
             player.release()
             surface?.release()

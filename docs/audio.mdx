@@ -99,6 +99,48 @@ await player.setSpeed(1.25);
 
 `state.speed` contains the current speed. The default is `1`; supported values are `0.25` to `4`.
 
+### Keep visual progress native
+
+Playback progress is native by default. Pass `playback={player}` to `PlayingScreen`; it connects the native clock and commands. The bar and elapsed-time label update without periodic React renders.
+
+This component controls an existing queue. Load tracks with `setQueue` before opening it.
+
+```tsx
+import { usePlayer } from "@ink/audio";
+import { ErrorState, PlayingScreen, Screen, useAction } from "ink";
+
+export function NativeNowPlaying() {
+  const player = usePlayer({ session: "main", mode: "detached" });
+  const command = useAction(async (run: () => Promise<void>) => run());
+  const { state } = player;
+  const error = state.error ?? (command.status === "error" ? command.error : null);
+  if (error) return <Screen title="Playback"><ErrorState message={error.message}
+    onRetry={() => command.run(player.play)} /></Screen>;
+  return <PlayingScreen
+    title={state.current?.title ?? "Nothing playing"} artists={[]}
+    playback={player}
+  />;
+}
+```
+
+<img src="/images/patterns/audio-native-clock.png" alt="Native playback with elapsed time, duration and transport controls." width="1080" height="1240" />
+
+`state.position` and `state.silenceSaved` reflect the last status notification, not a live tick. Queue, playback status, seek and speed changes still notify JavaScript. There is no periodic React progress mode.
+
+Use `await player.getState()` when application logic needs a fresh snapshot, such as saving a bookmark or preserving position while changing sources. This reads native state without notifying React subscribers. Use `player.seekBy(offset)` for relative skips; the offset is a signed integer in milliseconds and is applied to the current native position. For an application-specific live statistic, refresh a local value only while its screen is visible.
+
+When migrating older apps, replace calculations such as `player.seek(player.state.position + 15_000)` with `player.seekBy(15_000)`. Replace progress effects driven by periodic state updates with explicit checkpoints and fresh reads on backgrounding. Pass `playback={player}` to `PlayingScreen`; remove separate clock, position, duration, speed and transport callback props.
+
+### Replace a source without losing progress
+
+Use `replaceSource(id, src)` to move the current item between streaming and a downloaded file. Ink verifies the current item ID, preserves the queue and reads its position and playback intent natively.
+
+```ts
+await player.replaceSource(episode.id, downloadedFile.src);
+```
+
+To combine a source change with a seek, supply either `{ position: milliseconds }` or `{ offset: milliseconds }`. Both use milliseconds; offsets may be negative. `{ prepare: false }` leaves the replacement stopped and paused, for removing a completed download without starting another request. A changed current item ID rejects rather than replacing a different episode.
+
 ### Audio effects
 
 Both effects are off by default and saved per session. They work with streamed and local audio at any playback speed.
@@ -203,6 +245,43 @@ Playback errors identify source, unsupported-media and output failures. Ink does
 `@ink/audio/microphone` exports `useLevelMeter`, `usePitchDetector` and `PitchIndicator`. `@ink/audio/recording` exports `useRecorder`.
 
 Each hook returns `ready`, `state` and commands that return promises. Wait for `ready` before enabling controls.
+
+### Display measurements natively
+
+`RecordingDuration`, `LevelReadout` and `PitchReadout` display changing measurements without React updates. Use `updates: "status"` when the page needs status and errors but does not use live measurements in JavaScript. The default, `updates: "all"`, preserves live `state` values for custom interfaces and application calculations.
+
+After granting microphone permission, a recording page can display elapsed time with this binding:
+
+```tsx
+import { RecordingDuration, useRecorder } from "@ink/audio/recording";
+import { Button, Field, Screen, useAction } from "ink";
+
+export default function Recording() {
+  const recorder = useRecorder({ updates: "status" });
+  const command = useAction((run: () => Promise<void>) => run());
+  return <Screen title="Recording">
+    <RecordingDuration recorder={recorder} />
+    <Button disabled={!recorder.ready} onPress={() => command.run(recorder.start)}>Start</Button>
+    <Button disabled={!recorder.ready} onPress={() => command.run(recorder.stop)}>Save</Button>
+    {command.status === "error" && <Field label="Error">{command.error.message}</Field>}
+  </Screen>;
+}
+```
+
+| Component | Source | Display |
+| --- | --- | --- |
+| `RecordingDuration` from `@ink/audio/recording` | `recorder` returned by `useRecorder` | Elapsed minutes and seconds. |
+| `LevelReadout` from `@ink/audio/microphone` | `meter` returned by `useLevelMeter` | RMS and peak signal levels. |
+| `PitchReadout` from `@ink/audio/microphone` | `detector` returned by `usePitchDetector` | Note, octave, frequency and cents, or a dash when no note is detected. |
+
+The template's recording page uses the native elapsed label; its microphone page uses the level and pitch readouts.
+
+<div className="pattern-preview">
+<img src="/images/patterns/audio-recording-native.png" alt="Recording page with a native elapsed-time label showing four seconds." width="1080" height="1240" />
+<img src="/images/patterns/audio-level-native.png" alt="Microphone page with native RMS and peak readings." width="1080" height="1240" />
+</div>
+
+With status updates, numerical fields in `state` are snapshots from the last notification. The native readouts continue updating. Completed recordings still deliver their saved file and final duration. Both update modes preserve permission, error and lifecycle handling.
 
 ### Record audio
 

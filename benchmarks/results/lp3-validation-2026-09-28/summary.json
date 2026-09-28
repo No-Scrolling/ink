@@ -1,0 +1,30 @@
+{
+  "baseline": {
+    "count": 60,
+    "meanMs": 18.111096383333333,
+    "medianMs": 13.8564845,
+    "p95Ms": 31.056354,
+    "maxMs": 32.158385,
+    "waterfallMeanMs": {
+      "inputToDispatch": 0.3272239,
+      "reactAndTransport": 12.688145916666667,
+      "queue": 0.05637408333333333,
+      "nativeApplyAndLayout": 2.400388866666667,
+      "renderAndSubmission": 2.6389636166666666
+    }
+  },
+  "candidate": {
+    "count": 60,
+    "meanMs": 15.293520883333333,
+    "medianMs": 12.253099500000001,
+    "p95Ms": 27.325938,
+    "maxMs": 28.042917,
+    "waterfallMeanMs": {
+      "inputToDispatch": 0.3168828166666667,
+      "reactAndTransport": 11.592968783333333,
+      "queue": 0.05371615,
+      "nativeApplyAndLayout": 0.8363646166666666,
+      "renderAndSubmission": 2.4935885166666667
+    }
+  }
+}

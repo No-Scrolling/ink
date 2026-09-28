@@ -77,6 +77,14 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
             (BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED || BuildConfig.DEBUG &&
                 Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2"))
 
+    override fun executeBytes(requestId: Long, operation: String, payload: String, bytes: ByteArray, complete: NativeResultHandler) {
+        when (operation) {
+            "stream-upload-write" -> streams.execute(requestId, operation, payload, complete, bytes)
+            "socket-send" -> sockets.execute(requestId, operation, payload, complete, bytes)
+            else -> complete(protocol("Unknown binary network operation: $operation"))
+        }
+    }
+
     override fun cancel(requestId: Long) {
         if (streamTransport.isInitialized()) streams.cancel(requestId)
         if (socketTransport.isInitialized()) sockets.cancel(requestId)

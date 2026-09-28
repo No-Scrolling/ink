@@ -8,6 +8,10 @@
     "src/input.ts": [
       "text-input"
     ],
+    "src/playing.ts": [
+      "image",
+      "network"
+    ],
     "src/external.ts": [
       "external"
     ]

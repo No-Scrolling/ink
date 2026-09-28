@@ -1,10 +1,18 @@
 import { lightos, type PermissionStatus } from "@ink/lightos";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, ErrorState, List, LoadingState, Screen, Text } from "ink";
+import { nativeListRow, nativeListTemplate } from "ink/internal/list";
 import { callNative, NativeError } from "ink/native";
 import { files, type FileRef } from "./index";
 import { decodeFileRef } from "./decode";
 import { check, checkCircleFilled, videoFileFilled } from "ink/icons";
+
+const mediaTemplate = nativeListTemplate((node, field) => node("MediaGridRow", {},
+  Array.from({ length: 3 }, (_, index) => node("MediaCell", {
+    hidden: field(index, "hidden"), src: field(index, "src"), selected: field(index, "selected"),
+    video: field(index, "video"), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
+    onPress: field(index, "onPress"),
+  }))));
 
 type MediaItem = { id: string; src: string; name: string; mimeType: string; width: number; height: number };
 type MediaPage = { items: MediaItem[]; nextCursor: string | null };
@@ -131,9 +139,15 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
       createElement(List<MediaItem[]>, {
         items: rows, keyExtractor: row => row[0].id, gap: 0, hasMore,
         onLoadMore: async () => { if (active.current) await loadPage(active.current.signal); },
-        renderItem: row => createElement("MediaGridRow", null, row.map(item => createElement("MediaCell", {
+        renderItem: nativeListRow((row: MediaItem[]) => createElement("MediaGridRow", null, row.map(item => createElement("MediaCell", {
           key: item.id, src: item.src, selected: selected.has(item.id), video: item.mimeType.startsWith("video/"), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
           onPress: () => setSelected(previous => { const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; }),
-        }))),
+        }))), row => [Array.from({ length: 3 }, (_, index) => {
+          const item = row[index];
+          return { hidden: !item, src: item?.src ?? row[0].src, selected: !!item && selected.has(item.id),
+            video: !!item?.mimeType.startsWith("video/"), onPress: item && (() => setSelected(previous => {
+              const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next;
+            })) };
+        })], mediaTemplate, row => row.flatMap(item => [item.src, item.mimeType, selected.has(item.id)])),
       }));
 }

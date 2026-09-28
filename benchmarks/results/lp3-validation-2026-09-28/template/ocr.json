@@ -1,0 +1,225 @@
+[
+  {
+    "name": "typed",
+    "result": {
+      "id": "image-20260928-111330-01583acc",
+      "status": "complete",
+      "cursor": "1790590410.966123",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 34662,
+        "colouredPixels": 0,
+        "text": [
+          "Search",
+          "InkFast",
+          "qwertyuiop",
+          "as d fgh j k l",
+          "^ zxcvbnm \u2039",
+          "123"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111330-01583acc"
+    }
+  },
+  {
+    "name": "bottom",
+    "result": {
+      "id": "image-20260928-111331-0d38ca57",
+      "status": "complete",
+      "cursor": "1790590411.542055",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 48382,
+        "colouredPixels": 0,
+        "text": [
+          "Examples",
+          "\u2022\u2022\u2022",
+          "Pagination",
+          "Code generation",
+          "Confirmation",
+          "Screen States"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111331-0d38ca57"
+    }
+  },
+  {
+    "name": "confirmation",
+    "result": {
+      "id": "image-20260928-111331-00a21130",
+      "status": "complete",
+      "cursor": "1790590412.042998",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 25718,
+        "colouredPixels": 0,
+        "text": [
+          "Confirmation",
+          "Are you sure you want to confirm this",
+          "example?",
+          "CONFIRM"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111331-00a21130"
+    }
+  },
+  {
+    "name": "confirmed",
+    "result": {
+      "id": "image-20260928-111332-3f399cea",
+      "status": "complete",
+      "cursor": "1790590412.561905",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 48382,
+        "colouredPixels": 0,
+        "text": [
+          "Examples",
+          "\u2022\u2022\u2022",
+          "Pagination",
+          "Code generation",
+          "Confirmation",
+          "Screen States"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111332-3f399cea"
+    }
+  },
+  {
+    "name": "error",
+    "result": {
+      "id": "image-20260928-111332-b7a3b6fb",
+      "status": "complete",
+      "cursor": "1790590413.0493782",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 20048,
+        "colouredPixels": 0,
+        "text": [
+          "Error",
+          "The example could not load.",
+          "TRY AGAIN"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111332-b7a3b6fb"
+    }
+  },
+  {
+    "name": "retry",
+    "result": {
+      "id": "image-20260928-111333-4ddaf70d",
+      "status": "complete",
+      "cursor": "1790590413.5200288",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 21737,
+        "colouredPixels": 0,
+        "text": [
+          "Error",
+          "The example loaded",
+          "successfully."
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111333-4ddaf70d"
+    }
+  },
+  {
+    "name": "thumb-top",
+    "result": {
+      "id": "image-20260928-111333-7777cb18",
+      "status": "complete",
+      "cursor": "1790590414.005161",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 31641,
+        "colouredPixels": 0,
+        "text": [
+          "Examples",
+          "\u2022\u2022\u2022",
+          "Inputs",
+          "Typography",
+          "Icons",
+          "Links"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111333-7777cb18"
+    }
+  },
+  {
+    "name": "japanese-scrolled",
+    "result": {
+      "id": "image-20260928-111334-1072b036",
+      "status": "complete",
+      "cursor": "1790590414.509104",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 52096,
+        "colouredPixels": 0,
+        "text": [
+          "<",
+          "Kanji",
+          "Combining marks",
+          "Mixed text"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111334-1072b036"
+    }
+  },
+  {
+    "name": "emoji-scrolled",
+    "result": {
+      "id": "image-20260928-111334-be8ed3e3",
+      "status": "complete",
+      "cursor": "1790590414.979712",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 30454,
+        "colouredPixels": 68033,
+        "text": [
+          "Emoji",
+          "Gestures",
+          "o \u041b",
+          "Sequences and flags",
+          "Symbols"
+        ]
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-111334-be8ed3e3"
+    }
+  }
+]

@@ -1,0 +1,122 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -18307,6 +18307,25 @@
+             if (unlikely(JS_IsException(sp[-1])))
+                 goto exception;
+             BREAK;
++        CASE(OP_object_shape):
++            {
++                JSObject *literal = JS_VALUE_GET_OBJ(b->cpool[get_u32(pc)]);
++                pc += 4;
++                *sp++ = JS_NewObjectFromShape(ctx, js_dup_shape(literal->shape),
++                                             JS_CLASS_OBJECT, literal->prop);
++                if (unlikely(JS_IsException(sp[-1])))
++                    goto exception;
++            }
++            BREAK;
++        CASE(OP_define_field_index):
++            {
++                JSObject *literal = JS_VALUE_GET_OBJ(sp[-2]);
++                uint32_t index = get_u32(pc);
++                pc += 4;
++                set_value(ctx, &literal->prop[index].u.value, sp[-1]);
++                sp--;
++            }
++            BREAK;
+         CASE(OP_special_object):
+             {
+                 int arg = *pc++;
+@@ -25251,12 +25270,17 @@
+     JSAtom name = JS_ATOM_NULL;
+     const uint8_t *start_ptr;
+     int start_line, start_col, prop_type;
+-    bool has_proto;
++    bool has_proto, shape_eligible = true;
++    int object_pos, field_count = 0, field_positions[32], field_indices[32];
++    JSValue literal = JS_NewObject(s->ctx);
++    if (JS_IsException(literal))
++        return -1;
+ 
+     if (next_token(s))
+         goto fail;
+-    /* XXX: add an initial length that will be patched back */
+     emit_op(s, OP_object);
++    object_pos = s->cur_func->last_opcode_pos;
++    for (int i = 0; i < 4; i++) emit_op(s, OP_nop);
+     has_proto = false;
+     while (s->token.val != '}') {
+         /* specific case for getter/setter */
+@@ -25265,10 +25289,11 @@
+         start_col = s->token.col_num;
+ 
+         if (s->token.val == TOK_ELLIPSIS) {
++            shape_eligible = false;
+             if (next_token(s))
+-                return -1;
++                goto fail;
+             if (js_parse_assign_expr(s))
+-                return -1;
++                goto fail;
+             emit_op(s, OP_null);  /* dummy excludeList */
+             emit_op(s, OP_copy_data_properties);
+             emit_u8(s, 2 | (1 << 2) | (0 << 5));
+@@ -25345,6 +25370,23 @@
+                 emit_atom(s, name);
+             }
+         }
++        if (shape_eligible) {
++            int pos = s->cur_func->last_opcode_pos;
++            if (field_count == 32 || name == JS_ATOM_NULL ||
++                __JS_AtomIsTaggedInt(name) || pos < 0 ||
++                s->cur_func->byte_code.buf[pos] != OP_define_field) {
++                shape_eligible = false;
++            } else {
++                JSProperty *property;
++                JSObject *object = JS_VALUE_GET_OBJ(literal);
++                if (JS_DefinePropertyValue(s->ctx, literal, name, JS_UNDEFINED,
++                                           JS_PROP_C_W_E) < 0)
++                    goto fail;
++                find_own_property(&property, object, name);
++                field_positions[field_count] = pos;
++                field_indices[field_count++] = property - object->prop;
++            }
++        }
+         JS_FreeAtom(s->ctx, name);
+     next:
+         name = JS_ATOM_NULL;
+@@ -25355,8 +25397,24 @@
+     }
+     if (js_parse_expect(s, '}'))
+         goto fail;
++    if (shape_eligible && field_count >= 2) {
++        int index = cpool_add(s, literal);
++        uint8_t *code = s->cur_func->byte_code.buf;
++        if (index < 0) goto fail;
++        literal = JS_UNDEFINED;
++        code[object_pos] = OP_object_shape;
++        put_u32(code + object_pos + 1, index);
++        for (int i = 0; i < field_count; i++) {
++            int pos = field_positions[i];
++            JS_FreeAtom(s->ctx, get_u32(code + pos + 1));
++            code[pos] = OP_define_field_index;
++            put_u32(code + pos + 1, field_indices[i]);
++        }
++    }
++    JS_FreeValue(s->ctx, literal);
+     return 0;
+  fail:
++    JS_FreeValue(s->ctx, literal);
+     JS_FreeAtom(s->ctx, name);
+     return -1;
+ }
+--- a/quickjs-opcode.h
++++ b/quickjs-opcode.h
+@@ -77,6 +77,8 @@
+ DEF(     push_false, 1, 0, 1, none)
+ DEF(      push_true, 1, 0, 1, none)
+ DEF(         object, 1, 0, 1, none)
++DEF(   object_shape, 5, 0, 1, const)
++DEF(define_field_index, 5, 2, 1, u32)
+ DEF( special_object, 2, 0, 1, u8) /* only used at the start of a function */
+ DEF(           rest, 3, 0, 1, u16) /* only used at the start of a function */
+ 

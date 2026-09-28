@@ -33,8 +33,8 @@ export function PlayingExample({ image = false }: { image?: boolean }) {
   return <PlayingScreen image={image ? wallsocket : undefined}
     title="Cops and robbers" onTitlePress={() => navigate("/display/local-images/wallsocket")}
     artists={[{ name: "underscores", onPress: () => navigate("/actions") }]}
-    playing={playing} onPlayPause={() => { if (position === duration) setPosition(0); setPlaying(current => !current); }}
-    position={position} duration={duration} onSeek={setPosition}
+    playback={{ state: { playWhenReady: playing, position, duration },
+      toggle: () => { if (position === duration) setPosition(0); setPlaying(current => !current); }, seek: setPosition }}
     previous={{
       seconds: image ? undefined : 10,
       onPress: () => image ? setPosition(0) : seekBy(-10000),

@@ -1,0 +1,26 @@
+{
+  "nounroll": {
+    "baseline": {
+      "samples": 600,
+      "meanMs": 7.200018036666667,
+      "p95Ms": 7.592709000000001
+    },
+    "nounroll": {
+      "samples": 600,
+      "meanMs": 7.248800013333334,
+      "p95Ms": 7.59948
+    }
+  },
+  "omitframe": {
+    "baseline": {
+      "samples": 600,
+      "meanMs": 7.20184237,
+      "p95Ms": 7.544948000000001
+    },
+    "omitframe": {
+      "samples": 600,
+      "meanMs": 7.14223794,
+      "p95Ms": 7.502031
+    }
+  }
+}

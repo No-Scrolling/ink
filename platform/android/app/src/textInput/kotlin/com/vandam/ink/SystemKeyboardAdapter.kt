@@ -265,6 +265,8 @@ private class SystemKeyboardAdapter(
         }
     }
 
+    override val hasEditor: Boolean get() = editor.visibility == View.VISIBLE
+
     override fun syncContext(context: String) {
         if (context.isEmpty()) {
             awaitingEditorDraw = false

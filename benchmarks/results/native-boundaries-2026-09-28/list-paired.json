@@ -1,0 +1,782 @@
+{
+  "sources": {
+    "before": "headless-20260928-174539-a82d28af",
+    "after": "headless-20260928-174952-5d0ec0bf"
+  },
+  "iterations": 200,
+  "warmup": 20,
+  "rounds": 5,
+  "order": "AB BA AB BA AB",
+  "runs": [
+    {
+      "round": 0,
+      "label": "before",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 2.2203749999999998,
+          "mean": 1.58060941,
+          "median": 1.5094375,
+          "min": 1.285333,
+          "p95": 2.097
+        },
+        "NativeScroll": {
+          "max": 0.079959,
+          "mean": 0.06456460000000001,
+          "median": 0.063542,
+          "min": 0.037750000000000006,
+          "p95": 0.07175
+        },
+        "NativeUnrelated": {
+          "max": 1.7503749999999998,
+          "mean": 1.1612141599999994,
+          "median": 1.063729,
+          "min": 0.9055,
+          "p95": 1.6207500000000001
+        },
+        "ReactScroll": {
+          "max": 1.330916,
+          "mean": 0.5469222699999999,
+          "median": 0.5494585,
+          "min": 0.335292,
+          "p95": 0.581459
+        },
+        "RichScroll": {
+          "max": 1.498458,
+          "mean": 0.5636541999999997,
+          "median": 0.5524165000000001,
+          "min": 0.347958,
+          "p95": 0.617417
+        },
+        "RowEdit": {
+          "max": 2.461209,
+          "mean": 1.6317794000000003,
+          "median": 1.554,
+          "min": 1.3039159999999999,
+          "p95": 2.23475
+        },
+        "RowScroll": {
+          "max": 0.116292,
+          "mean": 0.09254833499999998,
+          "median": 0.09247949999999999,
+          "min": 0.048374999999999994,
+          "p95": 0.101542
+        },
+        "RowUnrelated": {
+          "max": 1.887625,
+          "mean": 1.108466455,
+          "median": 1.000687,
+          "min": 0.831542,
+          "p95": 1.6788329999999998
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1566.6707920000001
+    },
+    {
+      "round": 0,
+      "label": "after",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 1.931,
+          "mean": 1.2907605999999996,
+          "median": 1.162875,
+          "min": 1.080625,
+          "p95": 1.659167
+        },
+        "NativeScroll": {
+          "max": 0.118625,
+          "mean": 0.06506294,
+          "median": 0.06347900000000001,
+          "min": 0.037791,
+          "p95": 0.073792
+        },
+        "NativeUnrelated": {
+          "max": 1.8643329999999998,
+          "mean": 1.0604374899999998,
+          "median": 0.9697499999999999,
+          "min": 0.90775,
+          "p95": 1.4617920000000002
+        },
+        "ReactScroll": {
+          "max": 1.2581660000000001,
+          "mean": 0.49555082000000006,
+          "median": 0.48725,
+          "min": 0.292833,
+          "p95": 0.5451250000000001
+        },
+        "RichScroll": {
+          "max": 1.4207919999999998,
+          "mean": 0.55989729,
+          "median": 0.5494794999999999,
+          "min": 0.347083,
+          "p95": 0.62125
+        },
+        "RowEdit": {
+          "max": 1.801041,
+          "mean": 1.2068939600000008,
+          "median": 1.0988965,
+          "min": 1.026,
+          "p95": 1.602625
+        },
+        "RowScroll": {
+          "max": 0.104,
+          "mean": 0.08229463499999995,
+          "median": 0.08218800000000001,
+          "min": 0.041709,
+          "p95": 0.088375
+        },
+        "RowUnrelated": {
+          "max": 1.6171250000000001,
+          "mean": 0.9954325049999997,
+          "median": 0.9031455,
+          "min": 0.8496250000000001,
+          "p95": 1.4319160000000002
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1330.158958
+    },
+    {
+      "round": 1,
+      "label": "after",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 1.7723330000000002,
+          "mean": 1.27837663,
+          "median": 1.160979,
+          "min": 1.076042,
+          "p95": 1.6368340000000001
+        },
+        "NativeScroll": {
+          "max": 0.103333,
+          "mean": 0.06382186499999999,
+          "median": 0.062562,
+          "min": 0.037125,
+          "p95": 0.0735
+        },
+        "NativeUnrelated": {
+          "max": 1.6025,
+          "mean": 1.04933124,
+          "median": 0.9702915000000001,
+          "min": 0.900833,
+          "p95": 1.475208
+        },
+        "ReactScroll": {
+          "max": 1.27075,
+          "mean": 0.49864917,
+          "median": 0.488875,
+          "min": 0.29570799999999997,
+          "p95": 0.558208
+        },
+        "RichScroll": {
+          "max": 1.57775,
+          "mean": 0.5535249849999998,
+          "median": 0.5467915,
+          "min": 0.339417,
+          "p95": 0.5844999999999999
+        },
+        "RowEdit": {
+          "max": 1.7269580000000002,
+          "mean": 1.1968487550000004,
+          "median": 1.0883545000000001,
+          "min": 1.0208329999999999,
+          "p95": 1.6272909999999998
+        },
+        "RowScroll": {
+          "max": 0.105042,
+          "mean": 0.083131275,
+          "median": 0.08258299999999999,
+          "min": 0.041417,
+          "p95": 0.094375
+        },
+        "RowUnrelated": {
+          "max": 1.642792,
+          "mean": 0.9944400050000002,
+          "median": 0.8982289999999999,
+          "min": 0.842042,
+          "p95": 1.425542
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1317.292792
+    },
+    {
+      "round": 1,
+      "label": "before",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 2.188875,
+          "mean": 1.4819337549999998,
+          "median": 1.3846045,
+          "min": 1.2926659999999999,
+          "p95": 1.888625
+        },
+        "NativeScroll": {
+          "max": 0.08666599999999999,
+          "mean": 0.06516160000000004,
+          "median": 0.06370799999999999,
+          "min": 0.0385,
+          "p95": 0.0745
+        },
+        "NativeUnrelated": {
+          "max": 1.7758330000000002,
+          "mean": 1.0930048100000007,
+          "median": 0.9787499999999999,
+          "min": 0.9027499999999999,
+          "p95": 1.4739170000000001
+        },
+        "ReactScroll": {
+          "max": 1.219042,
+          "mean": 0.4984254249999999,
+          "median": 0.487625,
+          "min": 0.29508399999999996,
+          "p95": 0.5542499999999999
+        },
+        "RichScroll": {
+          "max": 1.494958,
+          "mean": 0.5596841900000001,
+          "median": 0.5533540000000001,
+          "min": 0.34525,
+          "p95": 0.629208
+        },
+        "RowEdit": {
+          "max": 2.237708,
+          "mean": 1.4850746049999992,
+          "median": 1.3951040000000001,
+          "min": 1.3018750000000001,
+          "p95": 1.9207079999999999
+        },
+        "RowScroll": {
+          "max": 0.274833,
+          "mean": 0.08456084000000003,
+          "median": 0.0807085,
+          "min": 0.043917,
+          "p95": 0.096125
+        },
+        "RowUnrelated": {
+          "max": 1.5827080000000002,
+          "mean": 1.0157293300000003,
+          "median": 0.9020205,
+          "min": 0.837125,
+          "p95": 1.463792
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1441.31925
+    },
+    {
+      "round": 2,
+      "label": "before",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 2.020167,
+          "mean": 1.4602615300000006,
+          "median": 1.379146,
+          "min": 1.2884579999999999,
+          "p95": 1.836292
+        },
+        "NativeScroll": {
+          "max": 0.118125,
+          "mean": 0.06328505499999999,
+          "median": 0.06231250000000001,
+          "min": 0.036917,
+          "p95": 0.07258300000000001
+        },
+        "NativeUnrelated": {
+          "max": 1.5980420000000002,
+          "mean": 1.0815005950000005,
+          "median": 0.9727915,
+          "min": 0.904625,
+          "p95": 1.477958
+        },
+        "ReactScroll": {
+          "max": 1.1705,
+          "mean": 0.4968748250000001,
+          "median": 0.48852150000000005,
+          "min": 0.297667,
+          "p95": 0.54
+        },
+        "RichScroll": {
+          "max": 1.274334,
+          "mean": 0.5621043800000005,
+          "median": 0.5536875,
+          "min": 0.343459,
+          "p95": 0.6022500000000001
+        },
+        "RowEdit": {
+          "max": 2.119542,
+          "mean": 1.4803370300000003,
+          "median": 1.387854,
+          "min": 1.293917,
+          "p95": 1.9170829999999999
+        },
+        "RowScroll": {
+          "max": 0.104125,
+          "mean": 0.08338351,
+          "median": 0.08122850000000001,
+          "min": 0.046459,
+          "p95": 0.094792
+        },
+        "RowUnrelated": {
+          "max": 1.6092909999999998,
+          "mean": 1.0131087550000002,
+          "median": 0.9021455,
+          "min": 0.833125,
+          "p95": 1.458375
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1431.6615
+    },
+    {
+      "round": 2,
+      "label": "after",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 1.901208,
+          "mean": 1.2879514699999992,
+          "median": 1.1722920000000001,
+          "min": 1.0805,
+          "p95": 1.63825
+        },
+        "NativeScroll": {
+          "max": 0.11979100000000001,
+          "mean": 0.067790665,
+          "median": 0.0647915,
+          "min": 0.036958,
+          "p95": 0.08570900000000001
+        },
+        "NativeUnrelated": {
+          "max": 1.552583,
+          "mean": 1.054129825,
+          "median": 0.97575,
+          "min": 0.9027499999999999,
+          "p95": 1.457583
+        },
+        "ReactScroll": {
+          "max": 1.245917,
+          "mean": 0.4948497900000001,
+          "median": 0.4858755,
+          "min": 0.291417,
+          "p95": 0.5523750000000001
+        },
+        "RichScroll": {
+          "max": 1.399,
+          "mean": 0.5586412849999998,
+          "median": 0.5492705,
+          "min": 0.34895899999999996,
+          "p95": 0.598
+        },
+        "RowEdit": {
+          "max": 1.752208,
+          "mean": 1.2025568899999999,
+          "median": 1.1001664999999998,
+          "min": 1.01925,
+          "p95": 1.6124580000000002
+        },
+        "RowScroll": {
+          "max": 0.10070799999999999,
+          "mean": 0.08205604000000001,
+          "median": 0.0813335,
+          "min": 0.040625,
+          "p95": 0.091542
+        },
+        "RowUnrelated": {
+          "max": 1.5722919999999998,
+          "mean": 0.9927727150000001,
+          "median": 0.9001045,
+          "min": 0.844,
+          "p95": 1.438292
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1321.783
+    },
+    {
+      "round": 3,
+      "label": "after",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 1.901666,
+          "mean": 1.2990084899999998,
+          "median": 1.1787285,
+          "min": 1.091167,
+          "p95": 1.659875
+        },
+        "NativeScroll": {
+          "max": 0.09125,
+          "mean": 0.06428625500000006,
+          "median": 0.06293699999999999,
+          "min": 0.038208,
+          "p95": 0.076541
+        },
+        "NativeUnrelated": {
+          "max": 1.8291250000000001,
+          "mean": 1.06419375,
+          "median": 0.983146,
+          "min": 0.89675,
+          "p95": 1.462292
+        },
+        "ReactScroll": {
+          "max": 1.387583,
+          "mean": 0.4996330850000001,
+          "median": 0.4893965,
+          "min": 0.295917,
+          "p95": 0.5555840000000001
+        },
+        "RichScroll": {
+          "max": 1.455541,
+          "mean": 0.5628912250000003,
+          "median": 0.5523745,
+          "min": 0.345625,
+          "p95": 0.611583
+        },
+        "RowEdit": {
+          "max": 1.7469999999999999,
+          "mean": 1.19899065,
+          "median": 1.0981035000000001,
+          "min": 1.0217910000000001,
+          "p95": 1.619625
+        },
+        "RowScroll": {
+          "max": 0.111666,
+          "mean": 0.08386350999999995,
+          "median": 0.0830625,
+          "min": 0.045625,
+          "p95": 0.096958
+        },
+        "RowUnrelated": {
+          "max": 1.6649169999999998,
+          "mean": 0.9999460900000002,
+          "median": 0.9024165,
+          "min": 0.839125,
+          "p95": 1.4433749999999999
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1327.216416
+    },
+    {
+      "round": 3,
+      "label": "before",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 2.032875,
+          "mean": 1.4757283799999998,
+          "median": 1.390437,
+          "min": 1.295667,
+          "p95": 1.863959
+        },
+        "NativeScroll": {
+          "max": 0.124375,
+          "mean": 0.06452389000000001,
+          "median": 0.0629795,
+          "min": 0.037584,
+          "p95": 0.07525
+        },
+        "NativeUnrelated": {
+          "max": 1.6127500000000001,
+          "mean": 1.0939839250000003,
+          "median": 0.9831460000000001,
+          "min": 0.9121250000000001,
+          "p95": 1.489667
+        },
+        "ReactScroll": {
+          "max": 1.270792,
+          "mean": 0.5027747850000004,
+          "median": 0.492,
+          "min": 0.3025,
+          "p95": 0.557709
+        },
+        "RichScroll": {
+          "max": 1.4605,
+          "mean": 0.57000417,
+          "median": 0.5584164999999999,
+          "min": 0.349834,
+          "p95": 0.615
+        },
+        "RowEdit": {
+          "max": 2.111459,
+          "mean": 1.4987160049999997,
+          "median": 1.4042915000000002,
+          "min": 1.302459,
+          "p95": 1.920125
+        },
+        "RowScroll": {
+          "max": 0.106833,
+          "mean": 0.08284123999999997,
+          "median": 0.080063,
+          "min": 0.041708,
+          "p95": 0.0975
+        },
+        "RowUnrelated": {
+          "max": 1.6567079999999998,
+          "mean": 1.0226974699999996,
+          "median": 0.9076460000000001,
+          "min": 0.847375,
+          "p95": 1.4860000000000002
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1446.569792
+    },
+    {
+      "round": 4,
+      "label": "before",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 1.988167,
+          "mean": 1.4901317,
+          "median": 1.4037709999999999,
+          "min": 1.305,
+          "p95": 1.9030840000000002
+        },
+        "NativeScroll": {
+          "max": 0.113917,
+          "mean": 0.06564105500000006,
+          "median": 0.0637085,
+          "min": 0.037583000000000005,
+          "p95": 0.075625
+        },
+        "NativeUnrelated": {
+          "max": 1.5673339999999998,
+          "mean": 1.1003381150000002,
+          "median": 0.9902915,
+          "min": 0.909042,
+          "p95": 1.473375
+        },
+        "ReactScroll": {
+          "max": 1.175,
+          "mean": 0.49710086,
+          "median": 0.488854,
+          "min": 0.295917,
+          "p95": 0.549041
+        },
+        "RichScroll": {
+          "max": 1.305625,
+          "mean": 0.5673427149999999,
+          "median": 0.557083,
+          "min": 0.34608399999999995,
+          "p95": 0.6395
+        },
+        "RowEdit": {
+          "max": 2.066,
+          "mean": 1.4884465949999985,
+          "median": 1.3975,
+          "min": 1.2883749999999998,
+          "p95": 1.924
+        },
+        "RowScroll": {
+          "max": 0.147458,
+          "mean": 0.08397706500000002,
+          "median": 0.08025,
+          "min": 0.041541,
+          "p95": 0.10154099999999999
+        },
+        "RowUnrelated": {
+          "max": 1.5692089999999999,
+          "mean": 1.0196508499999997,
+          "median": 0.910271,
+          "min": 0.836209,
+          "p95": 1.458291
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1446.565334
+    },
+    {
+      "round": 4,
+      "label": "after",
+      "milliseconds": {
+        "NativeEdit": {
+          "max": 1.861958,
+          "mean": 1.297939315,
+          "median": 1.18275,
+          "min": 1.078084,
+          "p95": 1.692625
+        },
+        "NativeScroll": {
+          "max": 0.08375,
+          "mean": 0.06587460499999999,
+          "median": 0.0647295,
+          "min": 0.037041,
+          "p95": 0.074667
+        },
+        "NativeUnrelated": {
+          "max": 1.596208,
+          "mean": 1.06364354,
+          "median": 0.9872505,
+          "min": 0.9105000000000001,
+          "p95": 1.4673749999999999
+        },
+        "ReactScroll": {
+          "max": 1.283083,
+          "mean": 0.4923506749999999,
+          "median": 0.484188,
+          "min": 0.294458,
+          "p95": 0.538292
+        },
+        "RichScroll": {
+          "max": 1.63625,
+          "mean": 0.5629272449999998,
+          "median": 0.5506245,
+          "min": 0.343666,
+          "p95": 0.6472920000000001
+        },
+        "RowEdit": {
+          "max": 2.2055420000000003,
+          "mean": 1.2831437600000006,
+          "median": 1.1390624999999999,
+          "min": 1.0407909999999998,
+          "p95": 1.879875
+        },
+        "RowScroll": {
+          "max": 0.104458,
+          "mean": 0.08426022499999997,
+          "median": 0.084542,
+          "min": 0.040958999999999995,
+          "p95": 0.097333
+        },
+        "RowUnrelated": {
+          "max": 2.7061669999999998,
+          "mean": 1.0594260799999997,
+          "median": 0.9366045,
+          "min": 0.844833,
+          "p95": 1.545042
+        }
+      },
+      "checks": [
+        "Text/Stack compiled to native",
+        "Row compiled to native",
+        "custom React state preserved",
+        "bounded windows",
+        "visible rows loaded",
+        "row callbacks",
+        "prepend",
+        "native reverse anchor",
+        "single row edits",
+        "fresh callback state",
+        "deletion",
+        "zero records for unrelated updates; one record per edit"
+      ],
+      "suiteMs": 1358.188833
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import { createElement, useMemo } from "react";
 import { NativeError } from "ink/native";
-import { fields, useCapture } from "./capture-internal";
+import { captureReadout, fields, useCapture, type CaptureDisplay, type CaptureOptions } from "./capture-internal";
 
 export interface LevelState {
   status: "idle" | "listening" | "active" | "clipping" | "error";
@@ -17,10 +17,10 @@ function decodeLevel(value: unknown): LevelState {
   }
   return { status, rms: field.number("rms"), peak: field.number("peak"), error: field.error() };
 }
-export function useLevelMeter() {
-  const { state, ready, call } = useCapture("level", levelInitial, decodeLevel);
+export function useLevelMeter({ updates }: CaptureOptions = {}) {
+  const { state, ready, call, display } = useCapture("level", levelInitial, decodeLevel, undefined, updates);
   const commands = useMemo(() => ({ start: () => call("start"), stop: () => call("stop") }), [call]);
-  return { state, ready, ...commands };
+  return { state, ready, display, ...commands };
 }
 
 export interface PitchState {
@@ -44,12 +44,15 @@ function decodePitch(value: unknown): PitchState {
     octave: field.number("octave", -Infinity), cents: field.number("cents", -Infinity),
     confidence: field.number("confidence"), error: field.error() };
 }
-export function usePitchDetector({ referenceHz = 440 }: { referenceHz?: number } = {}) {
+export function usePitchDetector({ referenceHz = 440, updates }: { referenceHz?: number } & CaptureOptions = {}) {
   if (!Number.isFinite(referenceHz) || referenceHz <= 0) throw new RangeError("Pitch reference must be a positive frequency");
-  const { state, ready, call } = useCapture("pitch", pitchInitial, decodePitch, referenceHz);
+  const { state, ready, call, display } = useCapture("pitch", pitchInitial, decodePitch, referenceHz, updates);
   const commands = useMemo(() => ({ start: () => call("start"), stop: () => call("stop") }), [call]);
-  return { state, ready, ...commands };
+  return { state, ready, display, ...commands };
 }
+
+export function LevelReadout({ meter }: { meter: { display: CaptureDisplay } }) { return captureReadout(meter, "level"); }
+export function PitchReadout({ detector }: { detector: { display: CaptureDisplay } }) { return captureReadout(detector, "pitch"); }
 
 export function PitchIndicator({ cents }: { cents: number | null }) {
   return createElement("PitchIndicator", { cents });

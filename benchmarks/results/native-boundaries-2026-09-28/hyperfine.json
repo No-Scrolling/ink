@@ -1,0 +1,35 @@
+{
+  "results": [
+    {
+      "command": "/Users/vandam/Developer/ink/.agent-tools/headless-20260928-181816-c54cd87d/ink-headless --assets /Users/vandam/Developer/ink/.agent-tools/headless-20260928-181816-c54cd87d/assets --iterations 50 --warmup 5 --list-compat",
+      "mean": 0.43832180910000007,
+      "stddev": 0.00460119530527878,
+      "median": 0.43609856710000006,
+      "user": 0.42974335999999996,
+      "system": 0.008104759999999999,
+      "min": 0.4343954011,
+      "max": 0.44595673410000003,
+      "times": [
+        0.44595673410000003,
+        0.4343954011,
+        0.43600923410000003,
+        0.43609856710000006,
+        0.43914910910000005
+      ],
+      "memory_usage_byte": [
+        28409856,
+        28409856,
+        28409856,
+        28409856,
+        28409856
+      ],
+      "exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

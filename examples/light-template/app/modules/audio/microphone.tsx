@@ -1,6 +1,6 @@
 import { lightos } from "@ink/lightos";
 import { useEffect } from "react";
-import { useLevelMeter, usePitchDetector } from "@ink/audio/microphone";
+import { LevelReadout, PitchReadout, useLevelMeter, usePitchDetector } from "@ink/audio/microphone";
 import { Button, Field, Screen, useAction } from "ink";
 
 export default function Microphone() {
@@ -9,8 +9,8 @@ export default function Microphone() {
     await lightos.requestPermission("microphone");
     permission.run();
   });
-  const level = useLevelMeter();
-  const pitch = usePitchDetector();
+  const level = useLevelMeter({ updates: "status" });
+  const pitch = usePitchDetector({ updates: "status" });
   const command = useAction((run: () => Promise<void>) => run());
   useEffect(() => permission.run(), [permission.run]);
 
@@ -26,7 +26,7 @@ export default function Microphone() {
       {level.state.error ? (
         <Field label="Level error">{level.state.error.message}</Field>
       ) : (
-        <Field label="Level">RMS {level.state.rms}, peak {level.state.peak}</Field>
+        <LevelReadout meter={level} />
       )}
       <Button disabled={!level.ready} onPress={() => command.run(level.start)}>Start Meter</Button>
       <Button disabled={!level.ready} onPress={() => command.run(level.stop)}>Stop Meter</Button>
@@ -34,9 +34,7 @@ export default function Microphone() {
       {pitch.state.error ? (
         <Field label="Pitch error">{pitch.state.error.message}</Field>
       ) : (
-        <Field label="Pitch">
-          {pitch.state.note}{pitch.state.octave}, {pitch.state.frequency} Hz, {pitch.state.cents} cents
-        </Field>
+        <PitchReadout detector={pitch} />
       )}
       <Button disabled={!pitch.ready} onPress={() => command.run(pitch.start)}>Start Tuner</Button>
       <Button disabled={!pitch.ready} onPress={() => command.run(pitch.stop)}>Stop Tuner</Button>

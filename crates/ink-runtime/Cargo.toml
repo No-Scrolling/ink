@@ -6,5 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+ink-protocol = { path = "../ink-protocol" }
 anyhow.workspace = true
-rquickjs = { version = "=0.14.0", features = ["bindgen"] }
+rquickjs = { version = "=0.14.0", features = ["bindgen", "disable-assertions"] }
+serde_json.workspace = true

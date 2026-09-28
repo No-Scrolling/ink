@@ -2,10 +2,11 @@ import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, 
 
 import { useAction } from "./action";
 import { Button, Stack, Text } from "./index";
+import { CompiledList, nativeListPlan } from "./native-list";
 
 const OLDER_PAGE_AHEAD_ITEMS = 8;
 
-function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+export function ListLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return createElement(Stack, { gap: 24 },
     createElement(Text, { size: 18 }, message),
     createElement(Button, { onPress: onRetry }, "Try again"),
@@ -26,7 +27,12 @@ export type ListProps<T> = {
   initialEnd?: boolean;
 };
 
-export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd = false, measurementKey, onLoadMore, hasMore = true, onLoadOlder, hasOlder = false, initialEnd = false }: ListProps<T>) {
+export function List<T>(props: ListProps<T>) {
+  const plan = nativeListPlan(props.renderItem);
+  return plan ? createElement(CompiledList<T>, { ...props, plan, key: plan.template }) : createElement(ReactList<T>, props);
+}
+
+export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, followEnd = false, measurementKey, onLoadMore, hasMore = true, onLoadOlder, hasOlder = false, initialEnd = false }: ListProps<T>) {
   if (!Number.isFinite(gap) || gap < 0) {
     throw new Error("List gap must be finite and non-negative");
   }
@@ -103,8 +109,8 @@ export function List<T>({ items, keyExtractor, renderItem, gap = 47, followEnd =
   };
   const list = createElement("List", props, children);
   return createElement(Fragment, null,
-    older.status === "error" && createElement(LoadError, { message: older.error.message, onRetry: older.run }),
+    older.status === "error" && createElement(ListLoadError, { message: older.error.message, onRetry: older.run }),
     list,
-    load.status === "error" && createElement(LoadError, { message: load.error.message, onRetry: load.run }),
+    load.status === "error" && createElement(ListLoadError, { message: load.error.message, onRetry: load.run }),
   );
 }

@@ -1,0 +1,14 @@
+{
+  "linked": {
+    "scenes": 97,
+    "exactGoldenMatch": true
+  },
+  "batch": {
+    "scenes": 13,
+    "exactGoldenMatch": true
+  },
+  "runtime": {
+    "scenes": 24,
+    "exactGoldenMatch": true
+  }
+}

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { NativeError } from "ink/native";
 import type { FileRef } from "@ink/files";
-import { fields, useCapture } from "./capture-internal";
+import { captureReadout, fields, useCapture, type CaptureDisplay, type CaptureOptions } from "./capture-internal";
 
 export interface RecorderState {
   status: "idle" | "recording" | "stopping" | "ready" | "error";
@@ -20,11 +20,13 @@ function decodeRecorder(value: unknown): RecorderState {
   return { status, duration: field.number("durationMs"), error: field.error(),
     recording: id ? { id, src: `ink-file://${id}`, name: field.text("name"), mimeType: field.text("mimeType"), size: field.number("size"), duration: field.number("recordingDurationMs") } : null };
 }
-export function useRecorder() {
-  const { state, ready, call } = useCapture("recorder", recorderInitial, decodeRecorder);
+export function useRecorder({ updates }: CaptureOptions = {}) {
+  const { state, ready, call, display } = useCapture("recorder", recorderInitial, decodeRecorder, undefined, updates);
   const commands = useMemo(() => ({
     start: () => call("start"), stop: () => call("stop"),
     cancel: () => call("cancel"), delete: () => call("delete"),
   }), [call]);
-  return { state, ready, ...commands };
+  return { state, ready, display, ...commands };
 }
+
+export function RecordingDuration({ recorder }: { recorder: { display: CaptureDisplay } }) { return captureReadout(recorder, "recorder"); }

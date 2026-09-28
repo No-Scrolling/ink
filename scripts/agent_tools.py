@@ -89,6 +89,8 @@ def operation_path(identifier):
 
 
 def result_summary(kind, result):
+    if kind == "headless":
+        return {key: value for key, value in result.items() if key not in {"provenance", "command", "reactProfiles", "inputToSceneSamplesMs"}}
     if kind == "probe":
         summary = {key: value for key, value in result.items() if key != "bridge"}
         if "bridge" in result:
@@ -1045,12 +1047,14 @@ def worker(path):
         args = read_json(op.path / "request.json")
         from agent_stress import stress
         from agent_probe import probe
+        from agent_headless import headless
 
         result = {
             "experiment": build,
             "bench": compare,
             "stress": lambda op, args: stress(sys.modules[__name__], op, args),
             "probe": lambda op, args: probe(sys.modules[__name__], op, args),
+            "headless": lambda op, args: headless(sys.modules[__name__], op, args),
             "memory": explain_memory,
             "image": inspect_image,
         }[args["command"]](op, args)
@@ -1087,6 +1091,17 @@ def positive(value):
 def parser():
     cli = argparse.ArgumentParser(description=__doc__)
     commands = cli.add_subparsers(dest="command", required=True)
+    headless = commands.add_parser("headless", help="Benchmark React-to-scene updates without a UI")
+    headless.add_argument("--app", choices=["benchmarks/apps/ink-updates", "benchmarks/apps/ink-views", "benchmarks/apps/ink-native-controls", "benchmarks/apps/ink-list"], default="benchmarks/apps/ink-updates")
+    headless.add_argument("--iterations", type=positive, default=200)
+    headless.add_argument("--warmup", type=positive, default=20)
+    headless.add_argument("--hyperfine", action="store_true")
+    headless.add_argument("--react-profile", choices=["coarse", "jsx", "host"], help="Diagnostic React phase timings; use normal runs for performance comparisons")
+    headless.add_argument("--runs", type=positive, default=5)
+    headless.add_argument("--serial", help="Run the CPU harness on a reserved Android device")
+    headless.add_argument("--token", help="Reservation token for --serial")
+    headless.add_argument("--ndk", default=os.environ.get("ANDROID_NDK_HOME"),
+                          help="Android NDK directory (defaults to ANDROID_NDK_HOME)")
     experiment = commands.add_parser(
         "experiment", help="Build an isolated, hashed source snapshot"
     )
@@ -1144,7 +1159,7 @@ def parser():
         "--threshold", type=int, choices=range(256), default=0, metavar="0..255"
     )
     image.add_argument("--ocr", action="store_true")
-    for command in [experiment, bench, stress, probe, memory, image]:
+    for command in [experiment, bench, stress, probe, headless, memory, image]:
         command.add_argument(
             "--background",
             action="store_true",

@@ -23,13 +23,13 @@ internal class InkWebSockets(private val handler: Handler) {
     private val sockets = mutableMapOf<String, Socket>()
     private val pending = mutableMapOf<Long, Socket>()
 
-    @Synchronized fun execute(id: Long, operation: String, payload: String, complete: NativeResultHandler) {
+    @Synchronized fun execute(id: Long, operation: String, payload: String, complete: NativeResultHandler, inputBytes: ByteArray? = null) {
         try {
             val data = JSONObject(payload)
             if (operation == "socket-open") {
                 require(sockets.size < 8) { "Too many open WebSockets" }
                 val url = data.getString("url")
-                require(url.startsWith("wss://") || BuildConfig.DEBUG && url.startsWith("ws://") && Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1")) { "WebSockets require WSS" }
+                require(url.startsWith("wss://") || (BuildConfig.DEBUG || BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED) && url.startsWith("ws://") && Uri.parse(url).host in setOf("localhost", "127.0.0.1", "::1")) { "WebSockets require WSS" }
                 val request = Request.Builder().url(url)
                 val protocols = data.getJSONArray("protocols")
                 if (protocols.length() > 0) request.header("Sec-WebSocket-Protocol", (0 until protocols.length()).joinToString(", ") { protocols.getString(it) })
@@ -48,7 +48,8 @@ internal class InkWebSockets(private val handler: Handler) {
             }
             val socket = requireNotNull(sockets[key]) { "WebSocket is closed" }
             when (operation) {
-                "socket-read" -> {
+                "socket-read", "socket-read-bytes" -> {
+                    socket.binaryReader = operation.endsWith("-bytes")
                     require(socket.reader == null) { "WebSocket already has a pending read" }
                     socket.reader = complete
                     socket.readerId = id
@@ -57,7 +58,7 @@ internal class InkWebSockets(private val handler: Handler) {
                     else handler.postDelayed(socket.timeout, 25_000)
                 }
                 "socket-send" -> {
-                    val bytes = Base64.decode(data.getString("bytes"), Base64.DEFAULT)
+                    val bytes = inputBytes ?: Base64.decode(data.getString("bytes"), Base64.DEFAULT)
                     require(bytes.size <= 256 * 1024) { "WebSocket message exceeds 256 KiB" }
                     val connection = requireNotNull(socket.connection)
                     require(connection.queueSize() + bytes.size <= 512 * 1024) { "WebSocket send queue is full" }
@@ -82,9 +83,11 @@ internal class InkWebSockets(private val handler: Handler) {
         client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
     }
+    private data class SocketEvent(val value: JSONObject, val bytes: ByteArray?)
     private inner class Socket(val key: String) : WebSocketListener() {
         var connection: WebSocket? = null
-        val events = ArrayDeque<JSONObject>()
+        val events = ArrayDeque<SocketEvent>()
+        var binaryReader = false
         var reader: NativeResultHandler? = null
         var readerId: Long? = null
         private var queuedBytes = 0
@@ -107,23 +110,34 @@ internal class InkWebSockets(private val handler: Handler) {
             readerId = null
             reader = null
             val batch = JSONArray()
-            while (events.isNotEmpty()) batch.put(events.removeFirst())
+            val bytes = java.io.ByteArrayOutputStream()
+            while (events.isNotEmpty()) {
+                val event = events.removeFirst()
+                if (event.bytes != null) {
+                    if (binaryReader) {
+                        event.value.put("offset", bytes.size()).put("length", event.bytes.size)
+                        bytes.write(event.bytes)
+                    } else event.value.put("bytes", Base64.encodeToString(event.bytes, Base64.NO_WRAP))
+                }
+                batch.put(event.value)
+            }
             queuedBytes = 0
-            callback(NativeResult.Success(JSONObject().put("events", batch).put("bufferedAmount", connection?.queueSize() ?: 0).toString()))
+            val value = JSONObject().put("events", batch).put("bufferedAmount", connection?.queueSize() ?: 0).toString()
+            callback(if (binaryReader) NativeResult.Binary(value, bytes.toByteArray()) else NativeResult.Success(value))
         }
-        private fun emit(event: JSONObject) {
+        private fun emit(event: JSONObject, bytes: ByteArray? = null) {
             if (terminal) return
-            val size = event.toString().toByteArray().size
+            val size = event.toString().toByteArray().size + (bytes?.size ?: 0)
             if (queuedBytes + size > 512 * 1024 || events.size >= 64) { fail("WebSocket receive queue is full"); return }
-            events.add(event)
+            events.add(SocketEvent(event, bytes))
             queuedBytes += size
             deliver()
         }
         private fun fail(message: String) {
             if (terminal) return
             events.clear()
-            events.add(JSONObject().put("type", "error").put("message", message))
-            events.add(JSONObject().put("type", "close").put("code", 1006).put("reason", "").put("wasClean", false))
+            events.add(SocketEvent(JSONObject().put("type", "error").put("message", message), null))
+            events.add(SocketEvent(JSONObject().put("type", "close").put("code", 1006).put("reason", "").put("wasClean", false), null))
             terminal = true
             connection?.cancel()
             handler.removeCallbacks(closeTimeout)
@@ -141,7 +155,7 @@ internal class InkWebSockets(private val handler: Handler) {
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
             synchronized(this@InkWebSockets) {
                 if (bytes.size > 256 * 1024) fail("WebSocket message exceeds 256 KiB")
-                else emit(JSONObject().put("type", "message").put("bytes", bytes.base64()))
+                else emit(JSONObject().put("type", "message"), bytes.toByteArray())
             }
         }
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, reason) }

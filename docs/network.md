@@ -51,6 +51,8 @@ Use `AbortSignal.timeout()` for timeouts and `AbortSignal.any()` to combine canc
 
 ### Stream a response
 
+Body bytes cross the native bridge as typed byte arrays. HTTP, managed-file reads and WebSocket binary messages no longer encode those bytes as base64 inside JSON. This preserves the public APIs and their existing limits; it still copies bytes across runtime and Android ownership boundaries.
+
 Read larger bodies with a reader, async iterator or stream pipeline. Ink reads 32 KiB chunks as needed:
 
 ```ts
@@ -127,6 +129,8 @@ There is no browser origin sandbox. npm HTTP clients must work without browser o
 ## WebSocket connections
 
 `WebSocket` supports WSS, subprotocols, text and binary messages, `binaryType`, and open, message, error and close events. Idle sockets wait for native events without polling.
+
+Unencrypted `ws://` is restricted to loopback hosts (`localhost`, `127.0.0.1`, `::1`) and requires a debug build or the `network-cleartext` capability. Remote sockets require WSS.
 
 ```ts
 const socket = new WebSocket("wss://api.example.com/events");

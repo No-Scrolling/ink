@@ -20,7 +20,7 @@ export default function LocalPlayback() {
       ) : (
         <Field label="Track">{player.state.current ? `${player.state.index}: ${player.state.current.title}` : "None"}</Field>
       )}
-      <Field label="Position">{player.state.position} / {player.state.duration} ms</Field>
+      <Field label="Position at last state change">{player.state.position} / {player.state.duration} ms</Field>
       <Button disabled={disabled} onPress={() => command.run(async () => {
         await player.setQueue([
           { id: "first", src: track, title: "First Play", artist: "EDEN" },
@@ -32,8 +32,8 @@ export default function LocalPlayback() {
       <Button disabled={disabled} onPress={() => command.run(player.toggle)}>Play / Pause</Button>
       <Button disabled={disabled} onPress={() => command.run(player.previous)}>Previous Track</Button>
       <Button disabled={disabled} onPress={() => command.run(player.next)}>Next Track</Button>
-      <Button disabled={disabled} onPress={() => command.run(() => player.seek(Math.max(0, player.state.position - 15_000)))}>Back 15 Seconds</Button>
-      <Button disabled={disabled} onPress={() => command.run(() => player.seek(Math.min(player.state.duration, player.state.position + 15_000)))}>Forward 15 Seconds</Button>
+      <Button disabled={disabled} onPress={() => command.run(() => player.seekBy(-15_000))}>Back 15 Seconds</Button>
+      <Button disabled={disabled} onPress={() => command.run(() => player.seekBy(15_000))}>Forward 15 Seconds</Button>
       <Button disabled={disabled} onPress={() => command.run(player.stop)}>Stop Playback</Button>
       {command.status === "error" && <Field label="Command error">{command.error.message}</Field>}
     </Screen>

@@ -56,6 +56,22 @@ Supported flags are `INK_SPLIT_WEB=0|1`, `INK_BENCHMARK=0|1`, `INK_BRIDGE_TIMING
 
 ## Paired benchmarks
 
+### Headless CPU updates
+
+Use `scripts/agent-tools headless --hyperfine --background` for a short desktop benchmark of the real QuickJS, React, event queues and Rust layout path. No Android build or emulator is involved. Compilation happens before Hyperfine; each prepared run measures 200 updates after 20 warm-ups and checks scene correctness. `--iterations`, `--warmup` and `--runs` adjust these counts.
+
+The result directory contains a reusable binary/bundle, input hashes, stage timings, `report.md` and `hyperfine.json`. Hyperfine measures the whole process, including startup and checks; the internal timers measure individual input-to-scene updates. Neither measures GPU work or predicts LP3 latency. See [the headless harness](../benchmarks/headless/README.md) for measurement boundaries and comparing saved builds.
+
+Use `--app benchmarks/apps/ink-list` to compare automatic native row compilation with React compatibility through the public `List` API.
+
+Choose `--app benchmarks/apps/ink-views` for 500 native-bound cells plus resize, or `--app benchmarks/apps/ink-native-controls` for 1,000 keyed records with native windowing, row events and recycled input checks. The latter separately reports native scrolling and full-data refresh timings.
+
+QuickJS provenance includes the resolved dependency's source hashes and the copied C/header inputs used by Cargo. The tool rejects stale copied inputs before running the fixture, including when experimenting with an ignored local dependency fork.
+
+For diagnostic attribution, add `--react-profile coarse`, `--react-profile jsx` or `--react-profile host`. These respectively measure React phases, sample element creation, or sample Ink's host-update callback. Source packages remain unchanged and every scene check still runs. Results include raw per-update records and means. Instrumentation adds overhead; use ordinary runs to judge speed improvements. See the harness documentation for nested timings and sampling limitations.
+
+To run the same CPU harness directly on a reserved Android device, add `--serial SERIAL --token TOKEN --ndk /path/to/ndk`. It uses `cargo ndk`, performs the same correctness checks and removes its remote scratch files afterwards. This runs as Android shell, without an Activity or GPU; it does not replace the full-app LP3 latency check. Hyperfine is host-only. See [Android headless runs](../benchmarks/headless/README.md#run-the-cpu-harness-on-android).
+
 ### React to native update timing
 
 The bridge fixture reuses the counter screen with a separate app ID. Build it once, reserve the emulator, and install it:
@@ -81,15 +97,15 @@ The workload sends 15 taps over approximately three seconds, varying their timin
 | Stage | What the timer includes | Source files |
 | --- | --- | --- |
 | Input to dispatch | Native tap handling until the event is sent to JavaScript | `platform/android/native/src/android.rs` |
-| React and transport | JS event handling, React, constructing changes, JSON encoding and queue waits | `packages/ink/src/renderer.ts`, `crates/ink-runtime/src/lib.rs` |
-| JSON decode | Reading the message into Rust instructions and property maps | `platform/android/native/src/javascript.rs`, `crates/ink-core/src/react.rs` |
+| React and transport | JS event handling, React, constructing changes, native batch conversion and queue waits | `packages/ink/src/renderer.ts`, `crates/ink-runtime/src/lib.rs` |
+| JSON decode | Zero for native batches; conversion happens on the JavaScript thread | `platform/android/native/src/javascript.rs`, `crates/ink-core/src/react.rs` |
 | Decode to apply | Dispatch and timing-log overhead between parsing and applying | `platform/android/native/src/javascript.rs` |
 | Apply and layout | Updating the native React tree, rebuilding engine nodes and layout | `crates/ink-core/src/react.rs`, `crates/ink-core/src/lib.rs` |
 | Commit to frame submission | Frame scheduling, rendering and submitting the matching scene | `platform/android/app/src/main/kotlin/com/vandam/ink/MainActivity.kt`, `platform/android/native/src/android.rs`, `crates/ink-renderer-vulkan/src/compact.rs` |
 
 Builds with Kotlin scheduling markers further split the final interval into commit-to-request, request-to-drawing-start and drawing-start-to-submission. Driver presentation feedback is matched by presentation ID when available. It arrives on later frames, so the final updates may lack that measurement; sample counts are reported separately. Driver feedback still does not measure physical panel response.
 
-The total starts when native code receives pointer-up and ends when the matching frame has been submitted. It is not physical touch-to-display latency. Timings share Android's monotonic clock; instrumentation adds overhead. The React/transport duration does not separately attribute JavaScript computation, JSON encoding or waiting. Compare repeated runs using identical instrumentation; do not treat a three-second sample as a precise performance guarantee. Normal release builds omit the added decode timer.
+The total starts when native code receives pointer-up and ends when the matching frame has been submitted. It is not physical touch-to-display latency. Timings share Android's monotonic clock; instrumentation adds overhead. The React/transport duration does not separately attribute JavaScript computation, commit conversion or waiting. Native batches use a zero-length `ReactDecode` marker to keep the timing boundary; probes report commit bytes as unavailable because no complete JSON document crosses the queue. Compare repeated runs using identical instrumentation; do not treat a three-second sample as a precise performance guarantee. Normal release builds omit the added decode timer.
 
 Release the reservation when finished; this also removes apps installed through that reservation:
 
@@ -160,6 +176,17 @@ scripts/agent-tools image /absolute/path/before.png \
 ```
 
 The region is `x,y,width,height`. Images must have matching dimensions; comparison does not resize them. Results include file hashes, bright/coloured pixel counts, mean colours, changed pixel count and bounding box, plus OCR text and confidence on macOS. `crop.png` contains the inspected region and `diff.png` marks changed pixels white. The threshold ignores channel differences at or below the chosen 0–255 value. Check the image too: OCR can miss or misread text.
+
+### Verify a visual defect
+
+Image previews can be misleading. Confirm the defect in the saved pixels before changing application or rendering code, changing emulator settings, or reporting a failed visual check.
+
+1. Retain before/after screenshots and record the exact interaction between them.
+2. Compare the affected region with `image BEFORE --compare AFTER --region X,Y,W,H --threshold 0 --ocr`. Check whether the changed bounds intersect the allegedly missing or damaged content. Exclude expected changes such as a counter increment from a claim about an unchanged header.
+3. For missing text, run OCR on the after image too. OCR recognition supports presence; failure to recognise text alone does not prove absence. If file evidence contradicts the preview, investigate the inspection tooling rather than the app.
+4. Reproduce a confirmed defect with a fresh capture. Include image paths, comparison result IDs and the observed difference in the report. Keep an unconfirmed visual suspicion separate from a verified failure.
+
+The 28 September 2026 list investigation initially misreported disappearing headers. Saved-image comparison and OCR showed the headers intact; only the row count changed. See the [corrected evidence](../benchmarks/results/default-lists-2026-09-28/README.md#screenshot-validation-correction).
 
 ## Inspect memory
 

@@ -1,6 +1,8 @@
 #[cfg(target_os = "android")]
 pub mod cpu_affinity;
 mod encoding;
+mod commit;
+mod binary;
 
 use std::{
     cell::RefCell,
@@ -25,6 +27,7 @@ type WebLoader = Box<dyn Fn() -> Result<String> + Send>;
 pub enum Event {
     Ready,
     Message(String),
+    Commit(ink_protocol::ReactCommit),
     Error(String),
     Stopped,
 }
@@ -32,7 +35,7 @@ pub enum Event {
 enum Command {
     #[cfg(debug_assertions)]
     EvaluateDevelopment(String),
-    Message(String),
+    Message(String, Option<Vec<u8>>),
     LatestMessage(u64),
     Stop,
 }
@@ -43,6 +46,7 @@ pub struct AppRuntime {
     delivery_failed: Arc<Mutex<Option<String>>>,
     latest_messages: Arc<Mutex<HashMap<u64, String>>>,
     thread: Option<JoinHandle<()>>,
+    binary: binary::Buffers,
 }
 
 impl AppRuntime {
@@ -82,6 +86,8 @@ impl AppRuntime {
         let failure = delivery_failed.clone();
         let latest_messages = Arc::new(Mutex::new(HashMap::new()));
         let pending_messages = latest_messages.clone();
+        let binary = binary::Buffers::default();
+        let binary_runtime = binary.clone();
         let thread = thread::Builder::new()
             .name("ink-js".into())
             .stack_size(2 * 1024 * 1024)
@@ -94,6 +100,7 @@ impl AppRuntime {
                     failure,
                     pending_messages,
                     load_web,
+                    binary_runtime,
                 ) {
                     outgoing.send_terminal(Event::Error(format!("{error:#}")), &cancelled);
                 }
@@ -108,6 +115,7 @@ impl AppRuntime {
                 delivery_failed,
                 latest_messages,
                 thread: Some(thread),
+                binary,
             },
             events,
         ))
@@ -120,8 +128,16 @@ impl AppRuntime {
         if self.stopped.load(Ordering::Acquire) {
             return Err(anyhow!("JavaScript runtime is closed"));
         }
-        self.enqueue(Command::Message(message))
+        self.enqueue(Command::Message(message, None))
     }
+
+    pub fn send_bytes(&self, message: String, bytes: Vec<u8>) -> Result<()> {
+        anyhow::ensure!(message.len() <= MAX_MESSAGE_BYTES && bytes.len() <= binary::MAX_BYTES, "native binary result is too large");
+        anyhow::ensure!(!self.stopped.load(Ordering::Acquire), "JavaScript runtime is closed");
+        self.enqueue(Command::Message(message, Some(bytes)))
+    }
+
+    pub fn take_bytes(&self, id: u64) -> Option<Vec<u8>> { self.binary.take(id) }
 
     /// Replace an undelivered message for this key, keeping a single queue entry.
     pub fn send_latest(&self, key: u64, message: String) -> Result<()> {
@@ -221,6 +237,7 @@ fn run(
     delivery_failed: Arc<Mutex<Option<String>>>,
     latest_messages: Arc<Mutex<HashMap<u64, String>>>,
     load_web: Option<WebLoader>,
+    binary: binary::Buffers,
 ) -> Result<()> {
     #[cfg(target_os = "android")]
     let mut work_affinity = None;
@@ -257,6 +274,7 @@ fn run(
         events.clone(),
         timers.clone(),
         transport_failed.clone(),
+        binary,
     )?;
     if let Some(load_web) = load_web {
         context.with(|ctx| -> rquickjs::Result<()> {
@@ -375,14 +393,14 @@ fn run(
                 })?;
                 None
             }
-            Ok(Command::Message(message)) => Some(message),
+            Ok(Command::Message(message, bytes)) => Some((message, bytes)),
             Ok(Command::LatestMessage(key)) => Some(latest_messages.lock()
                 .map_err(|_| anyhow!("JavaScript message queue is unavailable"))?
-                .remove(&key).context("missing latest JavaScript message")?),
+                .remove(&key).context("missing latest JavaScript message")?).map(|message| (message, None)),
             Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => None,
         };
-        if let Some(message) = message {
+        if let Some((message, bytes)) = message {
             #[cfg(target_os = "android")]
             if work_affinity.is_none() {
                 work_affinity = cpu_affinity::prefer_performance();
@@ -390,7 +408,11 @@ fn run(
             context
                 .with(|ctx| {
                     let receive: Function = ctx.globals().get("__inkReceive")?;
-                    receive.call::<_, ()>((message,))
+                    let bytes = match bytes {
+                        Some(bytes) => rquickjs::TypedArray::new(ctx.clone(), bytes)?.into_value(),
+                        None => Value::new_undefined(ctx.clone()),
+                    };
+                    receive.call::<_, ()>((message, bytes))
                 })
                 .map_err(|error| {
                     context
@@ -432,11 +454,13 @@ fn install(
     events: EventSink,
     timers: Timers,
     transport_failed: Rc<RefCell<bool>>,
+    binary: binary::Buffers,
 ) -> Result<()> {
     let start = Instant::now();
     context
         .with(|ctx| {
             encoding::install(&ctx)?;
+            binary::install(&ctx, binary, events.clone())?;
             ctx.eval::<(), _>(include_str!("encoding.js"))?;
             let global = ctx.globals();
             global.set(
@@ -454,17 +478,14 @@ fn install(
                 })?,
             )?;
 
+            commit::install(&ctx, events.clone(), transport_failed)?;
             global.set(
                 "__inkPost",
                 Function::new(ctx.clone(), move |ctx: Ctx<'_>, message: String| {
                     if message.len() > MAX_MESSAGE_BYTES {
                         return Err(Exception::throw_range(&ctx, "native message is too large"));
                     }
-                    let commit = message.starts_with("{\"type\":\"commit\"");
                     events.try_send(Event::Message(message)).map_err(|error| {
-                        if commit {
-                            *transport_failed.borrow_mut() = true;
-                        }
                         Exception::throw_message(
                             &ctx,
                             match error {

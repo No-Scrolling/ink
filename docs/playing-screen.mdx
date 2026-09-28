@@ -8,11 +8,11 @@ description: "Display artwork and playback controls."
 <div className="pattern-example">
 <div>
 
-<p>Pass playback state and callbacks. Times are in milliseconds.</p>
+<p>Pass your player as <code>playback</code>. The screen connects its native clock and transport commands.</p>
 
 <p>Titles and artist names stay on one line and scroll when they don't fit.</p>
 
-<p>The progress bar animates between position updates while <code>playing</code> is true. Use <code>buffering</code> to pause the animation. Use <code>loading</code> during initial loading to hide seek controls and show “Loading...” in place of play/pause.</p>
+<p>Progress and elapsed time update natively. The screen derives buffering and initial loading from the player, and keeps the pause icon visible while playback is requested.</p>
 
 ```tsx
 import { PlayingScreen } from "ink";
@@ -22,25 +22,25 @@ import artwork from "../assets/wallsocket.jpg";
   image={artwork}
   title="Cops and robbers"
   artists={[{ name: "underscores" }]}
-  playing={playing}
-  buffering={buffering}
-  loading={loading}
-  onPlayPause={togglePlayback}
-  position={position}
-  duration={213000}
-  onSeek={seek}
-  previous={{ onPress: previousTrack }}
-  next={{ onPress: nextTrack }}
+  playback={player}
   actions={actions}
 />
 ```
-<p>Connect these handlers to your player, such as <a href="/audio">Audio</a>. <code>PlayingScreen</code> provides the whole screen; do not wrap it in <code>Screen</code>.</p>
+<p>Use a player from <a href="/audio">Audio</a>. <code>PlayingScreen</code> provides the whole screen; do not wrap it in <code>Screen</code>.</p>
 
 </div>
 <div className="pattern-preview">
 <img src="/images/patterns/playing.png" alt="Artwork, track details, progress and playback controls with bottom actions." width="1080" height="1240" />
 </div>
 </div>
+
+## Native playback clock
+
+`PlayingScreen` reads the native clock from its playback binding. Apps do not pass position, speed or seek handlers separately. See [native playback progress](/audio#keep-visual-progress-native).
+
+Custom players implement the exported `Playback` interface: state, an optional native clock, `toggle()` and `seek()`. Optional `previous()`, `next()` and `seekBy()` methods enable the corresponding buttons. This also supports controlled previews without a native clock.
+
+Transport commands and bottom actions may return promises. The screen prevents overlapping commands, shows failures and retries the command that failed. App-specific commands supplied in the binding still run, including persistence and sleep-timer logic.
 
 ## Upcoming artwork
 
@@ -68,11 +68,11 @@ Pass up to two cover sources in `preloadImages`, such as the next and previous t
 <div className="pattern-example">
 <div>
 
-<p>Set <code>seconds</code> to 5, 10 or 30 for seek icons.</p>
+<p>Set <code>seconds</code> to 5, 10 or 30 to use relative seeking instead of track navigation.</p>
 
 ```tsx
-previous={{ seconds: 10, onPress: () => seek(position - 10000) }}
-next={{ seconds: 30, onPress: () => seek(position + 30000) }}
+previous={{ seconds: 10 }}
+next={{ seconds: 30 }}
 ```
 <p><code>onLongPress</code> adds a separate long-press action. It runs once and suppresses the tap on release. <code>disabled</code> prevents both actions.</p>
 
@@ -114,7 +114,7 @@ const actions = [
 </div>
 </div>
 
-With Audio, pass `playing={state.playWhenReady}`, `buffering={state.buffering}` and `loading={state.loading}`. Seeking keeps the pause icon visible; initial loading shows “Loading...”.
+An explicit `onPress` overrides the default transport action. Without an override, the screen calls `previous()` or `next()`, or `seekBy()` when `seconds` is supplied. Unavailable actions are disabled.
 
 ## Title and artists
 
