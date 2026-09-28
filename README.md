@@ -67,16 +67,16 @@ Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`.
 
 ## Benchmarks
 
-Physical Light Phone III measurements from 19 September 2026 using three matching ARM64 release counter apps. Values are medians unless stated.
+Physical Light Phone III measurements from 28 September 2026 using three matching ARM64 release counter apps. Values are medians unless stated.
 
 | Counter | Ink | Expo | Light SDK | Ink delta vs closest |
 | --- | ---: | ---: | ---: | ---: |
-| APK size | 2.72 MB | 28.72 MB | 10.27 MB | −7.55 MB (−73.5%) |
-| Clean app build, warm caches | 1.82 s | 57.28 s | 47.10 s | −45.28 s (−96.1%) |
-| Activity launch, median | 240 ms | 544 ms | 345 ms | −105 ms (−30.4%) |
-| Activity launch, p95 | 266 ms | 585 ms | 370 ms | −104 ms (−28.1%) |
-| Idle memory (PSS) | 16.3 MiB | 59.2 MiB | 21.3 MiB | −5.0 MiB (−23.5%) |
-| CPU time for 100 taps | 930 ms | 4,510 ms | 3,660 ms | −2,730 ms (−74.6%) |
+| APK size | 3.24 MB | 28.72 MB | 10.27 MB | −7.03 MB (−68.5%) |
+| Clean app build, warm caches | 2.03 s | 61.47 s | 50.04 s | −48.01 s (−95.9%) |
+| Activity launch, median | 245 ms | 536.5 ms | 349 ms | −104 ms (−29.8%) |
+| Activity launch, p95 | 268 ms | 597 ms | 378 ms | −110 ms (−29.1%) |
+| Idle memory (PSS) | 16.7 MiB | 59.5 MiB | 21.7 MiB | −5.0 MiB (−23.0%) |
+| CPU time for 100 taps | 720 ms | 4,270 ms | 3,540 ms | −2,820 ms (−79.7%) |
 
 Lower is better for every metric. The closest alternative is Light SDK in every row. Deltas use the displayed values: `Ink − closest`, with percentages relative to the closest alternative. Negative values favour Ink.
 
@@ -84,4 +84,4 @@ Each app has a standard header, Public Sans count and Increase action, with the 
 
 Each app ran 50 cold launches, five idle-memory samples and five 100-tap workloads in alternating framework order. Light SDK's minimum one-second splash delay is removed.
 
-Build times are medians of three runs on an Apple M4 Pro, with app outputs cleaned and dependency and compiler caches retained. See [the full counter comparison](benchmarks/results/matching-counter-lp3-2026-09-19.md) for raw samples, versions, screenshots and device cleanup.
+Build times are medians of three runs on an Apple M4 Pro, with app outputs cleaned and dependency and compiler caches retained. See [the full counter comparison](benchmarks/results/matching-counter-lp3-2026-09-28.md) for raw samples, versions, screenshots and device cleanup.

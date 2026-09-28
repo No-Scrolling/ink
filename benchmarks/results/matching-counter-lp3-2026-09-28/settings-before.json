@@ -1,0 +1,18 @@
+{
+  "stay_on_while_plugged_in": {
+    "previous": "0",
+    "applied": "7"
+  },
+  "window_animation_scale": {
+    "previous": "0.0",
+    "applied": "0"
+  },
+  "transition_animation_scale": {
+    "previous": "0.0",
+    "applied": "0"
+  },
+  "animator_duration_scale": {
+    "previous": "null",
+    "applied": "0"
+  }
+}

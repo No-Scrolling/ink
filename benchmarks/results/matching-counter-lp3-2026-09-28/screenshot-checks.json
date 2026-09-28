@@ -1,0 +1,416 @@
+{
+  "first_image_ocr": [
+    "image-20260928-224359-5bb35486",
+    "image-20260928-224502-b87bb2a4",
+    "image-20260928-224502-8e4a5f0c"
+  ],
+  "comparisons": [
+    {
+      "id": "image-20260928-224818-83349b7d",
+      "status": "complete",
+      "cursor": "1790632098.420833",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224818-83349b7d"
+    },
+    {
+      "id": "image-20260928-224818-c46240fa",
+      "status": "complete",
+      "cursor": "1790632098.5452511",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224818-c46240fa"
+    },
+    {
+      "id": "image-20260928-224818-b8275caa",
+      "status": "complete",
+      "cursor": "1790632098.669473",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224818-b8275caa"
+    },
+    {
+      "id": "image-20260928-224818-070d6d64",
+      "status": "complete",
+      "cursor": "1790632098.797462",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 17667,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224818-070d6d64"
+    },
+    {
+      "id": "image-20260928-224818-c5af5ddf",
+      "status": "complete",
+      "cursor": "1790632098.923024",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16929,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224818-c5af5ddf"
+    },
+    {
+      "id": "image-20260928-224818-7fea08df",
+      "status": "complete",
+      "cursor": "1790632099.0510368",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16929,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224818-7fea08df"
+    },
+    {
+      "id": "image-20260928-224819-3ab496f5",
+      "status": "complete",
+      "cursor": "1790632099.173271",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16929,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224819-3ab496f5"
+    },
+    {
+      "id": "image-20260928-224819-c1a98865",
+      "status": "complete",
+      "cursor": "1790632099.2958798",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16929,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224819-c1a98865"
+    },
+    {
+      "id": "image-20260928-224819-2f5157a6",
+      "status": "complete",
+      "cursor": "1790632099.422025",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16829,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224819-2f5157a6"
+    },
+    {
+      "id": "image-20260928-224819-8ef67471",
+      "status": "complete",
+      "cursor": "1790632099.548052",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16829,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224819-8ef67471"
+    },
+    {
+      "id": "image-20260928-224819-0d387107",
+      "status": "complete",
+      "cursor": "1790632099.6731231",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16829,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224819-0d387107"
+    },
+    {
+      "id": "image-20260928-224819-db777c69",
+      "status": "complete",
+      "cursor": "1790632099.7973409",
+      "summary": {
+        "size": [
+          1080,
+          1240
+        ],
+        "regionPixels": 1339200,
+        "brightPixels": 16829,
+        "colouredPixels": 0,
+        "comparison": {
+          "changedPixels": 0,
+          "changedPercent": 0.0,
+          "changedBoundsInCrop": null
+        }
+      },
+      "evidence": "/Users/vandam/Developer/ink/.agent-tools/image-20260928-224819-db777c69"
+    }
+  ],
+  "ocr_results": [
+    {
+      "file": "/Users/vandam/Developer/ink/.agent-tools/bench-20260928-223909-bc395940/ink-counter-1.png",
+      "sha256": "4b6d9911a91158f6d13f79ab2acf6635af7773d3395429d195ccb3833e05d9dd",
+      "pillow": "12.3.0",
+      "size": [
+        1080,
+        1240
+      ],
+      "regionXYXY": [
+        0,
+        0,
+        1080,
+        1240
+      ],
+      "regionPixels": 1339200,
+      "brightPixels": 17667,
+      "colouredPixels": 0,
+      "meanRGB": [
+        3.4606429211469534,
+        3.4606429211469534,
+        3.4606429211469534
+      ],
+      "text": [
+        {
+          "boundsNormalisedBottomLeft": [
+            0.40903462936155816,
+            0.9296574455539166,
+            0.18193073979130497,
+            0.034233496266026564
+          ],
+          "confidence": 1,
+          "text": "Counter"
+        },
+        {
+          "boundsNormalisedBottomLeft": [
+            0.26995902349068795,
+            0.4771338744909943,
+            0.4619795340078849,
+            0.07711395140617117
+          ],
+          "confidence": 1,
+          "text": "Count: 100"
+        },
+        {
+          "boundsNormalisedBottomLeft": [
+            0.35761311439278254,
+            0.3597936328110434,
+            0.2826377303512009,
+            0.05540591209165502
+          ],
+          "confidence": 1,
+          "text": "Increase"
+        }
+      ]
+    },
+    {
+      "file": "/Users/vandam/Developer/ink/.agent-tools/bench-20260928-223909-bc395940/expo-counter-1.png",
+      "sha256": "d41406636fed8a6b3c59e768d39f5761259b4101508984d021da3bca48c32d82",
+      "pillow": "12.3.0",
+      "size": [
+        1080,
+        1240
+      ],
+      "regionXYXY": [
+        0,
+        0,
+        1080,
+        1240
+      ],
+      "regionPixels": 1339200,
+      "brightPixels": 16929,
+      "colouredPixels": 0,
+      "meanRGB": [
+        3.2842271505376344,
+        3.2842271505376344,
+        3.2842271505376344
+      ],
+      "text": [
+        {
+          "boundsNormalisedBottomLeft": [
+            0.4060082084705841,
+            0.9239935386076882,
+            0.18789903146249282,
+            0.041397017817343396
+          ],
+          "confidence": 1,
+          "text": "Counter"
+        },
+        {
+          "boundsNormalisedBottomLeft": [
+            0.2721331893826689,
+            0.4803842184474221,
+            0.4594727692780671,
+            0.07223085588024514
+          ],
+          "confidence": 1,
+          "text": "Count: 100"
+        },
+        {
+          "boundsNormalisedBottomLeft": [
+            0.3569455329985878,
+            0.36563083370280214,
+            0.28415134571216727,
+            0.04454741631784742
+          ],
+          "confidence": 1,
+          "text": "Increase"
+        }
+      ]
+    },
+    {
+      "file": "/Users/vandam/Developer/ink/.agent-tools/bench-20260928-223909-bc395940/light-sdk-counter-1.png",
+      "sha256": "d134806193709be4bd8422c111ace3627cc9a7034e5e117606388cf0dbfcc281",
+      "pillow": "12.3.0",
+      "size": [
+        1080,
+        1240
+      ],
+      "regionXYXY": [
+        0,
+        0,
+        1080,
+        1240
+      ],
+      "regionPixels": 1339200,
+      "brightPixels": 16829,
+      "colouredPixels": 0,
+      "meanRGB": [
+        3.271235065710872,
+        3.271235065710872,
+        3.271235065710872
+      ],
+      "text": [
+        {
+          "boundsNormalisedBottomLeft": [
+            0.4114832551961522,
+            0.9249999995644324,
+            0.1818181779649523,
+            0.041666667692122905
+          ],
+          "confidence": 1,
+          "text": "Counter"
+        },
+        {
+          "boundsNormalisedBottomLeft": [
+            0.27212716712593127,
+            0.4771642956375558,
+            0.45944468180338544,
+            0.07383990133962326
+          ],
+          "confidence": 1,
+          "text": "Count: 100"
+        },
+        {
+          "boundsNormalisedBottomLeft": [
+            0.3559899318869645,
+            0.36589581924884973,
+            0.2841799700701678,
+            0.05581657655777472
+          ],
+          "confidence": 1,
+          "text": "Increase"
+        }
+      ]
+    }
+  ]
+}

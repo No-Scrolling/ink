@@ -27,7 +27,7 @@ For fast CPU-path iteration, use the [headless update harness](headless/README.m
 - [Runtime optimisation profile](results/runtime-arena-lp3-2026-09-27/report.md): update waterfall, continuous workloads and scrollbar timings before the 0.17.0 upgrade.
 - [Native size profile](results/native-size-2026-09-27/report.md): earlier bundle-size investigation.
 
-Superseded intermediate reports have been removed. See the [retention record](results/cleanup-2026-09-28.md). The stress and framework comparisons below cover different workloads and remain as historical baselines.
+Superseded intermediate reports have been removed. See the [retention record](results/cleanup-2026-09-28.md). The stress and framework comparisons below cover different workloads.
 
 ## Ink stress test
 
@@ -52,7 +52,7 @@ The existing [scroll fixture](apps/ink-scroll/README.md) remains available for f
 
 The comparison uses three counter apps: Ink, Expo (light-template) and Light SDK. Each has a standard header, a centred count starting at zero and an **Increase** button.
 
-The [recorded LP3 comparison](results/matching-counter-lp3-2026-09-19.md) includes build and runtime samples, screenshots and device cleanup checks.
+The [recorded LP3 comparison](results/matching-counter-lp3-2026-09-28.md) includes build and runtime samples, screenshots and device cleanup checks.
 
 ### Prepare and run
 
