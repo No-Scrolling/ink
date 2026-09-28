@@ -1,0 +1,24 @@
+{
+  "sourceSha256": "88800777f1e9fa1968672e58043960b14c6461df56374a187a22e868c24fdac5",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "d7be5948b68ef78c801218d2e2683dbc14a59389a02b28ed293385e21dc714b8"
+  },
+  "revision": "35774ff4cf6df284c012356366689e4e1535c07d",
+  "flags": {},
+  "signing": "generated Android development key",
+  "artifacts": {
+    "benchmarks/apps/ink-scroll": {
+      "file": "0-ink-scroll-benchmark-1.0.0-arm64.apk",
+      "sha256": "dab3d0b8d0f426bd129dc9f702d71aaf0667b8ed9cd49dfe83a6cda65ff4ba04",
+      "bytes": 5728848,
+      "package": "com.vandam.benchmark.ink.rendererscroll",
+      "component": "com.vandam.benchmark.ink.rendererscroll/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

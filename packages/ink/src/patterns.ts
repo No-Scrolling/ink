@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import { createElement, type ReactNode } from "./react";
 import { Button, Stack, Text } from "./index";
 
 export type SettingsChoice<Value extends string> = {

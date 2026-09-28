@@ -10,10 +10,33 @@
     ],
     "src/playing.ts": [
       "image",
-      "network"
+      "network",
+      "ui-playing"
     ],
     "src/external.ts": [
       "external"
+    ],
+    "src/native-list.ts": [
+      "ui-lists"
+    ],
+    "src/list.ts": [
+      "ui-lists"
+    ],
+    "src/conversation.ts": [
+      "ui-messages",
+      "ui-lists"
+    ],
+    "src/view.ts": [
+      "ui-views",
+      "ui-lists",
+      "ui-messages",
+      "ui-playing",
+      "image",
+      "network",
+      "text-input"
+    ],
+    "src/canvas.ts": [
+      "ui-canvas"
     ]
   }
 }

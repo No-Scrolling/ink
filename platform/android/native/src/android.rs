@@ -13,8 +13,8 @@ use ink_core::ImageFit;
 #[cfg(feature = "benchmark")]
 use ink_core::PerfTraceSection;
 use ink_core::{
-    CameraPreviewKind, ControllerId, Engine, NativeRequestKind, PUBLIC_SANS, PointerOutcome,
-    ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
+    CameraPortal, CameraPreviewKind, ControllerId, Engine, MapPortal, NativeRequestKind, PUBLIC_SANS,
+    PointerOutcome, ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
 };
 use ink_renderer_vulkan::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
@@ -97,6 +97,9 @@ struct AndroidEngine {
     script: Option<javascript::ScriptRuntime>,
     javascript_error: Option<String>,
     surface: Option<AttachedSurface>,
+    sent_camera_portal: Option<(Option<CameraPortal>, bool)>,
+    sent_map_portal: Option<Option<MapPortal>>,
+    sent_video_portal: Option<Option<MapPortal>>,
     #[cfg(feature = "audio")]
     audio: crate::audio::AudioRuntime,
     #[cfg(feature = "benchmark")]
@@ -115,6 +118,9 @@ impl AndroidEngine {
             script: None,
             javascript_error: None,
             surface: None,
+            sent_camera_portal: None,
+            sent_map_portal: None,
+            sent_video_portal: None,
             #[cfg(feature = "audio")]
             audio: crate::audio::AudioRuntime::default(),
             #[cfg(feature = "benchmark")]
@@ -487,6 +493,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraReviewReady(
     _class: JClass<'_>,
     handle: jlong,
 ) -> jboolean {
+    if !cfg!(feature = "camera") { return true as jboolean; }
     engine(handle)
         .and_then(|engine| engine.lock().ok())
         .is_none_or(|engine| engine.engine.camera_review_ready()) as jboolean
@@ -498,32 +505,40 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'loca
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
-    let value = engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| {
-            let scene = engine.engine.scene();
-            scene.camera_portal.map(|portal| (portal, scene.light))
-        })
-        .map_or_else(String::new, |(portal, light)| {
-            let kind = match portal.kind {
-                CameraPreviewKind::Photo => "photo",
-                CameraPreviewKind::Scanner => "scanner",
-            };
-            let left = portal.rect.x.round() as i32;
-            let top = portal.rect.y.round() as i32;
-            let right = (portal.rect.x + portal.rect.width).round() as i32;
-            let bottom = (portal.rect.y + portal.rect.height).round() as i32;
-            format!(
-                "{{\"controller\":{},\"kind\":\"{}\",\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"light\":{}}}",
-                portal.controller.index() as i64,
-                kind,
-                left,
-                top,
-                (right - left).max(1),
-                (bottom - top).max(1),
-                light,
-            )
-        });
+    if !cfg!(feature = "camera") {
+        return env.with_env(|env| env.new_string(""))
+            .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+    }
+    let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) else {
+        return JString::default();
+    };
+    let scene = engine.engine.scene();
+    let light = scene.light;
+    let state = (scene.camera_portal, light);
+    if engine.sent_camera_portal == Some(state) {
+        return JString::default();
+    }
+    engine.sent_camera_portal = Some(state);
+    let value = state.0.map_or_else(String::new, |portal| {
+        let kind = match portal.kind {
+            CameraPreviewKind::Photo => "photo",
+            CameraPreviewKind::Scanner => "scanner",
+        };
+        let left = portal.rect.x.round() as i32;
+        let top = portal.rect.y.round() as i32;
+        let right = (portal.rect.x + portal.rect.width).round() as i32;
+        let bottom = (portal.rect.y + portal.rect.height).round() as i32;
+        format!(
+            "{{\"controller\":{},\"kind\":\"{}\",\"x\":{},\"y\":{},\"width\":{},\"height\":{},\"light\":{}}}",
+            portal.controller.index() as i64,
+            kind,
+            left,
+            top,
+            (right - left).max(1),
+            (bottom - top).max(1),
+            light,
+        )
+    });
     env.with_env(|env| env.new_string(value))
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
@@ -534,18 +549,27 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeMapPortal<'local>(
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
-    let value = engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| engine.engine.scene().map_portal)
-        .map_or_else(String::new, |portal| {
-            serde_json::json!({
-                "controller": portal.controller.index() as i64,
-                "x": portal.rect.x.round() as i32,
-                "y": portal.rect.y.round() as i32,
-                "width": portal.rect.width.round().max(1.0) as i32,
-                "height": portal.rect.height.round().max(1.0) as i32,
-            }).to_string()
-        });
+    if !cfg!(feature = "maps") {
+        return env.with_env(|env| env.new_string(""))
+            .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+    }
+    let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) else {
+        return JString::default();
+    };
+    let state = engine.engine.scene().map_portal;
+    if engine.sent_map_portal == Some(state) {
+        return JString::default();
+    }
+    engine.sent_map_portal = Some(state);
+    let value = state.map_or_else(String::new, |portal| {
+        serde_json::json!({
+            "controller": portal.controller.index() as i64,
+            "x": portal.rect.x.round() as i32,
+            "y": portal.rect.y.round() as i32,
+            "width": portal.rect.width.round().max(1.0) as i32,
+            "height": portal.rect.height.round().max(1.0) as i32,
+        }).to_string()
+    });
     env.with_env(|env| env.new_string(value))
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
@@ -556,18 +580,27 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeVideoPortal<'local
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
-    let value = engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| engine.engine.scene().video_portal)
-        .map_or_else(String::new, |portal| {
-            serde_json::json!({
-                "controller": portal.controller.index() as i64,
-                "x": portal.rect.x.round() as i32,
-                "y": portal.rect.y.round() as i32,
-                "width": portal.rect.width.round().max(1.0) as i32,
-                "height": portal.rect.height.round().max(1.0) as i32,
-            }).to_string()
-        });
+    if !cfg!(feature = "video") {
+        return env.with_env(|env| env.new_string(""))
+            .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+    }
+    let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) else {
+        return JString::default();
+    };
+    let state = engine.engine.scene().video_portal;
+    if engine.sent_video_portal == Some(state) {
+        return JString::default();
+    }
+    engine.sent_video_portal = Some(state);
+    let value = state.map_or_else(String::new, |portal| {
+        serde_json::json!({
+            "controller": portal.controller.index() as i64,
+            "x": portal.rect.x.round() as i32,
+            "y": portal.rect.y.round() as i32,
+            "width": portal.rect.width.round().max(1.0) as i32,
+            "height": portal.rect.height.round().max(1.0) as i32,
+        }).to_string()
+    });
     env.with_env(|env| env.new_string(value))
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }
@@ -837,14 +870,26 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputActive(
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputState(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
-) -> jboolean {
+) -> jint {
+    if !cfg!(feature = "text-input") { return 0; }
     engine(handle)
         .and_then(|engine| engine.lock().ok())
-        .is_some_and(|engine| engine.engine.text_input_active()) as jboolean
+        .map(|engine| {
+            let action = match engine.engine.text_input_action() {
+                TextInputAction::Return => 0,
+                TextInputAction::Search => 1,
+                TextInputAction::Done => 2,
+            };
+            // Match syncTextInput: active, numeric, then the keyboard action.
+            engine.engine.text_input_active() as jint
+                | ((engine.engine.text_input_numeric() as jint) << 1)
+                | (action << 2)
+        })
+        .unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]
@@ -853,39 +898,16 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputContext<'
     _class: JClass<'local>,
     handle: jlong,
 ) -> JString<'local> {
+    if !cfg!(feature = "text-input") {
+        return env.with_env(|env| env.new_string(""))
+            .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
+    }
     let value = engine(handle)
         .and_then(|engine| engine.lock().ok())
         .map(|engine| engine.engine.text_input_context())
         .unwrap_or_default();
     env.with_env(|env| env.new_string(value))
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputNumeric(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-) -> jboolean {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|engine| engine.engine.text_input_numeric()) as jboolean
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputAction(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-) -> jint {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .map(|engine| match engine.engine.text_input_action() {
-            TextInputAction::Return => 0,
-            TextInputAction::Search => 1,
-            TextInputAction::Done => 2,
-        })
-        .unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]
@@ -896,6 +918,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
     action: jint,
     value: JString<'_>,
 ) -> jboolean {
+    if !cfg!(feature = "text-input") { return false as jboolean; }
     let edit = match action {
         2 => Some(TextEdit::Submit),
         3 => Some(TextEdit::Dismiss),

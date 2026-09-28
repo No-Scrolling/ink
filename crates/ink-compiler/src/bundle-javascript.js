@@ -149,16 +149,28 @@ function buildOptions(bootstrap = false) { return {
       await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
-      if (!inspectedNativeModules.has(path) && /TextInput|Image|PlayingScreen/.test(contents)) {
+      if (!inspectedNativeModules.has(path)) {
         inspectedNativeModules.add(path);
         const source = ts.createSourceFile(path, contents, ts.ScriptTarget.Latest, true);
         const requirements = new Set(moduleCapabilities.get(path) ?? []);
+        const families = { Canvas: "ui-canvas", CanvasIcon: "ui-canvas", CanvasRectangle: "ui-canvas", CanvasText: "ui-canvas", NativeList: "ui-lists", NativeView: "ui-views", PlayingScreen: "ui-playing", MessageContent: "ui-messages" };
         function visit(node) {
-          if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-              && node.expression.name.text === "node" && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
-            switch (node.arguments[0].text) {
-              case "TextInput": requirements.add("text-input"); break;
-              case "Image": case "PlayingScreen": requirements.add("image"); requirements.add("network"); break;
+          if (ts.isCallExpression(node)) {
+            const callee = node.expression;
+            const name = ts.isPropertyAccessExpression(callee) ? callee.name.text : ts.isIdentifier(callee) ? callee.text : "";
+            if (["node", "createElement", "jsx", "jsxs"].includes(name) && node.arguments[0]) {
+              const kind = node.arguments[0];
+              if (ts.isStringLiteral(kind)) {
+                if (Object.hasOwn(families, kind.text)) requirements.add(families[kind.text]);
+                if (kind.text === "TextInput") requirements.add("text-input");
+                if (kind.text === "Image" || kind.text === "PlayingScreen") {
+                  requirements.add("image"); requirements.add("network");
+                }
+              } else if (!path.startsWith(frameworkDirectory + "/") && !path.includes("/.ink/")) {
+                // Dynamic host descriptions need every optional family.
+                for (const feature of Object.values(families)) requirements.add(feature);
+                requirements.add("image"); requirements.add("network"); requirements.add("text-input");
+              }
             }
           }
           ts.forEachChild(node, visit);
@@ -274,7 +286,7 @@ if (splitWeb && networkEntry) {
           ? { path: resolved, namespace: "ink-native" } : { path: resolved };
       });
       build.onLoad({ filter: /.*/, namespace: "ink-native" }, () => ({
-        contents: 'export const { NativeError, callNative, onNativeMessage } = inkNative;', loader: "js",
+        contents: 'export const { NativeError, callNative, callNativeBytes, onNativeMessage } = inkNative;', loader: "js",
       }));
     } }],
   });

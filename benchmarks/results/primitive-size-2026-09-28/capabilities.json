@@ -1,0 +1,79 @@
+{
+  "counter": {
+    "version": 1,
+    "capabilities": [
+      "external"
+    ]
+  },
+  "template": {
+    "version": 1,
+    "capabilities": [
+      "audio",
+      "audio-capture",
+      "audio-detached",
+      "audio-microphone",
+      "audio-playback",
+      "audio-recording",
+      "background",
+      "barcode-generate",
+      "camera-permission",
+      "code-scanner",
+      "connectivity",
+      "crypto",
+      "downloads",
+      "external",
+      "file-images",
+      "files",
+      "image",
+      "light-sdk",
+      "light-sdk-push",
+      "light-sdk-ringtone",
+      "location",
+      "maps",
+      "media-library",
+      "microphone-permission",
+      "network",
+      "nfc",
+      "notification-permission",
+      "notifications",
+      "photo-capture",
+      "text-input",
+      "ui-canvas",
+      "ui-lists",
+      "ui-messages",
+      "ui-playing",
+      "ui-views",
+      "video"
+    ]
+  },
+  "list": {
+    "version": 1,
+    "capabilities": [
+      "external",
+      "image",
+      "network",
+      "text-input",
+      "ui-lists",
+      "ui-messages"
+    ]
+  },
+  "reverb": [
+    "external",
+    "image",
+    "light-sdk",
+    "network",
+    "text-input",
+    "ui-lists",
+    "ui-playing"
+  ],
+  "podcasts": [
+    "audio-detached",
+    "external",
+    "image",
+    "network",
+    "text-input",
+    "ui-lists",
+    "ui-messages",
+    "ui-playing"
+  ]
+}

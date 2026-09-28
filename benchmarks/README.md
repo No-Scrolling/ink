@@ -15,6 +15,11 @@ For fast CPU-path iteration, use the [headless update harness](headless/README.m
 
 ## Current engine measurements
 
+- [Native portal transport](results/portal-cache-2026-09-29/README.md): Counter at 2.66 MB, unchanged portal payload reuse and emulator lifecycle checks.
+- [Android capability gating](results/android-boundary-2026-09-29/README.md): native query and bridge cleanup, with LP3/emulator evidence.
+- [QuickJS optimisation comparison](results/quickjs-size-tradeoff-2026-09-28/README.md): measured O3/Os/Oz trade-offs; production remains O3.
+- Earlier size changes: [APK dependency profile](results/apk-size-2026-09-28/README.md), [optional UI families](results/optional-ui-2026-09-28/README.md) and [primitives and bridge allocations](results/primitive-size-2026-09-28/README.md).
+
 - [Momentum-scroll image fix](results/fling-images-2026-09-28/README.md): confirmed stalled requests, frame-boundary fix and emulator reproduction.
 
 - [Incremental list updates](results/incremental-lists-2026-09-28/README.md): sparse transfer and callback correctness.
@@ -78,6 +83,6 @@ These are not measurements of time to interactive, peak memory, battery drain or
 
 `measure.ts` is the comparison harness invoked by agent-tools. `measure-builds.sh` collects build measurements. `measure-ink.sh` and `verify.ts` are older Ink-only counter helpers, not the stress test; the direct device runner requires manual reservation and cleanup. Prefer the agent-tools entry points above.
 
-Only the latest results for each suite are retained.
+Superseded benchmark runs are removed; linked size investigations retain the evidence for each distinct change.
 
 Latest list update: [compiler-directed projection reuse](results/list-projection-2026-09-28/README.md), including paired CPU timings and compatibility checks.

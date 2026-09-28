@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState, type ComponentProps } from "react";
+import { createElement, useEffect, useRef, useState, type ComponentProps } from "./react";
 import { addFilled, closeFilled, sendFilled } from "./icons";
 import { Button, Image, List, Screen, Stack, Text, TextInput } from "./index";
 import { back, presentPage } from "./navigation";
@@ -46,7 +46,7 @@ function Reply({ author, text, onPress }: ReplyPreview) {
         createElement(Text, { size: 14, maxLines: 1 }, text))));
 }
 
-const messageTemplate = nativeListTemplate((node, field) => node("MessageContent", Object.fromEntries([
+const messageTemplate = /* @__PURE__ */ nativeListTemplate((node, field) => node("MessageContent", Object.fromEntries([
   "outgoing", "label", "reactions", "statusIcon", "statusMuted", "reply", "image", "preview", "parts",
   "onPress", "onLongPress", "onRetry", "onImagePress", "onReplyPress", "onLinkPress", "onPreviewPress",
 ].map(name => [name, field(name)]))));

@@ -782,7 +782,7 @@ private class CameraLifecycleOwner : LifecycleOwner {
         if (registry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
         }
-        if (registry.currentState != Lifecycle.State.DESTROYED) {
+        if (registry.currentState.isAtLeast(Lifecycle.State.CREATED)) {
             registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         }
     }

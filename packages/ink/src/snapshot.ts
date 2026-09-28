@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "./react";
 import type { ResourceSnapshot, ResourceSource } from "./resource";
 
 export type Snapshot<T> =

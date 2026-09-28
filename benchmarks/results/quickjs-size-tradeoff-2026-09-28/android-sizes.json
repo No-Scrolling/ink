@@ -1,0 +1,62 @@
+[
+  {
+    "mode": "O3",
+    "bytes": 2517664,
+    "command": [
+      "cargo",
+      "ndk",
+      "-t",
+      "arm64-v8a",
+      "-p",
+      "34",
+      "--manifest-path",
+      "/Users/vandam/Developer/ink/.agent-tools/quickjs-size-2026-09-28/source/Cargo.toml",
+      "build",
+      "-p",
+      "ink-android",
+      "--release",
+      "--locked"
+    ],
+    "cflags": "-O3"
+  },
+  {
+    "mode": "Os",
+    "bytes": 2223200,
+    "command": [
+      "cargo",
+      "ndk",
+      "-t",
+      "arm64-v8a",
+      "-p",
+      "34",
+      "--manifest-path",
+      "/Users/vandam/Developer/ink/.agent-tools/quickjs-size-2026-09-28/source/Cargo.toml",
+      "build",
+      "-p",
+      "ink-android",
+      "--release",
+      "--locked"
+    ],
+    "cflags": "-Os"
+  },
+  {
+    "mode": "Oz",
+    "bytes": 2122264,
+    "command": [
+      "cargo",
+      "ndk",
+      "-t",
+      "arm64-v8a",
+      "-p",
+      "34",
+      "--manifest-path",
+      "/Users/vandam/Developer/ink/.agent-tools/quickjs-size-2026-09-28/source/Cargo.toml",
+      "build",
+      "-p",
+      "ink-android",
+      "--release",
+      "--locked"
+    ],
+    "cflags": "-Oz"
+  }
+]

@@ -2,7 +2,7 @@ import type { IconAsset } from "./assets";
 import {
   Activity, Children, Fragment, createContext, createElement, isValidElement, useContext,
   useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode,
-} from "react";
+} from "./react";
 import { onNativeMessage } from "./native";
 import { comparePaths, matchPath, parameterNames, type PathParams } from "./route-path";
 
@@ -22,8 +22,8 @@ onNativeMessage("navigate", message => {
   if (openNativeRoute) openNativeRoute(destination);
   else pendingNativeRoute = destination;
 });
-export const RouteContext = createContext<Params | undefined>(undefined);
-const TabRoutesContext = createContext<((group: object, paths: readonly string[], ownsStart: boolean) => void) | null>(null);
+export const RouteContext = /* @__PURE__ */ createContext<Params | undefined>(undefined);
+const TabRoutesContext = /* @__PURE__ */ createContext<((group: object, paths: readonly string[], ownsStart: boolean) => void) | null>(null);
 
 function send(action: NavigationAction) {
   if (!dispatch) throw new Error("Navigation is unavailable before the app mounts");
@@ -149,7 +149,7 @@ export function NavigationStack({ routes, renderEntries }: {
   ));
 }
 
-export const LayoutContext = createContext<{
+export const LayoutContext = /* @__PURE__ */ createContext<{
   content: ReactNode;
   pages: ReadonlyMap<string, { path: string; page: ReactNode }>;
   directories: readonly string[];

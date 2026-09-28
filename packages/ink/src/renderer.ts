@@ -1,5 +1,5 @@
 declare const process: { env: { NODE_ENV: string } };
-import { createContext, type ReactNode } from "react";
+import { createContext, type ReactNode } from "./react";
 import Reconciler from "react-reconciler";
 import { ConcurrentRoot, DefaultEventPriority, DiscreteEventPriority } from "react-reconciler/constants";
 import { onNativeMessage } from "./native";

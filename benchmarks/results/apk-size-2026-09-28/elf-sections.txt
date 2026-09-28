@@ -1,0 +1,29 @@
+.agent-tools/apk-profile-2026-09-28/packaged.so  :
+section                    size      addr
+.note.android.ident         152       624
+.dynsym                    4392       776
+.gnu.version                366      5168
+.gnu.version_r              128      5536
+.gnu.hash                   408      5664
+.dynstr                    4516      6072
+.rela.dyn                    72     10592
+.relr.dyn                  1040     10664
+.rela.plt                  3072     11704
+.rodata                  327924     14784
+.gcc_except_table          4360    342708
+.eh_frame_hdr             27924    347068
+.eh_frame                195452    374992
+.text                   2077632    586832
+.plt                       2080   2664464
+.data.rel.ro              61072   2682928
+.fini_array                  16   2744000
+.init_array                  16   2744016
+.dynamic                    496   2744032
+.got                        104   2744528
+.got.plt                   1048   2744632
+.relro_padding             2736   2745680
+.data                      4472   2762064
+.bss                       2344   2766536
+Total                   2721822
+
+

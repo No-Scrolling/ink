@@ -315,6 +315,31 @@
         "enabled": "video",
         "disabled": "noVideo"
       }
+    },
+    "ui-canvas": {
+      "cost": "native canvas drawing and interaction",
+      "dependencies": [],
+      "permissions": []
+    },
+    "ui-lists": {
+      "cost": "native list expansion",
+      "dependencies": [],
+      "permissions": []
+    },
+    "ui-messages": {
+      "cost": "native message composition",
+      "dependencies": [],
+      "permissions": []
+    },
+    "ui-playing": {
+      "cost": "native player composition",
+      "dependencies": [],
+      "permissions": []
+    },
+    "ui-views": {
+      "cost": "native binding expansion",
+      "dependencies": [],
+      "permissions": []
     }
   },
   "androidCameraSources": {

@@ -6,4 +6,4 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-ink-core = { path = "../ink-core" }
+ink-core = { path = "../ink-core", default-features = false }

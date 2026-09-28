@@ -41,6 +41,11 @@ pub enum Capability {
     PhotoCapture,
     TextInput,
     TextInputFull,
+    UiCanvas,
+    UiLists,
+    UiMessages,
+    UiPlaying,
+    UiViews,
     Video,
 }
 

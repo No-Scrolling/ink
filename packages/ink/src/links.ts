@@ -1,8 +1,9 @@
 import { LinkifyIt } from "linkify-it";
 
-const linkify = new LinkifyIt({ fuzzyLink: true });
+let linkify: LinkifyIt | undefined;
 
 export function textLinks(text: string) {
+  linkify ??= new LinkifyIt({ fuzzyLink: true });
   return (linkify.match(text) || []).map(match => ({
     start: match.index,
     end: match.lastIndex,

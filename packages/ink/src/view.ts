@@ -1,4 +1,4 @@
-import { createElement, useLayoutEffect, useState } from "react";
+import { createElement, useLayoutEffect, useState } from "./react";
 import { allocateHostId, cancelViewUpdate, registerHostActions, scheduleViewUpdate, type ViewData as Data } from "./host";
 
 type Action = (...args: unknown[]) => void;

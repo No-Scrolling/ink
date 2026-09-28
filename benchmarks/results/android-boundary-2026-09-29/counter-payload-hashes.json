@@ -1,0 +1,12 @@
+{
+  "lp3-tested": {
+    "classes.dex": "dffe812c2c9d5895c9faf5500210d2fccd659705c1f7cb235de237bc624ecfe1",
+    "lib/arm64-v8a/libink_android.so": "09036f6e3d131f891430481d95213fc096adbfb76c99205ec1b613db4feb6ce0",
+    "assets/app.js": "4ae175f4f614802bbf906baf6b1371e5c408b7932eeb603269d0f6a2c72dc837"
+  },
+  "final": {
+    "classes.dex": "dffe812c2c9d5895c9faf5500210d2fccd659705c1f7cb235de237bc624ecfe1",
+    "lib/arm64-v8a/libink_android.so": "09036f6e3d131f891430481d95213fc096adbfb76c99205ec1b613db4feb6ce0",
+    "assets/app.js": "4ae175f4f614802bbf906baf6b1371e5c408b7932eeb603269d0f6a2c72dc837"
+  }
+}

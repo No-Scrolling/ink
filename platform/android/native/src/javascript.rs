@@ -64,8 +64,10 @@ impl ScriptRuntime {
     }
 
     pub(super) fn notify_inputs(&mut self, engine: &mut Engine) -> Result<()> {
-        for event in self.tree.input_events(engine) {
-            self.send(event.to_string())?;
+        if cfg!(feature = "text-input") {
+            for event in self.tree.input_events(engine) {
+                self.send(event.to_string())?;
+            }
         }
         self.notify_viewports(engine)
     }
@@ -315,6 +317,9 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptCall
                 .map(|script| std::mem::take(&mut script.calls))
         })
         .unwrap_or_default();
+    if calls.is_empty() {
+        return JString::default();
+    }
     env.with_env(|env| env.new_string(format!("[{}]", calls.join(","))))
         .resolve::<jni::errors::LogErrorAndDefault>()
 }
@@ -353,8 +358,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeIsLightAppearance(
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptError<'local>(
     mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong,
 ) -> JString<'local> {
-    let error = engine(handle).and_then(|engine| engine.lock().ok())
-        .and_then(|mut engine| engine.javascript_error.take()).unwrap_or_default();
+    let Some(error) = engine(handle).and_then(|engine| engine.lock().ok())
+        .and_then(|mut engine| engine.javascript_error.take())
+    else {
+        return JString::default();
+    };
     env.with_env(|env| env.new_string(error)).resolve::<jni::errors::LogErrorAndDefault>()
 }
 

@@ -265,7 +265,9 @@ impl ReactTree {
                         "duplicate React node {id}"
                     );
                     ensure!(self.nodes.len() < 100_000, "React tree is too large");
-                    if r#type == HostKind::MessageContent { self.prepare_message(id, &props)?; }
+                    ensure!(host_enabled(r#type), "native component is not included in this build");
+                    if cfg!(feature = "ui-playing") && r#type == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
+                    if cfg!(feature = "ui-messages") && r#type == HostKind::MessageContent { self.prepare_message(id, &props)?; }
                     self.nodes.insert(
                         id,
                         HostNode {
@@ -276,7 +278,8 @@ impl ReactTree {
                     );
                 }
                 Operation::Update { id, props } => {
-                    if self.node(id)?.kind == HostKind::MessageContent { self.prepare_message(id, &props)?; }
+                    if cfg!(feature = "ui-playing") && self.node(id)?.kind == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
+                    if cfg!(feature = "ui-messages") && self.node(id)?.kind == HostKind::MessageContent { self.prepare_message(id, &props)?; }
                     let node = self.node_mut(id)?;
                     inputs_changed |= node.kind == HostKind::TextInput;
                     if node.kind == HostKind::Screen && props.get("dismissKeyboard").is_some()
@@ -306,7 +309,7 @@ impl ReactTree {
                     }
                 }
                 Operation::Hidden { id, value } => self.node_mut(id)?.hidden = value,
-                Operation::Values { .. } => unreachable!("view values are expanded before applying"),
+                Operation::Values { .. } => bail!("native view values require ui-views"),
                 Operation::Insert { id, parent, before } => self.insert(id, parent, before)?,
                 Operation::Remove { id, parent } => {
                     ensure!(
@@ -432,6 +435,7 @@ impl ReactTree {
     }
 
     fn sync_inputs(&mut self, engine: &mut Engine) -> Result<()> {
+        if !cfg!(feature = "text-input") { return Ok(()); }
         self.inputs.retain(|id, input| {
             if self.nodes.contains_key(id) {
                 return true;
@@ -662,6 +666,7 @@ impl ReactTree {
         let props = &host.props;
         let mut node = match host.kind {
             HostKind::Canvas => {
+                ensure!(cfg!(feature = "ui-canvas"), "native component is not included in this build");
                 let width = number(props, "width")?.context("Canvas requires width")?;
                 let height = number(props, "height")?.context("Canvas requires height")?;
                 ensure!(width > 0.0 && height > 0.0, "Canvas dimensions must be positive");
@@ -713,8 +718,14 @@ impl ReactTree {
                 }
                 Node { identity: NodeIdentity(id), kind: NodeKind::Canvas { width, height, drawings } }
             }
-            HostKind::NativeList => return self.render_native_list(id, host, depth),
-            HostKind::PlayingScreen => return self.render_playing(id, host),
+            HostKind::NativeList => {
+                ensure!(cfg!(feature = "ui-lists"), "native component is not included in this build");
+                return self.render_native_list(id, host, depth);
+            }
+            HostKind::PlayingScreen => {
+                ensure!(cfg!(feature = "ui-playing"), "native component is not included in this build");
+                return self.render_playing(id, host);
+            }
             HostKind::List => {
                 let HostProps::List(list) = props else { bail!("List requires metadata"); };
                 let keys = list.keys.clone();
@@ -782,7 +793,10 @@ impl ReactTree {
                 ensure!((2..=3).contains(&host.children.len()), "Composer requires two or three children");
                 Node { identity: NodeIdentity(id), kind: NodeKind::ConversationComposer { children: self.children(host, depth)? } }
             },
-            HostKind::MessageContent => return self.render_message(id, host),
+            HostKind::MessageContent => {
+                ensure!(cfg!(feature = "ui-messages"), "native component is not included in this build");
+                return self.render_message(id, host);
+            }
             HostKind::Message => Node { identity: NodeIdentity(id), kind: NodeKind::Message { children: self.children(host, depth)?, outgoing: props.get("outgoing") == Some(&Json::Bool(true)) } },
             HostKind::MessageQuote => Node { identity: NodeIdentity(id), kind: NodeKind::MessageQuote { children: self.children(host, depth)? } },
             HostKind::LinkPreview => Node { identity: NodeIdentity(id), kind: NodeKind::LinkPreview { children: self.children(host, depth)? } },
@@ -959,6 +973,7 @@ impl ReactTree {
                 }
             }
             HostKind::TextInput => {
+                ensure!(cfg!(feature = "text-input"), "native component is not included in this build");
                 let action = match string(props, "action").unwrap_or("search") {
                     "return" => TextInputAction::Return,
                     "search" => TextInputAction::Search,
@@ -1003,6 +1018,7 @@ impl ReactTree {
                 )
             }
             HostKind::VideoView => {
+                ensure!(cfg!(feature = "video"), "native component is not included in this build");
                 let controller = match props.get("controller") {
                     None | Some(Json::Null) => None,
                     Some(value) => {
@@ -1017,12 +1033,14 @@ impl ReactTree {
                 } }
             }
             HostKind::MapView => {
+                ensure!(cfg!(feature = "maps"), "native component is not included in this build");
                 let id = props.get("controller").and_then(Json::as_i64)
                     .context("Map requires a controller")?;
                 ensure!((1..=9_007_199_254_740_991).contains(&id), "Invalid map controller");
                 Node::map_view(ControllerId::new((-id) as usize))
             }
             HostKind::CameraPreview => {
+                ensure!(cfg!(feature = "camera"), "native component is not included in this build");
                 let id = props
                     .get("controller")
                     .and_then(Json::as_i64)
@@ -1289,4 +1307,19 @@ fn playback_speed(props: &HostProps) -> Result<f32> {
     let speed = props.get("speed").map(|value| value.as_f64().context("invalid playback speed")).transpose()?.unwrap_or(1.0);
     ensure!(speed.is_finite() && (0.25..=4.0).contains(&speed), "invalid playback speed");
     Ok(speed as f32)
+}
+
+fn host_enabled(kind: HostKind) -> bool {
+    match kind {
+        HostKind::Canvas | HostKind::CanvasIcon | HostKind::CanvasRectangle | HostKind::CanvasText => cfg!(feature = "ui-canvas"),
+        HostKind::TextInput => cfg!(feature = "text-input"),
+        HostKind::CameraPreview => cfg!(feature = "camera"),
+        HostKind::MapView => cfg!(feature = "maps"),
+        HostKind::VideoView => cfg!(feature = "video"),
+        HostKind::NativeList => cfg!(feature = "ui-lists"),
+        HostKind::NativeView => cfg!(feature = "ui-views"),
+        HostKind::PlayingScreen => cfg!(feature = "ui-playing"),
+        HostKind::MessageContent => cfg!(feature = "ui-messages"),
+        _ => true,
+    }
 }

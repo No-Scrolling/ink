@@ -240,6 +240,10 @@ android {
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
+        buildConfigField("boolean", "INK_TEXT_INPUT_ENABLED", inkUses("text-input").get().toString())
+        buildConfigField("boolean", "INK_CAMERA_ENABLED", inkUsesCameraPermission.get().toString())
+        buildConfigField("boolean", "INK_VIDEO_ENABLED", inkUses("video").get().toString())
+        buildConfigField("boolean", "INK_MAPS_ENABLED", inkUsesMaps.get().toString())
         buildConfigField("boolean", "INK_MEDIA_LIBRARY_ENABLED", inkUses("media-library").get().toString())
         buildConfigField("boolean", "INK_PRESENTATION_TIMING", (inkBridgeTiming.get() || inkPresentationTiming.get()).toString())
         buildConfigField("boolean", "INK_CLEARTEXT_NETWORK_ENABLED", inkUsesCleartextNetwork.get().toString())
@@ -379,6 +383,15 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
         ))
         addAll(profile)
         for ((feature, enabled) in listOf(
+            "ui-lists" to inkUses("ui-lists"),
+            "ui-playing" to inkUses("ui-playing"),
+            "ui-messages" to inkUses("ui-messages"),
+            "ui-views" to inkUses("ui-views"),
+            "ui-canvas" to inkUses("ui-canvas"),
+            "text-input" to inkUses("text-input"),
+            "camera" to inkUsesCameraPermission,
+            "video" to inkUses("video"),
+            "maps" to inkUsesMaps,
             "network" to inkUsesNetwork,
             "image" to inkUsesImage,
             "audio" to inkUses("audio-microphone"),

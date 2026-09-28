@@ -1,0 +1,16 @@
+--------- beginning of crash
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: FATAL EXCEPTION: main
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: Process: com.vandam.ink.template.boundarycheck, PID: 3670
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: java.lang.IllegalStateException: no event down from INITIALIZED in component v2.y@de17fb8
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at androidx.lifecycle.o.d(r8-map-id-da5aa364df5fd9fcd4dc478b348214cf36bef68f7ae28aac17a6acf38309aef6:65)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at v2.g0.b(r8-map-id-da5aa364df5fd9fcd4dc478b348214cf36bef68f7ae28aac17a6acf38309aef6:62)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at com.vandam.ink.MainActivity.P(r8-map-id-da5aa364df5fd9fcd4dc478b348214cf36bef68f7ae28aac17a6acf38309aef6:158)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at v2.S1.run(r8-map-id-da5aa364df5fd9fcd4dc478b348214cf36bef68f7ae28aac17a6acf38309aef6:312)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at android.os.Handler.handleCallback(Handler.java:958)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:205)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:294)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+09-29 00:04:09.738  3670  3670 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)

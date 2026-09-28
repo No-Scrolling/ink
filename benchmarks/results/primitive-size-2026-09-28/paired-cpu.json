@@ -1,0 +1,1850 @@
+[
+  {
+    "round": 0,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.470455,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.35375,
+          "mean": 0.12289630499999996,
+          "median": 0.119146,
+          "min": 0.09833399999999999,
+          "p95": 0.145792
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.003375,
+          "mean": 0.0003906250000000003,
+          "median": 0.000292,
+          "min": 0.00025,
+          "p95": 0.0007080000000000001
+        },
+        "inputToScene": {
+          "max": 0.516417,
+          "mean": 0.27756147,
+          "median": 0.271812,
+          "min": 0.244209,
+          "p95": 0.31308400000000003
+        },
+        "javascriptAndTransport": {
+          "max": 0.239584,
+          "mean": 0.15427454000000002,
+          "median": 0.15152100000000002,
+          "min": 0.133875,
+          "p95": 0.174
+        }
+      },
+      "mountAndSetupMs": 17.235792,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 84.008,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.470455,
+        "compatibilityChecks": 0.766917,
+        "harnessOverhead": 0.04062299999999308,
+        "measuredApplyAndLayout": 24.579261000000006,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.07812500000000006,
+        "measuredJavascriptAndTransport": 30.854907999999995,
+        "mountAndSetup": 17.235792,
+        "shutdown": 0.623334,
+        "warmupUpdates": 5.358585
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 0,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.517455,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.313709,
+          "mean": 0.12509732499999995,
+          "median": 0.120917,
+          "min": 0.107292,
+          "p95": 0.1515
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.005291,
+          "mean": 0.0004852500000000004,
+          "median": 0.000334,
+          "min": 0.00029099999999999997,
+          "p95": 0.000959
+        },
+        "inputToScene": {
+          "max": 0.468459,
+          "mean": 0.279300685,
+          "median": 0.27025,
+          "min": 0.25154200000000004,
+          "p95": 0.34591700000000003
+        },
+        "javascriptAndTransport": {
+          "max": 0.23374999999999999,
+          "mean": 0.15371811000000005,
+          "median": 0.1486875,
+          "min": 0.137417,
+          "p95": 0.17737499999999998
+        }
+      },
+      "mountAndSetupMs": 18.586333,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 86.293542,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.517455,
+        "compatibilityChecks": 0.824375,
+        "harnessOverhead": 0.046660999999975084,
+        "measuredApplyAndLayout": 25.019465000000014,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.09705000000000007,
+        "measuredJavascriptAndTransport": 30.743622000000013,
+        "mountAndSetup": 18.586333,
+        "shutdown": 0.602333,
+        "warmupUpdates": 5.856248
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 1,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.606961,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.143667,
+          "mean": 0.12001274499999998,
+          "median": 0.12091650000000001,
+          "min": 0.106042,
+          "p95": 0.130667
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.000834,
+          "mean": 0.00037625500000000036,
+          "median": 0.000375,
+          "min": 0.000292,
+          "p95": 0.00045900000000000004
+        },
+        "inputToScene": {
+          "max": 0.325292,
+          "mean": 0.27052959499999996,
+          "median": 0.26968749999999997,
+          "min": 0.251958,
+          "p95": 0.287875
+        },
+        "javascriptAndTransport": {
+          "max": 0.18125,
+          "mean": 0.15014059500000004,
+          "median": 0.14854199999999998,
+          "min": 0.139792,
+          "p95": 0.16145800000000002
+        }
+      },
+      "mountAndSetupMs": 13.342,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 78.91033399999999,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.606961,
+        "compatibilityChecks": 0.770417,
+        "harnessOverhead": 0.03540999999997507,
+        "measuredApplyAndLayout": 24.002549000000005,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.07525100000000004,
+        "measuredJavascriptAndTransport": 30.028119000000014,
+        "mountAndSetup": 13.342,
+        "shutdown": 0.574625,
+        "warmupUpdates": 5.475001999999998
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 1,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.515791,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.205875,
+          "mean": 0.12940998000000004,
+          "median": 0.12258349999999998,
+          "min": 0.094791,
+          "p95": 0.18075
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.0022500000000000003,
+          "mean": 0.0005077300000000004,
+          "median": 0.000375,
+          "min": 0.00025,
+          "p95": 0.0012079999999999999
+        },
+        "inputToScene": {
+          "max": 0.45616700000000004,
+          "mean": 0.2876070650000001,
+          "median": 0.2758125,
+          "min": 0.23366599999999998,
+          "p95": 0.358333
+        },
+        "javascriptAndTransport": {
+          "max": 0.282209,
+          "mean": 0.1576893549999999,
+          "median": 0.1517085,
+          "min": 0.131541,
+          "p95": 0.19325
+        }
+      },
+      "mountAndSetupMs": 13.213125,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 82.161667,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.515791,
+        "compatibilityChecks": 0.870834,
+        "harnessOverhead": 0.05437799999999415,
+        "measuredApplyAndLayout": 25.881996,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.10154600000000008,
+        "measuredJavascriptAndTransport": 31.537870999999996,
+        "mountAndSetup": 13.213125,
+        "shutdown": 0.636083,
+        "warmupUpdates": 5.3500429999999985
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 2,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.483078,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.233625,
+          "mean": 0.12461353499999989,
+          "median": 0.1220835,
+          "min": 0.100333,
+          "p95": 0.160125
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.003625,
+          "mean": 0.0005561950000000003,
+          "median": 0.000334,
+          "min": 0.00029099999999999997,
+          "p95": 0.002375
+        },
+        "inputToScene": {
+          "max": 0.40129099999999995,
+          "mean": 0.2820464000000002,
+          "median": 0.275,
+          "min": 0.238625,
+          "p95": 0.35120799999999996
+        },
+        "javascriptAndTransport": {
+          "max": 0.242833,
+          "mean": 0.15687666999999997,
+          "median": 0.151771,
+          "min": 0.13295900000000002,
+          "p95": 0.181792
+        }
+      },
+      "mountAndSetupMs": 13.434916,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 81.731875,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.483078,
+        "compatibilityChecks": 0.789458,
+        "harnessOverhead": 0.04318399999998068,
+        "measuredApplyAndLayout": 24.922707000000017,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.11123900000000006,
+        "measuredJavascriptAndTransport": 31.375334000000002,
+        "mountAndSetup": 13.434916,
+        "shutdown": 0.564542,
+        "warmupUpdates": 6.007417
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 2,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.399207,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.206,
+          "mean": 0.12205083499999995,
+          "median": 0.121104,
+          "min": 0.102291,
+          "p95": 0.14016699999999999
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.005541,
+          "mean": 0.0004591550000000003,
+          "median": 0.000334,
+          "min": 0.00029099999999999997,
+          "p95": 0.000583
+        },
+        "inputToScene": {
+          "max": 0.351375,
+          "mean": 0.2761772899999999,
+          "median": 0.273583,
+          "min": 0.2515,
+          "p95": 0.298417
+        },
+        "javascriptAndTransport": {
+          "max": 0.191083,
+          "mean": 0.15366729999999987,
+          "median": 0.151625,
+          "min": 0.138125,
+          "p95": 0.169875
+        }
+      },
+      "mountAndSetupMs": 13.438833,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 79.99966599999999,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.399207,
+        "compatibilityChecks": 0.7509170000000001,
+        "harnessOverhead": 0.039000999999993735,
+        "measuredApplyAndLayout": 24.410166999999994,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.09183100000000007,
+        "measuredJavascriptAndTransport": 30.73346,
+        "mountAndSetup": 13.438833,
+        "shutdown": 0.547459,
+        "warmupUpdates": 5.588790999999999
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 3,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.415004,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.234125,
+          "mean": 0.12047582499999997,
+          "median": 0.11974950000000001,
+          "min": 0.10516700000000001,
+          "p95": 0.13425
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.002209,
+          "mean": 0.00036710000000000025,
+          "median": 0.00033299999999999996,
+          "min": 0.00029099999999999997,
+          "p95": 0.000417
+        },
+        "inputToScene": {
+          "max": 0.38270800000000005,
+          "mean": 0.27084646500000004,
+          "median": 0.26877100000000004,
+          "min": 0.251375,
+          "p95": 0.291292
+        },
+        "javascriptAndTransport": {
+          "max": 0.256916,
+          "mean": 0.15000354000000005,
+          "median": 0.148021,
+          "min": 0.14008299999999999,
+          "p95": 0.160708
+        }
+      },
+      "mountAndSetupMs": 13.158125,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 78.619416,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.415004,
+        "compatibilityChecks": 0.792334,
+        "harnessOverhead": 0.03382600000000047,
+        "measuredApplyAndLayout": 24.095164999999994,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.07342000000000005,
+        "measuredJavascriptAndTransport": 30.00070800000001,
+        "mountAndSetup": 13.158125,
+        "shutdown": 0.53175,
+        "warmupUpdates": 5.519084
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 3,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.448665,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.156959,
+          "mean": 0.11956251999999987,
+          "median": 0.1196875,
+          "min": 0.10325000000000001,
+          "p95": 0.13125
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.002042,
+          "mean": 0.00035750500000000026,
+          "median": 0.00033299999999999996,
+          "min": 0.00029099999999999997,
+          "p95": 0.000417
+        },
+        "inputToScene": {
+          "max": 0.35191700000000004,
+          "mean": 0.27109355499999993,
+          "median": 0.26879200000000003,
+          "min": 0.254458,
+          "p95": 0.288875
+        },
+        "javascriptAndTransport": {
+          "max": 0.20975,
+          "mean": 0.15117353,
+          "median": 0.149458,
+          "min": 0.13958399999999999,
+          "p95": 0.16279200000000002
+        }
+      },
+      "mountAndSetupMs": 13.119208,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 78.66841600000001,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.448665,
+        "compatibilityChecks": 0.775459,
+        "harnessOverhead": 0.030998000000014736,
+        "measuredApplyAndLayout": 23.912503999999988,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.07150100000000005,
+        "measuredJavascriptAndTransport": 30.234706000000006,
+        "mountAndSetup": 13.119208,
+        "shutdown": 0.559041,
+        "warmupUpdates": 5.516334000000001
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 4,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.477999,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.193792,
+          "mean": 0.12173292499999992,
+          "median": 0.12108350000000001,
+          "min": 0.10291700000000001,
+          "p95": 0.14024999999999999
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.0013340000000000001,
+          "mean": 0.00037168000000000026,
+          "median": 0.000334,
+          "min": 0.00025,
+          "p95": 0.0005
+        },
+        "inputToScene": {
+          "max": 0.448875,
+          "mean": 0.273405,
+          "median": 0.270166,
+          "min": 0.247916,
+          "p95": 0.3005
+        },
+        "javascriptAndTransport": {
+          "max": 0.256625,
+          "mean": 0.15130039500000003,
+          "median": 0.1478955,
+          "min": 0.138583,
+          "p95": 0.165792
+        }
+      },
+      "mountAndSetupMs": 13.136541999999999,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 79.557708,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.477999,
+        "compatibilityChecks": 0.818416,
+        "harnessOverhead": 0.035876999999997716,
+        "measuredApplyAndLayout": 24.346584999999994,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.07433600000000005,
+        "measuredJavascriptAndTransport": 30.260079000000005,
+        "mountAndSetup": 13.136541999999999,
+        "shutdown": 0.571042,
+        "warmupUpdates": 5.836831999999999
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 4,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.64659,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.250958,
+          "mean": 0.12933981500000002,
+          "median": 0.122292,
+          "min": 0.1075,
+          "p95": 0.173833
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.003625,
+          "mean": 0.0005369200000000005,
+          "median": 0.000375,
+          "min": 0.00029099999999999997,
+          "p95": 0.00125
+        },
+        "inputToScene": {
+          "max": 0.634417,
+          "mean": 0.293175265,
+          "median": 0.2762915,
+          "min": 0.24212499999999998,
+          "p95": 0.36570800000000003
+        },
+        "javascriptAndTransport": {
+          "max": 0.439208,
+          "mean": 0.16329852999999994,
+          "median": 0.1535415,
+          "min": 0.13020800000000002,
+          "p95": 0.20675000000000002
+        }
+      },
+      "mountAndSetupMs": 13.13575,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 86.782084,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.64659,
+        "compatibilityChecks": 0.7642089999999999,
+        "harnessOverhead": 0.05406199999999961,
+        "measuredApplyAndLayout": 25.86796300000001,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.10738400000000008,
+        "measuredJavascriptAndTransport": 32.659705999999986,
+        "mountAndSetup": 13.13575,
+        "shutdown": 0.553542,
+        "warmupUpdates": 8.992878
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 5,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.537288,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.22020800000000001,
+          "mean": 0.12550230999999992,
+          "median": 0.1191045,
+          "min": 0.104958,
+          "p95": 0.163041
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.010832999999999999,
+          "mean": 0.0005522500000000003,
+          "median": 0.000375,
+          "min": 0.00029099999999999997,
+          "p95": 0.001
+        },
+        "inputToScene": {
+          "max": 0.409208,
+          "mean": 0.2819595449999998,
+          "median": 0.26989599999999997,
+          "min": 0.243083,
+          "p95": 0.358833
+        },
+        "javascriptAndTransport": {
+          "max": 0.23775000000000002,
+          "mean": 0.1559049849999999,
+          "median": 0.148854,
+          "min": 0.132958,
+          "p95": 0.194333
+        }
+      },
+      "mountAndSetupMs": 13.748,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 81.988542,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.537288,
+        "compatibilityChecks": 0.8277920000000001,
+        "harnessOverhead": 0.04871999999999688,
+        "measuredApplyAndLayout": 25.100462000000014,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.11045000000000006,
+        "measuredJavascriptAndTransport": 31.18099699999998,
+        "mountAndSetup": 13.748,
+        "shutdown": 0.560083,
+        "warmupUpdates": 5.87475
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 5,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.563711,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.24125000000000002,
+          "mean": 0.12531960499999997,
+          "median": 0.12116650000000001,
+          "min": 0.10629200000000001,
+          "p95": 0.151834
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.003375,
+          "mean": 0.00047918500000000035,
+          "median": 0.000334,
+          "min": 0.00029099999999999997,
+          "p95": 0.000916
+        },
+        "inputToScene": {
+          "max": 0.393625,
+          "mean": 0.28079586,
+          "median": 0.275479,
+          "min": 0.25012500000000004,
+          "p95": 0.329666
+        },
+        "javascriptAndTransport": {
+          "max": 0.25549999999999995,
+          "mean": 0.15499706999999996,
+          "median": 0.15139550000000002,
+          "min": 0.138958,
+          "p95": 0.177792
+        }
+      },
+      "mountAndSetupMs": 13.495583,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 81.273042,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.563711,
+        "compatibilityChecks": 0.769833,
+        "harnessOverhead": 0.044703000000027915,
+        "measuredApplyAndLayout": 25.063921,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.09583700000000007,
+        "measuredJavascriptAndTransport": 30.999413999999977,
+        "mountAndSetup": 13.495583,
+        "shutdown": 0.570875,
+        "warmupUpdates": 5.669165
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 6,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.558874,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.202042,
+          "mean": 0.12102167500000004,
+          "median": 0.11818700000000001,
+          "min": 0.099667,
+          "p95": 0.14629199999999998
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.003792,
+          "mean": 0.0004531200000000003,
+          "median": 0.000334,
+          "min": 0.00025,
+          "p95": 0.000875
+        },
+        "inputToScene": {
+          "max": 0.362709,
+          "mean": 0.2743181450000001,
+          "median": 0.26943799999999996,
+          "min": 0.23325,
+          "p95": 0.32154099999999997
+        },
+        "javascriptAndTransport": {
+          "max": 0.235125,
+          "mean": 0.1528433499999999,
+          "median": 0.1497915,
+          "min": 0.133,
+          "p95": 0.171875
+        }
+      },
+      "mountAndSetupMs": 13.366,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 79.910541,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.558874,
+        "compatibilityChecks": 0.747458,
+        "harnessOverhead": 0.04307899999999998,
+        "measuredApplyAndLayout": 24.204334999999997,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.09062400000000005,
+        "measuredJavascriptAndTransport": 30.568669999999997,
+        "mountAndSetup": 13.366,
+        "shutdown": 0.573667,
+        "warmupUpdates": 5.757833999999999
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 6,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.722669,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.236875,
+          "mean": 0.131465155,
+          "median": 0.12291650000000001,
+          "min": 0.09816699999999999,
+          "p95": 0.177791
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.003542,
+          "mean": 0.0006608350000000005,
+          "median": 0.000458,
+          "min": 0.00025,
+          "p95": 0.0025830000000000002
+        },
+        "inputToScene": {
+          "max": 0.562333,
+          "mean": 0.2934428599999998,
+          "median": 0.2763125,
+          "min": 0.24520799999999998,
+          "p95": 0.359792
+        },
+        "javascriptAndTransport": {
+          "max": 0.414458,
+          "mean": 0.16131686999999995,
+          "median": 0.152979,
+          "min": 0.1375,
+          "p95": 0.19229100000000002
+        }
+      },
+      "mountAndSetupMs": 13.158125,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 83.501292,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.722669,
+        "compatibilityChecks": 0.912625,
+        "harnessOverhead": 0.05538400000001131,
+        "measuredApplyAndLayout": 26.293031,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.13216700000000003,
+        "measuredJavascriptAndTransport": 32.263374,
+        "mountAndSetup": 13.158125,
+        "shutdown": 0.600958,
+        "warmupUpdates": 5.362959
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 7,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.696089,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.22070900000000002,
+          "mean": 0.12788895500000005,
+          "median": 0.12197949999999999,
+          "min": 0.09770899999999999,
+          "p95": 0.169458
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.006041,
+          "mean": 0.0005737950000000004,
+          "median": 0.00041600000000000003,
+          "min": 0.00029099999999999997,
+          "p95": 0.0011250000000000001
+        },
+        "inputToScene": {
+          "max": 0.441375,
+          "mean": 0.2877127000000001,
+          "median": 0.276521,
+          "min": 0.23554199999999997,
+          "p95": 0.36124999999999996
+        },
+        "javascriptAndTransport": {
+          "max": 0.295292,
+          "mean": 0.15924994999999992,
+          "median": 0.15329150000000002,
+          "min": 0.134041,
+          "p95": 0.210125
+        }
+      },
+      "mountAndSetupMs": 13.583667,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 83.5055,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.696089,
+        "compatibilityChecks": 0.835417,
+        "harnessOverhead": 0.052454999999985596,
+        "measuredApplyAndLayout": 25.577791000000023,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.1147590000000001,
+        "measuredJavascriptAndTransport": 31.849989999999988,
+        "mountAndSetup": 13.583667,
+        "shutdown": 0.553833,
+        "warmupUpdates": 6.241499
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 7,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.8853860000000005,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.323875,
+          "mean": 0.13524458500000008,
+          "median": 0.12679200000000002,
+          "min": 0.100458,
+          "p95": 0.187542
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.02125,
+          "mean": 0.0007025500000000006,
+          "median": 0.000417,
+          "min": 0.00025,
+          "p95": 0.00125
+        },
+        "inputToScene": {
+          "max": 0.611834,
+          "mean": 0.30337042999999997,
+          "median": 0.2899795,
+          "min": 0.257125,
+          "p95": 0.36150000000000004
+        },
+        "javascriptAndTransport": {
+          "max": 0.421083,
+          "mean": 0.16742329500000003,
+          "median": 0.159,
+          "min": 0.14191700000000002,
+          "p95": 0.20433300000000001
+        }
+      },
+      "mountAndSetupMs": 13.437665999999998,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 86.74054100000001,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.8853860000000005,
+        "compatibilityChecks": 0.990583,
+        "harnessOverhead": 0.0644389999999847,
+        "measuredApplyAndLayout": 27.048916999999992,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.14051,
+        "measuredJavascriptAndTransport": 33.48465900000003,
+        "mountAndSetup": 13.437665999999998,
+        "shutdown": 0.629833,
+        "warmupUpdates": 6.058548
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 8,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 5.006964,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.406167,
+          "mean": 0.14645953000000003,
+          "median": 0.1338125,
+          "min": 0.103333,
+          "p95": 0.222958
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.010583,
+          "mean": 0.0006612500000000005,
+          "median": 0.0005,
+          "min": 0.00029099999999999997,
+          "p95": 0.001209
+        },
+        "inputToScene": {
+          "max": 1.0989170000000001,
+          "mean": 0.323708305,
+          "median": 0.30789599999999995,
+          "min": 0.245541,
+          "p95": 0.447917
+        },
+        "javascriptAndTransport": {
+          "max": 0.8729159999999999,
+          "mean": 0.17658752500000005,
+          "median": 0.1657295,
+          "min": 0.13816699999999998,
+          "p95": 0.256958
+        }
+      },
+      "mountAndSetupMs": 13.795667,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 91.191917,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 5.006964,
+        "compatibilityChecks": 1.0232080000000001,
+        "harnessOverhead": 0.07204200000001415,
+        "measuredApplyAndLayout": 29.29190599999999,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.13225000000000006,
+        "measuredJavascriptAndTransport": 35.31750500000001,
+        "mountAndSetup": 13.795667,
+        "shutdown": 0.626417,
+        "warmupUpdates": 5.925957999999999
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 8,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.567501,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.22229100000000002,
+          "mean": 0.13107459499999996,
+          "median": 0.1254585,
+          "min": 0.105333,
+          "p95": 0.16658299999999998
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.002667,
+          "mean": 0.0005142150000000005,
+          "median": 0.000375,
+          "min": 0.00029099999999999997,
+          "p95": 0.001041
+        },
+        "inputToScene": {
+          "max": 0.403,
+          "mean": 0.29166693999999993,
+          "median": 0.282979,
+          "min": 0.25175,
+          "p95": 0.349541
+        },
+        "javascriptAndTransport": {
+          "max": 0.231042,
+          "mean": 0.16007813000000007,
+          "median": 0.1550415,
+          "min": 0.143125,
+          "p95": 0.1945
+        }
+      },
+      "mountAndSetupMs": 14.088,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 84.340917,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.567501,
+        "compatibilityChecks": 0.747792,
+        "harnessOverhead": 0.05431999999997905,
+        "measuredApplyAndLayout": 26.214919000000002,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.10284300000000007,
+        "measuredJavascriptAndTransport": 32.01562600000002,
+        "mountAndSetup": 14.088,
+        "shutdown": 0.624125,
+        "warmupUpdates": 5.925791
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 9,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.62029,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.192917,
+          "mean": 0.12768252500000002,
+          "median": 0.1226245,
+          "min": 0.10375,
+          "p95": 0.166167
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.002084,
+          "mean": 0.0004743650000000004,
+          "median": 0.000375,
+          "min": 0.00029099999999999997,
+          "p95": 0.000875
+        },
+        "inputToScene": {
+          "max": 0.416834,
+          "mean": 0.2846979149999999,
+          "median": 0.277584,
+          "min": 0.246375,
+          "p95": 0.33958299999999997
+        },
+        "javascriptAndTransport": {
+          "max": 0.251125,
+          "mean": 0.15654102499999983,
+          "median": 0.15210400000000002,
+          "min": 0.133875,
+          "p95": 0.187166
+        }
+      },
+      "mountAndSetupMs": 13.693292,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 82.63691700000001,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.62029,
+        "compatibilityChecks": 0.821375,
+        "harnessOverhead": 0.05191799999999347,
+        "measuredApplyAndLayout": 25.536505000000005,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.09487300000000007,
+        "measuredJavascriptAndTransport": 31.308205000000015,
+        "mountAndSetup": 13.693292,
+        "shutdown": 0.593542,
+        "warmupUpdates": 5.916917000000001
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 9,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.693829,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.22024999999999997,
+          "mean": 0.132106415,
+          "median": 0.1284795,
+          "min": 0.10625,
+          "p95": 0.16333299999999998
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.008624999999999999,
+          "mean": 0.0006312400000000004,
+          "median": 0.000417,
+          "min": 0.00029099999999999997,
+          "p95": 0.001291
+        },
+        "inputToScene": {
+          "max": 0.38912499999999994,
+          "mean": 0.2954460149999999,
+          "median": 0.289875,
+          "min": 0.248875,
+          "p95": 0.344625
+        },
+        "javascriptAndTransport": {
+          "max": 0.240833,
+          "mean": 0.16270835999999997,
+          "median": 0.15891650000000002,
+          "min": 0.137333,
+          "p95": 0.19474999999999998
+        }
+      },
+      "mountAndSetupMs": 13.229041,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 84.43220799999999,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.693829,
+        "compatibilityChecks": 0.852,
+        "harnessOverhead": 0.06955299999998354,
+        "measuredApplyAndLayout": 26.421283,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.12624800000000005,
+        "measuredJavascriptAndTransport": 32.541672000000005,
+        "mountAndSetup": 13.229041,
+        "shutdown": 0.585916,
+        "warmupUpdates": 5.912666
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 10,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.706119,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.38766700000000004,
+          "mean": 0.144141255,
+          "median": 0.1376045,
+          "min": 0.106167,
+          "p95": 0.19266699999999998
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.00175,
+          "mean": 0.0005883150000000004,
+          "median": 0.0005,
+          "min": 0.00029099999999999997,
+          "p95": 0.001083
+        },
+        "inputToScene": {
+          "max": 0.5840000000000001,
+          "mean": 0.3166651999999999,
+          "median": 0.30843750000000003,
+          "min": 0.253458,
+          "p95": 0.39354199999999995
+        },
+        "javascriptAndTransport": {
+          "max": 0.281542,
+          "mean": 0.1719356300000001,
+          "median": 0.16781249999999998,
+          "min": 0.142834,
+          "p95": 0.212834
+        }
+      },
+      "mountAndSetupMs": 13.570584,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 89.584542,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.706119,
+        "compatibilityChecks": 0.767625,
+        "harnessOverhead": 0.0843830000000112,
+        "measuredApplyAndLayout": 28.828250999999987,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.11766300000000009,
+        "measuredJavascriptAndTransport": 34.38712600000001,
+        "mountAndSetup": 13.570584,
+        "shutdown": 0.623208,
+        "warmupUpdates": 6.4995829999999994
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 10,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.84008,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.886917,
+          "mean": 0.14503666999999995,
+          "median": 0.1243335,
+          "min": 0.10166599999999999,
+          "p95": 0.203125
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.006458,
+          "mean": 0.0006222750000000005,
+          "median": 0.00041600000000000003,
+          "min": 0.00029099999999999997,
+          "p95": 0.0012920000000000002
+        },
+        "inputToScene": {
+          "max": 1.572917,
+          "mean": 0.32245085,
+          "median": 0.28454199999999996,
+          "min": 0.24929099999999998,
+          "p95": 0.41812499999999997
+        },
+        "javascriptAndTransport": {
+          "max": 0.970375,
+          "mean": 0.17679190499999994,
+          "median": 0.1581665,
+          "min": 0.142417,
+          "p95": 0.221333
+        }
+      },
+      "mountAndSetupMs": 14.451334,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 91.263042,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.84008,
+        "compatibilityChecks": 0.788083,
+        "harnessOverhead": 0.0796259999999992,
+        "measuredApplyAndLayout": 29.007334,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.1244550000000001,
+        "measuredJavascriptAndTransport": 35.358381,
+        "mountAndSetup": 14.451334,
+        "shutdown": 0.643208,
+        "warmupUpdates": 5.970541
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 11,
+    "build": "after",
+    "result": {
+      "cellValidationMs": 4.484551,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.204,
+          "mean": 0.12742644999999997,
+          "median": 0.121438,
+          "min": 0.104125,
+          "p95": 0.174542
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.00325,
+          "mean": 0.0005027200000000003,
+          "median": 0.000375,
+          "min": 0.00029099999999999997,
+          "p95": 0.001167
+        },
+        "inputToScene": {
+          "max": 0.400916,
+          "mean": 0.2848789749999999,
+          "median": 0.2748125,
+          "min": 0.24912499999999999,
+          "p95": 0.34625
+        },
+        "javascriptAndTransport": {
+          "max": 0.227959,
+          "mean": 0.15694980499999997,
+          "median": 0.150854,
+          "min": 0.138958,
+          "p95": 0.18829200000000001
+        }
+      },
+      "mountAndSetupMs": 14.268083,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 83.054292,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.484551,
+        "compatibilityChecks": 0.919875,
+        "harnessOverhead": 0.05057000000000633,
+        "measuredApplyAndLayout": 25.48529,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.10054400000000008,
+        "measuredJavascriptAndTransport": 31.389960999999992,
+        "mountAndSetup": 14.268083,
+        "shutdown": 0.623833,
+        "warmupUpdates": 5.731585000000001
+      },
+      "workload": "500 cells + resize"
+    }
+  },
+  {
+    "round": 11,
+    "build": "before",
+    "result": {
+      "cellValidationMs": 4.565157999999999,
+      "checks": [
+        "all 500 labels on every update",
+        "row gap alternation",
+        "thumb drag",
+        "content drag",
+        "reverse",
+        "hide/show",
+        "count and scrollbar change"
+      ],
+      "commitBytes": null,
+      "iterations": 200,
+      "milliseconds": {
+        "applyAndLayout": {
+          "max": 0.187792,
+          "mean": 0.12817355999999996,
+          "median": 0.1219375,
+          "min": 0.10500000000000001,
+          "p95": 0.16574999999999998
+        },
+        "decode": {
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "p95": 0.0
+        },
+        "inputToDispatch": {
+          "max": 0.009042000000000001,
+          "mean": 0.0004837650000000003,
+          "median": 0.000334,
+          "min": 0.00029099999999999997,
+          "p95": 0.000958
+        },
+        "inputToScene": {
+          "max": 0.414458,
+          "mean": 0.28571690000000016,
+          "median": 0.275229,
+          "min": 0.248125,
+          "p95": 0.343917
+        },
+        "javascriptAndTransport": {
+          "max": 0.24670799999999998,
+          "mean": 0.157059575,
+          "median": 0.15137499999999998,
+          "min": 0.138125,
+          "p95": 0.191958
+        }
+      },
+      "mountAndSetupMs": 13.721458,
+      "note": "CPU only. JS includes real queue waits, React and native batch conversion. Decode is zero for native batches; commitBytes is unavailable without a JSON document. Total starts at native pointer-up and ends after scene layout; excludes validation, Android input delivery, UI scheduling, GPU and presentation. Hyperfine additionally includes startup, warm-up, validation and shutdown.",
+      "platform": {
+        "arch": "aarch64",
+        "os": "macos"
+      },
+      "suiteMs": 82.92875,
+      "transport": "native batch",
+      "warmup": 20,
+      "waterfallMs": {
+        "cellValidation": 4.565157999999999,
+        "compatibilityChecks": 0.828291,
+        "harnessOverhead": 0.04617099999999885,
+        "measuredApplyAndLayout": 25.634711999999993,
+        "measuredDecode": 0.0,
+        "measuredInput": 0.09675300000000006,
+        "measuredJavascriptAndTransport": 31.411915000000004,
+        "mountAndSetup": 13.721458,
+        "shutdown": 0.5744170000000001,
+        "warmupUpdates": 6.049875
+      },
+      "workload": "500 cells + resize"
+    }
+  }
+]

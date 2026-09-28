@@ -20,6 +20,7 @@ pub(super) enum Drawing {
 
 impl Engine {
     pub(super) fn layout_canvas(&mut self, group: NodeIdentity, width: f32, height: f32, drawings: &[Drawing], rect: Rect) {
+        if !cfg!(feature = "ui-canvas") { return; }
         let scale = (rect.width / width).min(rect.height / height);
         let previous_clip = self.clip;
         self.clip = self.clip.intersection(Rect {

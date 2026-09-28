@@ -1,4 +1,4 @@
-import { createElement, useRef } from "react";
+import { createElement, useRef } from "./react";
 import { Screen, ErrorState, type IconAsset } from "./index";
 import { useAction } from "./action";
 import { forward10Filled, forward30Filled, forward5Filled, pauseFilled, playArrowFilled, replay10Filled, replay30Filled, replay5Filled, skipNextFilled, skipPreviousFilled } from "./icons";

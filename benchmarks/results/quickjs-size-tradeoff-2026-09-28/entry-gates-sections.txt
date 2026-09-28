@@ -1,0 +1,29 @@
+/Users/vandam/Developer/ink/.agent-tools/quickjs-size-2026-09-28/entry-gates.so  :
+section                    size      addr
+.note.android.ident         152       624
+.dynsym                    4104       776
+.gnu.version                342      4880
+.gnu.version_r              128      5224
+.gnu.hash                   396      5352
+.dynstr                    4096      5748
+.rela.dyn                    72      9848
+.relr.dyn                  1008      9920
+.rela.plt                  2832     10928
+.rodata                  323108     13760
+.gcc_except_table          4360    336868
+.eh_frame_hdr             26516    341228
+.eh_frame                183396    367744
+.text                   1868152    567536
+.plt                       1920   2435696
+.data.rel.ro              59208   2454000
+.fini_array                  16   2513208
+.init_array                  16   2513224
+.dynamic                    480   2513240
+.got                        104   2513720
+.got.plt                    968   2513824
+.relro_padding              152   2514792
+.data                      4472   2531176
+.bss                       2344   2535648
+Total                   2488342
+
+

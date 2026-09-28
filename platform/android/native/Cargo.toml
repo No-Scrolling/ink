@@ -11,6 +11,15 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [features]
+ui-lists = ["ink-core/ui-lists"]
+ui-playing = ["ink-core/ui-playing"]
+ui-messages = ["ink-core/ui-messages"]
+ui-views = ["ink-core/ui-views"]
+ui-canvas = ["ink-core/ui-canvas"]
+text-input = ["ink-core/text-input"]
+camera = ["ink-core/camera"]
+video = ["ink-core/video"]
+maps = ["ink-core/maps"]
 audio = ["dep:ink-audio"]
 background = []
 benchmark = ["ink-core/perf", "ink-renderer-vulkan/perf"]
@@ -22,7 +31,7 @@ network = []
 camera-photo = ["image"]
 
 [dependencies]
-ink-core = { path = "../../../crates/ink-core" }
+ink-core = { path = "../../../crates/ink-core", default-features = false }
 ink-runtime = { path = "../../../crates/ink-runtime" }
 anyhow.workspace = true
 ink-audio = { path = "../../../crates/ink-audio", optional = true }

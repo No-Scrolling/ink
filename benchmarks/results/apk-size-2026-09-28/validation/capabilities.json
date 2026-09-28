@@ -1,0 +1,32 @@
+{
+  "benchmarks/apps/ink-counter": [
+    "external"
+  ],
+  "examples/light-template": [
+    "audio-detached",
+    "audio-microphone",
+    "audio-recording",
+    "background",
+    "barcode-generate",
+    "camera-permission",
+    "code-scanner",
+    "connectivity",
+    "downloads",
+    "external",
+    "file-images",
+    "files",
+    "image",
+    "light-sdk",
+    "light-sdk-push",
+    "light-sdk-ringtone",
+    "location",
+    "maps",
+    "media-library",
+    "network",
+    "nfc",
+    "notifications",
+    "photo-capture",
+    "text-input",
+    "video"
+  ]
+}

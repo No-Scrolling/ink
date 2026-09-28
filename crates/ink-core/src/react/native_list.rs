@@ -83,7 +83,7 @@ impl ReactTree {
     }
 
     pub fn route_native_message(&self, message: String) -> Result<String> {
-        if self.native_events.is_empty() { return Ok(message); }
+        if !cfg!(feature = "ui-lists") || self.native_events.is_empty() { return Ok(message); }
         let mut event: Json = serde_json::from_str(&message)?;
         if event.get("type").and_then(Json::as_str) != Some("event") { return Ok(message); }
         let Some(id) = event.get("id").and_then(Json::as_u64).map(|id| id as usize) else { return Ok(message); };
@@ -150,17 +150,12 @@ impl ReactTree {
     }
 
     pub(super) fn expand_native_lists(&mut self, operations: Vec<Operation>, engine: &mut Engine) -> Result<Vec<Operation>> {
+        if !cfg!(feature = "ui-lists") { return Ok(operations); }
         let mut expanded = Vec::with_capacity(operations.len());
         for operation in operations {
             let (id, props) = match &operation {
                 Operation::Create { id, r#type: HostKind::NativeList, props } => (*id, props),
                 Operation::Update { id, props } if self.native_lists.contains_key(id) => (*id, props),
-                Operation::Create { id, r#type: HostKind::PlayingScreen, props } => {
-                    self.prepare_playing(*id, props)?; expanded.push(operation); continue;
-                }
-                Operation::Update { id, props } if self.playing_ids.contains_key(id) => {
-                    self.prepare_playing(*id, props)?; expanded.push(operation); continue;
-                }
                 _ => { expanded.push(operation); continue; }
             };
             if !props.contains_key("items") && !props.contains_key("itemKeys") {
@@ -298,6 +293,7 @@ impl ReactTree {
     }
 
     pub fn refresh_native_lists(&mut self, engine: &mut Engine) -> Result<()> {
+        if !cfg!(feature = "ui-lists") { return Ok(()); }
         // Each pass measures the newly materialised rows and refines the estimated window.
         for _ in 0..8 {
             let Some(clip) = engine.scene.scroll_clip else { break; };

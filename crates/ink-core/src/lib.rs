@@ -3639,6 +3639,7 @@ impl Engine {
                 self.layout_camera_preview(*controller, *kind, rect)
             }
             NodeKind::VideoView { controller, loading } => {
+                if !cfg!(feature = "video") { return; }
                 self.scene.video_portal = controller.map(|controller| MapPortal { controller, rect });
                 if *loading {
                     let height = self.text_line_height(18.0);
@@ -3647,6 +3648,7 @@ impl Engine {
                 }
             }
             NodeKind::MapView { controller } => {
+                if !cfg!(feature = "maps") { return; }
                 self.scene.map_portal = Some(MapPortal { controller: *controller, rect });
             }
             NodeKind::Toggle {
@@ -4361,6 +4363,7 @@ impl Engine {
         rect: Rect,
         trailing_width: f32,
     ) {
+        if !cfg!(feature = "text-input") { return; }
         let font_size = self.scaled_font(TEXT_INPUT_AFFIX_SIZE);
         let (prefix_width, suffix_width) = self.input_affix_widths(prefix, suffix, (rect.width - trailing_width).max(0.0));
         let gap = self.scaled(TEXT_INPUT_AFFIX_GAP);
@@ -4804,6 +4807,7 @@ impl Engine {
         kind: CameraPreviewKind,
         rect: Rect,
     ) {
+        if !cfg!(feature = "camera") { return; }
         self.scene.quads.push(Quad {
             rect,
             clip: self.clip,

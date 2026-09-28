@@ -41,12 +41,12 @@ fn read(batch: Array<'_>) -> Result<ReactCommit> {
                     id: item.get::<_, Id>("id")?.0,
                     r#type: serde_json::from_value(serde_json::Value::String(kind))
                         .map_err(|error| Exception::throw_type(ctx, &error.to_string()))?,
-                    props: props(ctx, &item, &mut bytes)?,
+                    props: json(ctx, &item, "props", &mut bytes)?,
                 }
             }
             "update" => Operation::Update {
                 id: item.get::<_, Id>("id")?.0,
-                props: props(ctx, &item, &mut bytes)?,
+                props: json(ctx, &item, "props", &mut bytes)?,
             },
             "insert" => Operation::Insert {
                 id: item.get::<_, Id>("id")?.0,
@@ -62,14 +62,7 @@ fn read(batch: Array<'_>) -> Result<ReactCommit> {
                 value: item.get("value")?,
             },
             "values" => {
-                let value: Value = item.get("values")?;
-                let encoded = ctx.json_stringify(value)?
-                    .ok_or_else(|| Exception::throw_type(ctx, "invalid view values"))?
-                    .to_string()?;
-                bytes = bytes.saturating_add(encoded.len());
-                check_size(ctx, bytes)?;
-                let values: Vec<(usize, serde_json::Value)> = serde_json::from_str(&encoded)
-                    .map_err(|error| Exception::throw_type(ctx, &error.to_string()))?;
+                let values: Vec<(usize, serde_json::Value)> = json(ctx, &item, "values", &mut bytes)?;
                 if values.iter().any(|(id, _)| *id as u64 > 9_007_199_254_740_991) {
                     return Err(Exception::throw_type(ctx, "invalid binding identifier"));
                 }
@@ -105,19 +98,20 @@ fn read(batch: Array<'_>) -> Result<ReactCommit> {
     Ok(ReactCommit(operations))
 }
 
-fn props<'js>(
+fn json<'js, T: serde::de::DeserializeOwned>(
     ctx: &Ctx<'js>,
     item: &Object<'js>,
+    key: &str,
     bytes: &mut usize,
-) -> Result<serde_json::Map<String, serde_json::Value>> {
-    let value: Value = item.get("props")?;
-    let json = ctx
-        .json_stringify(value)?
-        .ok_or_else(|| Exception::throw_type(ctx, "invalid React props"))?
-        .to_string()?;
-    *bytes = bytes.saturating_add(json.len());
+) -> Result<T> {
+    let value: Value = item.get(key)?;
+    let encoded = ctx.json_stringify(value)?
+        .ok_or_else(|| Exception::throw_type(ctx, "invalid React JSON value"))?
+        .to_cstring()?;
+    *bytes = bytes.saturating_add(encoded.len());
     check_size(ctx, *bytes)?;
-    serde_json::from_slice(json.as_bytes()).map_err(|error| Exception::throw_type(ctx, &error.to_string()))
+    serde_json::from_str(&encoded)
+        .map_err(|error| Exception::throw_type(ctx, &error.to_string()))
 }
 
 fn check_size(ctx: &Ctx<'_>, bytes: usize) -> Result<()> {

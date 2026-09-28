@@ -1,4 +1,4 @@
-import { createElement, Fragment, useLayoutEffect, useMemo, useRef, type ComponentProps, type ReactNode } from "react";
+import { createElement, Fragment, useLayoutEffect, useMemo, useRef, type ComponentProps, type ReactNode } from "./react";
 import { ListLoadError, ReactList, type ListProps } from "./list";
 import { useAction } from "./action";
 import type { Row } from "./image";
@@ -6,8 +6,8 @@ import { navigate } from "./navigation";
 import { rememberListPatch, type NativeListItem } from "./list-patch";
 
 type Plan<T> = { project: (item: T, index: number) => unknown[]; template: string; dependencies?: (item: T, index: number) => unknown[] };
-const needsReact = Symbol("list needs React");
-const plans = new WeakMap<Function, Plan<unknown>>();
+const needsReact = /* @__PURE__ */ Symbol("list needs React");
+const plans = /* @__PURE__ */ new WeakMap<Function, Plan<unknown>>();
 
 /** @internal Created by the Ink compiler; application List props stay unchanged. */
 export function nativeListRow<T>(render: (item: T, index: number) => ReactNode, project: Plan<T>["project"], template: string, dependencies?: Plan<T>["dependencies"]) {

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "./react";
 
 declare const __inkPost: (message: string) => void;
 

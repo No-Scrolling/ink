@@ -1,4 +1,4 @@
-import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "./react";
 
 import { useAction } from "./action";
 import { Button, Stack, Text } from "./index";

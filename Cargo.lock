@@ -759,6 +759,7 @@ dependencies = [
  "anyhow",
  "ink-protocol",
  "rquickjs",
+ "serde",
  "serde_json",
 ]
 

@@ -86,6 +86,7 @@ impl BoundView {
 
 impl ReactTree {
     pub(super) fn expand_views(&mut self, operations: Vec<Operation>) -> Result<Vec<Operation>> {
+        if !cfg!(feature = "ui-views") { return Ok(operations); }
         if !operations.iter().any(|operation| matches!(operation,
             Operation::Values { .. } | Operation::Create { r#type: HostKind::NativeView, .. })) {
             return Ok(operations);

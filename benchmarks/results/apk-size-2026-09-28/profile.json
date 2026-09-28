@@ -1,0 +1,408 @@
+{
+  "variants": {
+    "release": {
+      "apkBytes": 3242820,
+      "sha256": "df317551cc8a8a57d09b6bf3ff4f8b96616b3ce83a6dd7a3e78af526faca02e6",
+      "entries": [
+        {
+          "name": "META-INF/com/android/build/gradle/app-metadata.properties",
+          "bytes": 57,
+          "storedBytes": 53
+        },
+        {
+          "name": "META-INF/version-control-info.textproto",
+          "bytes": 46,
+          "storedBytes": 48
+        },
+        {
+          "name": "assets/dexopt/baseline.prof",
+          "bytes": 76,
+          "storedBytes": 76
+        },
+        {
+          "name": "assets/dexopt/baseline.profm",
+          "bytes": 49,
+          "storedBytes": 49
+        },
+        {
+          "name": "classes.dex",
+          "bytes": 403848,
+          "storedBytes": 403848
+        },
+        {
+          "name": "lib/arm64-v8a/libink_android.so",
+          "bytes": 2719312,
+          "storedBytes": 2719312
+        },
+        {
+          "name": "assets/PublicSuffixDatabase.list",
+          "bytes": 132737,
+          "storedBytes": 42484
+        },
+        {
+          "name": "assets/app.js",
+          "bytes": 162653,
+          "storedBytes": 51440
+        },
+        {
+          "name": "assets/ink-capabilities-v1.json",
+          "bytes": 59,
+          "storedBytes": 59
+        },
+        {
+          "name": "assets/ink-icons-v1.bin",
+          "bytes": 76399,
+          "storedBytes": 1175
+        },
+        {
+          "name": "META-INF/androidx.core_core-splashscreen.version",
+          "bytes": 6,
+          "storedBytes": 8
+        },
+        {
+          "name": "META-INF/androidx.startup_startup-runtime.version",
+          "bytes": 6,
+          "storedBytes": 8
+        },
+        {
+          "name": "META-INF/androidx.tracing_tracing.version",
+          "bytes": 6,
+          "storedBytes": 8
+        },
+        {
+          "name": "META-INF/androidx/annotation/annotation/LICENSE.txt",
+          "bytes": 10175,
+          "storedBytes": 3563
+        },
+        {
+          "name": "AndroidManifest.xml",
+          "bytes": 5336,
+          "storedBytes": 1642
+        },
+        {
+          "name": "res/-e.xml",
+          "bytes": 520,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/8c.png",
+          "bytes": 123,
+          "storedBytes": 123
+        },
+        {
+          "name": "res/9w.png",
+          "bytes": 109,
+          "storedBytes": 109
+        },
+        {
+          "name": "res/9y.xml",
+          "bytes": 892,
+          "storedBytes": 298
+        },
+        {
+          "name": "res/Bb.xml",
+          "bytes": 616,
+          "storedBytes": 308
+        },
+        {
+          "name": "res/FS.png",
+          "bytes": 147,
+          "storedBytes": 147
+        },
+        {
+          "name": "res/Gc.png",
+          "bytes": 226,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/RJ.png",
+          "bytes": 171,
+          "storedBytes": 171
+        },
+        {
+          "name": "res/fO.png",
+          "bytes": 171,
+          "storedBytes": 171
+        },
+        {
+          "name": "res/o-.png",
+          "bytes": 226,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/wb.png",
+          "bytes": 147,
+          "storedBytes": 147
+        },
+        {
+          "name": "res/yn.png",
+          "bytes": 123,
+          "storedBytes": 123
+        },
+        {
+          "name": "res/zR.png",
+          "bytes": 109,
+          "storedBytes": 109
+        },
+        {
+          "name": "resources.arsc",
+          "bytes": 3884,
+          "storedBytes": 3884
+        }
+      ]
+    },
+    "capability-import": {
+      "apkBytes": 2887448,
+      "sha256": "837a3c2a70a8685244d6def61c01492538a3eee7206ad3ef24e88ec34c794840",
+      "entries": [
+        {
+          "name": "META-INF/com/android/build/gradle/app-metadata.properties",
+          "bytes": 57,
+          "storedBytes": 53
+        },
+        {
+          "name": "META-INF/version-control-info.textproto",
+          "bytes": 46,
+          "storedBytes": 48
+        },
+        {
+          "name": "classes.dex",
+          "bytes": 106268,
+          "storedBytes": 106268
+        },
+        {
+          "name": "lib/arm64-v8a/libink_android.so",
+          "bytes": 2706640,
+          "storedBytes": 2706640
+        },
+        {
+          "name": "assets/app.js",
+          "bytes": 162637,
+          "storedBytes": 51440
+        },
+        {
+          "name": "assets/ink-capabilities-v1.json",
+          "bytes": 41,
+          "storedBytes": 43
+        },
+        {
+          "name": "assets/ink-icons-v1.bin",
+          "bytes": 76399,
+          "storedBytes": 1175
+        },
+        {
+          "name": "META-INF/androidx.core_core-splashscreen.version",
+          "bytes": 6,
+          "storedBytes": 8
+        },
+        {
+          "name": "AndroidManifest.xml",
+          "bytes": 4308,
+          "storedBytes": 1376
+        },
+        {
+          "name": "res/-e.xml",
+          "bytes": 520,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/8c.png",
+          "bytes": 123,
+          "storedBytes": 123
+        },
+        {
+          "name": "res/9w.png",
+          "bytes": 109,
+          "storedBytes": 109
+        },
+        {
+          "name": "res/Bb.xml",
+          "bytes": 616,
+          "storedBytes": 308
+        },
+        {
+          "name": "res/FS.png",
+          "bytes": 147,
+          "storedBytes": 147
+        },
+        {
+          "name": "res/Gc.png",
+          "bytes": 226,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/RJ.png",
+          "bytes": 171,
+          "storedBytes": 171
+        },
+        {
+          "name": "res/fO.png",
+          "bytes": 171,
+          "storedBytes": 171
+        },
+        {
+          "name": "res/o-.png",
+          "bytes": 226,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/wb.png",
+          "bytes": 147,
+          "storedBytes": 147
+        },
+        {
+          "name": "res/yn.png",
+          "bytes": 123,
+          "storedBytes": 123
+        },
+        {
+          "name": "res/zR.png",
+          "bytes": 109,
+          "storedBytes": 109
+        },
+        {
+          "name": "resources.arsc",
+          "bytes": 3632,
+          "storedBytes": 3632
+        }
+      ]
+    },
+    "lazy-linkify": {
+      "apkBytes": 2883364,
+      "sha256": "90b52af3e9a8f846cb2c774b3f6082f375d789be1826167e2a238246bef4f43a",
+      "entries": [
+        {
+          "name": "META-INF/com/android/build/gradle/app-metadata.properties",
+          "bytes": 57,
+          "storedBytes": 53
+        },
+        {
+          "name": "META-INF/version-control-info.textproto",
+          "bytes": 46,
+          "storedBytes": 48
+        },
+        {
+          "name": "classes.dex",
+          "bytes": 106268,
+          "storedBytes": 106268
+        },
+        {
+          "name": "lib/arm64-v8a/libink_android.so",
+          "bytes": 2706640,
+          "storedBytes": 2706640
+        },
+        {
+          "name": "assets/app.js",
+          "bytes": 149271,
+          "storedBytes": 47354
+        },
+        {
+          "name": "assets/ink-capabilities-v1.json",
+          "bytes": 41,
+          "storedBytes": 43
+        },
+        {
+          "name": "assets/ink-icons-v1.bin",
+          "bytes": 76399,
+          "storedBytes": 1175
+        },
+        {
+          "name": "META-INF/androidx.core_core-splashscreen.version",
+          "bytes": 6,
+          "storedBytes": 8
+        },
+        {
+          "name": "AndroidManifest.xml",
+          "bytes": 4308,
+          "storedBytes": 1376
+        },
+        {
+          "name": "res/-e.xml",
+          "bytes": 520,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/8c.png",
+          "bytes": 123,
+          "storedBytes": 123
+        },
+        {
+          "name": "res/9w.png",
+          "bytes": 109,
+          "storedBytes": 109
+        },
+        {
+          "name": "res/Bb.xml",
+          "bytes": 616,
+          "storedBytes": 308
+        },
+        {
+          "name": "res/FS.png",
+          "bytes": 147,
+          "storedBytes": 147
+        },
+        {
+          "name": "res/Gc.png",
+          "bytes": 226,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/RJ.png",
+          "bytes": 171,
+          "storedBytes": 171
+        },
+        {
+          "name": "res/fO.png",
+          "bytes": 171,
+          "storedBytes": 171
+        },
+        {
+          "name": "res/o-.png",
+          "bytes": 226,
+          "storedBytes": 226
+        },
+        {
+          "name": "res/wb.png",
+          "bytes": 147,
+          "storedBytes": 147
+        },
+        {
+          "name": "res/yn.png",
+          "bytes": 123,
+          "storedBytes": 123
+        },
+        {
+          "name": "res/zR.png",
+          "bytes": 109,
+          "storedBytes": 109
+        },
+        {
+          "name": "resources.arsc",
+          "bytes": 3632,
+          "storedBytes": 3632
+        }
+      ]
+    }
+  },
+  "symbolBuild": {
+    "source": "experiment-20260928-223409-efd7b183/source.tar.gz",
+    "features": [
+      "image",
+      "network"
+    ],
+    "strip": "none",
+    "textBytes": 2077992,
+    "packagedTextBytes": 2077632,
+    "byteIdentical": false,
+    "limitation": "Same archived source and release optimisation, but strip=none rebuild differs by 360 text bytes. Symbol attribution is approximate, not byte-exact for the packaged ELF."
+  },
+  "capabilityLeak": {
+    "module": "packages/ink/src/playing.ts",
+    "bytesInOutput": 16,
+    "retainedCode": "React CommonJS interop import wrapper",
+    "capabilities": [
+      "image",
+      "network"
+    ]
+  }
+}

@@ -9,7 +9,7 @@ rust-version.workspace = true
 ab_glyph.workspace = true
 anyhow.workspace = true
 bytemuck.workspace = true
-ink-core = { path = "../ink-core" }
+ink-core = { path = "../ink-core", default-features = false }
 miniz_oxide.workspace = true
 unicode-segmentation.workspace = true
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "std", "debug"] }

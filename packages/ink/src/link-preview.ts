@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement } from "./react";
 import { Image, Stack, Text } from "./index";
 import { openLink } from "./external";
 

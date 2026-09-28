@@ -1,0 +1,29 @@
+/Users/vandam/Developer/ink/.agent-tools/quickjs-size-2026-09-28/O3.so  :
+section                    size      addr
+.note.android.ident         152       624
+.dynsym                    4104       776
+.gnu.version                342      4880
+.gnu.version_r              128      5224
+.gnu.hash                   396      5352
+.dynstr                    4096      5748
+.rela.dyn                    72      9848
+.relr.dyn                  1008      9920
+.rela.plt                  2832     10928
+.rodata                  323364     13760
+.gcc_except_table          4360    337124
+.eh_frame_hdr             26668    341484
+.eh_frame                184996    368152
+.text                   1895368    569536
+.plt                       1920   2464912
+.data.rel.ro              59232   2483216
+.fini_array                  16   2542448
+.init_array                  16   2542464
+.dynamic                    480   2542480
+.got                        104   2542960
+.got.plt                    968   2543064
+.relro_padding             3680   2544032
+.data                      4472   2560416
+.bss                       2344   2564888
+Total                   2521118
+
+

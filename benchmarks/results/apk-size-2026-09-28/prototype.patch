@@ -1,0 +1,27 @@
+--- a/packages/ink/src/react.ts
++++ b/packages/ink/src/react.ts
+@@ -1,2 +1,2 @@
+ // Share the CommonJS React import so unused component modules contribute no wrapper code.
+-export { createElement, memo, useState } from "react";
++export { createElement, memo, useState, useRef } from "react";
+--- a/packages/ink/src/playing.ts
++++ b/packages/ink/src/playing.ts
+@@ -1,4 +1,4 @@
+-import { createElement, useRef } from "react";
++import { createElement, useRef } from "./react";
+ import { Screen, ErrorState, type IconAsset } from "./index";
+ import { useAction } from "./action";
+ import { forward10Filled, forward30Filled, forward5Filled, pauseFilled, playArrowFilled, replay10Filled, replay30Filled, replay5Filled, skipNextFilled, skipPreviousFilled } from "./icons";
+--- a/packages/ink/src/links.ts
++++ b/packages/ink/src/links.ts
+@@ -1,8 +1,9 @@
+ import { LinkifyIt } from "linkify-it";
+ 
+-const linkify = new LinkifyIt({ fuzzyLink: true });
++let linkify: LinkifyIt | undefined;
+ 
+ export function textLinks(text: string) {
++  linkify ??= new LinkifyIt({ fuzzyLink: true });
+   return (linkify.match(text) || []).map(match => ({
+     start: match.index,
+     end: match.lastIndex,

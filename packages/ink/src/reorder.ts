@@ -4,7 +4,7 @@ import { keyboardArrowDown, keyboardArrowUp } from "./icons";
 import { List } from "./list";
 import { nativeListRow, nativeListTemplate } from "./native-list";
 
-const template = nativeListTemplate((node, field) => node("Stack", { axis: "horizontal", align: "center", justify: "space-between" }, [
+const template = /* @__PURE__ */ nativeListTemplate((node, field) => node("Stack", { axis: "horizontal", align: "center", justify: "space-between" }, [
   node("Text", { text: field("label"), maxLines: field("maxLines") }),
   node("Stack", { axis: "horizontal", align: "center", gap: 4 }, [
     node("Button", { icon: keyboardArrowDown, disabled: field("last"), onPress: field("down") }),

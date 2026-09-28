@@ -2,6 +2,10 @@
 
 Reviewed 28 September 2026. Rust owns Ink's visual engine and native list windows. JavaScript supplies application data, actions and React semantics. Android services remain in Kotlin where they use platform APIs.
 
+Android builds now select native list, message, playback and bound-view composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Dynamic native-view descriptions conservatively retain broader support; custom React components keep their existing behaviour. See the [optional UI build results](../benchmarks/results/optional-ui-2026-09-28/README.md).
+
+Canvas, text-input, camera, video and map primitives are also selected at build time. Core defaults retain all primitives; dynamic native views retain these paths because their descriptions can be constructed at runtime. The React commit decoder borrows QuickJS's JSON text until deserialisation finishes, then sends owned values across the thread boundary. See the [primitive and bridge cleanup results](../benchmarks/results/primitive-size-2026-09-28/README.md).
+
 | Work | Owner | Behaviour |
 | --- | --- | --- |
 | Layout, text, drawing, hit testing | Rust, with Android fallback glyph support | No JavaScript drawing loop. |

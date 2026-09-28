@@ -59,6 +59,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var cameraAdapter: CameraAdapter
     private lateinit var mapsAdapter: MapsAdapter
     private lateinit var videoAdapter: VideoAdapter
+    private var cameraPortal: CameraPortal? = null
+    private var videoPortal: VideoPortal? = null
+    private var mapPortal: MapPortal? = null
     private val filesAdapter by lazy { createFilesAdapter(this) }
     private val sqliteAdapter by lazy { SqliteAdapter(this) }
     private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
@@ -106,7 +109,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             finish()
         } else {
             inkView.requestFrame()
-            syncCameraPortal()
+            syncNativePortals()
             drainNativeRequests()
         }
     }
@@ -327,7 +330,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (engineHandle != 0L) {
             if (nativeDrainJavaScript(engineHandle)) inkView.requestCommitFrame()
             val error = nativeTakeJavaScriptError(engineHandle)
-            if (error.isNotEmpty()) {
+            if (!error.isNullOrEmpty()) {
                 stopJavaScriptSession()
                 if (BuildConfig.DEBUG) {
                     val mapped = DevelopmentErrors.map(error) { openBundleAsset("app.js.map").bufferedReader().use { it.readText() } }
@@ -353,10 +356,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             if (window.statusBarColor != barColour) window.statusBarColor = barColour
             if (window.navigationBarColor != barColour) window.navigationBarColor = barColour
             syncTextInput()
-            syncCameraPortal()
+            syncNativePortals()
             drainNativeRequests()
-            val calls = org.json.JSONArray(nativeTakeJavaScriptCalls(engineHandle))
-            for (index in 0 until calls.length()) executeJavaScriptCall(calls.getJSONObject(index))
+            nativeTakeJavaScriptCalls(engineHandle)?.let { encoded ->
+                val calls = org.json.JSONArray(encoded)
+                for (index in 0 until calls.length()) executeJavaScriptCall(calls.getJSONObject(index))
+            }
         }
     }
 
@@ -551,7 +556,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         lightSdkAdapter.refresh()
 
         cameraAdapter.resume()
-        syncCameraPortal()
+        syncNativePortals()
         nfcAdapter.resume()
         notificationsAdapter.refreshEvents()
         syncTextInput()
@@ -589,7 +594,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         )
         surfaceAttached = true
         inkView.requestFrame()
-        syncCameraPortal()
+        syncNativePortals()
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -601,7 +606,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         nativeResize(engineHandle, width, height)
         syncTextInput()
         inkView.requestFrame()
-        syncCameraPortal()
+        syncNativePortals()
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -703,43 +708,53 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun syncTextInput() {
-        val active = nativeTextInputActive(engineHandle)
-        textInputAdapter.sync(active, nativeTextInputAction(engineHandle), nativeTextInputNumeric(engineHandle))
+        if (!BuildConfig.INK_TEXT_INPUT_ENABLED || engineHandle == 0L) return
+        val state = nativeTextInputState(engineHandle)
+        textInputAdapter.sync(state and 1 != 0, state ushr 2, state and 2 != 0)
         textInputAdapter.syncContext(nativeTextInputContext(engineHandle))
     }
 
-    private fun syncCameraPortal() {
+    private fun syncNativePortals() {
         if (engineHandle == 0L) {
             return
         }
-        val encoded = nativeCameraPortal(engineHandle)
-        val portal = if (encoded.isEmpty()) {
-            null
-        } else {
-            runCatching {
-                val value = JSONObject(encoded)
-                CameraPortal(
-                    controller = value.getLong("controller"),
-                    kind = value.getString("kind"),
-                    x = value.getInt("x"),
-                    y = value.getInt("y"),
-                    width = value.getInt("width"),
-                    height = value.getInt("height"),
-                    light = value.getBoolean("light"),
-                )
-            }.getOrNull()
+        // Null means unchanged; still sync adapters so recreated views can mount.
+        if (BuildConfig.INK_CAMERA_ENABLED) {
+            val encoded = nativeCameraPortal(engineHandle)
+            if (encoded != null) cameraPortal = if (encoded.isEmpty()) {
+                null
+            } else {
+                runCatching {
+                    val value = JSONObject(encoded)
+                    CameraPortal(
+                        controller = value.getLong("controller"),
+                        kind = value.getString("kind"),
+                        x = value.getInt("x"),
+                        y = value.getInt("y"),
+                        width = value.getInt("width"),
+                        height = value.getInt("height"),
+                        light = value.getBoolean("light"),
+                    )
+                }.getOrNull()
+            }
+            cameraAdapter.syncPortal(cameraPortal, nativeCameraReviewReady(engineHandle))
         }
-        cameraAdapter.syncPortal(portal, nativeCameraReviewReady(engineHandle))
-        val video = nativeVideoPortal(engineHandle)
-        videoAdapter.syncPortal(if (video.isEmpty()) null else {
-            val value = JSONObject(video)
-            VideoPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
-        })
-        val map = nativeMapPortal(engineHandle)
-        mapsAdapter.syncPortal(if (map.isEmpty()) null else {
-            val value = JSONObject(map)
-            MapPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
-        })
+        if (BuildConfig.INK_VIDEO_ENABLED) {
+            val video = nativeVideoPortal(engineHandle)
+            if (video != null) videoPortal = if (video.isEmpty()) null else {
+                val value = JSONObject(video)
+                VideoPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
+            }
+            videoAdapter.syncPortal(videoPortal)
+        }
+        if (BuildConfig.INK_MAPS_ENABLED) {
+            val map = nativeMapPortal(engineHandle)
+            if (map != null) mapPortal = if (map.isEmpty()) null else {
+                val value = JSONObject(map)
+                MapPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
+            }
+            mapsAdapter.syncPortal(mapPortal)
+        }
     }
 
     private fun openCameraController(
@@ -1027,7 +1042,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
         }
         if (changed) inkView.requestFrame()
-        syncCameraPortal()
+        syncNativePortals()
         drainNativeRequests()
     }
 
@@ -1042,7 +1057,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             runOnUiThread {
                 if (engineHandle != handle) return@runOnUiThread
                 if (changed) inkView.requestFrame()
-                syncCameraPortal()
+                syncNativePortals()
                 drainNativeRequests()
             }
         }
@@ -1407,7 +1422,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             if ((result and POINTER_ACTIVATED) != 0 ||
                 ((result and POINTER_CHANGED) != 0 && !capturedGesture)) {
                 drainNativeRequests()
-                syncCameraPortal()
+                syncNativePortals()
                 syncTextInput()
             }
             return (result and POINTER_CHANGED) != 0
@@ -1534,7 +1549,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeCreate(): Long
 
         @JvmStatic
-        private external fun nativeTakeJavaScriptError(handle: Long): String
+        private external fun nativeTakeJavaScriptError(handle: Long): String?
 
         @JvmStatic
         private external fun nativeRefreshJavaScript(handle: Long, source: String): Boolean
@@ -1549,7 +1564,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeIsLightAppearance(handle: Long): Boolean
 
         @JvmStatic
-        private external fun nativeTakeJavaScriptCalls(handle: Long): String
+        private external fun nativeTakeJavaScriptCalls(handle: Long): String?
 
         @JvmStatic
         private external fun nativeTakeJavaScriptBytes(handle: Long, id: Long): ByteArray?
@@ -1648,7 +1663,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeBack(handle: Long): Boolean
 
         @JvmStatic
-        private external fun nativeCameraPortal(handle: Long): String
+        private external fun nativeCameraPortal(handle: Long): String?
 
         @JvmStatic
         private external fun nativeCompletePixels(handle: Long, requestId: Long, width: Int, height: Int, rgba: ByteArray): Boolean
@@ -1657,18 +1672,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeCameraReviewReady(handle: Long): Boolean
 
         @JvmStatic
-        private external fun nativeVideoPortal(handle: Long): String
+        private external fun nativeVideoPortal(handle: Long): String?
         @JvmStatic
-        private external fun nativeMapPortal(handle: Long): String
+        private external fun nativeMapPortal(handle: Long): String?
 
         @JvmStatic
-        private external fun nativeTextInputActive(handle: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeTextInputAction(handle: Long): Int
-
-        @JvmStatic
-        private external fun nativeTextInputNumeric(handle: Long): Boolean
+        private external fun nativeTextInputState(handle: Long): Int
 
         @JvmStatic
         private external fun nativeTextInputContext(handle: Long): String
