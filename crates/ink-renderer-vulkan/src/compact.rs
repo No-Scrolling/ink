@@ -238,7 +238,7 @@ struct CachedMask {
 }
 
 struct CachedImage {
-    _texture: gpu::Texture,
+    texture: gpu::Texture,
     bind_group: gpu::BindGroup,
     width: u32,
     height: u32,
@@ -276,6 +276,16 @@ impl ImageCache {
     ) -> Result<&CachedImage> {
         let id = image.id();
         let generation = image.generation();
+        if let ImageData::Remote(image) = image
+            && let Some(cached) = self.images.get_mut(&id)
+            && cached.generation != generation
+            && cached.width == image.width && cached.height == image.height
+        {
+            queue.write_texture(&cached.texture, [0, 0], [image.width, image.height], &image.pixels);
+            cached.generation = generation;
+            #[cfg(feature = "perf")]
+            { self.uploaded_bytes += image.pixels.len() as u64; }
+        }
         if self
             .images
             .get(&id)
@@ -320,7 +330,7 @@ impl ImageCache {
             self.images.insert(
                 id,
                 CachedImage {
-                    _texture: texture,
+                    texture,
                     bind_group,
                     width,
                     height,

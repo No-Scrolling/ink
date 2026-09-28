@@ -446,6 +446,11 @@ impl AsRef<[u8]> for AssetBytes {
     }
 }
 
+pub trait ImageAnimation: Send {
+    fn advance(&mut self) -> Option<Vec<u8>>;
+    fn finished(&self) -> bool;
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct RemoteImage {
     pub id: u64,
@@ -489,6 +494,16 @@ impl ImageData {
             Self::Remote(image) => image.height,
         }
     }
+}
+
+fn visible_image(scene: &Scene, id: u64) -> bool {
+    scene.images.iter().any(|run| {
+        if run.image.id() != id { return false; }
+        let mut rect = run.rect;
+        if run.scrolling { rect.y += scene.scroll_origin - scene.scroll_offset; }
+        let visible = rect.intersection(run.clip);
+        visible.width > 0.0 && visible.height > 0.0
+    })
 }
 
 fn image_content_rect(image: &ImageData, mut rect: Rect, fit: ImageFit) -> Rect {
@@ -632,6 +647,7 @@ enum NodeKind {
         bounds: Option<Rect>,
     },
     Image {
+        looping: bool,
         source: ImageSource,
         preload: Vec<ImageSource>,
         retain_while_loading: bool,
@@ -816,6 +832,7 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Image {
+                looping: false,
                 preload: Vec::new(),
                 retain_while_loading: false,
                 source,
@@ -1240,6 +1257,7 @@ enum RequestOwner {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct RemoteImageKey {
+    looping: bool,
     module: String,
     url: String,
     width: u32,
@@ -1358,6 +1376,7 @@ pub struct Engine {
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
+    image_animations: HashMap<RemoteImageKey, Box<dyn ImageAnimation>>,
     pending_images: Vec<PendingImage>,
     preloaded_images: BTreeSet<RemoteImageKey>,
     retained_images: HashMap<NodeIdentity, ImageData>,
@@ -1419,6 +1438,7 @@ impl Engine {
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
             remote_images: HashMap::new(),
+            image_animations: HashMap::new(),
             pending_images: Vec::new(),
             preloaded_images: BTreeSet::new(),
             retained_images: HashMap::new(),
@@ -1496,12 +1516,12 @@ impl Engine {
         })
     }
 
-    pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit)> {
+    pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit, bool)> {
         let pending = self.in_flight_requests.get(&request_id)?;
         let RequestOwner::Image(key) = &pending.owner else {
             return None;
         };
-        Some((key.width, key.height, key.fit))
+        Some((key.width, key.height, key.fit, key.looping))
     }
 
     pub fn complete_native_image(
@@ -1510,6 +1530,7 @@ impl Engine {
         width: u32,
         height: u32,
         pixels: Vec<u8>,
+        animation: Option<Box<dyn ImageAnimation>>,
     ) -> bool {
         let Some(pending) = self.in_flight_requests.remove(&request_id) else {
             return false;
@@ -1526,6 +1547,7 @@ impl Engine {
         {
             return false;
         }
+        if let Some(animation) = animation { self.image_animations.insert(key.clone(), animation); }
         let id = image_id(&key);
         let generation = self.next_image_generation;
         self.next_image_generation = self.next_image_generation.wrapping_add(1).max(1);
@@ -1691,12 +1713,13 @@ impl Engine {
             let visible = self.visible_images.contains(key);
             match state {
                 RemoteImageState::Ready { image, last_used } => {
-                    bytes += image.pixels.len();
+                    let size = image.pixels.len() * if self.image_animations.contains_key(key) { 3 } else { 1 };
+                    bytes += size;
                     ready_count += 1;
                     if visible {
                         *last_used = self.scene.revision;
                     } else {
-                        unused.push((key.clone(), *last_used, image.pixels.len()));
+                        unused.push((key.clone(), *last_used, size));
                     }
                     true
                 }
@@ -1719,6 +1742,7 @@ impl Engine {
                 break;
             }
             self.remote_images.remove(&key);
+            self.image_animations.remove(&key);
             bytes -= size;
             ready_count -= 1;
         }
@@ -2506,6 +2530,7 @@ impl Engine {
     pub fn has_scene_animations(&self) -> bool {
         self.marquees.values().any(|marquee| marquee.visible)
             || self.playback_progress.values().any(PlaybackProgress::animating)
+            || self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
     }
 
     pub fn update_playback_clock(&mut self, controller: u64, position: f32, duration: f32, playing: bool, speed: f32) -> bool {
@@ -2535,6 +2560,29 @@ impl Engine {
 
     pub fn animate_scene(&mut self) -> bool {
         let mut changed = false;
+        self.image_animations.retain(|key, animation| {
+            let id = image_id(key);
+            if !visible_image(&self.scene, id) { return true; }
+            if let Some(pixels) = animation.advance()
+                && let Some(RemoteImageState::Ready { image, .. }) = self.remote_images.get_mut(key)
+            {
+                image.pixels = pixels.into();
+                image.generation = self.next_image_generation;
+                self.next_image_generation = self.next_image_generation.wrapping_add(1).max(1);
+                for run in &mut self.scene.images {
+                    if run.image.id() == id { run.image = ImageData::Remote(image.clone()); }
+                }
+                for preloaded in &mut self.scene.preloaded_images {
+                    if preloaded.id() == id { *preloaded = ImageData::Remote(image.clone()); }
+                }
+                for retained in self.retained_images.values_mut() {
+                    if retained.id() == id { *retained = ImageData::Remote(image.clone()); }
+                }
+                self.scene.image_revision = self.scene.image_revision.wrapping_add(1);
+                changed = true;
+            }
+            !animation.finished()
+        });
         for marquee in self.marquees.values().filter(|marquee| marquee.visible) {
             let cycle = 1.25 + marquee.distance / marquee.speed;
             let elapsed = marquee.started.elapsed().as_secs_f32() % cycle;
@@ -3087,6 +3135,7 @@ impl Engine {
                 }
             }
             NodeKind::Image {
+                looping,
                 source,
                 bleed,
                 width,
@@ -3102,7 +3151,7 @@ impl Engine {
                 let code_height = match source {
                     ImageSource::Native(module, url) if module == "barcode" => {
                         let pixels = measured_width.ceil().max(1.0) as u32;
-                        let key = RemoteImageKey { module: module.clone(), url: url.clone(), width: pixels, height: pixels, fit: *fit };
+                        let key = RemoteImageKey { module: module.clone(), url: url.clone(), width: pixels, height: pixels, fit: *fit, looping: *looping };
                         match self.remote_images.get(&key) {
                             Some(RemoteImageState::Ready { image, .. }) => Some(measured_width * image.height as f32 / image.width as f32),
                             _ => None,
@@ -3191,7 +3240,7 @@ impl Engine {
                 }
             }
             NodeKind::MediaCell { source, selected, video, check, play, action } => {
-                self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, rect);
+                self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, false, rect);
                 if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
                 if *selected {
                     self.scene.masks.push(MaskRun {
@@ -3612,14 +3661,14 @@ impl Engine {
                 colour: self.scene.colour(tone_colour(*tone)),
                 scrolling: self.scrolling,
             }),
-            NodeKind::Image { source, fallback, fit, zoomable, preload, retain_while_loading, .. } => {
-                self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, rect);
+            NodeKind::Image { source, fallback, fit, zoomable, looping, preload, retain_while_loading, .. } => {
+                self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, *looping, rect);
                 let visible = rect.intersection(self.clip);
                 if visible.width > 0.0 && visible.height > 0.0 {
                     for source in preload {
                         if let ImageSource::Native(module, url) = source {
                             let key = RemoteImageKey {
-                                module: module.clone(), url: url.clone(), fit: *fit,
+                                module: module.clone(), url: url.clone(), fit: *fit, looping: *looping,
                                 width: rect.width.ceil().max(1.0) as u32,
                                 height: rect.height.ceil().max(1.0) as u32,
                             };
@@ -4700,6 +4749,7 @@ impl Engine {
         fit: ImageFit,
         zoomable: bool,
         retain_while_loading: bool,
+        looping: bool,
         rect: Rect,
     ) {
         let visible = rect.intersection(self.clip);
@@ -4722,6 +4772,7 @@ impl Engine {
                     fallback.cloned().map(ImageData::Asset)
                 } else {
                     let key = RemoteImageKey {
+                        looping,
                         module: module.clone(),
                         url: source.clone(),
                         width: rect.width.ceil().max(1.0) as u32,

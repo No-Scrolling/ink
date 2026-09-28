@@ -1,15 +1,9 @@
-#[cfg(feature = "image")]
-use std::ffi::c_void;
 use std::ffi::{CString, c_char, c_int};
-#[cfg(feature = "image")]
-use std::os::fd::AsRawFd;
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex, Once};
 #[cfg(feature = "benchmark")]
 use std::time::Instant;
 
-#[cfg(feature = "image")]
-use ink_core::ImageFit;
 #[cfg(feature = "benchmark")]
 use ink_core::PerfTraceSection;
 use ink_core::{
@@ -57,40 +51,14 @@ fn pointer_result(outcome: PointerOutcome) -> jint {
         })
 }
 
-#[cfg(feature = "image")]
-const IMAGE_DECODER_SUCCESS: c_int = 0;
-#[cfg(feature = "image")]
-const BITMAP_FORMAT_RGBA_8888: c_int = 1;
-
 #[link(name = "log")]
 unsafe extern "C" {
     fn __android_log_write(priority: c_int, tag: *const c_char, text: *const c_char) -> c_int;
 }
 
 #[cfg(feature = "image")]
-enum AImageDecoder {}
-#[cfg(feature = "image")]
-enum AImageDecoderHeaderInfo {}
-
-#[cfg(feature = "image")]
-#[link(name = "jnigraphics")]
-unsafe extern "C" {
-    fn AImageDecoder_createFromFd(fd: c_int, decoder: *mut *mut AImageDecoder) -> c_int;
-    fn AImageDecoder_delete(decoder: *mut AImageDecoder);
-    fn AImageDecoder_getHeaderInfo(decoder: *const AImageDecoder)
-    -> *const AImageDecoderHeaderInfo;
-    fn AImageDecoderHeaderInfo_getWidth(info: *const AImageDecoderHeaderInfo) -> i32;
-    fn AImageDecoderHeaderInfo_getHeight(info: *const AImageDecoderHeaderInfo) -> i32;
-    fn AImageDecoder_setAndroidBitmapFormat(decoder: *mut AImageDecoder, format: i32) -> c_int;
-    fn AImageDecoder_setTargetSize(decoder: *mut AImageDecoder, width: i32, height: i32) -> c_int;
-    fn AImageDecoder_getMinimumStride(decoder: *mut AImageDecoder) -> usize;
-    fn AImageDecoder_decodeImage(
-        decoder: *mut AImageDecoder,
-        pixels: *mut c_void,
-        stride: usize,
-        size: usize,
-    ) -> c_int;
-}
+#[path = "image.rs"]
+mod image;
 
 struct AndroidEngine {
     engine: Engine,
@@ -315,7 +283,7 @@ impl AndroidEngine {
         pixels: Vec<u8>,
     ) -> bool {
         self.engine
-            .complete_native_image(request_id, width, height, pixels)
+            .complete_native_image(request_id, width, height, pixels, None)
     }
 
     fn fail_native(&mut self, request_id: u64, error: ResourceError) -> bool {
@@ -1094,17 +1062,17 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
     let Some(engine) = engine(handle) else {
         return false as jboolean;
     };
-    let Some((width, height, fit)) = engine
+    let Some((width, height, fit, looping)) = engine
         .lock()
         .ok()
         .and_then(|engine| engine.engine.image_request_target(request_id as u64))
     else {
         return false as jboolean;
     };
-    let decoded = decode_image(&path, width, height, fit);
+    let decoded = image::decode(&path, width, height, fit, looping);
     engine.lock().ok().is_some_and(|mut engine| match decoded {
-        Ok((width, height, pixels)) => {
-            engine.complete_native_image(request_id as u64, width, height, pixels)
+        Ok((width, height, pixels, animation)) => {
+            engine.engine.complete_native_image(request_id as u64, width, height, pixels, animation)
         }
         Err(message) => engine.fail_native(
             request_id as u64,
@@ -1270,111 +1238,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDestroy(
     }
 }
 
-#[cfg(feature = "image")]
-fn decode_image(
-    path: &str,
-    target_width: u32,
-    target_height: u32,
-    fit: ImageFit,
-) -> Result<(u32, u32, Vec<u8>), String> {
-    let file = std::fs::File::open(path)
-        .map_err(|error| format!("Android could not open the remote image: {error}"))?;
-    let mut raw = std::ptr::null_mut();
-    let result = unsafe { AImageDecoder_createFromFd(file.as_raw_fd(), &mut raw) };
-    if result != IMAGE_DECODER_SUCCESS {
-        return Err(format!(
-            "Android could not decode the remote image ({result})"
-        ));
-    }
-    let decoder = ImageDecoder(
-        NonNull::new(raw).ok_or_else(|| "Android returned no image decoder".to_owned())?,
-    );
-    let header = unsafe { AImageDecoder_getHeaderInfo(decoder.0.as_ptr()) };
-    if header.is_null() {
-        return Err("Android returned no image header".to_owned());
-    }
-    let source_width = unsafe { AImageDecoderHeaderInfo_getWidth(header) };
-    let source_height = unsafe { AImageDecoderHeaderInfo_getHeight(header) };
-    if source_width <= 0 || source_height <= 0 {
-        return Err("Remote image had invalid dimensions".to_owned());
-    }
-    let width_scale = target_width.max(1) as f64 / source_width as f64;
-    let height_scale = target_height.max(1) as f64 / source_height as f64;
-    let scale = match fit {
-        ImageFit::Cover => width_scale.max(height_scale),
-        ImageFit::Contain => width_scale.min(height_scale),
-    }
-    .min(1.0);
-    let width = (source_width as f64 * scale).round().max(1.0) as u32;
-    let height = (source_height as f64 * scale).round().max(1.0) as u32;
-    let format = unsafe {
-        AImageDecoder_setAndroidBitmapFormat(decoder.0.as_ptr(), BITMAP_FORMAT_RGBA_8888)
-    };
-    if format != IMAGE_DECODER_SUCCESS {
-        return Err(format!(
-            "Android could not convert the remote image ({format})"
-        ));
-    }
-    if width != source_width as u32 || height != source_height as u32 {
-        let scaled =
-            unsafe { AImageDecoder_setTargetSize(decoder.0.as_ptr(), width as i32, height as i32) };
-        if scaled != IMAGE_DECODER_SUCCESS {
-            return Err(format!(
-                "Android could not scale the remote image ({scaled})"
-            ));
-        }
-    }
-    let stride = unsafe { AImageDecoder_getMinimumStride(decoder.0.as_ptr()) };
-    let size = stride
-        .checked_mul(height as usize)
-        .ok_or_else(|| "Remote image was too large".to_owned())?;
-    if size > 16 * 1024 * 1024 || stride < width as usize * 4 {
-        return Err("Remote image was too large".to_owned());
-    }
-    let mut decoded = vec![0; size];
-    let result = unsafe {
-        AImageDecoder_decodeImage(
-            decoder.0.as_ptr(),
-            decoded.as_mut_ptr().cast(),
-            stride,
-            size,
-        )
-    };
-    if result != IMAGE_DECODER_SUCCESS {
-        return Err(format!(
-            "Android could not decode the remote image ({result})"
-        ));
-    }
-    let mut pixels = if stride == width as usize * 4 {
-        decoded
-    } else {
-        let row_bytes = width as usize * 4;
-        let mut compact = Vec::with_capacity(row_bytes * height as usize);
-        for row in decoded.chunks(stride).take(height as usize) {
-            compact.extend_from_slice(&row[..row_bytes]);
-        }
-        compact
-    };
-    for pixel in pixels.chunks_exact_mut(4) {
-        let alpha = u32::from(pixel[3]);
-        if alpha != 0 && alpha != 255 {
-            for channel in &mut pixel[..3] {
-                *channel = ((u32::from(*channel) * 255 + alpha / 2) / alpha).min(255) as u8;
-            }
-        }
-    }
-    Ok((width, height, pixels))
-}
-
-#[cfg(feature = "image")]
-struct ImageDecoder(NonNull<AImageDecoder>);
-
-#[cfg(feature = "image")]
-impl Drop for ImageDecoder {
-    fn drop(&mut self) {
-        unsafe { AImageDecoder_delete(self.0.as_ptr()) };
-    }
-}
 
 fn engine(handle: jlong) -> Option<&'static Mutex<AndroidEngine>> {
     let pointer = NonNull::new(handle as *mut Mutex<AndroidEngine>)?;

@@ -1079,7 +1079,8 @@ impl ReactTree {
                     height,
                     fit,
                 );
-                if let NodeKind::Image { preload, retain_while_loading, .. } = &mut node.kind {
+                if let NodeKind::Image { preload, retain_while_loading, looping, .. } = &mut node.kind {
+                    *looping = props.get("loop") == Some(&Json::Bool(true));
                     *retain_while_loading = props.get("retainWhileLoading") == Some(&Json::Bool(true));
                     if let Some(sources) = props.get("preload").and_then(Json::as_array) {
                         *preload = sources.iter().take(2).map(|source| {

@@ -51,7 +51,9 @@ impl ReactTree {
         let picture = |picture: &Picture, fit| -> Result<Node> {
             ensure!(picture.width.is_finite() && picture.height.is_finite() && picture.width > 0.0
                 && picture.height > 0.0 && picture.width <= 100_000.0 && picture.height <= 100_000.0, "invalid message image dimensions");
-            Ok(Node::image(image_source(&picture.src)?, None, false, false, picture.width, picture.height, fit))
+            let mut node = Node::image(image_source(&picture.src)?, None, false, false, picture.width, picture.height, fit);
+            if let NodeKind::Image { looping, .. } = &mut node.kind { *looping = true; }
+            Ok(node)
         };
         let mut labels = vec![text(message.label, 14.0, None)];
         if let Some(reactions) = message.reactions.filter(|value| !value.is_empty()) { labels.push(text(format!(", {reactions}"), 12.0, None)); }

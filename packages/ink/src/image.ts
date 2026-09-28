@@ -39,6 +39,7 @@ export function Image(props: {
   fit?: "contain" | "cover";
   bleed?: boolean;
   zoomable?: boolean;
+  loop?: boolean;
 }) {
   return createElement("Image", props);
 }

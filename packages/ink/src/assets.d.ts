@@ -38,3 +38,8 @@ declare module "*.svg" {
   const icon: import("./assets").IconAsset;
   export default icon;
 }
+
+declare module "*.gif" {
+  const source: string;
+  export default source;
+}

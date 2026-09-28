@@ -1,0 +1,24 @@
+{
+  "sourceSha256": "f52585257f8212f8c52388ab1050c1b9de808433f3d264437dda1f7cee86e545",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "066f8aa95aee983e6ffa52ce768d1a22aa276c7108297380b5d8aa66c26630d4"
+  },
+  "revision": "4a77ed7aa89237b65f98594473ef9f82fc783118",
+  "flags": {},
+  "signing": "generated Android development key",
+  "artifacts": {
+    "benchmarks/apps/ink-counter": {
+      "file": "0-ink-counter-benchmark-1.0.0-arm64.apk",
+      "sha256": "3756e34e73a20b87456b63dc7a34dd23aa45b57302b0632c93bfacc9713c0000",
+      "bytes": 3216308,
+      "package": "com.vandam.benchmark.ink.gif",
+      "component": "com.vandam.benchmark.ink.gif/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

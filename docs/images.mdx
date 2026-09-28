@@ -121,3 +121,5 @@ export default function Artwork() {
 `src` accepts imported assets, HTTPS URLs and Ink-managed image sources from Camera or Files. Arbitrary `file://` paths are not supported. Width and height must be positive.
 
 Recently displayed images are cached in memory, so returning to a page can reuse them. Change the URL when remote image content changes.
+
+Animated GIF and WebP images play natively while visible. Imported `.gif` assets are supported. `Image` respects the file's repeat count by default; set `loop` to repeat continuously. Images in `Message` and `ConversationScreen` always loop. Animation pauses when the image is off-screen.

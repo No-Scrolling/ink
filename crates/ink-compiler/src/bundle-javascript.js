@@ -134,7 +134,7 @@ function buildOptions(bootstrap = false) { return {
     build.onLoad({ filter: /\.svg$/i }, async ({ path }) => {
       return { contents: `export default ${JSON.stringify(await svgReference(path))}`, loader: "js" };
     });
-    build.onLoad({ filter: /\.(?:png|jpe?g|webp|mp3|mp4|mov|webm|db)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
+    build.onLoad({ filter: /\.(?:png|jpe?g|gif|webp|mp3|mp4|mov|webm|db)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
     build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
       const resolved = await realpath(Bun.resolveSync(path, /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
       const name = await inspect(resolved);
