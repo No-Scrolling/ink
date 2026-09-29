@@ -9,8 +9,8 @@ pub(crate) fn install(ctx: &Ctx<'_>, events: EventSink, failed: Rc<RefCell<bool>
     ctx.globals().set(
         "__inkCommit",
         Function::new(ctx.clone(), move |ctx: Ctx<'_>, batch: Array<'_>| {
-            let commit = read(batch)?;
-            events.try_send(Event::Commit(commit)).map_err(|error| {
+            let (commit, bytes) = read(batch)?;
+            events.try_send_sized(Event::Commit(commit), bytes).map_err(|error| {
                 *failed.borrow_mut() = true;
                 Exception::throw_message(
                     &ctx,
@@ -26,7 +26,7 @@ pub(crate) fn install(ctx: &Ctx<'_>, events: EventSink, failed: Rc<RefCell<bool>
     )
 }
 
-fn read(batch: Array<'_>) -> Result<ReactCommit> {
+fn read(batch: Array<'_>) -> Result<(ReactCommit, usize)> {
     let ctx = batch.ctx();
     let mut bytes = batch.len().saturating_mul(32);
     check_size(ctx, bytes)?;
@@ -66,7 +66,10 @@ fn read(batch: Array<'_>) -> Result<ReactCommit> {
                 if values.iter().any(|(id, _)| *id as u64 > 9_007_199_254_740_991) {
                     return Err(Exception::throw_type(ctx, "invalid binding identifier"));
                 }
-                Operation::Values { view: item.get::<_, Id>("view")?.0, values }
+                let collections = if item.contains_key("collections")? {
+                    json(ctx, &item, "collections", &mut bytes)?
+                } else { Vec::new() };
+                Operation::Values { view: item.get::<_, Id>("view")?.0, values, collections }
             }
             "text" => {
                 let changes: Array = item.get("changes")?;
@@ -95,7 +98,7 @@ fn read(batch: Array<'_>) -> Result<ReactCommit> {
             _ => return Err(Exception::throw_type(ctx, "unknown React operation")),
         });
     }
-    Ok(ReactCommit(operations))
+    Ok((ReactCommit(operations), bytes))
 }
 
 fn json<'js, T: serde::de::DeserializeOwned>(

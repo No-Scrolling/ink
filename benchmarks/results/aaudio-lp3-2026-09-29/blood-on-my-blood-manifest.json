@@ -1,0 +1,14 @@
+{
+  "serial": "LP3LHMA531900140",
+  "sharing": "shared",
+  "real_mp3": true,
+  "started": 1790641796.1337621,
+  "binary_sha256": "b0ac72f7e500061c108d20b4f0bf2626e548b31ba5e1e42626ad5e49765949d8",
+  "sources": {
+    "Cargo.toml": "aa4dd6ad48d09f9a04939e3568bf492420f6c3abf7c524ea1ac202a27f6acb68",
+    "run.py": "1ac56f9b5fb9a1f101357f65c9ac88ed64fefe1afec4e47207d4fcb465e8f419",
+    "Cargo.lock": "565d69751fdc38c8b73d06b03974c514c213e5c4147d825545e7b1cd2060c3ce",
+    "decode.rs": "1fca9eb375403b7c9e05c00b4891f412afe3cb4f424b084f3800aef7ad2a4a5f",
+    "main.rs": "eaca23bb376c9c9f12c22608fe2b81f754ead0b7f1906b82b38c51cae07ef55f"
+  }
+}

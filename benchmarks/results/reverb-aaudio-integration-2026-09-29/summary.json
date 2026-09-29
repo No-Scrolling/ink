@@ -1,0 +1,72 @@
+{
+  "lp3-baseline": {
+    "first": {
+      "n": 3,
+      "mean_ms": 444.6666666666667,
+      "min_ms": 421,
+      "max_ms": 471
+    },
+    "subsequent": {
+      "n": 6,
+      "mean_ms": 316.8333333333333,
+      "min_ms": 287,
+      "max_ms": 341
+    }
+  },
+  "lp3-aaudio": {
+    "first": {
+      "n": 3,
+      "mean_ms": 368.3333333333333,
+      "min_ms": 349,
+      "max_ms": 390
+    },
+    "subsequent": {
+      "n": 6,
+      "mean_ms": 177.33333333333334,
+      "min_ms": 153,
+      "max_ms": 213
+    }
+  },
+  "lp3-short-buffer": {
+    "first": {
+      "n": 3,
+      "mean_ms": 359.6666666666667,
+      "min_ms": 333,
+      "max_ms": 380
+    },
+    "subsequent": {
+      "n": 6,
+      "mean_ms": 193.66666666666666,
+      "min_ms": 170,
+      "max_ms": 208
+    }
+  },
+  "lp3-native-rate": {
+    "first": {
+      "n": 3,
+      "mean_ms": 413.6666666666667,
+      "min_ms": 398,
+      "max_ms": 434
+    },
+    "subsequent": {
+      "n": 6,
+      "mean_ms": 250.16666666666666,
+      "min_ms": 216,
+      "max_ms": 275
+    }
+  },
+  "lp3-final": {
+    "first": {
+      "n": 3,
+      "mean_ms": 401,
+      "min_ms": 372,
+      "max_ms": 418
+    },
+    "subsequent": {
+      "n": 6,
+      "mean_ms": 253,
+      "min_ms": 220,
+      "max_ms": 298
+    }
+  }
+}

@@ -1,5 +1,5 @@
 # Rust
-/target/
+target/
 /.agent-tools/
 __pycache__/
 **/*.rs.bk
@@ -12,8 +12,17 @@ node_modules/
 /examples/**/dist/
 /benchmarks/apps/**/.benchmark/
 /benchmarks/apps/light-sdk-*/build/
+/benchmarks/apps/**/dist/
 *.apk
 *.aab
+
+# Generated benchmark evidence
+/benchmarks/results/**/tools/*/workspace/
+/benchmarks/results/**/tools/*/source.tar*
+/benchmarks/results/**/tools/*/ink-headless
+/benchmarks/results/**/tools/*/assets/
+/benchmarks/results/**/*-bundle/
+/benchmarks/results/**/*-bundle.js
 
 # Android
 /platform/android/.gradle/

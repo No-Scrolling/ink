@@ -10,22 +10,25 @@ struct Template {
     children: Vec<Template>,
 }
 
+#[derive(Clone)]
 pub(super) struct RowEvent {
     target: usize,
     key: String,
     list: Option<usize>,
 }
 
+#[derive(Clone)]
 struct Row {
     root: usize,
     nodes: Vec<usize>,
-    item: Json,
+    item: Arc<Json>,
 }
 
+#[derive(Clone)]
 pub(super) struct NativeList {
     template: Template,
     event_list: Option<usize>,
-    items: FxHashMap<String, Json>,
+    items: FxHashMap<String, Arc<Json>>,
     keys: Arc<[String]>,
     indices: FxHashMap<String, usize>,
     versions: Arc<[u64]>,
@@ -34,28 +37,25 @@ pub(super) struct NativeList {
     rows: FxHashMap<String, Row>,
     gap: f32,
     follow_end: bool,
-    initial_end: bool,
     older: bool,
     more: bool,
-    first_requested: Option<(usize, String)>,
-    last_requested: Option<(usize, String)>,
+    first_requested: Option<(usize, Option<String>)>,
+    last_requested: Option<(usize, Option<String>)>,
 }
 
 impl NativeList {
     pub(super) fn boundary_events(&mut self, id: usize, start: usize, near_end: bool, events: &mut Vec<Json>) {
-        if let Some(last) = self.keys.last() {
-            let boundary = (self.keys.len(), last.clone());
-            if self.more && near_end && self.last_requested.as_ref() != Some(&boundary) {
-                self.last_requested = Some(boundary);
-                events.push(json!({"type":"event", "id":id, "name":"onEndReached", "args":[]}));
-            }
+        let last = (self.keys.len(), self.keys.last().cloned());
+        if self.more && near_end && (!self.keys.is_empty() || self.last_requested.is_none())
+            && self.last_requested.as_ref() != Some(&last) {
+            self.last_requested = Some(last);
+            events.push(json!({"type":"event", "id":id, "name":"onEndReached", "args":[]}));
         }
-        if let Some(first) = self.keys.first() {
-            let boundary = (self.keys.len(), first.clone());
-            if self.older && start <= 8 && self.first_requested.as_ref() != Some(&boundary) {
-                self.first_requested = Some(boundary);
-                events.push(json!({"type":"event", "id":id, "name":"onStartReached", "args":[]}));
-            }
+        let first = (self.keys.len(), self.keys.first().cloned());
+        if self.older && start <= 8 && (!self.keys.is_empty() || self.first_requested.is_none())
+            && self.first_requested.as_ref() != Some(&first) {
+            self.first_requested = Some(first);
+            events.push(json!({"type":"event", "id":id, "name":"onStartReached", "args":[]}));
         }
     }
 }
@@ -112,15 +112,17 @@ impl ReactTree {
         let mut props = template.props.iter().map(|(name, value)| Ok((name.clone(), resolve(value, item)?))).collect::<Result<Map<_, _>>>()?;
         if event_list.is_some() { props.retain(|_, value| !value.is_null()); }
         let hidden = props.remove("hidden").map(|value| value.as_bool().context("hidden must be a boolean")).transpose()?.unwrap_or(false);
-        HostProps::new(template.kind, props.clone())?;
+        let prepared = HostProps::new(template.kind, props.clone())?;
         if previous.is_some() {
-            operations.push(Operation::Update { id, props });
+            if self.node(id)?.props != prepared { operations.push(Operation::Update { id, props }); }
         } else {
             self.native_events.insert(id, RowEvent { target: template.id, key: key.to_owned(), list: event_list });
             operations.push(Operation::Create { id, r#type: template.kind, props });
             operations.push(Operation::Insert { id, parent, before: None });
         }
-        operations.push(Operation::Hidden { id, value: hidden });
+        if previous.map_or(hidden, |_| self.nodes.get(&id).is_some_and(|node| node.hidden != hidden)) {
+            operations.push(Operation::Hidden { id, value: hidden });
+        }
         for child in &template.children { self.row_operations(child, item, key, id, previous, cursor, nodes, operations, depth + 1, event_list)?; }
         Ok(id)
     }
@@ -165,7 +167,10 @@ impl ReactTree {
                         let template: Template = serde_json::from_str(template.as_str().context("invalid native list template")?)?;
                         ensure!(template == list.template, "native list templates cannot change after mount");
                     }
-                    let changes = props.get("itemChanges").and_then(Json::as_array).context("NativeList requires itemChanges")?;
+                    let changes = match props.get("itemChanges") {
+                        Some(value) => value.as_array().context("NativeList requires an itemChanges array")?.as_slice(),
+                        None => &[],
+                    };
                     ensure!(changes.len() <= 100_000, "native list patch is too large");
                     let mut seen = FxHashSet::default();
                     let rows = changes.iter().map(|item| {
@@ -179,11 +184,12 @@ impl ReactTree {
                         let versions = Arc::make_mut(&mut list.versions);
                         for (&index, item) in rows.iter().zip(changes) {
                             let key = &list.keys[index];
+                            let item = Arc::new(item.clone());
                             list.items.insert(key.clone(), item.clone());
                             versions[index] = revision;
                             if let Some(previous) = list.rows.get(key) {
                                 let mut nodes = Vec::new();
-                                let root = self.row_operations(&list.template, item, key, id, Some(previous), &mut 0,
+                                let root = self.row_operations(&list.template, &item, key, id, Some(previous), &mut 0,
                                     &mut nodes, &mut expanded, 0, list.event_list)?;
                                 list.rows.insert(key.clone(), Row { root, nodes, item: item.clone() });
                             }
@@ -219,8 +225,12 @@ impl ReactTree {
                 let mut keys = Vec::with_capacity(data.len());
                 for item in data {
                     let key = item.get(key_field).and_then(Json::as_str).context("native list keys must be strings")?.to_owned();
-                    if old.as_ref().and_then(|list| list.items.get(&key)) != Some(item) { changed.insert(key.clone()); }
-                    ensure!(items.insert(key.clone(), item.clone()).is_none(), "native list keys must be unique");
+                    let previous = old.as_ref().and_then(|list| list.items.get(&key));
+                    let record = match previous.filter(|previous| previous.as_ref() == item) {
+                        Some(previous) => previous.clone(),
+                        None => { changed.insert(key.clone()); Arc::new(item.clone()) },
+                    };
+                    ensure!(items.insert(key.clone(), record).is_none(), "native list keys must be unique");
                     keys.push(key);
                 }
                 (items, keys)
@@ -239,7 +249,7 @@ impl ReactTree {
                 for item in changes {
                     let key = item.get(key_field).and_then(Json::as_str).context("native list keys must be strings")?;
                     ensure!(wanted.contains(&key.to_owned()) && changed.insert(key.to_owned()), "invalid native list patch key");
-                    items.insert(key.to_owned(), item.clone());
+                    items.insert(key.to_owned(), Arc::new(item.clone()));
                 }
                 items.retain(|key, _| wanted.contains(key));
                 ensure!(keys.iter().all(|key| items.contains_key(key)), "native list patch is missing a row");
@@ -264,7 +274,7 @@ impl ReactTree {
                 old
             } else {
                 NativeList { template: template.context("NativeList requires a template")?, event_list: (props.get("onRowEvent") == Some(&Json::Bool(true))).then_some(id), items, indices: keys.iter().enumerate().map(|(index, key)| (key.clone(), index)).collect(), keys: keys.into(), versions: versions.into(), revision, start: 0, rows: FxHashMap::default(), gap,
-                    follow_end: false, initial_end: props.get("initialEnd") == Some(&Json::Bool(true)), older: false, more: false, first_requested: None, last_requested: None }
+                    follow_end: false, older: false, more: false, first_requested: None, last_requested: None }
             };
             list.gap = gap;
             list.follow_end = props.get("followEnd") == Some(&Json::Bool(true));
@@ -297,11 +307,6 @@ impl ReactTree {
         // Each pass measures the newly materialised rows and refines the estimated window.
         for _ in 0..8 {
             let Some(clip) = engine.scene.scroll_clip else { break; };
-            let mut initial_end = false;
-            for id in engine.react_list_positions.keys() {
-                if let Some(list) = self.native_lists.get_mut(id) { initial_end |= std::mem::take(&mut list.initial_end); }
-            }
-            if initial_end { engine.scroll_by(f32::MAX); }
             let windows: Vec<_> = engine.react_list_positions.iter().filter_map(|(id, top)| {
                 let list = self.native_lists.get(id)?;
                 let metrics = engine.list_metrics.get(id)?;

@@ -1,7 +1,6 @@
 use std::{
     fs,
     path::PathBuf,
-    sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
 
@@ -44,7 +43,7 @@ struct Message {
 
 struct App {
     runtime: AppRuntime,
-    events: Receiver<Event>,
+    events: ink_runtime::EventReceiver,
     tree: ReactTree,
     engine: Engine,
     react_profile: Option<Value>,

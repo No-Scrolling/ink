@@ -4,7 +4,7 @@ import { keyboardArrowDown, keyboardArrowUp } from "./icons";
 import { List } from "./list";
 import { nativeListRow, nativeListTemplate } from "./native-list";
 
-const template = /* @__PURE__ */ nativeListTemplate((node, field) => node("Stack", { axis: "horizontal", align: "center", justify: "space-between" }, [
+const template = /* @__PURE__ */ nativeListTemplate((node, field) => node("Stack", { axis: "horizontal", align: "center", justify: "space-between", gap: 12 }, [
   node("Text", { text: field("label"), maxLines: field("maxLines") }),
   node("Stack", { axis: "horizontal", align: "center", gap: 4 }, [
     node("Button", { icon: keyboardArrowDown, disabled: field("last"), onPress: field("down") }),
@@ -36,7 +36,7 @@ export function ReorderList<T>({ items, keyExtractor, getLabel, onChange, multil
     gap,
     measurementKey: multiline ? "multiline" : "single-line",
     renderItem: nativeListRow((item: T, index: number) => createElement(Stack, {
-      axis: "horizontal", align: "center", justify: "space-between",
+      axis: "horizontal", align: "center", justify: "space-between", gap: 12,
     },
     createElement(Text, { maxLines: multiline ? undefined : 1 }, getLabel(item)),
     createElement(Stack, { axis: "horizontal", align: "center", gap: 4 },
@@ -44,7 +44,6 @@ export function ReorderList<T>({ items, keyExtractor, getLabel, onChange, multil
       createElement(Button, { icon: keyboardArrowUp, disabled: index === 0, onPress: () => move(index, -1) }),
     )), (item, index) => [{ label: getLabel(item), maxLines: multiline ? undefined : 1,
       first: index === 0, last: index === items.length - 1,
-      down: () => move(index, 1), up: () => move(index, -1) }], template,
-      (item, index) => [getLabel(item), multiline, index, items.length]),
+      down: () => move(index, 1), up: () => move(index, -1) }], template),
   });
 }

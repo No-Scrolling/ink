@@ -5,7 +5,7 @@ struct Picture { src: String, width: f32, height: f32 }
 #[derive(Deserialize)]
 struct Quote { author: String, text: String }
 #[derive(Deserialize)]
-struct Preview { domain: String, title: Option<String>, image: Option<Picture>, icon: Option<String> }
+struct Preview { domain: String, title: Option<String>, image: Option<Picture>, icon: Option<String>, thumbnail: Option<String> }
 #[derive(Deserialize)]
 struct Part { text: String, url: Option<String> }
 #[derive(Deserialize)]
@@ -101,7 +101,11 @@ impl ReactTree {
             }
             domain.push(text(preview.domain, 13.0, Some(1)));
             labels.push(stack(domain, 8.0, Axis::Horizontal, Alignment::Centre));
-            children.push(stack(labels, 4.0, Axis::Vertical, Alignment::Stretch));
+            let labels = stack(labels, 4.0, Axis::Vertical, Alignment::Stretch);
+            children.push(if let Some(src) = preview.thumbnail {
+                stack(vec![picture(&Picture { src, width: 56.0, height: 56.0 }, ImageFit::Contain)?, labels],
+                    10.0, Axis::Horizontal, Alignment::Centre)
+            } else { labels });
             content.push(press(Node { identity: NodeIdentity(0), kind: NodeKind::LinkPreview { children } }, action(4, "onPreviewPress"), action(0, "onLongPress"), true));
         }
         let body = stack(vec![metadata, stack(content, 8.0, Axis::Vertical, Alignment::Stretch)], 4.0, Axis::Vertical, Alignment::Stretch);

@@ -76,12 +76,16 @@ internal class InkWebSockets(private val handler: Handler) {
         } catch (error: Exception) { complete(NativeResult.Failure(NativeErrorKind.PROTOCOL, error.message ?: "Invalid WebSocket request", false)) }
     }
     @Synchronized fun cancel(id: Long) { pending.remove(id)?.let { sockets.remove(it.key); it.dispose() } }
-    @Synchronized fun stop() {
+    @Synchronized fun reset() {
         sockets.values.toList().forEach(Socket::dispose)
         sockets.clear()
+        pending.clear()
         client.dispatcher.cancelAll()
-        client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
+    }
+    @Synchronized fun stop() {
+        reset()
+        client.dispatcher.executorService.shutdown()
     }
     private data class SocketEvent(val value: JSONObject, val bytes: ByteArray?)
     private inner class Socket(val key: String) : WebSocketListener() {

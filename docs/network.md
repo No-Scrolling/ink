@@ -104,7 +104,7 @@ Let `fetch` set the multipart `Content-Type` and boundary.
 
 Read an attachment with `fetch(file.src)` and use its `blob()` in the upload. Blob slices, File objects and FormData retain references to native file data, without loading it into JavaScript memory.
 
-Ink prepares a temporary upload file in 32 KiB chunks and checks cancellation between chunks. Native file data is limited by available storage, not the 64 MiB JavaScript body limit.
+Ink sends one native copy request per managed file range. Android copies into the temporary upload file on its network executor with a bounded 64 KiB buffer and checks cancellation between reads. JavaScript stream bodies still send 32 KiB chunks. Native file data is limited by available storage, not the 64 MiB JavaScript body limit.
 
 Managed sources do not allow arbitrary filesystem access. The earlier `fetch(photo.file.uri)` camera path remains supported.
 

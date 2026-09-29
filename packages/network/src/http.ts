@@ -9,17 +9,24 @@ export async function requestHttp(request: HttpRequest, body: ReadableStream<Uin
   if (body) {
     upload = await callNative("network", "stream-upload-open", { managed: request.nativeParts !== undefined }, { signal });
     const reader = request.nativeParts ? undefined : body.getReader();
+    let rejectAbort: (reason: unknown) => void = () => {};
+    const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
+    const abort = () => {
+      if (reader) rejectAbort(signal.reason);
+      void reader?.cancel(signal.reason).catch(() => {});
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
     try {
       if (request.nativeParts) {
         for (const part of request.nativeParts) {
           if ("bytes" in part) await callNativeBytes("network", "stream-upload-write", { upload }, { signal, bytes: part.bytes });
-          else for (let offset = 0; offset < part.size; offset += 32768) {
-            await callNative("network", "stream-upload-file", { upload, src: part.src, offset: part.offset + offset, size: Math.min(32768, part.size - offset) }, { signal });
-          }
+          else await callNative("network", "stream-upload-file", { upload, src: part.src, offset: part.offset, size: part.size }, { signal });
         }
       } else if (reader) {
         for (;;) {
-          const { value, done } = await reader.read();
+          const { value, done } = await Promise.race([reader.read(), aborted]);
+          if (signal.aborted) throw signal.reason;
           if (done) break;
           if (!(value instanceof Uint8Array)) throw new TypeError("Upload streams must contain Uint8Array chunks");
           for (let offset = 0; offset < value.length; offset += 32 * 1024) {
@@ -28,10 +35,13 @@ export async function requestHttp(request: HttpRequest, body: ReadableStream<Uin
         }
       }
     } catch (error) {
-      await reader?.cancel(error).catch(() => {});
-      await callNative("network", "stream-upload-close", { upload }).catch(() => {});
+      void reader?.cancel(error).catch(() => {});
+      void callNative("network", "stream-upload-close", { upload }).catch(() => {});
       throw error;
-    } finally { reader?.releaseLock(); }
+    } finally {
+      signal.removeEventListener("abort", abort);
+      reader?.releaseLock();
+    }
   }
   let value: unknown;
   try { value = JSON.parse(await callNative("network", "stream-open", { url: request.url, method: request.method, headers: request.headers, upload }, { signal })); }

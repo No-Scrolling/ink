@@ -3,6 +3,7 @@ use std::{
     ffi::{c_int, c_void},
     os::fd::AsRawFd,
     ptr::NonNull,
+    sync::{Arc, Mutex, OnceLock, atomic::{AtomicBool, Ordering}, mpsc::{SyncSender, sync_channel}},
     time::{Duration, Instant},
 };
 
@@ -134,7 +135,7 @@ pub(super) fn decode(
     } else {
         unsafe { AImageDecoder_getRepeatCount(decoder.0.as_ptr()) }
     };
-    let animation = Some(Box::new(Animation {
+    let animation = Some(Box::new(Animation::new(DecoderAnimation {
         decoder,
         info,
         _file: file,
@@ -144,7 +145,7 @@ pub(super) fn decode(
         repeats,
         next: Instant::now() + delay,
         finished: false,
-    }) as Box<dyn ImageAnimation>);
+    })) as Box<dyn ImageAnimation>);
     Ok((width, height, pixels, animation))
 }
 
@@ -182,7 +183,7 @@ fn frame_delay(decoder: &ImageDecoder, info: &FrameInfo) -> Result<Duration, Str
     }))
 }
 
-struct Animation {
+struct DecoderAnimation {
     decoder: ImageDecoder,
     info: FrameInfo,
     _file: std::fs::File,
@@ -195,10 +196,10 @@ struct Animation {
     finished: bool,
 }
 
-// Owned decoder state moves from the image worker to the engine mutex; it is never shared concurrently.
-unsafe impl Send for Animation {}
+// Decoder state moves between workers and is only accessed under its mutex.
+unsafe impl Send for DecoderAnimation {}
 
-impl ImageAnimation for Animation {
+impl ImageAnimation for DecoderAnimation {
     fn finished(&self) -> bool {
         self.finished
     }
@@ -260,4 +261,64 @@ impl Drop for ImageDecoder {
     fn drop(&mut self) {
         unsafe { AImageDecoder_delete(self.0.as_ptr()) };
     }
+}
+
+struct AnimationState {
+    decoder: Mutex<DecoderAnimation>,
+    pixels: Mutex<Option<Vec<u8>>>,
+    queued: AtomicBool,
+    finished: AtomicBool,
+    stopped: AtomicBool,
+}
+struct Animation(Arc<AnimationState>);
+impl Animation {
+    fn new(decoder: DecoderAnimation) -> Self {
+        animation_jobs();
+        Self(Arc::new(AnimationState {
+            decoder: Mutex::new(decoder), pixels: Mutex::new(None),
+            queued: AtomicBool::new(false),
+            finished: AtomicBool::new(false),
+            stopped: AtomicBool::new(false),
+        }))
+    }
+}
+fn animation_jobs() -> &'static SyncSender<Arc<AnimationState>> {
+    static JOBS: OnceLock<SyncSender<Arc<AnimationState>>> = OnceLock::new();
+    JOBS.get_or_init(|| {
+        let (send, receive) = sync_channel::<Arc<AnimationState>>(32);
+        let receive = Arc::new(Mutex::new(receive));
+        for index in 0..2 {
+            let receive = receive.clone();
+            std::thread::Builder::new().name(format!("ink-animation-{index}")).spawn(move || {
+                loop {
+                    let job = receive.lock().unwrap().recv();
+                    let Ok(state) = job else { break; };
+                    if !state.stopped.load(Ordering::Acquire) {
+                        let mut decoder = state.decoder.lock().unwrap();
+                        if let Some(pixels) = decoder.advance() { *state.pixels.lock().unwrap() = Some(pixels); }
+                        state.finished.store(decoder.finished(), Ordering::Release);
+                    }
+                    state.queued.store(false, Ordering::Release);
+                }
+            }).expect("could not start image animation worker");
+        }
+        send
+    })
+}
+impl ImageAnimation for Animation {
+    fn finished(&self) -> bool {
+        self.0.finished.load(Ordering::Acquire) && self.0.pixels.lock().unwrap().is_none()
+    }
+    fn advance(&mut self) -> Option<Vec<u8>> {
+        let pixels = self.0.pixels.lock().unwrap().take();
+        if !self.0.finished.load(Ordering::Acquire)
+            && !self.0.queued.swap(true, Ordering::AcqRel)
+            && animation_jobs().try_send(self.0.clone()).is_err() {
+            self.0.queued.store(false, Ordering::Release);
+        }
+        pixels
+    }
+}
+impl Drop for Animation {
+    fn drop(&mut self) { self.0.stopped.store(true, Ordering::Release); }
 }

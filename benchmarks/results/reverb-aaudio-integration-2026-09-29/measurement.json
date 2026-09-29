@@ -1,0 +1,8 @@
+{
+  "apk_sha256": "7e504831b1163a82823b49957a021e1a7f6d89ea4f0c9c936c0bc956b13f2793",
+  "apk_bytes": 21967041,
+  "device": "LP3LHMA531900140",
+  "build": "Instrumented debug APK; Rust audio crate release profile",
+  "boundary": "JavaScript tap handler to output timestamp estimate; not acoustic onset",
+  "thermal_status_after": 0
+}

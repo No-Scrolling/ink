@@ -20,7 +20,7 @@ mod fonts;
 mod canvas;
 mod capture;
 pub use capture::CaptureKind;
-pub use fonts::{font_for_character, tabular_digit_width, text_graphemes, text_width, text_width_with_numbers};
+pub use fonts::{font_for_character, tabular_digit_width, text_graphemes, text_width, text_width_with_numbers, visual_text, visual_text_width_with_numbers};
 
 mod icon_assets;
 mod list;
@@ -647,12 +647,14 @@ enum NodeKind {
         bounds: Option<Rect>,
     },
     Image {
+        avatar: Option<bool>,
         looping: bool,
         source: ImageSource,
         preload: Vec<ImageSource>,
         retain_while_loading: bool,
         fallback: Option<ImageAsset>,
         bleed: bool,
+        fill_width: bool,
         zoomable: bool,
         width: f32,
         height: f32,
@@ -832,12 +834,14 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Image {
+                avatar: None,
                 looping: false,
                 preload: Vec::new(),
                 retain_while_loading: false,
                 source,
                 fallback,
                 bleed,
+                fill_width: false,
                 zoomable,
                 width,
                 height,
@@ -975,6 +979,7 @@ pub struct MaskRun {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageRun {
+    pub avatar: Option<bool>,
     pub image: ImageData,
     pub zoom_id: Option<usize>,
     pub rect: Rect,
@@ -1272,7 +1277,9 @@ enum RemoteImageState {
     Failed,
 }
 
+#[derive(Clone)]
 struct PendingImage {
+    avatar: Option<bool>,
     key: RemoteImageKey,
     index: usize,
     rect: Rect,
@@ -1282,6 +1289,7 @@ struct PendingImage {
     needs_layout: bool,
 }
 
+#[derive(Clone)]
 enum QueuedRequest {
     Start(PendingRequest),
     Cancel(NativeRequest),
@@ -1297,6 +1305,7 @@ pub struct CorePerfMetrics {
     pub incremental_rebuilds: u32,
 }
 
+#[derive(Clone)]
 struct Marquee {
     text: String,
     started: Instant,
@@ -1320,6 +1329,7 @@ struct PlaybackClock {
     started: Instant,
 }
 
+#[derive(Clone)]
 struct PlaybackProgress {
     clock: Option<u64>,
     speed: f32,
@@ -1356,6 +1366,7 @@ pub struct Engine {
     native_editor_state: Option<StateId>,
     native_editor_lines: Option<(StateId, String, usize)>,
     scene: Scene,
+    fixed_text_runs: rustc_hash::FxHashMap<NodeIdentity, FixedTextRun>,
     react_list_positions: HashMap<usize, f32>,
     list_metrics: HashMap<usize, list::ListMetrics>,
     hit_regions: Vec<HitRegion>,
@@ -1401,6 +1412,15 @@ pub struct Engine {
     measure_depth: u32,
 }
 
+#[derive(Clone)]
+struct FixedTextRun {
+    run: usize,
+    width: f32,
+    font_size: Option<f32>,
+    align: TextAlign,
+    tabular_numbers: bool,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Viewport {
     width: u32,
@@ -1409,6 +1429,88 @@ struct Viewport {
 }
 
 impl Engine {
+    // Stage recoverable native mutations without touching live decoder ownership.
+    fn stage_update(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+            marquees: self.marquees.clone(),
+            playback_progress: self.playback_progress.clone(),
+            playback_clocks: self.playback_clocks.clone(),
+            capture_readings: self.capture_readings.clone(),
+            state: self.state.clone(),
+            viewport: self.viewport,
+            keyboard_inset: self.keyboard_inset,
+            native_editor_state: self.native_editor_state,
+            native_editor_lines: self.native_editor_lines.clone(),
+            scene: self.scene.clone(),
+            fixed_text_runs: self.fixed_text_runs.clone(),
+            react_list_positions: self.react_list_positions.clone(),
+            list_metrics: self.list_metrics.clone(),
+            hit_regions: self.hit_regions.clone(),
+            text_inputs: self.text_inputs.clone(),
+            text_input_scroll_offsets: self.text_input_scroll_offsets.clone(),
+            clip: self.clip,
+            scrolling: self.scrolling,
+            scroll_origin: self.scroll_origin,
+            scroll_offset: self.scroll_offset,
+            scroll_max: self.scroll_max,
+            pointers: self.pointers.clone(),
+            gesture_owner: self.gesture_owner,
+            layout_owner: self.layout_owner,
+            focused_input: self.focused_input,
+            focused_input_action: self.focused_input_action,
+            focused_input_cursor: self.focused_input_cursor,
+            auto_focus_node: self.auto_focus_node,
+            queued_requests: self.queued_requests.clone(),
+            in_flight_requests: self.in_flight_requests.clone(),
+            remote_images: self.remote_images.clone(),
+            image_animations: HashMap::new(),
+            pending_images: self.pending_images.clone(),
+            preloaded_images: self.preloaded_images.clone(),
+            retained_images: self.retained_images.clone(),
+            visible_retained_images: self.visible_retained_images.clone(),
+            visible_images: self.visible_images.clone(),
+            blocking_images: self.blocking_images.clone(),
+            image_screens: self.image_screens.clone(),
+            visible_image_screens: self.visible_image_screens.clone(),
+            image_zooms: self.image_zooms.clone(),
+            visible_zoom_images: self.visible_zoom_images.clone(),
+            image_pinch: self.image_pinch,
+            last_native_request: self.last_native_request.clone(),
+            next_request_id: self.next_request_id,
+            next_image_generation: self.next_image_generation,
+            back_icon: self.back_icon.clone(),
+            navigation_handler: self.navigation_handler.clone(),
+            font: self.font.clone(),
+            wrapped_text: self.wrapped_text.clone(),
+            #[cfg(feature = "perf")]
+            perf: self.perf,
+            #[cfg(feature = "perf")]
+            measure_depth: self.measure_depth,
+        }
+    }
+
+    fn commit_update(&mut self, mut staged: Self) {
+        staged.image_animations = std::mem::take(&mut self.image_animations);
+        staged.image_animations.retain(|key, _| matches!(staged.remote_images.get(key), Some(RemoteImageState::Ready { .. })));
+        *self = staged;
+    }
+
+    pub fn reset_session(&mut self) {
+        let viewport = self.viewport;
+        let light = self.scene.light;
+        let revision = self.scene.revision.wrapping_add(1);
+        let requests = self.next_request_id;
+        let images = self.next_image_generation;
+        *self = Self::new();
+        self.viewport = viewport;
+        self.scene.light = light;
+        self.scene.revision = revision;
+        self.next_request_id = requests;
+        self.next_image_generation = images;
+        self.rebuild_viewport();
+    }
+
     pub fn new() -> Self {
         Self {
             root: Node::screen(vec![], None, false),
@@ -1418,6 +1520,7 @@ impl Engine {
             native_editor_state: None,
             native_editor_lines: None,
             scene: Scene::default(),
+            fixed_text_runs: rustc_hash::FxHashMap::default(),
             react_list_positions: HashMap::new(),
             list_metrics: HashMap::new(),
             hit_regions: Vec::new(),
@@ -1573,6 +1676,7 @@ impl Engine {
                 }
                 let slot = self.pending_images.remove(index);
                 self.scene.images.insert(slot.index, ImageRun {
+                    avatar: slot.avatar,
                     image: ImageData::Remote(image.clone()),
                     zoom_id: None,
                     rect: slot.rect,
@@ -2793,6 +2897,7 @@ impl Engine {
         self.react_list_positions.clear();
         self.scene.quads.clear();
         self.scene.text.clear();
+        self.fixed_text_runs.clear();
         self.clear_capture_runs();
         for marquee in self.marquees.values_mut() { marquee.visible = false; }
         for progress in self.playback_progress.values_mut() { progress.visible = false; }
@@ -3138,6 +3243,7 @@ impl Engine {
                 looping,
                 source,
                 bleed,
+                fill_width,
                 width,
                 height,
                 fit,
@@ -3145,6 +3251,8 @@ impl Engine {
             } => {
                 let measured_width = if *bleed {
                     self.viewport.width as f32
+                } else if *fill_width {
+                    available.width
                 } else {
                     self.scaled(*width).min(available.width)
                 };
@@ -3163,7 +3271,7 @@ impl Engine {
                     width: measured_width,
                     height: if let Some(height) = code_height {
                         height.min(available.height)
-                    } else if *bleed {
+                    } else if *bleed || *fill_width {
                         (measured_width * height / width).min(available.height)
                     } else {
                         self.scaled(*height).min(available.height)
@@ -3240,7 +3348,7 @@ impl Engine {
                 }
             }
             NodeKind::MediaCell { source, selected, video, check, play, action } => {
-                self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, false, rect);
+                self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, false, None, rect);
                 if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
                 if *selected {
                     self.scene.masks.push(MaskRun {
@@ -3594,7 +3702,7 @@ impl Engine {
                 align,
                 max_lines,
                 tabular_numbers,
-                links, ..
+                links, width,
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font = self.scaled_font(size);
@@ -3627,7 +3735,13 @@ impl Engine {
                         offset = end;
                     }
                 }
+                let run = self.scene.text.len();
                 self.layout_text_lines(&lines, size, *align, *tabular_numbers, rect);
+                if node.identity.0 != 0 && *max_lines == Some(1) && links.is_empty() && self.scene.text.len() == run + 1 {
+                    if let Some(width) = width { self.fixed_text_runs.insert(node.identity, FixedTextRun {
+                        run, width: *width, font_size: *font_size, align: *align, tabular_numbers: *tabular_numbers,
+                    }); }
+                }
             }
             NodeKind::TextInput {
                 placeholder,
@@ -3661,8 +3775,8 @@ impl Engine {
                 colour: self.scene.colour(tone_colour(*tone)),
                 scrolling: self.scrolling,
             }),
-            NodeKind::Image { source, fallback, fit, zoomable, looping, preload, retain_while_loading, .. } => {
-                self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, *looping, rect);
+            NodeKind::Image { source, fallback, fit, zoomable, looping, preload, retain_while_loading, avatar, .. } => {
+                self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, *looping, *avatar, rect);
                 let visible = rect.intersection(self.clip);
                 if visible.width > 0.0 && visible.height > 0.0 {
                     for source in preload {
@@ -4750,6 +4864,7 @@ impl Engine {
         zoomable: bool,
         retain_while_loading: bool,
         looping: bool,
+        avatar: Option<bool>,
         rect: Rect,
     ) {
         let visible = rect.intersection(self.clip);
@@ -4790,6 +4905,7 @@ impl Engine {
                     if loaded.is_none() {
                         if visible.width > 0.0 && visible.height > 0.0 {
                             self.pending_images.push(PendingImage {
+                                avatar,
                                 key: key.clone(),
                                 index: self.scene.images.len(),
                                 rect,
@@ -4834,6 +4950,7 @@ impl Engine {
                 ImageTransform::default()
             };
             self.scene.images.push(ImageRun {
+                avatar,
                 image,
                 zoom_id: zoomable.then_some(identity.0),
                 rect,
@@ -4922,6 +5039,20 @@ impl Engine {
             }
             std::collections::hash_map::Entry::Vacant(entry) => entry,
         };
+        let lines = Self::wrap_lines(text, font_size, available_width, max_lines, tabular_numbers, links, first_line_inset);
+        entry.insert((lines.clone(), true));
+        lines
+    }
+
+    fn wrap_lines(
+        text: &str,
+        font_size: f32,
+        available_width: f32,
+        max_lines: Option<u32>,
+        tabular_numbers: bool,
+        links: &[(std::ops::Range<usize>, Action)],
+        first_line_inset: f32,
+    ) -> WrappedLines {
         // Short labels that fit need no line-break candidates or truncation.
         if text.len() <= 64 && links.is_empty() && !text.contains('\n') && max_lines != Some(0) {
             let display = text.trim_end();
@@ -4930,7 +5061,6 @@ impl Engine {
                 let lines = WrappedLines::Single(WrappedLine {
                     text: display.into(), width, wrapped: false,
                 });
-                entry.insert((lines.clone(), true));
                 return lines;
             }
         }
@@ -4952,6 +5082,7 @@ impl Engine {
                 continue;
             }
 
+            let rtl = fonts::has_rtl(paragraph);
             let protected = unbroken_links.iter().copied().filter(|range| {
                 range.start >= offset && range.end <= offset + paragraph.len()
             }).collect::<Vec<_>>();
@@ -4974,7 +5105,9 @@ impl Engine {
                 let mut measure = fonts::TextWidth::new(font_size, tabular_numbers);
                 for end in breakpoints.iter().copied().filter(|end| *end > start) {
                     let display_end = trim_whitespace_end(paragraph, start, end);
-                    let width = measure.push(&paragraph[measured_end..display_end]);
+                    let width = if rtl {
+                        text_width_with_numbers(&paragraph[start..display_end], font_size, tabular_numbers)
+                    } else { measure.push(&paragraph[measured_end..display_end]) };
                     measured_end = display_end;
                     if width <= available_width {
                         best = Some((end, display_end, width));
@@ -5005,9 +5138,7 @@ impl Engine {
                 line.wrapped = false;
             }
         }
-        let lines: WrappedLines = lines.into();
-        entry.insert((lines.clone(), true));
-        lines
+        lines.into()
     }
 
     fn forced_text_break(
@@ -5018,10 +5149,13 @@ impl Engine {
         tabular_numbers: bool,
     ) -> usize {
         let mut best = start;
+        let rtl = fonts::has_rtl(text);
         let mut measure = fonts::TextWidth::new(font_size, tabular_numbers);
         for (offset, grapheme) in text[start..].grapheme_indices(true) {
             let end = start + offset + grapheme.len();
-            let width = measure.push(grapheme);
+            let width = if rtl {
+                text_width_with_numbers(&text[start..end], font_size, tabular_numbers)
+            } else { measure.push(grapheme) };
             if best > start && width > available_width {
                 break;
             }
@@ -5198,7 +5332,7 @@ struct MeasuredSize {
     height: f32,
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 struct TextWrapKey {
     first_line_inset: u32,
     text: SmolStr,

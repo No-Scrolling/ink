@@ -43,3 +43,4 @@ ink-renderer-vulkan = { path = "../../../crates/ink-renderer-vulkan" }
 libc = { version = "0.2", optional = true }
 jni.workspace = true
 ndk = { workspace = true, features = ["rwh_06"] }
+parking_lot = { version = "0.12.5", features = ["arc_lock"] }

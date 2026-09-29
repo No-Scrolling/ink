@@ -31,7 +31,6 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import org.json.JSONObject
@@ -63,7 +62,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var videoPortal: VideoPortal? = null
     private var mapPortal: MapPortal? = null
     private val filesAdapter by lazy { createFilesAdapter(this) }
-    private val sqliteAdapter by lazy { SqliteAdapter(this) }
+    private val sqliteRuntime = lazy { SqliteAdapter(this) { target, rows, signal, complete ->
+        runOnUiThread {
+            if (!signal.isCanceled) {
+                val error = if (engineHandle == 0L) "App is no longer mounted" else
+                    nativeReplaceCollection(engineHandle, target.getLong("view"), target.getLong("source"), target.getLong("revision"), rows)
+                if (error.isEmpty()) { inkView.requestFrame(); complete(NativeResult.Success("")) }
+                else complete(NativeResult.Failure(NativeErrorKind.UNEXPECTED, error, false))
+            } else complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Database query cancelled", false))
+        }
+    } }
+    private val sqliteAdapter by sqliteRuntime
     private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
     private val secureStoreAdapter by lazy { SecureStoreAdapter(this) }
     private val authAdapter by lazy { AuthAdapter(this) { message ->
@@ -325,9 +334,23 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
     private val clipboardAdapter by lazy { ClipboardAdapter(this) }
     private var usesStore = false
+    private var pendingJavaScriptCalls: org.json.JSONArray? = null
+    private var javascriptCallIndex = 0
+    private fun drainJavaScriptCalls(): Boolean {
+        val calls = pendingJavaScriptCalls ?: return true
+        val deadline = SystemClock.uptimeMillis() + 4
+        repeat(32) {
+            if (javascriptCallIndex == calls.length()) { pendingJavaScriptCalls = null; return true }
+            executeJavaScriptCall(calls.getJSONObject(javascriptCallIndex++))
+            if (SystemClock.uptimeMillis() >= deadline) { onJavaScriptReady(); return false }
+        }
+        onJavaScriptReady()
+        return false
+    }
     private val drainJavaScript = Runnable {
         javascriptPending.set(false)
         if (engineHandle != 0L) {
+            if (!drainJavaScriptCalls()) return@Runnable
             if (nativeDrainJavaScript(engineHandle)) inkView.requestCommitFrame()
             val error = nativeTakeJavaScriptError(engineHandle)
             if (!error.isNullOrEmpty()) {
@@ -359,8 +382,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             syncNativePortals()
             drainNativeRequests()
             nativeTakeJavaScriptCalls(engineHandle)?.let { encoded ->
-                val calls = org.json.JSONArray(encoded)
-                for (index in 0 until calls.length()) executeJavaScriptCall(calls.getJSONObject(index))
+                pendingJavaScriptCalls = org.json.JSONArray(encoded)
+                javascriptCallIndex = 0
+                drainJavaScriptCalls()
             }
         }
     }
@@ -383,6 +407,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun stopJavaScriptSession() {
         javascriptSession = null
         javascriptRequests.close()
+        pendingJavaScriptCalls = null
+        nativeTimeouts.keys.toList().forEach(::cancelNativeRequest)
+        nativeRequestHandler.removeCallbacks(drainNativeRequestsLater)
         javascriptControllers.toMap().forEach { (controller, module) ->
             val complete: NativeResultHandler = { disposeNativeResult(it) }
             when (module) {
@@ -396,6 +423,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
         }
         javascriptControllers.clear()
+        if (sqliteRuntime.isInitialized()) sqliteAdapter.reset()
+        networkAdapter.reset()
         connectivityAdapter.reset()
         javascriptRequests = newJavaScriptRequests()
     }
@@ -586,13 +615,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         val frame = holder.surfaceFrame
-        nativeAttachSurface(
+        surfaceAttached = nativeAttachSurface(
             engineHandle,
             holder.surface,
             frame.width().coerceAtLeast(1),
             frame.height().coerceAtLeast(1),
         )
-        surfaceAttached = true
+        if (!surfaceAttached) {
+            scheduleSurfaceRecovery()
+            return
+        }
+        surfaceRetryDelay = 16L
+        nativeRequestHandler.removeCallbacks(recoverSurface)
         inkView.requestFrame()
         syncNativePortals()
     }
@@ -615,6 +649,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         nativeRequestHandler.removeCallbacks(revealImages)
+        nativeRequestHandler.removeCallbacks(drainNativeRequestsLater)
         textInputAdapter.close()
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
         if (usesPermissions) permissionsAdapter.stop()
@@ -632,14 +667,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         mapsAdapter.stop()
         videoAdapter.stop()
         filesAdapter.stop()
-        sqliteAdapter.stop()
+        if (sqliteRuntime.isInitialized()) sqliteAdapter.stop()
         externalAdapter.close()
         authAdapter.close()
         connectivityAdapter.close()
         downloadsAdapter.stop()
         if (usesStore) storeAdapter.stop()
         imageExecutor.shutdown()
-        imageExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
         nativeRequestStartedAt.clear()
@@ -668,6 +702,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun detachSurface() {
+        nativeRequestHandler.removeCallbacks(recoverSurface)
+        nativeRequestHandler.removeCallbacks(retryRender)
         inkView.stopScrolling()
         if (engineHandle != 0L && surfaceAttached) {
             nativeDetachSurface(engineHandle)
@@ -802,190 +838,205 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun automaticCameraRequestId(controller: Long): Long =
         if (controller < 0) Long.MIN_VALUE - controller else -(controller + 1L)
 
+    private val drainNativeRequestsLater = Runnable { drainNativeRequests() }
+    private var drainingNativeRequests = false
+    private fun cancelNativeRequest(requestId: Long) {
+        nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
+        nativeRequestStartedAt.remove(requestId)
+        nativeRequestLabels.remove(requestId)
+        lightSdkAdapter.cancel(requestId)
+        if (usesAssets) assetsAdapter.cancel(requestId)
+        if (usesBarcode) barcodeAdapter.cancel(requestId)
+        networkAdapter.cancel(requestId)
+        audioAdapter.cancel(requestId)
+        locationAdapter.cancel(requestId)
+        nfcAdapter.cancel(requestId)
+        backgroundAdapter.cancel(requestId)
+        notificationsAdapter.cancel(requestId)
+        cameraAdapter.cancel(requestId)
+        filesAdapter.cancel(requestId)
+    }
+
     private fun drainNativeRequests() {
-        while (engineHandle != 0L) {
-            val requestId = nativeNextRequest(engineHandle)
-            if (requestId == 0L) {
-                return
-            }
-            val kind = nativeRequestKind(engineHandle, requestId)
-            if (kind == NATIVE_REQUEST_CANCEL) {
-                val label = nativeRequestLabels.remove(requestId).orEmpty()
-                val elapsed = nativeRequestStartedAt.remove(requestId)?.let {
-                    SystemClock.elapsedRealtime() - it
-                }
-                logResource("cancel $requestId $label ${elapsed ?: 0}ms")
-                nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
-                lightSdkAdapter.cancel(requestId)
-                if (usesAssets) assetsAdapter.cancel(requestId)
-                if (usesBarcode) barcodeAdapter.cancel(requestId)
-                networkAdapter.cancel(requestId)
-                audioAdapter.cancel(requestId)
-                locationAdapter.cancel(requestId)
-                nfcAdapter.cancel(requestId)
-                backgroundAdapter.cancel(requestId)
-                notificationsAdapter.cancel(requestId)
-                cameraAdapter.cancel(requestId)
-                filesAdapter.cancel(requestId)
-                continue
-            }
-            val module = nativeRequestModule(engineHandle, requestId)
-            val operation = nativeRequestOperation(engineHandle, requestId)
-            val payload = nativeRequestPayload(engineHandle, requestId)
-            val controller = nativeRequestController(engineHandle, requestId)
-            val label = "$module/$operation"
-            nativeRequestStartedAt[requestId] = SystemClock.elapsedRealtime()
-            nativeRequestLabels[requestId] = label
-            logResource("start $requestId $label")
-            val lightAudioPermission = module == AUDIO_MODULE &&
-                controller < 0L &&
-                (operation == PERMISSION_STATUS_OPERATION ||
-                    operation == REQUEST_PERMISSION_OPERATION)
-            val lightCameraPermission = module == CAMERA_MODULE &&
-                controller < 0L &&
-                (operation == PERMISSION_STATUS_OPERATION ||
-                    operation == REQUEST_PERMISSION_OPERATION)
-            val adapter = when (module) {
-                "files" -> filesAdapter
-                LIGHT_SDK_MODULE -> lightSdkAdapter
-                "assets" -> { usesAssets = true; assetsAdapter }
-                "barcode" -> { usesBarcode = true; barcodeAdapter }
-                NETWORK_MODULE -> networkAdapter
-                AUDIO_MODULE -> if (lightAudioPermission) lightSdkAdapter else audioAdapter
-                LOCATION_MODULE -> locationAdapter
-                NFC_MODULE -> nfcAdapter
-                BACKGROUND_MODULE -> backgroundAdapter
-                NOTIFICATIONS_MODULE -> notificationsAdapter
-                CAMERA_MODULE -> cameraAdapter
-                else -> null
-            }
-            if (adapter == null) {
-                completeNativeRequest(
-                    requestId,
-                    kind,
-                    NativeResult.Failure(
-                        NativeErrorKind.PROTOCOL,
-                        "Unknown native module: $module",
-                        false,
-                    ),
-                )
-                continue
-            }
-            val timeout = Runnable {
-                adapter.cancel(requestId)
-                if (module == CAMERA_MODULE) {
-                    lightSdkAdapter.cancel(requestId)
-                }
-                completeNativeRequest(
-                    requestId,
-                    kind,
-                    NativeResult.Failure(
-                        NativeErrorKind.TIMEOUT,
-                        "Native request timed out",
-                        true,
-                    ),
-                )
-            }
-            nativeTimeouts[requestId] = timeout
-            nativeRequestHandler.postDelayed(
-                timeout,
-                nativeRequestTimeoutMs(engineHandle, requestId),
-            )
-            val execute = { result: NativeResult ->
-                runOnUiThread { completeNativeRequest(requestId, kind, result) }
-            }
-            if (lightCameraPermission) {
-                lightSdkAdapter.execute(requestId, operation, CAMERA_PERMISSION) { result ->
-                    if (result is NativeResult.Failure &&
-                        result.kind == NativeErrorKind.UNAVAILABLE
-                    ) {
-                        runOnUiThread {
-                            cameraAdapter.execute(requestId, operation, payload, execute)
-                        }
-                    } else {
-                        execute(result)
+        if (engineHandle == 0L || drainingNativeRequests) return
+        drainingNativeRequests = true
+        try {
+            nativeRequestHandler.removeCallbacks(drainNativeRequestsLater)
+            val deadline = SystemClock.uptimeMillis() + 4
+            var handled = 0
+            while (engineHandle != 0L && handled++ < 32 && SystemClock.uptimeMillis() < deadline) {
+                val request = nativeNextRequest(engineHandle)?.let(::JSONObject) ?: return
+                if (request.optBoolean("yield")) break
+                val requestId = request.getLong("id")
+                val kind = request.getInt("kind")
+                if (kind == NATIVE_REQUEST_CANCEL) {
+                    val label = nativeRequestLabels.remove(requestId).orEmpty()
+                    val elapsed = nativeRequestStartedAt.remove(requestId)?.let {
+                        SystemClock.elapsedRealtime() - it
                     }
+                    logResource("cancel $requestId $label ${elapsed ?: 0}ms")
+                    cancelNativeRequest(requestId)
+                    continue
                 }
-            } else if (lightAudioPermission) {
-                lightSdkAdapter.execute(requestId, operation, MICROPHONE_PERMISSION) { result ->
-                    if (result is NativeResult.Failure &&
-                        result.kind == NativeErrorKind.UNAVAILABLE
-                    ) {
-                        runOnUiThread {
-                            audioAdapter.execute(requestId, operation, payload, execute)
-                        }
-                    } else {
-                        execute(result)
+                val module = request.getString("module")
+                val operation = request.getString("operation")
+                val payload = request.getString("payload")
+                val controller = request.getLong("controller")
+                val label = "$module/$operation"
+                nativeRequestStartedAt[requestId] = SystemClock.elapsedRealtime()
+                nativeRequestLabels[requestId] = label
+                logResource("start $requestId $label")
+                val lightAudioPermission = module == AUDIO_MODULE &&
+                    controller < 0L &&
+                    (operation == PERMISSION_STATUS_OPERATION ||
+                        operation == REQUEST_PERMISSION_OPERATION)
+                val lightCameraPermission = module == CAMERA_MODULE &&
+                    controller < 0L &&
+                    (operation == PERMISSION_STATUS_OPERATION ||
+                        operation == REQUEST_PERMISSION_OPERATION)
+                val adapter = when (module) {
+                    "files" -> filesAdapter
+                    LIGHT_SDK_MODULE -> lightSdkAdapter
+                    "assets" -> { usesAssets = true; assetsAdapter }
+                    "barcode" -> { usesBarcode = true; barcodeAdapter }
+                    NETWORK_MODULE -> networkAdapter
+                    AUDIO_MODULE -> if (lightAudioPermission) lightSdkAdapter else audioAdapter
+                    LOCATION_MODULE -> locationAdapter
+                    NFC_MODULE -> nfcAdapter
+                    BACKGROUND_MODULE -> backgroundAdapter
+                    NOTIFICATIONS_MODULE -> notificationsAdapter
+                    CAMERA_MODULE -> cameraAdapter
+                    else -> null
+                }
+                if (adapter == null) {
+                    completeNativeRequest(
+                        requestId,
+                        kind,
+                        NativeResult.Failure(
+                            NativeErrorKind.PROTOCOL,
+                            "Unknown native module: $module",
+                            false,
+                        ),
+                    )
+                    continue
+                }
+                val timeout = Runnable {
+                    adapter.cancel(requestId)
+                    if (module == CAMERA_MODULE) {
+                        lightSdkAdapter.cancel(requestId)
                     }
+                    completeNativeRequest(
+                        requestId,
+                        kind,
+                        NativeResult.Failure(
+                            NativeErrorKind.TIMEOUT,
+                            "Native request timed out",
+                            true,
+                        ),
+                    )
                 }
-            } else if (controller >= 0L && adapter === audioAdapter) {
-                audioAdapter.executeController(controller, operation, payload, execute)
-            } else if (controller >= 0L && adapter === lightSdkAdapter) {
-                lightSdkAdapter.executeController(
-                    requestId,
-                    controller,
-                    operation,
-                    payload,
-                    execute,
+                nativeTimeouts[requestId] = timeout
+                nativeRequestHandler.postDelayed(
+                    timeout,
+                    request.getLong("timeout"),
                 )
-            } else if (controller >= 0L && adapter === notificationsAdapter) {
-                notificationsAdapter.executeController(controller, operation, payload, execute)
-            } else if (controller >= 0L && adapter === cameraAdapter) {
-                if (operation != OPEN_OPERATION) {
-                    cameraAdapter.executeController(
+                val execute = { result: NativeResult ->
+                    runOnUiThread { completeNativeRequest(requestId, kind, result) }
+                }
+                if (lightCameraPermission) {
+                    lightSdkAdapter.execute(requestId, operation, CAMERA_PERMISSION) { result ->
+                        if (result is NativeResult.Failure &&
+                            result.kind == NativeErrorKind.UNAVAILABLE
+                        ) {
+                            runOnUiThread {
+                                cameraAdapter.execute(requestId, operation, payload, execute)
+                            }
+                        } else {
+                            execute(result)
+                        }
+                    }
+                } else if (lightAudioPermission) {
+                    lightSdkAdapter.execute(requestId, operation, MICROPHONE_PERMISSION) { result ->
+                        if (result is NativeResult.Failure &&
+                            result.kind == NativeErrorKind.UNAVAILABLE
+                        ) {
+                            runOnUiThread {
+                                audioAdapter.execute(requestId, operation, payload, execute)
+                            }
+                        } else {
+                            execute(result)
+                        }
+                    }
+                } else if (controller >= 0L && adapter === audioAdapter) {
+                    audioAdapter.executeController(controller, operation, payload, execute)
+                } else if (controller >= 0L && adapter === lightSdkAdapter) {
+                    lightSdkAdapter.executeController(
                         requestId,
                         controller,
                         operation,
                         payload,
                         execute,
                     )
-                } else {
-                    openCameraController(
-                        requestId,
-                        controller,
-                        payload,
-                        execute,
-                    )
-                }
-            } else if (adapter === locationAdapter) {
-                locationAdapter.execute(requestId, operation, payload) { result ->
-                    val permission = if (
-                        result is NativeResult.Failure &&
-                        result.kind == NativeErrorKind.PERMISSION_DENIED
-                    ) {
-                        locationAdapter.requiredPermission(payload)
-                    } else {
-                        null
-                    }
-                    if (permission == null) {
-                        execute(result)
-                    } else {
-                        lightSdkAdapter.execute(
+                } else if (controller >= 0L && adapter === notificationsAdapter) {
+                    notificationsAdapter.executeController(controller, operation, payload, execute)
+                } else if (controller >= 0L && adapter === cameraAdapter) {
+                    if (operation != OPEN_OPERATION) {
+                        cameraAdapter.executeController(
                             requestId,
-                            PERMISSION_STATUS_OPERATION,
-                            permission,
-                        ) { permissionResult ->
-                            execute(
-                                if (
-                                    permissionResult is NativeResult.Success &&
-                                    permissionResult.value == BLOCKED_PERMISSION
-                                ) {
-                                    NativeResult.Failure(
-                                        NativeErrorKind.PERMISSION_BLOCKED,
-                                        "Location permission is blocked by LightOS",
-                                        false,
-                                    )
-                                } else {
-                                    result
-                                },
-                            )
+                            controller,
+                            operation,
+                            payload,
+                            execute,
+                        )
+                    } else {
+                        openCameraController(
+                            requestId,
+                            controller,
+                            payload,
+                            execute,
+                        )
+                    }
+                } else if (adapter === locationAdapter) {
+                    locationAdapter.execute(requestId, operation, payload) { result ->
+                        val permission = if (
+                            result is NativeResult.Failure &&
+                            result.kind == NativeErrorKind.PERMISSION_DENIED
+                        ) {
+                            locationAdapter.requiredPermission(payload)
+                        } else {
+                            null
+                        }
+                        if (permission == null) {
+                            execute(result)
+                        } else {
+                            lightSdkAdapter.execute(
+                                requestId,
+                                PERMISSION_STATUS_OPERATION,
+                                permission,
+                            ) { permissionResult ->
+                                execute(
+                                    if (
+                                        permissionResult is NativeResult.Success &&
+                                        permissionResult.value == BLOCKED_PERMISSION
+                                    ) {
+                                        NativeResult.Failure(
+                                            NativeErrorKind.PERMISSION_BLOCKED,
+                                            "Location permission is blocked by LightOS",
+                                            false,
+                                        )
+                                    } else {
+                                        result
+                                    },
+                                )
+                            }
                         }
                     }
+                } else {
+                    adapter.execute(requestId, operation, payload, execute)
                 }
-            } else {
-                adapter.execute(requestId, operation, payload, execute)
             }
-        }
+            nativeRequestHandler.post(drainNativeRequestsLater)
+        } finally { drainingNativeRequests = false }
     }
 
     private fun handleNotificationIntent(intent: android.content.Intent?) {
@@ -1007,6 +1058,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun completeNativeRequest(requestId: Long, kind: Int, result: NativeResult) {
         if (engineHandle == 0L) {
+            disposeNativeResult(result)
             return
         }
         nativeTimeouts.remove(requestId)?.let(nativeRequestHandler::removeCallbacks)
@@ -1067,17 +1119,46 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (engineHandle != 0L && surfaceAttached) inkView.requestFrame()
     }
 
+    private var surfaceRetryDelay = 16L
+    private val recoverSurface = Runnable {
+        if (engineHandle != 0L && inkView.holder.surface.isValid && !surfaceAttached) surfaceCreated(inkView.holder)
+    }
+    private fun scheduleSurfaceRecovery() {
+        nativeRequestHandler.removeCallbacks(recoverSurface)
+        nativeRequestHandler.postDelayed(recoverSurface, surfaceRetryDelay)
+        surfaceRetryDelay = (surfaceRetryDelay * 2).coerceAtMost(250L)
+    }
+    private val retryRender = Runnable {
+        if (engineHandle != 0L && surfaceAttached) inkView.requestFrame()
+    }
+
     private fun renderFrame() {
         nativeRequestHandler.removeCallbacks(revealImages)
         val imageWait = nativeImageWaitRemaining(engineHandle)
         if (imageWait > 0) nativeRequestHandler.postDelayed(revealImages, imageWait)
+        val glyphStarted = System.nanoTime()
+        var glyphs = 0
         while (true) {
+            if (glyphs >= 4 || (glyphs > 0 && System.nanoTime() - glyphStarted >= 4_000_000L)) {
+                nativeRequestHandler.post(retryRender)
+                return
+            }
             val request = nativeRender(engineHandle)
             if (request == "presented") {
                 textInputAdapter.framePresented()
                 return
             }
             if (request.isEmpty()) return
+            if (request == "retry") {
+                nativeRequestHandler.removeCallbacks(retryRender)
+                nativeRequestHandler.postDelayed(retryRender, 16L)
+                return
+            }
+            if (request == "surface-lost") {
+                surfaceAttached = false
+                scheduleSurfaceRecovery()
+                return
+            }
 
             val firstBreak = request.indexOf('\n')
             val secondBreak = request.indexOf('\n', firstBreak + 1)
@@ -1092,11 +1173,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 return
             }
             val grapheme = request.substring(secondBreak + 1)
-            nativeInstallSystemGlyph(
+            if (!nativeInstallSystemGlyph(
                 engineHandle,
                 requestId,
                 systemGlyphRasterizer.rasterise(grapheme, size) ?: IntArray(0),
-            )
+            )) return
+            glyphs++
         }
     }
 
@@ -1220,12 +1302,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
             // Use the latest movement when its rows are mounted. Otherwise show
             // the completed window before moving beyond it and requesting more rows.
-            val presentBeforeMove = renderPending && hasPendingMove && pendingMoves.any { (id, position) ->
+            val pending = renderPending
+            renderPending = false
+            val presentBeforeMove = pending && hasPendingMove && pendingMoves.any { (id, position) ->
                 !nativeCanPresentPointerMove(engineHandle, id, position.second)
             }
             if (presentBeforeMove) presentFrame()
-            var changed = nativeAnimateScene(engineHandle) || (renderPending && !presentBeforeMove)
-            renderPending = false
+            var changed = nativeAnimateScene(engineHandle) || (pending && !presentBeforeMove)
             if (hasPendingMove) changed = flushPointerMoves() || changed
             if (scroller.computeScrollOffset()) {
                 val y = scroller.currY
@@ -1576,6 +1659,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativePlaybackClock(handle: Long, controller: Long, position: Float, duration: Float, playing: Boolean, speed: Float): Boolean
         @JvmStatic
         private external fun nativeCaptureState(handle: Long, controller: Long, value: String): Boolean
+        @JvmStatic
+        private external fun nativeReplaceCollection(handle: Long, view: Long, source: Long, revision: Long, rows: String): String
 
         @JvmStatic
         private external fun nativeRemovePlaybackClock(handle: Long, controller: Long)
@@ -1592,7 +1677,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             surface: Surface,
             width: Int,
             height: Int,
-        )
+        ): Boolean
 
         @JvmStatic
         private external fun nativeSetKeyboardInset(handle: Long, height: Int): Boolean
@@ -1657,7 +1742,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             handle: Long,
             requestId: Long,
             pixels: IntArray,
-        )
+        ): Boolean
 
         @JvmStatic
         private external fun nativeBack(handle: Long): Boolean
@@ -1686,25 +1771,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeTextInput(handle: Long, action: Int, value: String?): Boolean
 
         @JvmStatic
-        private external fun nativeNextRequest(handle: Long): Long
-
-        @JvmStatic
-        private external fun nativeRequestKind(handle: Long, requestId: Long): Int
-
-        @JvmStatic
-        private external fun nativeRequestController(handle: Long, requestId: Long): Long
-
-        @JvmStatic
-        private external fun nativeRequestTimeoutMs(handle: Long, requestId: Long): Long
-
-        @JvmStatic
-        private external fun nativeRequestModule(handle: Long, requestId: Long): String
-
-        @JvmStatic
-        private external fun nativeRequestOperation(handle: Long, requestId: Long): String
-
-        @JvmStatic
-        private external fun nativeRequestPayload(handle: Long, requestId: Long): String
+        private external fun nativeNextRequest(handle: Long): String?
 
         @JvmStatic
         private external fun nativeCompleteFile(

@@ -172,7 +172,8 @@ private class DownloadStore(private val context: Context) {
     fun validateUrl(url: String) {
         val parsed = URI(url)
         require(parsed.userInfo == null && parsed.host != null && (parsed.scheme == "https" ||
-            (BuildConfig.DEBUG && parsed.scheme == "http" && parsed.host in listOf("localhost", "127.0.0.1", "10.0.2.2")))) {
+            (parsed.scheme == "http" && (BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED ||
+                (BuildConfig.DEBUG && parsed.host in listOf("localhost", "127.0.0.1", "[::1]", "10.0.2.2")))))) {
             "Downloads require HTTPS"
         }
     }

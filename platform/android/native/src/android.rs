@@ -1,6 +1,6 @@
 use std::ffi::{CString, c_char, c_int};
-use std::ptr::NonNull;
-use std::sync::{Arc, Mutex, Once};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, Once, OnceLock};
 #[cfg(feature = "benchmark")]
 use std::time::Instant;
 
@@ -79,6 +79,9 @@ struct AttachedSurface {
     _window: NativeWindow,
 }
 
+// Vulkan buffers and surface ownership move together, exclusively under the engine mutex.
+unsafe impl Send for AttachedSurface {}
+
 impl AndroidEngine {
     fn new() -> Self {
         Self {
@@ -96,7 +99,7 @@ impl AndroidEngine {
         }
     }
 
-    fn attach(&mut self, env: &EnvUnowned<'_>, surface: &JObject<'_>, width: u32, height: u32) {
+    fn attach(&mut self, env: &EnvUnowned<'_>, surface: &JObject<'_>, width: u32, height: u32) -> bool {
         self.surface = None;
         self.engine.set_viewport(width, height);
 
@@ -104,7 +107,7 @@ impl AndroidEngine {
             (unsafe { NativeWindow::from_surface(env.as_raw().cast(), surface.as_raw()) })
         else {
             android_log(ANDROID_LOG_ERROR, "ANativeWindow_fromSurface returned null");
-            return;
+            return false;
         };
         let renderer = match unsafe { Renderer::new(window.ptr().as_ptr().cast(), width, height) } {
             Ok(renderer) => renderer,
@@ -113,7 +116,7 @@ impl AndroidEngine {
                     ANDROID_LOG_ERROR,
                     &format!("failed to initialise Vulkan: {error:#}"),
                 );
-                return;
+                return false;
             }
         };
 
@@ -125,6 +128,7 @@ impl AndroidEngine {
             ANDROID_LOG_INFO,
             &format!("attached Vulkan surface {width}x{height}"),
         );
+        true
     }
 
     fn resize(&mut self, width: u32, height: u32) {
@@ -255,12 +259,12 @@ impl AndroidEngine {
     }
 
     #[cfg(feature = "audio")]
-    fn process_audio(&mut self, samples: &[i16], sample_rate: u32) -> bool {
-        self.audio
-            .process(samples, sample_rate, |controller, value, notify| {
+    fn publish_audio(&mut self) -> bool {
+        let mut changed = false;
+        for (controller, value, notify) in self.audio.take_updates() {
                 let id = (controller.index() as i64).unsigned_abs();
                 let value = javascript::state_json(value);
-                let changed = self.engine.update_capture_state(id, &value);
+                changed |= self.engine.update_capture_state(id, &value);
                 if notify && let Some(script) = &self.script
                     && let Err(error) =
                         script.notify_controller(id, value)
@@ -270,8 +274,8 @@ impl AndroidEngine {
                         &format!("Audio state delivery failed: {error:#}"),
                     );
                 }
-                changed
-            })
+        }
+        changed
     }
 
     #[cfg(feature = "image")]
@@ -301,6 +305,7 @@ impl AndroidEngine {
         };
         let mut surface_lost = false;
         let mut presented = false;
+        let mut deferred = false;
         match surface.renderer.render(self.engine.scene()) {
             Ok(RenderOutcome::Presented) => {
                 presented = true;
@@ -342,6 +347,7 @@ impl AndroidEngine {
             Ok(RenderOutcome::Skipped) => {
                 android_log(ANDROID_LOG_WARN, "surface skipped dirty frame");
             }
+            Ok(RenderOutcome::Deferred) => deferred = true,
             Ok(RenderOutcome::SurfaceLost) => {
                 android_log(ANDROID_LOG_ERROR, "Vulkan surface was lost");
                 surface_lost = true;
@@ -411,12 +417,15 @@ impl AndroidEngine {
         if surface_lost {
             self.surface = None;
         }
-        if presented { RenderOutcome::Presented } else { RenderOutcome::Skipped }
+        if surface_lost { RenderOutcome::SurfaceLost }
+        else if deferred { RenderOutcome::Deferred }
+        else if presented { RenderOutcome::Presented }
+        else { RenderOutcome::Skipped }
     }
 
-    fn install_system_glyph(&mut self, request_id: u64, pixels: &[u8]) {
+    fn install_system_glyph(&mut self, request_id: u64, pixels: &[u8]) -> bool {
         let Some(surface) = &mut self.surface else {
-            return;
+            return false;
         };
         if let Err(error) = surface
             .renderer
@@ -426,7 +435,9 @@ impl AndroidEngine {
                 ANDROID_LOG_ERROR,
                 &format!("failed to install system glyph: {error:#}"),
             );
+            return false;
         }
+        true
     }
 }
 
@@ -441,7 +452,12 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
         }));
     });
     android_log(ANDROID_LOG_INFO, "created Ink engine");
-    Box::into_raw(Box::new(Mutex::new(AndroidEngine::new()))) as jlong
+    let Ok(mut engines) = engines().lock() else { return 0; };
+    if engines.next_id == jlong::MAX { return 0; }
+    engines.next_id += 1;
+    let id = engines.next_id;
+    engines.active.insert(id, Arc::new(parking_lot::Mutex::new(AndroidEngine::new())));
+    id
 }
 
 #[unsafe(no_mangle)]
@@ -463,7 +479,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraReviewReady(
 ) -> jboolean {
     if !cfg!(feature = "camera") { return true as jboolean; }
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_none_or(|engine| engine.engine.camera_review_ready()) as jboolean
 }
 
@@ -477,7 +493,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'loca
         return env.with_env(|env| env.new_string(""))
             .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
     }
-    let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) else {
+    let Some(mut engine) = engine(handle).map(|engine| engine.lock_arc()) else {
         return JString::default();
     };
     let scene = engine.engine.scene();
@@ -521,7 +537,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeMapPortal<'local>(
         return env.with_env(|env| env.new_string(""))
             .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
     }
-    let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) else {
+    let Some(mut engine) = engine(handle).map(|engine| engine.lock_arc()) else {
         return JString::default();
     };
     let state = engine.engine.scene().map_portal;
@@ -552,7 +568,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeVideoPortal<'local
         return env.with_env(|env| env.new_string(""))
             .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
     }
-    let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) else {
+    let Some(mut engine) = engine(handle).map(|engine| engine.lock_arc()) else {
         return JString::default();
     };
     let state = engine.engine.scene().video_portal;
@@ -581,14 +597,12 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAttachSurface(
     surface: JObject<'_>,
     width: jint,
     height: jint,
-) {
+) -> jboolean {
     let Some(engine) = engine(handle) else {
-        return;
+        return false;
     };
-    let Ok(mut engine) = engine.lock() else {
-        return;
-    };
-    engine.attach(&env, &surface, dimension(width), dimension(height));
+    let mut engine = engine.lock_arc();
+    engine.attach(&env, &surface, dimension(width), dimension(height)) as jboolean
 }
 
 #[unsafe(no_mangle)]
@@ -601,9 +615,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetKeyboardInset(
     let Some(engine) = engine(handle) else {
         return false;
     };
-    let Ok(mut engine) = engine.lock() else {
-        return false;
-    };
+    let mut engine = engine.lock_arc();
     let changed = engine.engine.set_keyboard_inset(height.max(0) as u32);
     if changed {
         engine.notify_layout_inputs();
@@ -622,9 +634,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
     let Some(engine) = engine(handle) else {
         return;
     };
-    let Ok(mut engine) = engine.lock() else {
-        return;
-    };
+    let mut engine = engine.lock_arc();
     engine.resize(dimension(width), dimension(height));
 }
 
@@ -632,7 +642,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageWaitRemaining(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
 ) -> jlong {
-    engine(handle).and_then(|engine| engine.lock().ok())
+    engine(handle).map(|engine| engine.lock_arc())
         .map_or(0, |engine| engine.engine.image_wait_remaining_ms() as jlong)
 }
 
@@ -640,7 +650,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageWaitRemaining
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeHasSceneAnimations(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
 ) -> jboolean {
-    engine(handle).and_then(|engine| engine.lock().ok())
+    engine(handle).map(|engine| engine.lock_arc())
         .is_some_and(|engine| engine.engine.has_scene_animations()) as jboolean
 }
 
@@ -648,7 +658,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeHasSceneAnimations
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAnimateScene(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
 ) -> jboolean {
-    engine(handle).and_then(|engine| engine.lock().ok())
+    engine(handle).map(|engine| engine.lock_arc())
         .is_some_and(|mut engine| engine.engine.animate_scene()) as jboolean
 }
 
@@ -659,7 +669,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFrameReady(
     handle: jlong,
 ) -> jboolean {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|engine| {
             engine
                 .surface
@@ -677,7 +687,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCanPresentPointerM
     y: jfloat,
 ) -> jboolean {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|engine| engine.engine.can_present_pointer_move(id, y)) as jboolean
 }
 
@@ -692,7 +702,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePointer(
     y: jfloat,
 ) -> jint {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .map_or(0, |mut engine| engine.pointer(action, id, x, y))
 }
 
@@ -705,7 +715,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchBegin(
     y: jfloat,
 ) -> jint {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .map_or(0, |mut engine| engine.image_pinch_begin(x, y))
 }
 
@@ -719,7 +729,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchUpdate(
     y: jfloat,
 ) -> jint {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .map_or(0, |mut engine| engine.image_pinch_update(scale, x, y))
 }
 
@@ -730,7 +740,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchEnd(
     handle: jlong,
 ) {
     if let Some(engine) = engine(handle)
-        && let Ok(mut engine) = engine.lock()
+        && let mut engine = engine.lock_arc()
     {
         engine.engine.image_pinch_end();
     }
@@ -745,7 +755,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageZoomTarget(
     y: jfloat,
 ) -> jlong {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .and_then(|engine| engine.image_zoom_target(x, y))
         .map_or(0, |target| target as jlong)
 }
@@ -759,7 +769,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageDoubleTap(
     y: jfloat,
 ) -> jint {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .map_or(0, |mut engine| engine.image_double_tap(x, y))
 }
 
@@ -771,7 +781,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollBy(
     delta: jfloat,
 ) -> jboolean {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|mut engine| engine.scroll_by(delta)) as jboolean
 }
 
@@ -782,7 +792,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
     handle: jlong,
 ) -> JString<'local> {
     let outcome = if let Some(engine) = engine(handle)
-        && let Ok(mut engine) = engine.lock()
+        && let mut engine = engine.lock_arc()
     {
         engine.render()
     } else {
@@ -790,6 +800,8 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
     };
     let value = match outcome {
         RenderOutcome::Presented => "presented".to_owned(),
+        RenderOutcome::Deferred => "retry".to_owned(),
+        RenderOutcome::SurfaceLost => "surface-lost".to_owned(),
         RenderOutcome::NeedsSystemGlyph(request) => format!(
             "{}\n{}\n{}",
             request.id, request.pixel_size, request.grapheme,
@@ -807,7 +819,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeInstallSystemGlyph
     handle: jlong,
     request_id: jlong,
     pixels: JIntArray<'_>,
-) {
+) -> jboolean {
     let pixels = env
         .with_env(|env| -> jni::errors::Result<Vec<u8>> {
             let mut argb = vec![0; env.get_array_length(&pixels)? as usize];
@@ -820,10 +832,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeInstallSystemGlyph
         })
         .resolve::<jni::errors::LogErrorAndDefault>();
     if let Some(engine) = engine(handle)
-        && let Ok(mut engine) = engine.lock()
+        && let mut engine = engine.lock_arc()
     {
-        engine.install_system_glyph(request_id as u64, &pixels);
+        return engine.install_system_glyph(request_id as u64, &pixels) as jboolean;
     }
+    false
 }
 
 #[unsafe(no_mangle)]
@@ -833,7 +846,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
     handle: jlong,
 ) -> jboolean {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|mut engine| engine.back()) as jboolean
 }
 
@@ -845,7 +858,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputState(
 ) -> jint {
     if !cfg!(feature = "text-input") { return 0; }
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .map(|engine| {
             let action = match engine.engine.text_input_action() {
                 TextInputAction::Return => 0,
@@ -871,7 +884,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputContext<'
             .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
     }
     let value = engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .map(|engine| engine.engine.text_input_context())
         .unwrap_or_default();
     env.with_env(|env| env.new_string(value))
@@ -900,127 +913,43 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
         return false as jboolean;
     };
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|mut engine| engine.edit_text(edit)) as jboolean
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-) -> jlong {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|mut engine| {
-            loop {
-                let request = engine.engine.take_native_request()?;
-                if request.module() == "ink" && request.operation() == "event" {
-                    #[cfg(feature = "bridge-timing")]
-                    android_log(
-                        ANDROID_LOG_INFO,
-                        &format!("ReactDispatch ns={}", benchmark_time_ns()),
-                    );
-                    if let Some(script) = &engine.script
-                        && let Err(error) = script.send(request.payload().to_owned())
-                    {
-                        android_log(ANDROID_LOG_ERROR, &error.to_string());
-                    }
-                    engine.engine.complete_native_action(request.id());
-                    continue;
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest<'local>(
+    mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong,
+) -> JString<'local> {
+    let value = engine(handle).map(|engine| engine.lock_arc()).and_then(|mut engine| {
+        let started = std::time::Instant::now();
+        for _ in 0..32 {
+            let request = engine.engine.take_native_request()?;
+            if request.module() == "ink" && request.operation() == "event" {
+                #[cfg(feature = "bridge-timing")]
+                android_log(ANDROID_LOG_INFO, &format!("ReactDispatch ns={}", benchmark_time_ns()));
+                if let Some(script) = &engine.script && let Err(error) = script.send(request.payload().to_owned()) {
+                    android_log(ANDROID_LOG_ERROR, &error.to_string());
                 }
-                return Some(request);
+                engine.engine.complete_native_action(request.id());
+                if started.elapsed() < std::time::Duration::from_millis(4) { continue; }
+                break;
             }
-        })
-        .map_or(0, |request| request.id() as jlong)
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestModule<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    handle: jlong,
-    request_id: jlong,
-) -> JString<'local> {
-    native_request_string(&mut env, handle, request_id, |request| request.module())
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestKind(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    request_id: jlong,
-) -> jint {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| {
-            engine
-                .engine
-                .native_request(request_id as u64)
-                .map(|request| match request.kind() {
-                    NativeRequestKind::Action => 1,
-                    NativeRequestKind::Cancel => 2,
-                    NativeRequestKind::Image => 3,
-                })
-        })
-        .unwrap_or(-1)
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestController(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    request_id: jlong,
-) -> jlong {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| {
-            engine
-                .engine
-                .native_request(request_id as u64)
-                .and_then(|request| request.controller())
-        })
-        .map_or(-1, |controller| controller.index() as jlong)
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestTimeoutMs(
-    _env: EnvUnowned<'_>,
-    _class: JClass<'_>,
-    handle: jlong,
-    request_id: jlong,
-) -> jlong {
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| {
-            engine
-                .engine
-                .native_request(request_id as u64)
-                .map(|request| request.timeout_ms() as jlong)
-        })
-        .unwrap_or_default()
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestOperation<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    handle: jlong,
-    request_id: jlong,
-) -> JString<'local> {
-    native_request_string(&mut env, handle, request_id, |request| request.operation())
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRequestPayload<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    handle: jlong,
-    request_id: jlong,
-) -> JString<'local> {
-    native_request_string(&mut env, handle, request_id, |request| request.payload())
+            return Some(serde_json::json!({
+                "id": request.id(), "kind": match request.kind() {
+                    NativeRequestKind::Action => 1, NativeRequestKind::Cancel => 2, NativeRequestKind::Image => 3,
+                },
+                "controller": request.controller().map_or(-1, |id| id.index() as i64),
+                "module": request.module(), "operation": request.operation(),
+                "payload": request.payload(), "timeout": request.timeout_ms(),
+            }).to_string());
+        }
+        Some("{\"yield\":true}".to_owned())
+    });
+    match value {
+        Some(value) => env.with_env(|env| env.new_string(value)).resolve::<jni::errors::ThrowRuntimeExAndDefault>(),
+        None => JString::default(),
+    }
 }
 
 #[cfg(feature = "image")]
@@ -1041,7 +970,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompletePixels(
         .with_env(|env| env.convert_byte_array(&rgba))
         .resolve::<jni::errors::LogErrorAndDefault>();
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|mut engine| {
             engine.complete_native_image(request_id as u64, width as u32, height as u32, pixels)
         }) as jboolean
@@ -1062,15 +991,13 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
     let Some(engine) = engine(handle) else {
         return false as jboolean;
     };
-    let Some((width, height, fit, looping)) = engine
-        .lock()
-        .ok()
-        .and_then(|engine| engine.engine.image_request_target(request_id as u64))
+    let Some((width, height, fit, looping)) = engine.lock_arc().engine.image_request_target(request_id as u64)
     else {
         return false as jboolean;
     };
     let decoded = image::decode(&path, width, height, fit, looping);
-    engine.lock().ok().is_some_and(|mut engine| match decoded {
+    let mut engine = engine.lock_arc();
+    (match decoded {
         Ok((width, height, pixels, animation)) => {
             engine.engine.complete_native_image(request_id as u64, width, height, pixels, animation)
         }
@@ -1106,7 +1033,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
         _ => ResourceErrorKind::Unexpected,
     };
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|mut engine| {
             engine.fail_native(
                 request_id as u64,
@@ -1123,7 +1050,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAction(
     request_id: jlong,
 ) -> jboolean {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .is_some_and(|mut engine| engine.engine.complete_native_action(request_id as u64))
         as jboolean
 }
@@ -1145,8 +1072,8 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioActivate(
         .with_env(|env| config.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| {
+        .map(|engine| engine.lock_arc())
+        .is_some_and(|engine| {
             engine
                 .audio
                 .activate(ControllerId::new(controller as usize), &kind, &config)
@@ -1161,7 +1088,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioDeactivate(
     handle: jlong,
     controller: jlong,
 ) {
-    if let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) {
+    if let Some(engine) = engine(handle).map(|engine| engine.lock_arc()) {
         engine
             .audio
             .deactivate(ControllerId::new(controller as usize));
@@ -1178,8 +1105,8 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSetEnabled(
     enabled: jboolean,
 ) -> jboolean {
     engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| {
+        .map(|engine| engine.lock_arc())
+        .is_some_and(|engine| {
             engine
                 .audio
                 .set_enabled(ControllerId::new(controller as usize), enabled)
@@ -1202,10 +1129,10 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSamples(
             Ok::<_, jni::errors::Error>(output)
         })
         .resolve::<jni::errors::LogErrorAndDefault>();
-    engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .is_some_and(|mut engine| engine.process_audio(&samples, sample_rate as u32))
-        as jboolean
+    if let Some(engine) = engine(handle) {
+        engine.lock_arc().audio.submit(samples, sample_rate as u32);
+        true as jboolean
+    } else { false as jboolean }
 }
 
 #[unsafe(no_mangle)]
@@ -1217,9 +1144,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDetachSurface(
     let Some(engine) = engine(handle) else {
         return;
     };
-    let Ok(mut engine) = engine.lock() else {
-        return;
-    };
+    let mut engine = engine.lock_arc();
     engine.surface = None;
 }
 
@@ -1229,39 +1154,25 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDestroy(
     _class: JClass<'_>,
     handle: jlong,
 ) {
-    let Some(pointer) = NonNull::new(handle as *mut Mutex<AndroidEngine>) else {
-        return;
-    };
-    unsafe {
-        let engine = Box::from_raw(pointer.as_ptr());
-        drop(engine);
+    let retired = engines().lock().ok().and_then(|mut engines| engines.active.remove(&handle));
+    if let Some(retired) = retired {
+        std::thread::spawn(move || drop(retired));
     }
 }
 
-
-fn engine(handle: jlong) -> Option<&'static Mutex<AndroidEngine>> {
-    let pointer = NonNull::new(handle as *mut Mutex<AndroidEngine>)?;
-    Some(unsafe { pointer.as_ref() })
+#[derive(Default)]
+struct Engines {
+    next_id: jlong,
+    active: HashMap<jlong, Arc<parking_lot::Mutex<AndroidEngine>>>,
 }
 
-fn native_request_string<'local>(
-    env: &mut EnvUnowned<'local>,
-    handle: jlong,
-    request_id: jlong,
-    field: for<'a> fn(&'a ink_core::NativeRequest) -> &'a str,
-) -> JString<'local> {
-    let value = engine(handle)
-        .and_then(|engine| engine.lock().ok())
-        .and_then(|engine| {
-            engine
-                .engine
-                .native_request(request_id as u64)
-                .map(field)
-                .map(str::to_owned)
-        })
-        .unwrap_or_default();
-    env.with_env(|env| env.new_string(value))
-        .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
+fn engines() -> &'static Mutex<Engines> {
+    static ENGINES: OnceLock<Mutex<Engines>> = OnceLock::new();
+    ENGINES.get_or_init(Mutex::default)
+}
+
+fn engine(handle: jlong) -> Option<Arc<parking_lot::Mutex<AndroidEngine>>> {
+    engines().lock().ok()?.active.get(&handle).cloned()
 }
 
 fn dimension(value: jint) -> u32 {

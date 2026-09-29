@@ -17,9 +17,29 @@ import java.util.UUID
 internal object InkWorkerJobs {
     private const val NAMESPACE = "ink.javascript"
     private val active = mutableSetOf<Int>()
+    private val liveBundles = mutableMapOf<InkWorker, String>()
 
     @Synchronized
-    fun started(id: Int) { active.add(id) }
+    fun started(id: Int, worker: InkWorker, bundle: String?) {
+        active.add(id)
+        if (bundle != null) liveBundles[worker] = bundle
+    }
+
+    @Synchronized
+    fun released(context: Context, worker: InkWorker) {
+        liveBundles.remove(worker)
+        collect(context)
+    }
+
+    @Synchronized
+    fun collect(context: Context) {
+        val scheduler = context.getSystemService(JobScheduler::class.java).forNamespace(NAMESPACE)
+        val retained = scheduler.allPendingJobs.mapNotNull { it.extras.getString("workerBundle") }.toSet() + liveBundles.values
+        java.io.File(context.filesDir, "ink-workers").listFiles()?.forEach { file ->
+            val digest = file.name.removeSuffix(".js")
+            if (file.name.endsWith(".js") && digest.matches(Regex("[a-f0-9]{64}")) && digest !in retained) file.delete()
+        }
+    }
 
     @Synchronized
     fun finished(context: Context, params: JobParameters, result: JSONObject, complete: (Boolean) -> Unit) {
@@ -131,6 +151,7 @@ internal object InkWorkerJobs {
         } else matching.filter { it.isPeriodic }.forEach { scheduler.cancel(it.id) }
         check(scheduler.schedule(build(id(false), false)) == JobScheduler.RESULT_SUCCESS) { "Android rejected the task" }
         InkWorkerState.record(context, extras, "queued")
+        collect(context)
     }
 
     @Synchronized
@@ -140,6 +161,7 @@ internal object InkWorkerJobs {
         val jobs = scheduler.allPendingJobs.filter { it.extras.getString("key") == key }
         jobs.forEach { scheduler.cancel(it.id) }
         jobs.firstOrNull()?.let { InkWorkerState.record(context, it.extras, "cancelled") }
+        collect(context)
     }
 }
 
@@ -150,11 +172,11 @@ class InkWorkerJobService : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val worker = InkWorker(applicationContext, params.extras.getString("workerBundle"))
         running[params.jobId] = worker
-        InkWorkerJobs.started(params.jobId)
+        InkWorkerJobs.started(params.jobId, worker, params.extras.getString("workerBundle"))
         executor.execute {
-            if (running[params.jobId] !== worker) return@execute
             var result = JSONObject().put("status", "failed").put("reason", "worker-error")
             try {
+                if (running[params.jobId] !== worker) return@execute
                 InkWorkerState.record(applicationContext, params.extras, "running")
                 val input = JSONTokener(params.extras.getString("input", "null")).nextValue()
                 result = worker.run(params.extras.getString("task", ""), input)
@@ -173,6 +195,7 @@ class InkWorkerJobService : JobService() {
                         jobFinished(params, false)
                     }
                 }
+                InkWorkerJobs.released(applicationContext, worker)
             }
         }
         return true
@@ -194,7 +217,7 @@ class InkWorkerJobService : JobService() {
             InkWorkerJobs.stopped(id)
         }
         running.clear()
-        executor.shutdownNow()
+        executor.shutdown()
         super.onDestroy()
     }
 }

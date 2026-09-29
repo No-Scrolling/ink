@@ -1,0 +1,31 @@
+{
+  "sourceSha256": "9b8dfb5e974893f9be52a900737f9067aac8d5553f58b801bf7e85f20f095f07",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "445791adf0908c642cd8b004ad3c2493b465f04d0858678cc9579a9a92d2c99e"
+  },
+  "revision": "4ca730d4085ee15ddde667963869a1109db2b67d",
+  "flags": {},
+  "signing": "generated Android development key",
+  "artifacts": {
+    "benchmarks/apps/ink-native-controls": {
+      "file": "0-ink-native-controls-1.0.0-arm64.apk",
+      "sha256": "813df6ab5cf5953b5ffc117da8dba17e262e4fe9bf8fc9ca06d7c9c30e1ba5db",
+      "bytes": 3969716,
+      "package": "com.vandam.benchmark.ink.nativecontrols",
+      "component": "com.vandam.benchmark.ink.nativecontrols/com.vandam.ink.MainActivity"
+    },
+    "benchmarks/apps/ink-views": {
+      "file": "1-ink-view-benchmark-1.0.0-arm64.apk",
+      "sha256": "dab22caa3ac8efd9966c3e970bee10c7f326d99cd933070fe1a5fdfdb877a00f",
+      "bytes": 3672528,
+      "package": "com.vandam.benchmark.ink.views",
+      "component": "com.vandam.benchmark.ink.views/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

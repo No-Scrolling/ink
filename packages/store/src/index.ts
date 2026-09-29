@@ -34,10 +34,10 @@ async function read(key: string): Promise<Entry | null> {
   return { revision: result.revision, version: result.version, value: result.value };
 }
 
-async function write(key: string, revision: number, version: number, value: unknown): Promise<boolean> {
+async function write(key: string, revision: number | null, version: number, value: unknown): Promise<boolean> {
   const encoded = JSON.stringify(value);
   if (encoded === undefined) throw new Error("Store values must be JSON data");
-  const result: unknown = JSON.parse(await callNative("store", "write", { key, revision, version, value: encoded }));
+  const result: unknown = JSON.parse(await callNative("store", revision === null ? "replace" : "write", { key, revision, version, value: encoded }));
   if (typeof result !== "object" || result === null || !("committed" in result)
     || typeof result.committed !== "boolean") throw new Error("Invalid store write result");
   return result.committed;
@@ -97,16 +97,25 @@ export function createStore<T>(options: Options<T>): Store<T> {
     void get().catch(() => {});
   }
 
+  function changed(value: T) {
+    generation++;
+    loading = undefined;
+    publish({ status: "ready", data: value });
+    for (const observer of observers.get(key) ?? []) observer();
+  }
+
+  async function replace(value: T) {
+    const decoded = decode(value);
+    if (await write(key, null, version, decoded)) changed(decoded);
+  }
+
   async function mutate(transform: (entry: Entry | null) => T) {
     for (let attempt = 0; attempt < 16; attempt++) {
       const entry = await read(key);
       if (entry && entry.version > version) throw new Error(`Store ${key} uses a newer version`);
       const value = decode(transform(entry));
       if (await write(key, entry?.revision ?? 0, version, value)) {
-        generation++;
-        loading = undefined;
-        publish({ status: "ready", data: value });
-        for (const observer of observers.get(key) ?? []) observer();
+        changed(value);
         return;
       }
     }
@@ -115,9 +124,9 @@ export function createStore<T>(options: Options<T>): Store<T> {
 
   return {
     get,
-    set: value => mutate(() => value),
+    set: replace,
     update: transform => mutate(entry => transform(decodeEntry(entry))),
-    reset: () => mutate(() => options.initial),
+    reset: () => replace(options.initial),
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);

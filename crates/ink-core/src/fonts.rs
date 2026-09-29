@@ -86,12 +86,13 @@ fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
         }
     }
 
-    static FONTS: [SystemFont; 5] = [
+    static FONTS: [SystemFont; 6] = [
         SystemFont::new("/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf"),
         SystemFont::new("/system/fonts/NotoSansSymbols-Regular-Subsetted2.ttf"),
         SystemFont::new("/system/fonts/NotoSansSymbols-Regular.ttf"),
         SystemFont::new("/system/fonts/NotoSansSymbols2-Regular.ttf"),
         SystemFont::new("/system/fonts/NotoSansCJK-Regular.ttc"),
+        SystemFont::new("/system/fonts/NotoNaskhArabic-Regular.ttf"),
     ];
     FONTS.iter().enumerate().filter_map(|(index, font)| font.get().map(|font| (index + 1, font)))
 }
@@ -115,7 +116,34 @@ pub fn tabular_digit_width(size: f32) -> f32 {
 }
 
 pub fn text_width_with_numbers(text: &str, size: f32, tabular_numbers: bool) -> f32 {
+    visual_text_width_with_numbers(&visual_text(text), size, tabular_numbers)
+}
+
+pub fn visual_text_width_with_numbers(text: &str, size: f32, tabular_numbers: bool) -> f32 {
     TextWidth::new(size, tabular_numbers).push(text)
+}
+
+pub(crate) fn has_rtl(text: &str) -> bool {
+    !text.is_ascii() && text.chars().any(|character| matches!(
+        unicode_bidi::bidi_class(character), unicode_bidi::BidiClass::R | unicode_bidi::BidiClass::AL
+    ))
+}
+
+pub fn visual_text(text: &str) -> std::borrow::Cow<'_, str> {
+    if !has_rtl(text) { return std::borrow::Cow::Borrowed(text); }
+    static SHAPER: OnceLock<arabic_reshaper::ArabicReshaper<'static>> = OnceLock::new();
+    let shaper = SHAPER.get_or_init(|| {
+        let mut shaper = arabic_reshaper::ArabicReshaper::new();
+        shaper.configuration.insert("delete_harakat", false);
+        shaper
+    });
+    let shaped = shaper.reshape(text);
+    let bidi = unicode_bidi::BidiInfo::new(&shaped, None);
+    let mut visual = String::with_capacity(shaped.len());
+    for paragraph in &bidi.paragraphs {
+        visual.push_str(&bidi.reorder_line(paragraph, paragraph.range.clone()));
+    }
+    std::borrow::Cow::Owned(visual)
 }
 
 pub(crate) struct TextWidth {

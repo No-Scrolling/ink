@@ -90,7 +90,7 @@ export function Button(props: {
   return createElement("Button", { ...rest, onPress: href === undefined ? onPress : () => navigate(href) });
 }
 
-export { Row, Image } from "./image";
+export { Row, Image, Avatar } from "./image";
 export { Canvas, Rectangle, CanvasText, CanvasIcon } from "./canvas";
 
 export function Field(props: {

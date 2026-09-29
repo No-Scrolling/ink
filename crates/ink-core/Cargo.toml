@@ -22,6 +22,8 @@ maps = []
 perf = []
 
 [dependencies]
+arabic_reshaper = "0.4.2"
+unicode-bidi = "0.3.18"
 ahash = "0.8.12"
 rustc-hash = "2.1.3"
 ink-protocol = { path = "../ink-protocol" }

@@ -16,6 +16,8 @@ export type MessageProps = {
   text?: string;
   onLinkPress?: (url: string) => void;
   linkPreview?: LinkPreviewData;
+  filePreview?: { title: string; label: string; artwork?: string };
+  onFilePress?: () => void;
   timestamp: number;
   outgoing?: boolean;
   author?: string;
@@ -51,9 +53,9 @@ const messageTemplate = /* @__PURE__ */ nativeListTemplate((node, field) => node
   "onPress", "onLongPress", "onRetry", "onImagePress", "onReplyPress", "onLinkPress", "onPreviewPress",
 ].map(name => [name, field(name)]))));
 
-function messageFields({ text, onLinkPress = openLink, linkPreview, timestamp, outgoing = false, author, image, reply,
+function messageFields({ text, onLinkPress = openLink, linkPreview, filePreview, onFilePress, timestamp, outgoing = false, author, image, reply,
   reactions, status, onRetry, onLongPress }: MessageProps, onPress: () => void) {
-  const displayText = text && linkPreview
+  const displayText = text && linkPreview && !filePreview
     ? textLinks(text).filter(link => link.url === linkPreview.url).reverse()
       .reduce((value, link) => value.slice(0, link.start) + value.slice(link.end), text).trim()
     : text;
@@ -74,9 +76,9 @@ function messageFields({ text, onLinkPress = openLink, linkPreview, timestamp, o
     statusMuted: status === "sending", parts,
     reply: reply && { author: reply.author, text: reply.text },
     image: image && { src: image.src, width: image.width, height: image.height },
-    preview: linkPreview && { ...linkPreview, domain: linkPreview.url.replace(/^https?:\/\/(?:www\.)?/, "").split(/[/?#]/, 1)[0] },
+    preview: filePreview ? { title: filePreview.title, domain: filePreview.label, thumbnail: filePreview.artwork } : linkPreview && { ...linkPreview, domain: linkPreview.url.replace(/^https?:\/\/(?:www\.)?/, "").split(/[/?#]/, 1)[0] },
     onPress, onLongPress, onRetry: failed ? onRetry : undefined, onImagePress: image?.onPress,
-    onReplyPress: reply?.onPress, onLinkPress, onPreviewPress: linkPreview && (() => onLinkPress(linkPreview.url)),
+    onReplyPress: reply?.onPress, onLinkPress, onPreviewPress: filePreview ? onFilePress : linkPreview && (() => onLinkPress(linkPreview.url)),
   };
 }
 
@@ -95,11 +97,12 @@ export function Message(props: MessageProps) {
 
 export type MessageAction = { label: string; onPress: () => void };
 
-export type ConversationMessage = Pick<MessageProps, "text" | "timestamp" | "outgoing" | "author" | "reactions" | "status" | "linkPreview"> & {
+export type ConversationMessage = Pick<MessageProps, "text" | "timestamp" | "outgoing" | "author" | "reactions" | "status" | "linkPreview" | "filePreview"> & {
   id: string;
   image?: { src: string; width: number; height: number };
   reply?: { author: string; text: string };
 };
+const messageKey = (message: ConversationMessage) => message.id;
 
 export type ConversationScreenProps<T extends ConversationMessage = ConversationMessage> = {
   title: string;
@@ -112,6 +115,7 @@ export type ConversationScreenProps<T extends ConversationMessage = Conversation
   onAttach?: () => void;
   onRetry?: (message: T) => void;
   onImagePress?: (message: T) => void;
+  onFilePress?: (message: T) => void;
   onLinkPress?: (url: string) => void;
   onDoubleTap?: (message: T) => void;
   actions?: (message: T) => readonly MessageAction[];
@@ -121,14 +125,15 @@ export type ConversationScreenProps<T extends ConversationMessage = Conversation
   sending?: boolean;
 };
 
-export function ConversationScreen<T extends ConversationMessage>({ title, rightAction, group = false, messages, draft, onDraftChange, onSend, onAttach, onRetry, onImagePress, onLinkPress, onDoubleTap, actions, onLoadOlder, hasOlder = false, loading = false, sending = false }: ConversationScreenProps<T>) {
+export function ConversationScreen<T extends ConversationMessage>({ title, rightAction, group = false, messages, draft, onDraftChange, onSend, onAttach, onRetry, onImagePress, onFilePress, onLinkPress, onDoubleTap, actions, onLoadOlder, hasOlder = false, loading = false, sending = false }: ConversationScreenProps<T>) {
   const [reply, setReply] = useState<T>();
   const [scrollToEnd, setScrollToEnd] = useState(0);
   const taps = useRef(new Map<string, { current: number }>());
-  const previousMessages = useRef(new Set(messages.map(message => message.id)));
+  const previousMessages = useRef<Set<string> | null>(null);
   useEffect(() => {
-    const addedOutgoing = messages.some(message => message.outgoing && message.status === "sending"
-      && !previousMessages.current.has(message.id));
+    const previous = previousMessages.current;
+    const addedOutgoing = previous && messages.some(message => message.outgoing && message.status === "sending"
+      && !previous.has(message.id));
     previousMessages.current = new Set(messages.map(message => message.id));
     for (const key of taps.current.keys()) if (!previousMessages.current.has(key)) taps.current.delete(key);
     if (addedOutgoing) setScrollToEnd(request => request + 1);
@@ -141,13 +146,14 @@ export function ConversationScreen<T extends ConversationMessage>({ title, right
     setScrollToEnd(request => request + 1);
   };
   function replyPreview(message: T): ReplyPreview {
-    return { author: message.outgoing ? "You" : message.author ?? title, text: message.text || "Photo" };
+    return { author: message.outgoing ? "You" : message.author ?? title, text: message.text || message.filePreview?.title || "Photo" };
   }
   function messageProps(message: T, onLongPress?: () => void): MessageProps {
     const image = message.image;
     return {
       text: message.text, timestamp: message.timestamp, outgoing: message.outgoing,
       onLinkPress, linkPreview: message.linkPreview,
+      filePreview: message.filePreview, onFilePress: onFilePress && (() => onFilePress(message)),
       author: group ? message.author : undefined, reply: message.reply,
       reactions: message.reactions, status: message.status,
       image: image && { ...image, onPress: () => {
@@ -181,16 +187,12 @@ export function ConversationScreen<T extends ConversationMessage>({ title, right
       if (!previous) { previous = { current: 0 }; taps.current.set(message.id, previous); }
       doubleTap(previous, props.onDoubleTap);
     })];
-  }, messageTemplate, message => [message.text, message.timestamp, messageTime(message.timestamp), message.outgoing,
-    group ? message.author : undefined, message.reactions, message.status, !!onRetry,
-    message.image?.src, message.image?.width, message.image?.height,
-    message.reply?.author, message.reply?.text, message.linkPreview?.url, message.linkPreview?.title,
-    message.linkPreview?.icon, message.linkPreview?.image?.src, message.linkPreview?.image?.width, message.linkPreview?.image?.height]);
+  }, messageTemplate, { identity: "ink/conversation", values: () => [group, !!onRetry, !!onFilePress, new Date().toDateString()] });
   const iconButton = (name: string, onPress?: () => void) => createElement("Pressable", { onPress },
     createElement("Icon", { name, size: 28, tone: onPress ? "primary" : "muted" }));
   return createElement("Screen", { title, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress, pinnedFooter: true, initialEnd: true, scrollToEnd },
     loading ? createElement(Text, { size: 18, align: "center" }, "Loading…")
-      : createElement(List<T>, { items: messages, keyExtractor: message => message.id, renderItem: messageItem, gap: 28, followEnd: true, initialEnd: true, onLoadOlder, hasOlder }),
+      : createElement(List<T>, { items: messages, keyExtractor: messageKey, renderItem: messageItem, gap: 28, followEnd: true, initialEnd: true, onLoadOlder, hasOlder }),
     !loading && messages.length === 0 && createElement(Text, { size: 18, align: "center" }, "No messages yet"),
     createElement(Stack, { gap: 8, align: "stretch" },
       reply && createElement("ConversationComposer", null,

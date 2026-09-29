@@ -21,7 +21,9 @@ mod native_list;
 use native_list::{NativeList, RowEvent};
 mod playing;
 mod message;
+mod row;
 
+#[derive(Clone, PartialEq)]
 struct ListProps {
     props: Map<String, Json>,
     keys: Arc<[String]>,
@@ -45,6 +47,7 @@ impl ListProps {
     }
 }
 
+#[derive(Clone, PartialEq)]
 enum HostProps {
     RawText(super::SmolStr),
     Text {
@@ -121,7 +124,7 @@ impl HostProps {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct HostNode {
     kind: HostKind,
     props: HostProps,
@@ -130,6 +133,7 @@ struct HostNode {
     hidden: bool,
 }
 
+#[derive(Clone)]
 pub struct ReactTree {
     nodes: FxHashMap<usize, HostNode>,
     icons: HashMap<String, IconVariants>,
@@ -146,7 +150,7 @@ pub struct ReactTree {
     message_ids: FxHashMap<usize, Vec<usize>>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct IconVariants {
     outlined: Option<Mask>,
     filled: Option<Mask>,
@@ -154,6 +158,7 @@ struct IconVariants {
     filled_bounds: OnceLock<Option<crate::Rect>>,
 }
 
+#[derive(Clone)]
 struct InputBinding {
     state: StateId,
     value: String,
@@ -278,6 +283,7 @@ impl ReactTree {
                     );
                 }
                 Operation::Update { id, props } => {
+                    let native_list = self.native_lists.contains_key(&id);
                     if cfg!(feature = "ui-playing") && self.node(id)?.kind == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
                     if cfg!(feature = "ui-messages") && self.node(id)?.kind == HostKind::MessageContent { self.prepare_message(id, &props)?; }
                     let node = self.node_mut(id)?;
@@ -290,11 +296,13 @@ impl ReactTree {
                         && props.get("scrollToEnd") != node.props.get("scrollToEnd") {
                         scroll_to_end.insert(id);
                     }
-                    node.props = if let HostProps::List(previous) = &node.props {
+                    let next = if let HostProps::List(previous) = &node.props {
                         HostProps::List(Box::new(ListProps::new(props, Some(previous))?))
                     } else {
                         HostProps::new(node.kind, props)?
                     };
+                    if node.props == next && !native_list { continue; }
+                    node.props = next;
                     targets.insert(self.update_target(id)?);
                 }
                 Operation::Text { ids, values } => {
@@ -302,7 +310,10 @@ impl ReactTree {
                     for (id, text) in ids.into_iter().zip(values) {
                         let node = self.node_mut(id)?;
                         match &mut node.props {
-                            HostProps::RawText(value) | HostProps::Text { text: value, .. } => *value = text,
+                            HostProps::RawText(value) | HostProps::Text { text: value, .. } => {
+                                if value == &text { continue; }
+                                *value = text;
+                            }
                             _ => bail!("text update requires a text node"),
                         }
                         targets.insert(self.update_target(id)?);
@@ -325,6 +336,7 @@ impl ReactTree {
             engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
         }
         if inputs_changed { self.sync_inputs(engine)?; }
+        if !structural && targets.is_empty() && scroll_to_end.is_empty() && dismiss_keyboard.is_empty() { return Ok(()); }
         if !structural && scroll_to_end.is_empty() && dismiss_keyboard.is_empty()
             && targets.iter().all(|id| {
                 self.nodes
@@ -347,13 +359,17 @@ impl ReactTree {
                 .map(|&id| self.render_node(id, 0))
                 .collect::<Result<Vec<_>>>()?;
             if patches.iter().all(Option::is_some) {
+                let text_patches = engine.fixed_text_patches(&patches);
                 replace_nodes(&mut engine.root, &roots, &mut patches);
                 if patches.iter().all(Option::is_none) {
                     #[cfg(feature = "perf")]
                     {
                         engine.perf.incremental_rebuilds += 1;
                     }
-                    engine.relayout_scene();
+                    if let Some(text_patches) = text_patches {
+                        for (run, text) in text_patches { engine.scene.text[run].text = text; }
+                        engine.scene.revision = engine.scene.revision.wrapping_add(1);
+                    } else { engine.relayout_scene(); }
                     return Ok(());
                 }
             }
@@ -863,6 +879,8 @@ impl ReactTree {
                         .then(|| event(id, "onPress", vec![])),
                 },
             },
+            HostKind::RowContent => self.render_row(id, props)?,
+            HostKind::Avatar => self.render_avatar(id, props)?,
             HostKind::MediaGridRow => {
                 ensure!(host.children.len() <= 3, "Media grid rows have at most three cells");
                 Node { identity: NodeIdentity(id), kind: NodeKind::MediaGridRow { children: self.children(host, depth)? } }
@@ -1058,7 +1076,12 @@ impl ReactTree {
             }
             HostKind::Image => {
                 let src = string(props, "src").context("Image requires a source")?;
-                let source = image_source(src)?;
+                let avatar = (props.get("avatar") == Some(&Json::Bool(true)))
+                    .then(|| props.get("unread") == Some(&Json::Bool(true)));
+                let fallback = avatar.map(|_| super::ImageAsset::new(u64::MAX - 1, 256, 256, include_bytes!("avatar.rgba.zlib")));
+                let source = if src.is_empty() && avatar.is_some() {
+                    ImageSource::Asset(fallback.clone().unwrap())
+                } else { image_source(src)? };
                 let width = number(props, "width")?.context("Image requires a width")?;
                 let height = number(props, "height")?.context("Image requires a height")?;
                 ensure!(
@@ -1072,14 +1095,16 @@ impl ReactTree {
                 };
                 let mut node = Node::image(
                     source,
-                    None,
+                    fallback,
                     props.get("bleed") == Some(&Json::Bool(true)),
                     props.get("zoomable") == Some(&Json::Bool(true)),
                     width,
                     height,
                     fit,
                 );
-                if let NodeKind::Image { preload, retain_while_loading, looping, .. } = &mut node.kind {
+                if let NodeKind::Image { preload, retain_while_loading, looping, fill_width, avatar: image_avatar, .. } = &mut node.kind {
+                    *image_avatar = avatar;
+                    *fill_width = props.get("fillWidth") == Some(&Json::Bool(true));
                     *looping = props.get("loop") == Some(&Json::Bool(true));
                     *retain_while_loading = props.get("retainWhileLoading") == Some(&Json::Bool(true));
                     if let Some(sources) = props.get("preload").and_then(Json::as_array) {
@@ -1173,6 +1198,27 @@ impl ReactTree {
             .iter()
             .filter_map(|id| self.render_node(*id, depth + 1).transpose())
             .collect()
+    }
+}
+
+impl Engine {
+    // Fixed-width, single-line text cannot change measured bounds. Other nodes
+    // keep the normal layout path, including links and pressable wrappers.
+    fn fixed_text_patches(&mut self, patches: &[Option<Node>]) -> Option<Vec<(usize, super::SmolStr)>> {
+        let mut result = Vec::with_capacity(patches.len());
+        for patch in patches {
+            let node = patch.as_ref()?;
+            let NodeKind::Text { width: Some(width), text, font_size, align, max_lines: Some(1), tabular_numbers, links } = &node.kind else { return None; };
+            let previous = self.fixed_text_runs.get(&node.identity)?;
+            if !links.is_empty() || *align == TextAlign::Justify || previous.width != *width || previous.font_size != *font_size
+                || previous.align != *align || previous.tabular_numbers != *tabular_numbers { return None; }
+            let run = previous.run;
+            let rect = self.scene.text[run].rect;
+            let lines = Self::wrap_lines(text, self.scaled_font(font_size.unwrap_or(super::DEFAULT_TEXT_SIZE)), rect.width, Some(1), *tabular_numbers, &[], 0.0);
+            if lines.len() != 1 { return None; }
+            result.push((run, lines[0].text.clone()));
+        }
+        Some(result)
     }
 }
 

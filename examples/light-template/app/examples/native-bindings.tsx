@@ -1,5 +1,5 @@
 import { navigate } from "ink";
-import { nativeView } from "ink/view";
+import { expression, nativeView } from "ink/view";
 
 export default nativeView(view => {
   const count = view.value(0);
@@ -7,13 +7,13 @@ export default nativeView(view => {
   const position = view.value(0);
   const text = view.value("");
   const eventCount = view.value(0);
-  const label = view.derive([count], () => `Count: ${count.get()}`);
-  const playLabel = view.derive([playing], () => playing.get() ? "Pause" : "Play");
-  const echoed = view.derive([text], () => `You typed: ${text.get()}`);
+  const label = view.compute(expression.concat("Count: ", count));
+  const playLabel = view.compute(expression.choose(playing, "Pause", "Play"));
+  const echoed = view.compute(expression.concat("You typed: ", text));
   let started = 0;
   return view.node("Screen", { title: "Native bindings" },
     view.node("Stack", { gap: 12 },
-      view.node("Text", { size: 28, text: label }),
+      view.node("Text", { size: 28, width: 300, maxLines: 1, text: label }),
       view.node("Button", { onPress: () => count.set(count.get() + 1) }, view.node("Text", { text: "Increase" })),
       view.node("Text", { size: 18, text: "日本語 · ひらがな · カタカナ · 👩🏽‍🚀 🇯🇵" }),
       view.node("TextInput", {

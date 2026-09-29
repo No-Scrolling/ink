@@ -1,0 +1,9 @@
+{
+  "android/build.gradle.kts": "a09452fd2db36c2f5e6bfbef8d99e44533c455fa7a6c59e361fc5bd5f7f1f015",
+  "android/audio/Cargo.toml": "84435de463ca0f63e4ff7d797df31f678cc8da1a48a02d494954a395a1d92d3b",
+  "android/audio/Cargo.lock": "2ccba77057f72a2150a71e515df512f3c1f83efc231515d83aa0ab1bd179d488",
+  "android/audio/src/lib.rs": "572fc48c20d2f426c1a521830ff52c263fa4bf1498c4a966892402a585421389",
+  "android/kotlin/com/vandam/reverb/NativeAudio.kt": "7602050c024f1c674e00f908aee713ce04b64247ff542a76db15a7bd6506cfd5",
+  "android/kotlin/com/vandam/reverb/ReverbAudioOutputProvider.kt": "b34f44a8c17c76cd727048e9546f69b237424f986097b223d87b926b1e9e9ad8",
+  "android/kotlin/com/vandam/reverb/ReverbPlaybackService.kt": "c128a30595fbcdc9f0c90a79fbee9ed47aa988d25330c48bfa3c4fb57e7c5f85"
+}

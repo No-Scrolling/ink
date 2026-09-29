@@ -91,11 +91,16 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
         requests.remove(requestId)?.cancel()
     }
 
-    override fun stop() {
+    override fun reset() {
         if (streamTransport.isInitialized()) streams.stop()
-        if (socketTransport.isInitialized()) sockets.stop()
+        if (socketTransport.isInitialized()) sockets.reset()
         requests.values.forEach(UrlRequest::cancel)
         requests.clear()
+    }
+
+    override fun stop() {
+        reset()
+        if (socketTransport.isInitialized()) sockets.stop()
         if (httpEngine.isInitialized()) engine.shutdown()
         executor.shutdownNow()
     }
@@ -112,6 +117,7 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
             return
         }
         requests[requestId] = request
+        callback.request = request
         request.start()
     }
 
@@ -119,6 +125,7 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
         private val requestId: Long,
         private val complete: NativeResultHandler,
     ) : UrlRequest.Callback {
+        var request: UrlRequest? = null
         private val file = File.createTempFile("ink-image-", ".download", context.cacheDir)
         private val output = file.outputStream().buffered()
         private val buffer = ByteBuffer.allocateDirect(BUFFER_BYTES)
@@ -195,9 +202,8 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
         }
 
         override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {
-            if (requests.remove(requestId) != null) {
-                discard()
-            }
+            requests.remove(requestId, request)
+            discard()
         }
 
         fun discard() {
@@ -206,13 +212,13 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
         }
 
         private fun finish(result: NativeResult, keepFile: Boolean = false) {
-            if (requests.remove(requestId) != null) {
+            if (requests.remove(requestId, request)) {
                 runCatching { output.close() }
                 if (!keepFile) {
                     file.delete()
                 }
                 complete(result)
-            }
+            } else discard()
         }
 
         private fun finishFailure(failure: NativeResult.Failure) {

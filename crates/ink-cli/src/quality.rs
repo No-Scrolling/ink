@@ -19,12 +19,16 @@ fn tool(name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn format_command(project: &Project) -> Result<Command> {
+fn format_command(project: &Project, write: bool) -> Result<Command> {
     let mut command = Command::new("bun");
     command
         .arg(tool("oxfmt")?)
         .current_dir(project.root())
-        .args(["--write", "--no-error-on-unmatched-pattern", SOURCES])
+        .args([
+            if write { "--write" } else { "--check" },
+            "--no-error-on-unmatched-pattern",
+            SOURCES,
+        ])
         .args(["!**/.ink/**", "!**/dist/**", "!**/node_modules/**"]);
     Ok(command)
 }
@@ -69,10 +73,15 @@ pub fn lint(project: &Project, verbose: bool) -> Result<()> {
     run_step(lint_command(project), "Lint", "no issues", verbose, true)
 }
 
+pub fn format(project: &Project, verbose: bool) -> Result<()> {
+    println!("{} · format", project.name());
+    run_step(format_command(project, true), "Format", "done", verbose, true)
+}
+
 pub fn check(project: &Project, verbose: bool) -> Result<()> {
     println!("{} · check", project.name());
     let started = Instant::now();
-    run_step(format_command(project), "Format", "done", verbose, false)?;
+    run_step(format_command(project, false), "Format", "passed", verbose, false)?;
     run_step(lint_command(project), "Lint", "no issues", verbose, false)?;
 
     let progress = output::tree_spinner("Compile", true);

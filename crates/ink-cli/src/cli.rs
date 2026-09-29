@@ -33,8 +33,11 @@ pub enum InkCommand {
         #[arg(long, default_value = "com.example.inkapp")]
         package: String,
     },
-    /// Format, lint and type-check the application
+    /// Check formatting, lint and types without changing files
     Check,
+
+    /// Format the application's source files
+    Format,
 
     /// Lint the application without changing files
     Lint,

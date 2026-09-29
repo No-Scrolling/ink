@@ -4,8 +4,16 @@ import org.json.JSONObject
 
 internal typealias NativeResultHandler = (NativeResult) -> Unit
 
+private const val MAX_RESULT_BYTES = 1024 * 1024
+
+private fun resultEnvelope(id: Long) = JSONObject().put("type", "result").put("id", id)
+
+internal fun javascriptResultFits(value: String): Boolean =
+    resultEnvelope(9_007_199_254_740_991L).put("value", value).toString()
+        .toByteArray(Charsets.UTF_8).size <= MAX_RESULT_BYTES
+
 internal fun javascriptResult(id: Long, result: NativeResult): String {
-    val response = JSONObject().put("type", "result").put("id", id)
+    val response = resultEnvelope(id)
     when (result) {
         is NativeResult.Binary -> response.put("value", result.value)
         is NativeResult.Success -> response.put("value", result.value)
@@ -21,9 +29,10 @@ internal fun javascriptResult(id: Long, result: NativeResult): String {
         }
     }
     val message = response.toString()
-    return if (message.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) message else
-        JSONObject().put("type", "result").put("id", id)
-            .put("kind", "protocol").put("message", "Native result exceeds the message limit").toString()
+    if (message.toByteArray(Charsets.UTF_8).size <= MAX_RESULT_BYTES) return message
+    disposeNativeResult(result)
+    return resultEnvelope(id)
+        .put("kind", "protocol").put("message", "Native result exceeds the message limit").toString()
 }
 
 internal interface NativeAdapter {
@@ -44,7 +53,7 @@ internal interface NativeControllerAdapter : NativeAdapter {
 }
 
 internal sealed interface NativeResult {
-    data class Success(val value: String) : NativeResult
+    data class Success(val value: String, val dispose: (() -> Unit)? = null) : NativeResult
 
     data class Binary(val value: String, val bytes: ByteArray) : NativeResult
 

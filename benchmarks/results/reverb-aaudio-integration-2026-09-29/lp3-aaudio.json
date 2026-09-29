@@ -1,0 +1,83 @@
+[
+  {
+    "cold": 0,
+    "warm": 0,
+    "tap": 1790642862247,
+    "audio_ms": 366,
+    "request_ms": 14,
+    "connection_ms": 22,
+    "queued_ms": 39
+  },
+  {
+    "cold": 0,
+    "warm": 1,
+    "tap": 1790642866407,
+    "audio_ms": 156,
+    "request_ms": 7,
+    "connection_ms": 9,
+    "queued_ms": 18
+  },
+  {
+    "cold": 0,
+    "warm": 2,
+    "tap": 1790642870583,
+    "audio_ms": 180,
+    "request_ms": 16,
+    "connection_ms": 20,
+    "queued_ms": 36
+  },
+  {
+    "cold": 1,
+    "warm": 0,
+    "tap": 1790642879588,
+    "audio_ms": 349,
+    "request_ms": 6,
+    "connection_ms": 8,
+    "queued_ms": 19
+  },
+  {
+    "cold": 1,
+    "warm": 1,
+    "tap": 1790642883803,
+    "audio_ms": 153,
+    "request_ms": 14,
+    "connection_ms": 17,
+    "queued_ms": 29
+  },
+  {
+    "cold": 1,
+    "warm": 2,
+    "tap": 1790642888005,
+    "audio_ms": 172,
+    "request_ms": 7,
+    "connection_ms": 9,
+    "queued_ms": 18
+  },
+  {
+    "cold": 2,
+    "warm": 0,
+    "tap": 1790642897016,
+    "audio_ms": 390,
+    "request_ms": 24,
+    "connection_ms": 29,
+    "queued_ms": 53
+  },
+  {
+    "cold": 2,
+    "warm": 1,
+    "tap": 1790642901238,
+    "audio_ms": 213,
+    "request_ms": 14,
+    "connection_ms": 20,
+    "queued_ms": 35
+  },
+  {
+    "cold": 2,
+    "warm": 2,
+    "tap": 1790642905416,
+    "audio_ms": 190,
+    "request_ms": 15,
+    "connection_ms": 21,
+    "queued_ms": 34
+  }
+]

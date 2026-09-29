@@ -122,8 +122,9 @@ private class InkAudioRecording(
         }
         val id = UUID.randomUUID().toString()
         val output = File(recordingsDirectory(), "$id$PARTIAL_SUFFIX")
-        val recorder = runCatching {
-            MediaRecorder(activity).apply {
+        val recorder = MediaRecorder(activity)
+        runCatching {
+            recorder.apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -135,6 +136,7 @@ private class InkAudioRecording(
                 start()
             }
         }.getOrElse { error ->
+            recorder.release()
             output.delete()
             val message = error.message ?: "Microphone is unavailable"
             publishRecorderError("unavailable", message, true)

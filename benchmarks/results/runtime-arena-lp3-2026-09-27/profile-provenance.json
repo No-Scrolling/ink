@@ -1,8 +1,0 @@
-{
-  "experiment": "experiment-20260927-204836-f0ad72e4",
-  "apkSha256": "13be6f2e30802f4307f8af3abf05145352086c796a8b8a5339a31312581eef7f",
-  "textSha256": "cb18448ee716b5bdfb68c8b7f552d53ce7b524cd7cf31ab53669725e68eb89a5",
-  "packedAndSymbolTextIdentical": true,
-  "symbols": "llvm-nm --numeric-sort --print-size --demangle",
-  "sampling": "cpu-cycles:u, 1000 Hz, 4 seconds, own app only"
-}

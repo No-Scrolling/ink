@@ -3,15 +3,17 @@ pub mod cpu_affinity;
 mod encoding;
 mod commit;
 mod binary;
+mod queue;
+pub type EventReceiver = queue::Receiver<Event>;
 
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeSet, HashMap},
     rc::Rc,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
+        mpsc::{RecvTimeoutError, TrySendError},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -41,23 +43,25 @@ enum Command {
 }
 
 pub struct AppRuntime {
-    commands: SyncSender<Command>,
+    commands: queue::Sender<Command>,
     stopped: Arc<AtomicBool>,
     delivery_failed: Arc<Mutex<Option<String>>>,
-    latest_messages: Arc<Mutex<HashMap<u64, String>>>,
+    latest_messages: Arc<Mutex<HashMap<u64, queue::Retained<String>>>>,
     thread: Option<JoinHandle<()>>,
     binary: binary::Buffers,
+    budget: Arc<queue::Budget>,
+    wake: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl AppRuntime {
-    pub fn spawn(source: String) -> Result<(Self, Receiver<Event>)> {
+    pub fn spawn(source: String) -> Result<(Self, EventReceiver)> {
         Self::spawn_with_waker(source, || {})
     }
 
     pub fn spawn_with_waker(
         source: String,
         wake: impl Fn() + Send + Sync + 'static,
-    ) -> Result<(Self, Receiver<Event>)> {
+    ) -> Result<(Self, EventReceiver)> {
         Self::spawn_with_options(source, wake, None)
     }
 
@@ -65,7 +69,7 @@ impl AppRuntime {
         source: String,
         wake: impl Fn() + Send + Sync + 'static,
         load_web: impl Fn() -> Result<String> + Send + 'static,
-    ) -> Result<(Self, Receiver<Event>)> {
+    ) -> Result<(Self, EventReceiver)> {
         Self::spawn_with_options(source, wake, Some(Box::new(load_web)))
     }
 
@@ -73,13 +77,15 @@ impl AppRuntime {
         source: String,
         wake: impl Fn() + Send + Sync + 'static,
         load_web: Option<WebLoader>,
-    ) -> Result<(Self, Receiver<Event>)> {
-        let (commands, incoming) = mpsc::sync_channel(CHANNEL_CAPACITY);
-        let (outgoing, events) = mpsc::sync_channel(CHANNEL_CAPACITY);
+    ) -> Result<(Self, EventReceiver)> {
+        let budget = Arc::new(queue::Budget::default());
+        let (commands, incoming) = queue::channel(CHANNEL_CAPACITY, budget.clone());
+        let (outgoing, events) = queue::channel(CHANNEL_CAPACITY, budget.clone());
         let outgoing = EventSink {
             sender: outgoing,
             wake: Arc::new(wake),
         };
+        let wake = outgoing.wake.clone();
         let stopped = Arc::new(AtomicBool::new(false));
         let cancelled = stopped.clone();
         let delivery_failed = Arc::new(Mutex::new(None));
@@ -92,16 +98,18 @@ impl AppRuntime {
             .name("ink-js".into())
             .stack_size(2 * 1024 * 1024)
             .spawn(move || {
-                if let Err(error) = run(
+                let result = run(
                     source,
                     incoming,
                     outgoing.clone(),
                     cancelled.clone(),
                     failure,
-                    pending_messages,
+                    pending_messages.clone(),
                     load_web,
                     binary_runtime,
-                ) {
+                );
+                pending_messages.lock().unwrap().clear();
+                if let Err(error) = result {
                     outgoing.send_terminal(Event::Error(format!("{error:#}")), &cancelled);
                 }
                 cancelled.store(true, Ordering::Release);
@@ -116,6 +124,8 @@ impl AppRuntime {
                 latest_messages,
                 thread: Some(thread),
                 binary,
+                budget,
+                wake,
             },
             events,
         ))
@@ -149,17 +159,25 @@ impl AppRuntime {
         }
         let mut pending = self.latest_messages.lock().map_err(|_| anyhow!("JavaScript message queue is unavailable"))?;
         if let Some(previous) = pending.get_mut(&key) {
-            *previous = message;
-            return Ok(());
+            let bytes = message.len();
+            return previous.replace(message, bytes).map_err(|_| anyhow!("JavaScript message byte budget is full"));
         }
+        let bytes = message.len();
+        let message = self.budget.retain(message, bytes).map_err(|_| anyhow!("JavaScript message byte budget is full"))?;
         self.enqueue(Command::LatestMessage(key))?;
         pending.insert(key, message);
         Ok(())
     }
 
     fn enqueue(&self, command: Command) -> Result<()> {
+        let bytes = match &command {
+            Command::Message(message, bytes) => message.len() + bytes.as_ref().map_or(0, Vec::len),
+            #[cfg(debug_assertions)]
+            Command::EvaluateDevelopment(source) => source.len(),
+            _ => 16,
+        };
         self.commands
-            .try_send(command)
+            .try_send(command, bytes)
             .map_err(|error| match error {
                 TrySendError::Full(_) => {
                     let message = "JavaScript message queue is full; reload the runtime";
@@ -178,14 +196,15 @@ impl AppRuntime {
         if source.len() > 16 * 1024 * 1024 {
             return Err(anyhow!("development update exceeds 16 MiB"));
         }
-        self.commands
-            .try_send(Command::EvaluateDevelopment(source))
-            .map_err(|_| anyhow!("development update queue is unavailable"))
+        self.enqueue(Command::EvaluateDevelopment(source))
     }
+
+    pub fn request_drain(&self) { (self.wake)(); }
+    pub fn queue_metrics(&self) -> (usize, usize) { self.budget.metrics() }
 
     pub fn stop(&self) {
         self.stopped.store(true, Ordering::Release);
-        let _ = self.commands.try_send(Command::Stop);
+        let _ = self.commands.try_send(Command::Stop, 0);
     }
 }
 
@@ -200,12 +219,19 @@ impl Drop for AppRuntime {
 
 #[derive(Clone)]
 struct EventSink {
-    sender: SyncSender<Event>,
+    sender: queue::Sender<Event>,
     wake: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl EventSink {
     fn send_terminal(&self, mut event: Event, stopped: &AtomicBool) {
+        if let Event::Error(message) = &mut event
+            && message.len() > MAX_MESSAGE_BYTES
+        {
+            let suffix = "\n[error truncated]";
+            let end = message.floor_char_boundary(MAX_MESSAGE_BYTES - suffix.len());
+            *message = format!("{}{suffix}", &message[..end]);
+        }
         loop {
             match self.try_send(event) {
                 Ok(()) | Err(TrySendError::Disconnected(_)) => return,
@@ -221,21 +247,53 @@ impl EventSink {
     }
 
     fn try_send(&self, event: Event) -> std::result::Result<(), TrySendError<Event>> {
-        let result = self.sender.try_send(event);
+        let bytes = match &event { Event::Message(value) | Event::Error(value) => value.len(), _ => 16 };
+        self.try_send_sized(event, bytes)
+    }
+
+    fn try_send_sized(&self, event: Event, bytes: usize) -> std::result::Result<(), TrySendError<Event>> {
+        let result = self.sender.try_send(event, bytes);
         (self.wake)();
         result
     }
 }
 
-type Timers = Rc<RefCell<BTreeMap<u32, Instant>>>;
+#[derive(Default)]
+struct TimerQueue {
+    deadlines: BTreeSet<(Instant, u32)>,
+    by_id: HashMap<u32, Instant>,
+}
+
+impl TimerQueue {
+    fn insert(&mut self, id: u32, deadline: Instant) {
+        self.remove(id);
+        self.by_id.insert(id, deadline);
+        self.deadlines.insert((deadline, id));
+    }
+
+    fn remove(&mut self, id: u32) {
+        if let Some(deadline) = self.by_id.remove(&id) { self.deadlines.remove(&(deadline, id)); }
+    }
+
+    fn next(&self) -> Option<Instant> { self.deadlines.first().map(|&(deadline, _)| deadline) }
+
+    fn pop_due(&mut self, now: Instant) -> Option<u32> {
+        let &(deadline, id) = self.deadlines.first()?;
+        if deadline > now { return None; }
+        self.remove(id);
+        Some(id)
+    }
+}
+
+type Timers = Rc<RefCell<TimerQueue>>;
 
 fn run(
     source: String,
-    commands: Receiver<Command>,
+    commands: queue::Receiver<Command>,
     events: EventSink,
     stopped: Arc<AtomicBool>,
     delivery_failed: Arc<Mutex<Option<String>>>,
-    latest_messages: Arc<Mutex<HashMap<u64, String>>>,
+    latest_messages: Arc<Mutex<HashMap<u64, queue::Retained<String>>>>,
     load_web: Option<WebLoader>,
     binary: binary::Buffers,
 ) -> Result<()> {
@@ -364,8 +422,7 @@ fn run(
         } else {
             timers
                 .borrow()
-                .values()
-                .min()
+                .next()
                 .map(|deadline| deadline.saturating_duration_since(Instant::now()))
         };
         let wait = match startup_collection {
@@ -396,7 +453,7 @@ fn run(
             Ok(Command::Message(message, bytes)) => Some((message, bytes)),
             Ok(Command::LatestMessage(key)) => Some(latest_messages.lock()
                 .map_err(|_| anyhow!("JavaScript message queue is unavailable"))?
-                .remove(&key).context("missing latest JavaScript message")?).map(|message| (message, None)),
+                .remove(&key).context("missing latest JavaScript message")?.take()).map(|message| (message, None)),
             Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => None,
         };
@@ -421,18 +478,12 @@ fn run(
         }
         if !stopped.load(Ordering::Acquire) {
             let now = Instant::now();
-            let due = timers
-                .borrow()
-                .iter()
-                .filter(|(_, deadline)| **deadline <= now)
-                .min_by_key(|(id, deadline)| (**deadline, **id))
-                .map(|(&id, _)| id);
+            let due = timers.borrow_mut().pop_due(now);
             if let Some(id) = due {
                 #[cfg(target_os = "android")]
                 if work_affinity.is_none() {
                     work_affinity = cpu_affinity::prefer_performance();
                 }
-                timers.borrow_mut().remove(&id);
                 context
                     .with(|ctx| {
                         let fire: Function = ctx.globals().get("__inkFireTimer")?;
@@ -463,6 +514,9 @@ fn install(
             binary::install(&ctx, binary, events.clone())?;
             ctx.eval::<(), _>(include_str!("encoding.js"))?;
             let global = ctx.globals();
+            global.set("__inkIsProxy", Function::new(ctx.clone(), |value: Value<'_>| {
+                unsafe { rquickjs::qjs::JS_IsProxy(value.as_raw()) }
+            })?)?;
             global.set(
                 "__inkNextId",
                 Function::new(ctx.clone(), |ctx: Ctx<'_>| {
@@ -510,7 +564,7 @@ fn install(
             global.set(
                 "__inkCancelTimer",
                 Function::new(ctx.clone(), move |id: u32| {
-                    timers.borrow_mut().remove(&id);
+                    timers.borrow_mut().remove(id);
                 })?,
             )?;
             global.set(

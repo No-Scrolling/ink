@@ -1,0 +1,11 @@
+{
+  "id": "experiment-20260929-213033-2edcdae0",
+  "kind": "experiment",
+  "status": "complete",
+  "created": 1790713833.1151628,
+  "directory": "/Users/vandam/Developer/ink/benchmarks/results/fresh-general-round3-2026-09-29/tools/experiment-20260929-213033-2edcdae0",
+  "pid": 60946,
+  "updated": 1790713885.410385,
+  "progress": "Building benchmarks/apps/ink-views",
+  "result": "manifest.json"
+}

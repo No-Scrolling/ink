@@ -1,10 +1,12 @@
 import { createElement, useLayoutEffect, useState } from "./react";
-import { allocateHostId, cancelViewUpdate, registerHostActions, scheduleViewUpdate, type ViewData as Data } from "./host";
+import { allocateHostId, cancelViewUpdate, registerHostActions, scheduleViewUpdate, type CollectionEdit, type CollectionPatch, type ViewData as Data } from "./host";
+import { Expression } from "./expression";
+export { expression } from "./expression";
 
 type Action = (...args: unknown[]) => void;
 type Property = Data | Binding<Data> | Action | undefined;
 type Kind = "Screen" | "Stack" | "Text" | "Button" | "TextInput" | "Toggle" | "Image" | "Icon"
-  | "NativeList" | "PlayingScreen" | "Pressable" | "PlayingLayout" | "PlayingLabel" | "PlayingTransport" | "PlayingProgress" | "PitchIndicator";
+  | "NativeList" | "RowContent" | "Avatar" | "PlayingScreen" | "Pressable" | "PlayingLayout" | "PlayingLabel" | "PlayingTransport" | "PlayingProgress" | "PitchIndicator";
 type Description = { id: number; type: Kind; props: Record<string, Data>; children: Description[] };
 
 export class Binding<T extends Data> {
@@ -27,12 +29,31 @@ export class ViewValue<T extends Data> extends Binding<T> {
   }
 }
 
+/** Keyed data retained in Rust; mutations send only the changed records. */
+export class ViewCollection<T extends { readonly [key: string]: Data }> extends Binding<readonly T[]> {
+  private revision = 0;
+  constructor(source: number, readonly destination: { view: number; source: number },
+    private edit: (revision: number, value: CollectionEdit) => void) { super(source); }
+  private change(value: CollectionEdit) { this.edit(++this.revision, value); }
+  insert(item: T, before: string | null = null) { this.change({ op: "insert", item, before }); }
+  update(key: string, value: Partial<T>) { this.change({ op: "update", key, value }); }
+  remove(key: string) { this.change({ op: "remove", key }); }
+  move(key: string, before: string | null = null) { this.change({ op: "move", key, before }); }
+  reverse() { this.change({ op: "reverse" }); }
+  reset(items: readonly T[]) { this.change({ op: "reset", items }); }
+  /** @internal Reserve a revision for an asynchronous native query replacement. */
+  reserve() { return { ...this.destination, revision: ++this.revision }; }
+}
+
 /** A mounted native view's JavaScript state and actions; it does not retain a host tree. */
 export class ViewScope {
   private readonly id = allocateHostId();
   private readonly values = new Map<number, ViewValue<Data>>();
   private readonly dirty = new Set<number>();
   private readonly derived: (() => void)[] = [];
+  private readonly expressions: { source: number; expression: Data }[] = [];
+  private readonly collections: { source: number; key: string; items: readonly Data[] }[] = [];
+  private readonly patches = new Map<number, CollectionPatch>();
   private readonly actions = new Map<number, Record<string, Action>>();
   private readonly starts: (() => void | (() => void))[] = [];
   private stops: (() => void)[] = [];
@@ -62,6 +83,28 @@ export class ViewScope {
       if (dependencies.some(dependency => this.dirty.has(dependency.source))) value.set(calculate());
     });
     return value;
+  }
+
+  compute<T extends Data>(expression: Expression<T>): Binding<T> {
+    this.constructing();
+    const source = allocateHostId();
+    this.expressions.push({ source, expression: expression.definition });
+    return new Binding<T>(source);
+  }
+
+  collection<T extends { readonly [key: string]: Data }>(items: readonly T[], key: keyof T & string): ViewCollection<T> {
+    this.constructing();
+    const source = allocateHostId();
+    this.collections.push({ source, key, items });
+    return new ViewCollection(source, { view: this.id, source }, (revision, edit) => {
+      let patch = this.patches.get(source);
+      if (!patch) this.patches.set(source, patch = { source, revision, edits: [] });
+      patch.revision = revision;
+      if (edit.op === "reset") patch.edits.length = 0;
+      patch.edits.push(edit);
+      this.dirty.add(source);
+      this.schedule();
+    });
   }
 
   onMount(start: () => void | (() => void)) { this.constructing(); this.starts.push(start); }
@@ -97,9 +140,14 @@ export class ViewScope {
       try { for (const update of this.derived) update(); }
       finally { this.evaluating = false; }
       const values: [number, Data][] = [];
-      for (const id of this.dirty) values.push([id, this.values.get(id)!.get()]);
+      for (const id of this.dirty) {
+        const value = this.values.get(id);
+        if (value) values.push([id, value.get()]);
+      }
+      const collections = [...this.patches.values()];
+      this.patches.clear();
       this.dirty.clear();
-      return { op: "values", view: this.id, values };
+      return { op: "values", view: this.id, values, ...(collections.length ? { collections } : {}) };
     });
   }
 
@@ -108,7 +156,11 @@ export class ViewScope {
     this.constructing();
     const root = build(this);
     this.initialised = true;
-    return JSON.stringify({ view: this.id, root, values: [...this.values].map(([id, value]) => [id, value.get()]) });
+    const definition = JSON.stringify({ view: this.id, root, values: [...this.values].map(([id, value]) => [id, value.get()]),
+      expressions: this.expressions, collections: this.collections });
+    this.collections.length = 0;
+    this.expressions.length = 0;
+    return definition;
   }
 
   /** @internal */

@@ -69,4 +69,5 @@ internal class NativeRequests(
 
 internal fun disposeNativeResult(result: NativeResult) {
     if (result is NativeResult.File && result.deleteAfterRead) java.io.File(result.path).delete()
+    if (result is NativeResult.Success) result.dispose?.invoke()
 }

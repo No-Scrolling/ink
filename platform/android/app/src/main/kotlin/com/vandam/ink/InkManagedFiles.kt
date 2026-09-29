@@ -103,7 +103,7 @@ internal class InkManagedFiles(private val context: Context) {
         File(context.cacheDir, "ink-shares/$id").deleteRecursively()
     }
     fun prepareImage(id: String, maxWidth: Int, maxHeight: Int): JSONObject {
-        require(maxWidth > 0 && maxHeight > 0) { "Image bounds must be positive" }
+        require(maxWidth in 1..4096 && maxHeight in 1..4096) { "Image bounds must be between 1 and 4096" }
         val original = requireNotNull(open(id)) { "Attachment has been removed" }
         require(original.getString("mimeType").startsWith("image/")) { "Attachment is not an image" }
         val file = resolve(original.getString("src"))
@@ -113,9 +113,20 @@ internal class InkManagedFiles(private val context: Context) {
         val rotated = orientation in 5..8
         val targetWidth = if (rotated) maxHeight else maxWidth
         val targetHeight = if (rotated) maxWidth else maxHeight
+        val ratio = minOf(1.0, targetWidth.toDouble() / bounds.outWidth, targetHeight.toDouble() / bounds.outHeight)
+        val desiredWidth = maxOf(1, (bounds.outWidth * ratio).toInt())
+        val desiredHeight = maxOf(1, (bounds.outHeight * ratio).toInt())
+        val maxPixels = 4L * 1024 * 1024
+        require(desiredWidth.toLong() * desiredHeight <= maxPixels) { "Prepared image exceeds the pixel limit" }
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= targetWidth && bounds.outHeight / (sample * 2) >= targetHeight) sample *= 2
-        val decoded = requireNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })) { "Image cannot be decoded" }
+        while (bounds.outWidth / (sample * 2L) >= desiredWidth && bounds.outHeight / (sample * 2L) >= desiredHeight) sample *= 2
+        fun decodedPixels(): Long = ((bounds.outWidth.toLong() + sample - 1) / sample) * ((bounds.outHeight.toLong() + sample - 1) / sample)
+        while (decodedPixels() > maxPixels) sample *= 2
+        val decoded = requireNotNull(BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inScaled = false
+        })) { "Image cannot be decoded" }
         var oriented: Bitmap? = null
         var scaled: Bitmap? = null
         val output = File(directory, "${UUID.randomUUID()}.jpg")

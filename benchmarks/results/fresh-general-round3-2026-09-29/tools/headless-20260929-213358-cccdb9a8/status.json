@@ -1,0 +1,11 @@
+{
+  "id": "headless-20260929-213358-cccdb9a8",
+  "kind": "headless",
+  "status": "complete",
+  "created": 1790714038.231308,
+  "directory": "/Users/vandam/Developer/ink/benchmarks/results/fresh-general-round3-2026-09-29/tools/headless-20260929-213358-cccdb9a8",
+  "pid": 62210,
+  "updated": 1790714040.746579,
+  "progress": "Measuring native input to scene layout",
+  "result": "result.json"
+}

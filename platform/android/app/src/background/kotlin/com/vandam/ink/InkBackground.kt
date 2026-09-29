@@ -18,7 +18,10 @@ private class InkBackgroundAdapter(private val context: Context) : BackgroundAda
     private val observations = ConcurrentHashMap<Long, Observation>()
     private val changed: () -> Unit = { handler.post { publishObservations() }; Unit }
 
-    init { InkWorkerState.subscribe(changed) }
+    init {
+        InkWorkerState.subscribe(changed)
+        executor.execute { InkWorkerJobs.collect(context) }
+    }
 
     private fun publishObservations() {
         val state = InkWorkerState.snapshot(context)

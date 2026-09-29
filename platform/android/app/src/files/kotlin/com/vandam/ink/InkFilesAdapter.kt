@@ -13,6 +13,7 @@ internal fun createFilesAdapter(activity: Activity): FilesAdapter = InkFilesAdap
 
 private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
     private val files = InkManagedFiles(activity)
+    private val passes = InkPassFiles(activity)
     private val library = lazy { InkMediaLibrary(activity) }
     private val executor = Executors.newSingleThreadExecutor()
     private val cancelled = ConcurrentHashMap.newKeySet<Long>()
@@ -27,7 +28,7 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
             requests.remove(requestId)
             val wasCancelled = cancelled.remove(requestId)
             if (!stopped && !wasCancelled) resultHandler(result)
-            else if (result is NativeResult.File && result.deleteAfterRead) java.io.File(result.path).delete()
+            else disposeNativeResult(result)
         }
         val data = runCatching { JSONObject(payload) }.getOrElse { complete(failure(it)); return }
         if (operation.startsWith("media-") || operation == "image" && data.optString("source").startsWith("ink-media://")) {
@@ -40,6 +41,19 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
                 if (stopped || cancelled.contains(requestId)) { requests.remove(requestId); cancelled.remove(requestId); return@image }
                 try { complete(NativeResult.File(files.resolve(data.getString("source")).path, deleteAfterRead = false)) }
                 catch (error: Exception) { complete(failure(error)) }
+            }
+            return
+        }
+        if (operation == "pass-open" || operation == "pass-can-open") {
+            activity.runOnUiThread {
+                if (stopped || cancelled.remove(requestId)) { requests.remove(requestId); return@runOnUiThread }
+                try {
+                    val packageName = data.getString("packageName")
+                    if (operation == "pass-open") {
+                        passes.open(data.getString("id"), packageName)
+                        complete(NativeResult.Success("null"))
+                    } else complete(NativeResult.Success(passes.canOpen(packageName).toString()))
+                } catch (error: Exception) { complete(failure(error)) }
             }
             return
         }
@@ -100,6 +114,9 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
         executor.execute {
             try {
                 val result = when (operation) {
+                    "pass-details" -> passes.details(data.getJSONObject("pass")).toString()
+                    "pass-retain" -> passes.retain(data.getJSONObject("pass")).toString()
+                    "pass-preview" -> passes.preview(data.getString("source")) { stopped || cancelled.contains(requestId) }.toString()
                     "open" -> files.open(data.getString("id"))?.toString() ?: "null"
                     "remove" -> { files.remove(data.getString("id")); "null" }
                     "prepare-image" -> {
@@ -110,7 +127,9 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
                 }
                 if (stopped || cancelled.remove(requestId)) {
                     if (operation == "prepare-image") files.remove(JSONObject(result).getString("id"))
-                } else complete(NativeResult.Success(result))
+                } else complete(NativeResult.Success(result, dispose = if (operation == "prepare-image") {
+                    { files.remove(JSONObject(result).getString("id")) }
+                } else null))
             } catch (error: Exception) { if (!stopped && !cancelled.remove(requestId)) complete(failure(error)) }
         }
     }
@@ -134,7 +153,9 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
                     }
                 }
                 if (stopped || cancelled.remove(request.id)) imported?.let { files.remove(it.getString("id")) }
-                else request.complete(NativeResult.Success(imported?.toString() ?: "null"))
+                else request.complete(NativeResult.Success(imported?.toString() ?: "null", dispose = imported?.let { file ->
+                    { files.remove(file.getString("id")) }
+                }))
             } catch (error: Exception) {
                 if (request.operation == "save") runCatching { android.provider.DocumentsContract.deleteDocument(activity.contentResolver, uri) }
                 if (!stopped && !cancelled.remove(request.id)) request.complete(failure(error))

@@ -1,0 +1,24 @@
+{
+  "sourceSha256": "5d28031da3d361f9d8f2d0bab8a0b2e85b9b640ecc6653d11753b8e5575b6100",
+  "sourceArchive": {
+    "file": "source.tar.gz",
+    "sha256": "2662bfdf2dca4ca6968ec24cbd8a16229493287be1bf84e68aaabbe8b67fb22a"
+  },
+  "revision": "4ca730d4085ee15ddde667963869a1109db2b67d",
+  "flags": {},
+  "signing": "generated Android development key",
+  "artifacts": {
+    "examples/light-template": {
+      "file": "0-ink-template-0.1.0-arm64.apk",
+      "sha256": "bba669fc605fdfb9a5f5f612e21010b3ffdbf18ae09aeee9e8cab67e73e6a294",
+      "bytes": 33927823,
+      "package": "com.vandam.ink.template",
+      "component": "com.vandam.ink.template/com.vandam.ink.MainActivity"
+    }
+  },
+  "tools": {
+    "bun": "1.4.2",
+    "rust": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "compilerEnvironment": {}
+}

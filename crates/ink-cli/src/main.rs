@@ -43,6 +43,10 @@ fn run() -> Result<()> {
             let project = load_project(cli.directory.as_deref())?;
             quality::check(&project, cli.verbose)
         }
+        InkCommand::Format => {
+            let project = load_project(cli.directory.as_deref())?;
+            quality::format(&project, cli.verbose)
+        }
         InkCommand::Lint => {
             let project = load_project(cli.directory.as_deref())?;
             quality::lint(&project, cli.verbose)?;

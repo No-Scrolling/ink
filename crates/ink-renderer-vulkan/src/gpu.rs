@@ -430,6 +430,42 @@ impl Device {
         });
     }
 
+    pub fn discard_texture_uploads(&self, textures: &[&Texture]) {
+        if textures.is_empty() {
+            return;
+        }
+        let mut uploads = self.1.lock().unwrap();
+        let before = uploads.commands.len();
+        uploads.commands.retain(|command| {
+            let texture = match command {
+                Upload::Clear(texture) | Upload::Write { texture, .. } => texture,
+            };
+            !textures
+                .iter()
+                .any(|discarded| Arc::ptr_eq(&texture.0, &discarded.0))
+        });
+        if uploads.commands.len() == before {
+            return;
+        }
+        let Uploads { bytes, commands } = &mut *uploads;
+        let previous = std::mem::take(bytes);
+        for command in commands {
+            if let Upload::Write {
+                texture,
+                offset,
+                size,
+                ..
+            } = command
+            {
+                let length = size[0] as usize * size[1] as usize * texture.0.channels;
+                let next = bytes.len().next_multiple_of(4);
+                bytes.resize(next, 0);
+                bytes.extend_from_slice(&previous[*offset..*offset + length]);
+                *offset = next;
+            }
+        }
+    }
+
     fn prepare_uploads(&self, reusable: &mut Option<Buffer>) -> Option<UploadBatch> {
         let mut pending = self.1.lock().unwrap();
         if pending.commands.is_empty() {
@@ -1341,7 +1377,7 @@ impl RenderPass<'_> {
             )
         }
     }
-    pub fn finish(&mut self) -> Result<()> {
+    pub fn finish(&mut self) -> Result<bool> {
         unsafe {
             let s = &mut self.surface;
             let d = &s.core.device;
@@ -1408,11 +1444,11 @@ impl RenderPass<'_> {
             match result {
                 Ok(suboptimal) => {
                     s.dirty |= suboptimal;
-                    Ok(())
+                    Ok(!suboptimal)
                 }
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                     s.dirty = true;
-                    Ok(())
+                    Ok(false)
                 }
                 Err(e) => Err(anyhow::Error::new(e).context("present surface")),
             }

@@ -1,6 +1,15 @@
-import { Icon, Stack, Text, type IconAsset } from "./index";
+import type { IconAsset } from "./index";
 import { createElement, memo } from "./react";
 import { navigate, type Destination } from "./navigation";
+
+export function Avatar({ src = "", unread = false, onPress, onLongPress }: {
+  src?: string;
+  unread?: boolean;
+  onPress?: () => void;
+  onLongPress?: () => void;
+}) {
+  return createElement("Avatar", { src, unread, onPress, onLongPress });
+}
 
 export const Row = /* @__PURE__ */ memo(function Row({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, href, onPress, onLongPress }: {
   image?: string;
@@ -14,22 +23,11 @@ export const Row = /* @__PURE__ */ memo(function Row({ image, title, titleMaxLin
   onLongPress?: () => void;
 }) {
   if (href !== undefined && onPress) throw new Error("Row accepts either href or onPress");
-  return createElement("Row", {
-    hasImage: image !== undefined,
+  return createElement("RowContent", {
+    image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon,
     onPress: href === undefined ? onPress ?? (onLongPress ? () => {} : undefined) : () => navigate(href),
     onLongPress,
-  },
-    image !== undefined && createElement(Image, { src: image, width: 50, height: 50, fit: "cover" }),
-    createElement(Stack, { gap: 0 },
-      titleIcon === undefined ? createElement(Text, { size: 26, maxLines: titleMaxLines }, title)
-        : createElement("RowTitle", { text: title, size: 26, maxLines: titleMaxLines },
-          createElement(Icon, { name: titleIcon, size: 26 })),
-      (subtitle !== undefined || subtitleIcon !== undefined) && createElement(Stack, { axis: "horizontal", align: "center", gap: 6 },
-        subtitleIcon !== undefined && createElement(Icon, { name: subtitleIcon, size: 16 }),
-        subtitle !== undefined && createElement(Text, { size: 16, maxLines: 1, tabularNumbers: true }, subtitle),
-      ),
-    ),
-  );
+  });
 });
 
 export function Image(props: {
@@ -38,6 +36,8 @@ export function Image(props: {
   height: number;
   fit?: "contain" | "cover";
   bleed?: boolean;
+  /** Fill the available content width, using width and height as the aspect ratio. */
+  fillWidth?: boolean;
   zoomable?: boolean;
   loop?: boolean;
 }) {

@@ -47,8 +47,9 @@ internal class InkMediaLibrary(private val activity: Activity) {
                     "media-import" -> {
                         val media = media(data.getString("id"))
                         requireAccess(media.first)
-                        imported = InkManagedFiles(activity).importUri(media.second) { stopped || signal.isCanceled }
-                        NativeResult.Success(requireNotNull(imported).toString())
+                        val file = InkManagedFiles(activity).importUri(media.second) { stopped || signal.isCanceled }
+                        imported = file
+                        NativeResult.Success(file.toString()) { InkManagedFiles(activity).remove(file.getString("id")) }
                     }
                     "image" -> {
                         val source = Uri.parse(data.getString("source"))

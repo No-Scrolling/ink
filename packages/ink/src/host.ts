@@ -1,7 +1,12 @@
 let nextId = 1;
 const actions = new Map<number, Readonly<Record<string, (...args: unknown[]) => void>>>();
 export type ViewData = null | boolean | number | string | readonly ViewData[] | { readonly [key: string]: ViewData };
-export type ViewUpdate = { op: "values"; view: number; values: [number, ViewData][] };
+export type CollectionEdit = { op: "reset"; items: readonly ViewData[] } | { op: "reverse" }
+  | { op: "insert"; item: ViewData; before: string | null }
+  | { op: "update"; key: string; value: Readonly<Partial<Record<string, ViewData>>> }
+  | { op: "remove"; key: string } | { op: "move"; key: string; before: string | null };
+export type CollectionPatch = { source: number; revision: number; edits: CollectionEdit[] };
+export type ViewUpdate = { op: "values"; view: number; values: [number, ViewData][]; collections?: CollectionPatch[] };
 const pendingValues = new Map<number, () => ViewUpdate | undefined>();
 let valuesScheduled = false;
 declare const __inkCommit: (operations: ViewUpdate[]) => void;

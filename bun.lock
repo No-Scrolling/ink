@@ -299,6 +299,18 @@
         "react": "19.2.8",
       },
     },
+    "packages/wallet": {
+      "name": "@ink/wallet",
+      "version": "0.1.0",
+      "dependencies": {
+        "valibot": "1.5.0",
+      },
+      "peerDependencies": {
+        "@ink/barcode": "0.0.0",
+        "ink": "0.0.0",
+        "react": "19.2.8",
+      },
+    },
   },
   "packages": {
     "@ink/audio": ["@ink/audio@workspace:packages/audio"],
@@ -334,6 +346,8 @@
     "@ink/store": ["@ink/store@workspace:packages/store"],
 
     "@ink/video": ["@ink/video@workspace:packages/video"],
+
+    "@ink/wallet": ["@ink/wallet@workspace:packages/wallet"],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 

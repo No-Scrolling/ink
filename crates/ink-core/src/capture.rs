@@ -8,10 +8,10 @@ impl CaptureKind {
     pub(super) fn size(self) -> f32 { if self == Self::Recording { DEFAULT_TEXT_SIZE } else { 18.0 } }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 struct Reading { kind: CaptureKind, text: String }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct CaptureReadings {
     values: HashMap<u64, Reading>,
     runs: Vec<(u64, CaptureKind, usize)>,

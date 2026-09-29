@@ -1,0 +1,11 @@
+{
+  "id": "experiment-20260929-213200-56a99e03",
+  "kind": "experiment",
+  "status": "complete",
+  "created": 1790713920.5634718,
+  "directory": "/Users/vandam/Developer/ink/benchmarks/results/fresh-general-round3-2026-09-29/tools/experiment-20260929-213200-56a99e03",
+  "pid": 61410,
+  "updated": 1790713978.891767,
+  "progress": "Building examples/light-template",
+  "result": "manifest.json"
+}

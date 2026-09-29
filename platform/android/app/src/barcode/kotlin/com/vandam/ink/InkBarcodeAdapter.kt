@@ -62,9 +62,11 @@ private class InkBarcodeAdapter(private val activity: MainActivity) : BarcodeAda
                 require(scale > 0) { "Barcode does not fit the requested width" }
                 val width = matrix.width * scale
                 val height = if (linear) maxOf(1, width / 3) else matrix.height * scale
-                val left = horizontalBorder * scale
-                val top = verticalBorder * scale
-                val bitmapWidth = width + left * 2
+                // Pad to the requested pixel width so the renderer never stretches barcode modules.
+                val left = (pixels - width) / 2
+                val verticalPadding = if (linear) verticalBorder * scale * 2 else pixels - width
+                val top = verticalPadding / 2
+                val bitmapWidth = pixels
                 val label = if (linear && source.optBoolean("showValue")) Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.BLACK
                     typeface = Typeface.MONOSPACE
@@ -78,7 +80,7 @@ private class InkBarcodeAdapter(private val activity: MainActivity) : BarcodeAda
                 val labelBounds = Rect()
                 label?.getTextBounds(value, 0, value.length, labelBounds)
                 val labelHeight = if (label != null) labelBounds.height() + labelGap * 2 else 0
-                val barcodeHeight = height + if (label != null) top else top * 2
+                val barcodeHeight = height + if (label != null) top else verticalPadding
                 val bitmapHeight = barcodeHeight + labelHeight
                 val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
                 try {

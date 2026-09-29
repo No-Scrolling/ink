@@ -1,9 +1,10 @@
 # Benchmarks
 
-Ink's benchmark work has two purposes:
+Use the suite that covers the change being measured:
 
 | Suite | Question |
 | --- | --- |
+| [Headless updates](headless/README.md) | How much CPU work does the React-to-Rust scene path perform, and are updates correct? |
 | Ink stress test | Does Ink stay responsive and display the right content after repeated use? |
 | Framework comparison | How does the same counter app compare across Ink, Expo and Light SDK? |
 
@@ -15,30 +16,23 @@ For fast CPU-path iteration, use the [headless update harness](headless/README.m
 
 ## Current engine measurements
 
+- [Current audits and final verification](results/README.md), including the deep general and Rust/JavaScript ownership reviews.
 - [Native portal transport](results/portal-cache-2026-09-29/README.md): Counter at 2.66 MB, unchanged portal payload reuse and emulator lifecycle checks.
 - [Android capability gating](results/android-boundary-2026-09-29/README.md): native query and bridge cleanup, with LP3/emulator evidence.
 - [QuickJS optimisation comparison](results/quickjs-size-tradeoff-2026-09-28/README.md): measured O3/Os/Oz trade-offs; production remains O3.
 - Earlier size changes: [APK dependency profile](results/apk-size-2026-09-28/README.md), [optional UI families](results/optional-ui-2026-09-28/README.md) and [primitives and bridge allocations](results/primitive-size-2026-09-28/README.md).
-
 - [Momentum-scroll image fix](results/fling-images-2026-09-28/README.md): confirmed stalled requests, frame-boundary fix and emulator reproduction.
-
 - [Incremental list updates](results/incremental-lists-2026-09-28/README.md): sparse transfer and callback correctness.
-
 - [Automatic native lists](results/default-lists-2026-09-28/README.md): public API compatibility, native window updates and emulator checks.
 - [Native controls and bindings](results/lp3-validation-2026-09-28/native-controls/README.md): current architecture, paired CPU measurements and LP3 validation.
 - [Rust/JavaScript ownership](../docs/runtime-ownership.md): current boundaries and remaining opportunities.
+- [Compiler-directed projection reuse](results/list-projection-2026-09-28/README.md): paired CPU timings and compatibility checks.
 
-- [QuickJS-ng 0.17.0 comparison](results/quickjs17-lp3-2026-09-27/report.md): latest engine, compatibility checks and 500-cell update measurements.
-- [Runtime optimisation profile](results/runtime-arena-lp3-2026-09-27/report.md): update waterfall, continuous workloads and scrollbar timings before the 0.17.0 upgrade.
-- [Native size profile](results/native-size-2026-09-27/report.md): earlier bundle-size investigation.
-
-Superseded intermediate reports have been removed. See the [retention record](results/cleanup-2026-09-28.md). The stress and framework comparisons below cover different workloads.
+See the [retention record](results/cleanup-2026-09-29.md) for removed reports and generated artefacts.
 
 ## Ink stress test
 
 The [stress app](apps/ink-stress/README.md) repeats navigation, image-heavy scrolling, failed refresh/retry and dataset changes. It checks visible content and collects scrolling, renderer, memory and idle measurements.
-
-The latest [LP3 before/after comparison](results/ink-optimisations-before-after-lp3-2026-09-12.md) passed all 20 stress cycles. Navigation response improved from 49.0 to 39.4 ms median and from 59.4 to 48.4 ms p95. It also records counter CPU, memory and Counter/Weather APK sizes. Brief fast-swipe startup gaps remain a deferred issue; steady scrolling results do not cover them.
 
 Build an instrumented APK, then run it on a reserved device:
 
@@ -81,8 +75,6 @@ These are not measurements of time to interactive, peak memory, battery drain or
 
 ### Supporting scripts
 
-`measure.ts` is the comparison harness invoked by agent-tools. `measure-builds.sh` collects build measurements. `measure-ink.sh` and `verify.ts` are older Ink-only counter helpers, not the stress test; the direct device runner requires manual reservation and cleanup. Prefer the agent-tools entry points above.
+`measure.ts` is the comparison harness invoked by agent-tools. `measure-builds.sh` collects build measurements. Build fresh APKs before measuring; generated local build directories are disposable.
 
-Superseded benchmark runs are removed; linked size investigations retain the evidence for each distinct change.
-
-Latest list update: [compiler-directed projection reuse](results/list-projection-2026-09-28/README.md), including paired CPU timings and compatibility checks.
+The [audio startup experiment](audio-startup/README.md) measures decoding and playback separately from these UI workloads.

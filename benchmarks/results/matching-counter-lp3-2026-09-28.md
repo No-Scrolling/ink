@@ -17,8 +17,6 @@ Lower is better for every metric. Light SDK is the closest alternative in each r
 
 Ink's release APK is **3,242,820 bytes (3.24 MB; 3.09 MiB)**. Its native library occupies 2,719,312 bytes, stored uncompressed in the APK. JavaScript occupies 51,440 compressed bytes (162,653 uncompressed).
 
-Compared with [19 September](matching-counter-lp3-2026-09-19.md), the APK grew by 519,224 bytes (19.1%). CPU time for 100 taps fell from 930 to 720 ms (22.6%). Median launch changed from 240 to 245 ms, idle PSS from 16.3 to 16.7 MiB, and clean build time from 1.82 to 2.03 s. These are separate-day observations, not an isolated experiment attributing changes to individual optimisations.
-
 ## Method and limits
 
 The physical TLP301 runs Android 14 at 1080 × 1240 and 60 Hz. Each app has a Counter header, centred Public Sans count and Increase button, tapped at (540, 760). Minor rendering differences remain.

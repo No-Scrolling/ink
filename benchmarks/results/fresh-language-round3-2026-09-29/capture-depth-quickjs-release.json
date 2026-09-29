@@ -1,0 +1,258 @@
+{
+  "diagnostic": "capture-depth",
+  "results": [
+    {
+      "depth": 4,
+      "distinctObjects": 5,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 4,
+      "distinctObjects": 5,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": false
+    },
+    {
+      "depth": 4,
+      "distinctObjects": 5,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    },
+    {
+      "depth": 4,
+      "distinctObjects": 5,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": true
+    },
+    {
+      "depth": 8,
+      "distinctObjects": 9,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 8,
+      "distinctObjects": 9,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": false
+    },
+    {
+      "depth": 8,
+      "distinctObjects": 9,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    },
+    {
+      "depth": 8,
+      "distinctObjects": 9,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": true
+    },
+    {
+      "depth": 12,
+      "distinctObjects": 13,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 12,
+      "distinctObjects": 13,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": false
+    },
+    {
+      "depth": 12,
+      "distinctObjects": 13,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    },
+    {
+      "depth": 12,
+      "distinctObjects": 13,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": true
+    },
+    {
+      "depth": 16,
+      "distinctObjects": 17,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 16,
+      "distinctObjects": 17,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": false
+    },
+    {
+      "depth": 16,
+      "distinctObjects": 17,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    },
+    {
+      "depth": 16,
+      "distinctObjects": 17,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": true
+    },
+    {
+      "depth": 20,
+      "distinctObjects": 21,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 20,
+      "distinctObjects": 21,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": false
+    },
+    {
+      "depth": 20,
+      "distinctObjects": 21,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    },
+    {
+      "depth": 20,
+      "distinctObjects": 21,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": true
+    },
+    {
+      "depth": 24,
+      "distinctObjects": 25,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 24,
+      "distinctObjects": 25,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": false
+    },
+    {
+      "depth": 24,
+      "distinctObjects": 25,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    },
+    {
+      "depth": 24,
+      "distinctObjects": 25,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 1,
+      "reads": 100,
+      "shared": true
+    },
+    {
+      "depth": 64,
+      "distinctObjects": 65,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 64,
+      "distinctObjects": 65,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": false
+    },
+    {
+      "depth": 64,
+      "distinctObjects": 65,
+      "errors": [],
+      "mode": "react",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    },
+    {
+      "depth": 64,
+      "distinctObjects": 65,
+      "errors": [],
+      "mode": "compiled",
+      "nativeListNodes": 0,
+      "reads": 32,
+      "shared": true
+    }
+  ],
+  "type": "audit-final-proxy"
+}

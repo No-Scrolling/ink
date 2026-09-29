@@ -163,7 +163,7 @@ function buildOptions(bootstrap = false) { return {
               if (ts.isStringLiteral(kind)) {
                 if (Object.hasOwn(families, kind.text)) requirements.add(families[kind.text]);
                 if (kind.text === "TextInput") requirements.add("text-input");
-                if (kind.text === "Image" || kind.text === "PlayingScreen") {
+                if (["Image", "Avatar", "RowContent", "PlayingScreen"].includes(kind.text)) {
                   requirements.add("image"); requirements.add("network");
                 }
               } else if (!path.startsWith(frameworkDirectory + "/") && !path.includes("/.ink/")) {

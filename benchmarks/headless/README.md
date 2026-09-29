@@ -14,7 +14,7 @@ Each process mounts the app at a 1080×1240 viewport, selects 500 cells and enab
 
 ## What the numbers mean
 
-Use `--app benchmarks/apps/ink-views` to measure the native-binding adapter. React mounts this page, but measured updates send changed values straight to Rust. The harness performs the same 500-label, resize and scrolling checks. This is an architectural comparison, not a faster implementation of unchanged React reconciliation. Its controls are predeclared; changing the cell count hides controls instead of inserting or removing them.
+Use `--app benchmarks/apps/ink-views` to measure the native-binding adapter. React mounts this page, but measured updates send a tick straight to Rust. Native expressions retain and calculate the 500 labels, summaries, visibility and spacing. The harness performs the same 500-label, resize and scrolling checks. This is an architectural comparison, not a faster implementation of unchanged React reconciliation. Its controls are predeclared; changing the cell count hides controls instead of inserting or removing them.
 
 ```sh
 scripts/agent-tools headless --app benchmarks/apps/ink-views --hyperfine --background

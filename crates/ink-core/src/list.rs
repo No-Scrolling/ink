@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct ListMetrics {
     pub keys: Vec<String>,
     pub mounted: std::ops::Range<usize>,
@@ -16,7 +16,7 @@ pub(super) struct ListMetrics {
 
 // Fenwick sums track measured heights and counts separately. Changing the estimate
 // for unseen rows then needs no rewrite of the remaining row offsets.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct HeightIndex {
     measured: Vec<Option<f32>>,
     sums: Vec<f64>,

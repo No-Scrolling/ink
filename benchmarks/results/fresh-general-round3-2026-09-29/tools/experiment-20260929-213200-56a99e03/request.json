@@ -1,0 +1,10 @@
+{
+  "command": "experiment",
+  "ref": null,
+  "working_tree": true,
+  "app": [
+    "examples/light-template"
+  ],
+  "env": [],
+  "background": true
+}

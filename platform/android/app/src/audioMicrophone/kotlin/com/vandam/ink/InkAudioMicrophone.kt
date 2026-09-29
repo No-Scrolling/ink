@@ -7,6 +7,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
 internal fun createAudioMicrophone(
@@ -34,8 +35,12 @@ private class InkAudioMicrophone(
     private val suspended = mutableSetOf<Long>()
     private var foreground = true
     private val captureExecutor = Executors.newSingleThreadExecutor()
-    private val capturing = AtomicBoolean(false)
-    private var audioRecord: AudioRecord? = null
+    private class Capture(val recorder: AudioRecord) {
+        val stopped = AtomicBoolean(false)
+        val posted = AtomicBoolean(false)
+        val samples = AtomicReference<ShortArray?>(null)
+    }
+    private var capture: Capture? = null
     override val active get() = enabled.isNotEmpty()
 
     override fun activate(controller: Long, kind: String, config: String): NativeResult {
@@ -85,7 +90,7 @@ private class InkAudioMicrophone(
         controllers.keys.forEach(deactivateProcessor)
         controllers.clear()
         stopCapture()
-        captureExecutor.shutdownNow()
+        captureExecutor.shutdown()
     }
 
     private fun start(controller: Long, complete: NativeResultHandler) {
@@ -162,7 +167,7 @@ private class InkAudioMicrophone(
     }
 
     private fun startCapture(): Boolean {
-        if (capturing.get()) {
+        if (capture != null) {
             return true
         }
         val minimum = AudioRecord.getMinBufferSize(
@@ -186,34 +191,49 @@ private class InkAudioMicrophone(
             recorder.release()
             return false
         }
-        audioRecord = recorder
-        capturing.set(true)
-        recorder.startRecording()
-        captureExecutor.execute {
-            val frame = ShortArray(FRAME_SAMPLES)
-            while (capturing.get()) {
-                val read = recorder.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
-                if (read > 0) {
-                    processSamples(frame.copyOf(read), SAMPLE_RATE)
-                } else if (read < 0) {
-                    activity.runOnUiThread { captureFailed() }
-                    break
-                }
+        val session = Capture(recorder)
+        try {
+            recorder.startRecording()
+            capture = session
+            captureExecutor.execute {
+                try {
+                    val frame = ShortArray(FRAME_SAMPLES)
+                    while (!session.stopped.get()) {
+                        val read = recorder.read(frame, 0, frame.size, AudioRecord.READ_BLOCKING)
+                        if (read > 0) {
+                            session.samples.set(frame.copyOf(read))
+                            if (session.posted.compareAndSet(false, true)) activity.runOnUiThread {
+                                session.posted.set(false)
+                                val samples = session.samples.getAndSet(null)
+                                if (samples != null && capture === session && !session.stopped.get()) processSamples(samples, SAMPLE_RATE)
+                            }
+                        } else if (read < 0) {
+                            activity.runOnUiThread { captureFailed(session) }
+                            break
+                        }
+                    }
+                } catch (_: Exception) {
+                    activity.runOnUiThread { captureFailed(session) }
+                } finally { recorder.release() }
             }
+        } catch (_: Exception) {
+            capture = null
+            session.stopped.set(true)
+            recorder.runCatching { stop() }
+            recorder.release()
+            return false
         }
         return true
     }
 
     private fun stopCapture() {
-        if (!capturing.getAndSet(false)) {
-            return
-        }
-        audioRecord?.runCatching { stop() }
-        audioRecord?.release()
-        audioRecord = null
+        val session = capture ?: return
+        capture = null
+        if (!session.stopped.getAndSet(true)) session.recorder.runCatching { stop() }
     }
 
-    private fun captureFailed() {
+    private fun captureFailed(session: Capture) {
+        if (capture !== session || session.stopped.get()) return
         val active = enabled.toList()
         enabled.clear()
         active.forEach { controller ->

@@ -45,6 +45,7 @@ struct TextOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) uv: vec2<f32>,
     @location(1) colour: vec4<f32>,
+    @location(2) circle: vec2<f32>,
 }
 
 @vertex
@@ -60,6 +61,10 @@ fn text_vertex(
     output.position = vec4<f32>(position + transform.translation.xy, 0.0, 1.0);
     output.uv = uv_rect.xy + corner * (uv_rect.zw - uv_rect.xy);
     output.colour = colour;
+    output.circle = vec2<f32>(0.0);
+    if colour.w < 0.0 {
+        output.circle = (position - colour.xy) / abs(colour.zw);
+    }
     return output;
 }
 
@@ -71,5 +76,20 @@ var glyph_sampler: sampler;
 
 @fragment
 fn text_fragment(input: TextOutput) -> @location(0) vec4<f32> {
+    if input.colour.w < 0.0 {
+        let distance = length(input.circle);
+        let edge = max(fwidth(distance), 0.001);
+        // A 72-unit avatar reserves 3 units each for the gap and unread ring.
+        let portrait_radius = 30.0 / 36.0;
+        let ring_inner = 33.0 / 36.0;
+        let portrait = 1.0 - smoothstep(portrait_radius - edge, portrait_radius, distance);
+        let ring = smoothstep(ring_inner - edge, ring_inner, distance)
+            * (1.0 - smoothstep(1.0 - edge, 1.0, distance));
+        let image_offset = vec2<f32>(input.circle.x, -input.circle.y) * (1.0 / portrait_radius - 1.0);
+        let uv = input.uv + image_offset * fwidth(input.uv) / max(fwidth(input.circle), vec2<f32>(0.0001));
+        let pixel = textureSample(glyph_atlas, glyph_sampler, uv);
+        let outline = select(0.0, ring, input.colour.z < 0.0);
+        return vec4<f32>(mix(pixel.rgb, vec3<f32>(1.0), outline), pixel.a * portrait + outline);
+    }
     return textureSample(glyph_atlas, glyph_sampler, input.uv) * input.colour;
 }

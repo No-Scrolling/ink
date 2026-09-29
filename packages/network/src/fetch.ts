@@ -117,7 +117,7 @@ class Body {
       async cancel(reason) { try { await reader.cancel(reason); } finally { reader.releaseLock(); } },
     }, { highWaterMark: 0 });
   }
-  async bytes(): Promise<Uint8Array> {
+  async bytes(): Promise<Uint8Array<ArrayBuffer>> {
     this.bodySignal?.throwIfAborted();
     this.transferBody();
     if (!this.data) return new Uint8Array();
@@ -140,7 +140,7 @@ class Body {
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     return bytes;
   }
-  async arrayBuffer(): Promise<ArrayBuffer> { return new Uint8Array(await this.bytes()).buffer; }
+  async arrayBuffer(): Promise<ArrayBuffer> { return (await this.bytes()).buffer; }
   async text(): Promise<string> { return new TextDecoder().decode(await this.bytes()); }
   async json(): Promise<unknown> { return JSON.parse(await this.text()); }
   async blob() {
@@ -264,7 +264,7 @@ export async function fetch(input: string | URL | Request, init?: Init): Promise
   let body = request.body;
   for (let redirects = 0; ; redirects++) {
     request.signal.throwIfAborted();
-    if (url.protocol !== "https:" && url.protocol !== "file:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(url.hostname))) throw new TypeError("Network requests require HTTPS");
+    if (!["https:", "http:", "file:"].includes(url.protocol)) throw new TypeError("Unsupported network protocol");
     let result;
     try {
       result = await requestHttp({ url: url.href, method, headers: Object.fromEntries(headers), nativeParts: body ? request.nativeParts() : undefined }, body, request.signal);

@@ -13,7 +13,7 @@ use bytemuck::{Pod, Zeroable};
 use ink_core::{
     Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene, SmolStr,
     TextAlign, TextRun, font_for_character, is_emoji_grapheme, tabular_digit_width,
-    text_width_with_numbers,
+    visual_text_width_with_numbers as text_width_with_numbers,
 };
 #[cfg(feature = "perf")]
 use ink_core::{PerfTraceSection, perf_trace_counter};
@@ -174,6 +174,7 @@ impl From<&ink_core::MaskRun> for PreparedMaskRun {
 
 #[derive(Clone, Copy, PartialEq)]
 struct PreparedImageRun {
+    avatar: Option<bool>,
     id: u64,
     generation: u64,
     zoom_id: Option<usize>,
@@ -187,6 +188,7 @@ struct PreparedImageRun {
 impl From<&ImageRun> for PreparedImageRun {
     fn from(run: &ImageRun) -> Self {
         Self {
+            avatar: run.avatar,
             id: run.image.id(),
             generation: run.image.generation(),
             zoom_id: run.zoom_id,
@@ -604,6 +606,7 @@ pub enum RenderOutcome {
     Presented,
     Skipped,
     SurfaceLost,
+    Deferred,
     NeedsSystemGlyph(SystemGlyphRequest),
 }
 
@@ -751,8 +754,12 @@ impl Renderer {
         if self.config.width != scene.width || self.config.height != scene.height {
             self.resize(scene.width, scene.height);
         }
+        if self.system_glyph_atlas.begin_scene(scene, &self.queue) {
+            self.prepared.ready = false;
+            self.prepared.text_runs.clear();
+        }
         if !self.prepared.ready || self.prepared.revision != scene.revision {
-            if let Some(request) = self.system_glyph_atlas.request(scene) {
+            if let Some(request) = self.system_glyph_atlas.request(scene, &self.queue) {
                 return Ok(RenderOutcome::NeedsSystemGlyph(request));
             }
             #[cfg(feature = "perf")]
@@ -817,7 +824,7 @@ impl Renderer {
         #[cfg(feature = "perf")]
         let acquire_trace = PerfTraceSection::new(b"Ink acquire\0");
         let Some(mut pass) = self.surface.begin(scene.light)? else {
-            return Ok(RenderOutcome::Skipped);
+            return Ok(RenderOutcome::Deferred);
         };
         #[cfg(feature = "perf")]
         {
@@ -966,7 +973,7 @@ impl Renderer {
         let submit_present_started = Instant::now();
         #[cfg(feature = "perf")]
         let submit_present_trace = PerfTraceSection::new(b"Ink submit and present\0");
-        pass.finish()?;
+        let presented = pass.finish()?;
         #[cfg(feature = "perf")]
         {
             drop(submit_present_trace);
@@ -974,7 +981,7 @@ impl Renderer {
             self.perf.frame_ns += elapsed_ns(frame_started);
             drop(frame_trace);
         }
-        Ok(RenderOutcome::Presented)
+        Ok(if presented { RenderOutcome::Presented } else { RenderOutcome::Deferred })
     }
 
     #[cfg(feature = "perf")]
@@ -1267,6 +1274,7 @@ impl Renderer {
 
     fn prepare_text_run(&mut self, scene: &Scene, run: &TextRun) -> Result<PreparedTextRun> {
         let font = self.glyph_atlas.font.clone();
+        let visual_text = ink_core::visual_text(&run.text);
         let mut instances = Vec::new();
         let mut system_glyphs = HashMap::<usize, Vec<TextInstance>>::new();
         let clip = intersect(run.rect, run.clip);
@@ -1274,12 +1282,12 @@ impl Renderer {
             let size = run.font_size.round().clamp(1.0, u16::MAX as f32) as u16;
             let scaled = font.as_scaled(PxScale::from(size as f32));
             let justified_space = if run.align == TextAlign::Justify {
-                let spaces = ink_core::text_graphemes(&run.text)
+                let spaces = ink_core::text_graphemes(&visual_text)
                     .filter(|grapheme| grapheme.chars().all(char::is_whitespace))
                     .count();
                 (spaces > 0).then(|| {
                     (run.rect.width
-                        - text_width_with_numbers(&run.text, size as f32, run.tabular_numbers))
+                        - text_width_with_numbers(&visual_text, size as f32, run.tabular_numbers))
                     .max(0.0)
                         / spaces as f32
                 })
@@ -1290,18 +1298,18 @@ impl Renderer {
                 TextAlign::Start | TextAlign::Justify => run.rect.x,
                 TextAlign::Centre => {
                     let width =
-                        text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
+                        text_width_with_numbers(&visual_text, size as f32, run.tabular_numbers);
                     run.rect.x + (run.rect.width - width).max(0.0) / 2.0
                 }
                 TextAlign::End => {
                     let width =
-                        text_width_with_numbers(&run.text, size as f32, run.tabular_numbers);
+                        text_width_with_numbers(&visual_text, size as f32, run.tabular_numbers);
                     run.rect.x + (run.rect.width - width).max(0.0)
                 }
             };
             let baseline = run.rect.y + (run.rect.height - scaled.height()) / 2.0 + scaled.ascent();
             let mut previous = None;
-            for grapheme in ink_core::text_graphemes(&run.text) {
+            for grapheme in ink_core::text_graphemes(&visual_text) {
                 if is_emoji_grapheme(grapheme) {
                     if let Some(glyph) = self.system_glyph_atlas.glyph(grapheme, size) {
                         let glyph_size = size as f32 * 0.9;
@@ -1657,7 +1665,12 @@ fn push_image_quad(
     let clipped_v1 = v0 + (visible.y + visible.height - rect.y) / rect.height * source_height;
     let [left, top] = position(scene, visible.x, visible.y);
     let [right, bottom] = position(scene, visible.x + visible.width, visible.y + visible.height);
-    let colour = [1.0; 4];
+    // Avatar images reuse the tint attribute for centre and signed radii.
+    // Negative Y selects circular clipping; negative X adds the unread ring.
+    let colour = if let Some(unread) = run.avatar {
+        let [cx, cy] = position(scene, rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+        [cx, cy, rect.width / scene.width as f32 * if unread { -1.0 } else { 1.0 }, -rect.height / scene.height as f32]
+    } else { [1.0; 4] };
     instances.push(TextInstance {
         rect: [left, top, right, bottom],
         uv: [clipped_u0, clipped_v0, clipped_u1, clipped_v1],

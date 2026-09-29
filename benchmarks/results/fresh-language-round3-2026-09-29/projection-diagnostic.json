@@ -1,0 +1,19 @@
+{
+  "compilerEligible": true,
+  "results": [
+    {
+      "mode": "react",
+      "dataset": 1000,
+      "labelReads": 32,
+      "nativeListNodes": 0,
+      "errors": []
+    },
+    {
+      "mode": "compiled",
+      "dataset": 1000,
+      "labelReads": 1000,
+      "nativeListNodes": 1,
+      "errors": []
+    }
+  ]
+}

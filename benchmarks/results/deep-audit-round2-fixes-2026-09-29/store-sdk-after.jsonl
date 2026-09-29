@@ -1,0 +1,3 @@
+{"phase":"unreadable","error":"Native result exceeds the message limit"}
+{"phase":"set","snapshot":{"status":"ready","data":"replacement"},"calls":["get","replace"]}
+{"phase":"reset","snapshot":{"status":"ready","data":"initial"},"calls":["replace"]}

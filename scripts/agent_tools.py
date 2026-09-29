@@ -1017,20 +1017,18 @@ def inspect_image(op, args):
         }
     if args.get("ocr"):
         if sys.platform == "darwin":
-            result["text"] = json.loads(
-                run(
-                    [
-                        "swift",
-                        ROOT / "scripts/agent_tools_ocr.swift",
-                        op.path / "crop.png",
-                    ],
-                    timeout=120,
-                )
-            )
-        elif shutil.which("tesseract"):
+            try:
+                result["text"] = json.loads(run([
+                    "swift", ROOT / "scripts/agent_tools_ocr.swift", op.path / "crop.png",
+                ], timeout=120))
+            except (RuntimeError, ValueError, subprocess.TimeoutExpired):
+                if not shutil.which("tesseract"):
+                    raise
+        if "text" not in result:
+            if not shutil.which("tesseract"):
+                raise RuntimeError("OCR needs macOS Vision/Swift or tesseract on PATH")
             result["text"] = run(["tesseract", op.path / "crop.png", "stdout"])
-        else:
-            raise RuntimeError("OCR needs macOS Vision/Swift or tesseract on PATH")
+            result["ocrEngine"] = "tesseract"
     write_json(op.path / "result.json", result)
     return result
 

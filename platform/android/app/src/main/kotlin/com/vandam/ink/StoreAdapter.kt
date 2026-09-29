@@ -45,18 +45,23 @@ internal class StoreAdapter(context: Context, private val onChanged: ((String) -
                 val db = database.writableDatabase
                 when (operation) {
                     "get" -> NativeResult.Success(read(db, key)?.toString() ?: "null")
-                    "write" -> {
+                    "write", "replace" -> {
                         db.beginTransaction()
                         try {
-                            val current = read(db, key)
+                            val current = read(db, key, includeValue = false)
                             val revision = current?.getLong("revision") ?: 0L
-                            if (revision != input.getLong("revision")) {
+                            if (operation == "write" && revision != input.getLong("revision")) {
                                 NativeResult.Success(JSONObject().put("committed", false).toString())
                             } else {
-                                val version = input.getInt("version")
-                                require(version > 0) { "Invalid store version" }
+                                val version = input.getLong("version")
+                                require(version in 1..9_007_199_254_740_991L) { "Invalid store version" }
+                                require((current?.getLong("version") ?: 0L) <= version) { "Store $key uses a newer version" }
+                                require(revision < 9_007_199_254_740_991L) { "Store revision is exhausted" }
                                 val value = input.getString("value")
-                                require(value.length <= 1_000_000) { "Store value is too large" }
+                                // Reserve the widest revision so later writes cannot make this value unreadable.
+                                val entry = JSONObject().put("revision", 9_007_199_254_740_991L)
+                                    .put("version", version).put("value", value)
+                                require(javascriptResultFits(entry.toString())) { "Store value is too large" }
                                 val values = ContentValues().apply {
                                     put("key", key)
                                     put("revision", revision + 1)
@@ -88,13 +93,15 @@ internal class StoreAdapter(context: Context, private val onChanged: ((String) -
         }
     }
 
-    private fun read(db: SQLiteDatabase, key: String): JSONObject? {
-        db.query("entries", arrayOf("revision", "version", "value"), "key = ?", arrayOf(key), null, null, null).use { cursor ->
+    private fun read(db: SQLiteDatabase, key: String, includeValue: Boolean = true): JSONObject? {
+        val columns = if (includeValue) arrayOf("revision", "version", "value") else arrayOf("revision", "version")
+        db.query("entries", columns, "key = ?", arrayOf(key), null, null, null).use { cursor ->
             if (!cursor.moveToFirst()) return null
-            return JSONObject()
+            val entry = JSONObject()
                 .put("revision", cursor.getLong(0))
-                .put("version", cursor.getInt(1))
-                .put("value", cursor.getString(2))
+                .put("version", cursor.getLong(1))
+            if (includeValue) entry.put("value", cursor.getString(2))
+            return entry
         }
     }
 

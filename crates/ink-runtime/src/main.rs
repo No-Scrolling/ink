@@ -9,7 +9,7 @@ fn main() -> Result<()> {
         .context("usage: ink-runtime <bundle.js>")?;
     let source = fs::read_to_string(&path).with_context(|| format!("could not read {path}"))?;
     let (_runtime, events) = AppRuntime::spawn(source)?;
-    for event in events {
+    while let Ok(event) = events.recv() {
         match event {
             Event::Commit(commit) => println!(
                 "{}",

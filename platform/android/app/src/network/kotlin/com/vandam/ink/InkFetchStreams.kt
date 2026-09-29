@@ -9,15 +9,18 @@ import android.net.http.UploadDataSink
 import android.net.http.UrlRequest
 import android.net.http.UrlResponseInfo
 import android.os.Handler
+import android.os.SystemClock
 import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal class InkFetchStreams(
     private val context: Context,
@@ -26,10 +29,12 @@ internal class InkFetchStreams(
     private val handler: Handler,
 ) {
     private val streams = mutableMapOf<String, Stream>()
-    private data class Upload(val file: File, val managed: Boolean)
+    private data class Upload(val file: File, val managed: Boolean, val copying: AtomicBoolean = AtomicBoolean(false), val closed: AtomicBoolean = AtomicBoolean(false), var touched: Long = SystemClock.uptimeMillis())
     private val uploads = mutableMapOf<String, Upload>()
     private val pending = mutableMapOf<Long, Stream>()
+    private val copies = mutableMapOf<Long, AtomicBoolean>()
     private val expiry = Runnable { expire() }
+    private var expiryScheduled = false
 
     @Synchronized fun execute(id: Long, operation: String, payload: String, complete: NativeResultHandler, inputBytes: ByteArray? = null) {
         try {
@@ -40,41 +45,63 @@ internal class InkFetchStreams(
                     val offset = data.getLong("offset")
                     val size = data.getInt("size")
                     require(offset >= 0 && size in 0..32768 && offset <= source.length() - size) { "Invalid attachment range" }
-                    val bytes = ByteArray(size)
-                    RandomAccessFile(source, "r").use { it.seek(offset); it.readFully(bytes) }
-                    complete(if (operation.endsWith("-bytes")) NativeResult.Binary("", bytes) else NativeResult.Success(Base64.encodeToString(bytes, Base64.NO_WRAP)))
+                    fileWork(id, null, complete) {
+                        val bytes = ByteArray(size)
+                        RandomAccessFile(source, "r").use { it.seek(offset); it.readFully(bytes) }
+                        if (operation.endsWith("-bytes")) NativeResult.Binary("", bytes) else NativeResult.Success(Base64.encodeToString(bytes, Base64.NO_WRAP))
+                    }
                 }
                 "stream-upload-open" -> {
                     require(uploads.size < 8) { "Too many pending uploads" }
                     val key = UUID.randomUUID().toString()
                     uploads[key] = Upload(File.createTempFile("ink-upload-", ".body", context.cacheDir), data.optBoolean("managed"))
-                    complete(NativeResult.Success(key))
+                    complete(NativeResult.Success(key) {
+                        synchronized(this@InkFetchStreams) {
+                            uploads.remove(key)?.let { it.closed.set(true); it.file.delete() }
+                        }
+                    })
                     scheduleExpiry()
                 }
                 "stream-upload-write" -> {
                     val upload = requireNotNull(uploads[data.getString("upload")]) { "Upload is closed" }
+                    require(!upload.copying.get()) { "Upload already has a pending copy" }
                     val file = upload.file
                     val bytes = inputBytes ?: Base64.decode(data.getString("bytes"), Base64.DEFAULT)
                     require(bytes.size <= 32768 && (upload.managed || file.length() + bytes.size <= 64L * 1024 * 1024)) { "Upload exceeds 64 MiB" }
-                    file.appendBytes(bytes)
-                    file.setLastModified(System.currentTimeMillis())
-                    complete(NativeResult.Success("null"))
+                    require(upload.copying.compareAndSet(false, true)) { "Upload already has pending file work" }
+                    fileWork(id, upload, complete) {
+                        file.appendBytes(bytes)
+                        NativeResult.Success("null")
+                    }
                 }
                 "stream-upload-file" -> {
                     val upload = requireNotNull(uploads[data.getString("upload")]) { "Upload is closed" }
                     require(upload.managed) { "Upload does not accept managed files" }
                     val source = InkManagedFiles(context).resolve(data.getString("src"))
                     val offset = data.getLong("offset")
-                    val size = data.getInt("size")
-                    require(offset >= 0 && size in 0..32768 && offset <= source.length() - size) { "Invalid attachment range" }
-                    val bytes = ByteArray(size)
-                    RandomAccessFile(source, "r").use { it.seek(offset); it.readFully(bytes) }
-                    upload.file.appendBytes(bytes)
-                    upload.file.setLastModified(System.currentTimeMillis())
-                    complete(NativeResult.Success("null"))
+                    val size = data.getLong("size")
+                    require(offset >= 0 && size >= 0 && offset <= source.length() - size) { "Invalid attachment range" }
+                    require(upload.copying.compareAndSet(false, true)) { "Upload already has a pending copy" }
+                    fileWork(id, upload, complete) { cancelled ->
+                        RandomAccessFile(source, "r").use { input ->
+                            input.seek(offset)
+                            FileOutputStream(upload.file, true).use { output ->
+                                val buffer = ByteArray(64 * 1024)
+                                var remaining = size
+                                while (remaining > 0) {
+                                    check(!cancelled.get() && !upload.closed.get()) { "Attachment copy cancelled" }
+                                    val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                                    check(count > 0) { "Attachment ended before its requested range" }
+                                    output.write(buffer, 0, count)
+                                    remaining -= count
+                                }
+                            }
+                        }
+                        NativeResult.Success("null")
+                    }
                 }
                 "stream-upload-close" -> {
-                    uploads.remove(data.getString("upload"))?.file?.delete()
+                    uploads.remove(data.getString("upload"))?.let { it.closed.set(true); it.file.delete() }
                     complete(NativeResult.Success("null"))
                 }
                 "stream-open" -> open(id, data, complete)
@@ -88,11 +115,39 @@ internal class InkFetchStreams(
         } catch (error: Exception) { complete(failure(error.message ?: "Invalid streaming request")) }
     }
 
+    private fun fileWork(id: Long, upload: Upload?, complete: NativeResultHandler, operation: (AtomicBoolean) -> NativeResult) {
+        val cancelled = AtomicBoolean(false)
+        copies[id] = cancelled
+        try { executor.execute {
+            val result = try {
+                check(!cancelled.get() && upload?.closed?.get() != true) { "File operation cancelled" }
+                operation(cancelled)
+            } catch (error: Exception) { failure(error.message ?: "File operation failed") }
+            handler.post {
+                synchronized(this@InkFetchStreams) {
+                    if (copies[id] === cancelled) copies.remove(id)
+                    upload?.copying?.set(false)
+                    upload?.touched = SystemClock.uptimeMillis()
+                    scheduleExpiry()
+                }
+                if (!cancelled.get() && upload?.closed?.get() != true) complete(result)
+                else disposeNativeResult(result)
+            }
+        } } catch (error: Exception) {
+            copies.remove(id)
+            upload?.copying?.set(false)
+            throw error
+        }
+    }
+
     private fun open(id: Long, data: JSONObject, complete: NativeResultHandler) {
         require(streams.size < 16) { "Too many open response streams" }
         val url = data.getString("url")
         val upload = data.optString("upload").takeIf { it.isNotEmpty() }?.let {
-            requireNotNull(uploads.remove(it)) { "Upload is closed" }.file
+            val upload = requireNotNull(uploads[it]) { "Upload is closed" }
+            require(!upload.copying.get()) { "Upload already has a pending copy" }
+            uploads.remove(it)
+            upload.file
         }
         val stream = Stream(UUID.randomUUID().toString(), upload)
         streams[stream.key] = stream
@@ -140,24 +195,34 @@ internal class InkFetchStreams(
     }
 
     @Synchronized fun cancel(id: Long) {
+        copies[id]?.set(true)
         pending.remove(id)?.let { streams.remove(it.key); it.close() }
     }
     @Synchronized fun stop() {
         streams.values.toList().forEach { it.close() }
         streams.clear()
-        uploads.values.forEach { it.file.delete() }
+        copies.values.forEach { it.set(true) }
+        copies.clear()
+        uploads.values.forEach { it.closed.set(true); it.file.delete() }
         uploads.clear()
         handler.removeCallbacks(expiry)
+        expiryScheduled = false
     }
-    private fun scheduleExpiry() { handler.removeCallbacks(expiry); handler.postDelayed(expiry, 60_000) }
+    private fun scheduleExpiry() {
+        if (expiryScheduled) return
+        val touched = (streams.values.map { it.touched } + uploads.values.filter { !it.copying.get() }.map { it.touched }).minOrNull() ?: return
+        expiryScheduled = true
+        handler.postDelayed(expiry, (touched + 60_000 - SystemClock.uptimeMillis()).coerceAtLeast(0))
+    }
     @Synchronized private fun expire() {
-        val before = System.currentTimeMillis() - 60_000
-        streams.values.filter { it.touched < before }.toList().forEach {
+        expiryScheduled = false
+        val before = SystemClock.uptimeMillis() - 60_000
+        streams.values.filter { it.touched <= before }.toList().forEach {
             streams.remove(it.key)
             it.deliver(failure("Response stream was idle for 60 seconds"))
             it.close()
         }
-        uploads.entries.removeAll { (_, upload) -> if (upload.file.lastModified() < before) { upload.file.delete(); true } else false }
+        uploads.entries.removeAll { (_, upload) -> if (!upload.copying.get() && upload.touched <= before) { upload.closed.set(true); upload.file.delete(); true } else false }
         if (streams.isNotEmpty() || uploads.isNotEmpty()) scheduleExpiry()
     }
 
@@ -167,14 +232,14 @@ internal class InkFetchStreams(
         var readerId: Long? = null
         var reader: NativeResultHandler? = null
         var binaryReader = false
-        var touched = System.currentTimeMillis()
+        var touched = SystemClock.uptimeMillis()
         private val buffer = ByteBuffer.allocateDirect(32768)
         private var terminal: NativeResult? = null
         private var closed = false
 
         fun read(id: Long, binary: Boolean, complete: NativeResultHandler) {
             require(reader == null) { "Response already has a pending read" }
-            touched = System.currentTimeMillis()
+            touched = SystemClock.uptimeMillis()
             readerId = id
             reader = complete
             binaryReader = binary
@@ -204,7 +269,7 @@ internal class InkFetchStreams(
             // The bridge can hold its own lock while calling into this adapter.
             // Deliver outside the stream lock to avoid reversing that lock order.
             if (callback != null && id != null) handler.post {
-                synchronized(this@InkFetchStreams) { pending.remove(id) }
+                synchronized(this@InkFetchStreams) { pending.remove(id, this@Stream) }
                 callback(delivered)
             }
         }

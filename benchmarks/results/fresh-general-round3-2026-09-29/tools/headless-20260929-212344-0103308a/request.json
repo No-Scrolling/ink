@@ -1,0 +1,13 @@
+{
+  "command": "headless",
+  "app": "benchmarks/apps/ink-native-controls",
+  "iterations": 20,
+  "warmup": 3,
+  "hyperfine": false,
+  "react_profile": null,
+  "runs": 5,
+  "serial": null,
+  "token": null,
+  "ndk": "/opt/homebrew/share/android-ndk",
+  "background": true
+}

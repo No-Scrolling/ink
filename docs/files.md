@@ -103,7 +103,7 @@ Pass `src` to `Image` or the audio player. Displaying media does not copy the fi
 
 ## Resize an image
 
-`prepareImage` creates a resized copy, corrects orientation and removes location metadata. It preserves the aspect ratio and original file.
+`prepareImage` creates a resized copy, corrects orientation and removes location metadata. It preserves the aspect ratio and original file. Each bound must be a whole number between 1 and 4096; the requested aspect-fitted output must fit within 4 megapixels (4 × 1024 × 1024 pixels). Sampling also limits the decoded bitmap to that pixel budget before allocating orientation and resizing copies.
 
 ```ts
 import { prepareImage } from "@ink/files/images";

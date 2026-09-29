@@ -1,6 +1,5 @@
-use std::sync::mpsc::Receiver;
-
 use anyhow::{Context, Result, bail};
+use std::time::{Duration, Instant};
 #[cfg(feature = "audio")]
 use ink_core::StateValue;
 use ink_core::{Engine, ReactCommit, ReactTree, TextEdit};
@@ -31,7 +30,7 @@ jni::bind_java_type! {
 
 pub(super) struct ScriptRuntime {
     runtime: AppRuntime,
-    events: Receiver<Event>,
+    events: ink_runtime::EventReceiver,
     tree: ReactTree,
     calls: Vec<String>,
 }
@@ -48,7 +47,13 @@ struct JavaScriptMessage {
 impl ScriptRuntime {
     #[cfg(feature = "memory-diagnostics")]
     pub(super) fn memory_diagnostics(&self) -> Value {
-        self.tree.memory_diagnostics()
+        let mut value = self.tree.memory_diagnostics();
+        let (bytes, high_water) = self.runtime.queue_metrics();
+        if let Some(fields) = value.as_object_mut() {
+            fields.insert("queuePayloadBytes".into(), Value::from(bytes));
+            fields.insert("queuePayloadHighWaterBytes".into(), Value::from(high_water));
+        }
+        value
     }
 
     #[cfg(feature = "audio")]
@@ -119,7 +124,8 @@ impl ScriptRuntime {
 
     fn drain(&mut self, engine: &mut Engine) -> Result<bool> {
         let mut changed = false;
-        for _ in 0..256 {
+        let started = Instant::now();
+        for index in 0..64 {
             let Ok(event) = self.events.try_recv() else {
                 break;
             };
@@ -165,6 +171,10 @@ impl ScriptRuntime {
                         _ => bail!("unknown JavaScript message"),
                     }
                 }
+            }
+            if index == 63 || started.elapsed() >= Duration::from_millis(4) {
+                self.runtime.request_drain();
+                break;
             }
         }
         self.notify_viewports(engine)?;
@@ -224,6 +234,8 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
     let loader_vm = vm.clone();
     let activity = std::sync::Arc::new(activity);
     let loader_activity = activity.clone();
+    #[cfg(feature = "audio")]
+    let (audio_vm, audio_activity) = (loader_vm.clone(), loader_activity.clone());
     let runtime = AppRuntime::spawn_with_web_loader(
         source,
         move || {
@@ -248,10 +260,19 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
             let Some(engine) = engine(handle) else {
                 return false as jboolean;
             };
-            let Ok(mut engine) = engine.lock() else {
-                return false as jboolean;
-            };
+            let mut engine = engine.lock_arc();
             engine.javascript_error = None;
+            engine.engine.reset_session();
+            engine.sent_camera_portal = None;
+            engine.sent_map_portal = None;
+            engine.sent_video_portal = None;
+            #[cfg(feature = "audio")]
+            {
+                engine.audio.reset();
+                engine.audio.set_waker(move || {
+                    let _ = audio_vm.attach_current_thread(|env| audio_activity.on_javascript_ready(env));
+                });
+            }
             engine.script = Some(ScriptRuntime {
                 runtime,
                 events,
@@ -279,9 +300,11 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDrainJavaScript(
     let Some(engine) = engine(handle) else {
         return false as jboolean;
     };
-    let Ok(mut engine) = engine.lock() else {
-        return false as jboolean;
-    };
+    let mut engine = engine.lock_arc();
+    #[cfg(feature = "audio")]
+    let audio_changed = engine.publish_audio();
+    #[cfg(not(feature = "audio"))]
+    let audio_changed = false;
     let Some(mut script) = engine.script.take() else {
         return false as jboolean;
     };
@@ -289,7 +312,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDrainJavaScript(
     match script.drain(&mut engine.engine) {
         Ok(changed) => {
             engine.script = Some(script);
-            changed as jboolean
+            (changed || audio_changed) as jboolean
         }
         Err(error) => {
             android_log(
@@ -309,7 +332,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptCall
     handle: jlong,
 ) -> JString<'local> {
     let calls = engine(handle)
-        .and_then(|engine| engine.lock().ok())
+        .map(|engine| engine.lock_arc())
         .and_then(|mut engine| {
             engine
                 .script
@@ -335,7 +358,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceive(
         .with_env(|env| message.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
     if let Some(engine) = engine(handle)
-        && let Ok(engine) = engine.lock()
+        && let engine = engine.lock_arc()
         && let Some(script) = &engine.script
         && let Err(error) = script.send(message)
     {
@@ -350,7 +373,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeIsLightAppearance(
     handle: jlong,
 ) -> jboolean {
     engine(handle)
-        .and_then(|engine| engine.lock().ok().map(|engine| engine.engine.scene().light))
+        .map(|engine| engine.lock_arc().engine.scene().light)
         .unwrap_or(false) as jboolean
 }
 
@@ -358,7 +381,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeIsLightAppearance(
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptError<'local>(
     mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong,
 ) -> JString<'local> {
-    let Some(error) = engine(handle).and_then(|engine| engine.lock().ok())
+    let Some(error) = engine(handle).map(|engine| engine.lock_arc())
         .and_then(|mut engine| engine.javascript_error.take())
     else {
         return JString::default();
@@ -374,7 +397,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRefreshJavaScript(
     let source = env.with_env(|env| source.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
     let Some(engine) = engine(handle) else { return false as jboolean; };
-    let Ok(engine) = engine.lock() else { return false as jboolean; };
+    let engine = engine.lock_arc();
     engine.script.as_ref().is_some_and(|script| script.runtime.evaluate_development(source).is_ok()) as jboolean
 }
 
@@ -382,7 +405,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRefreshJavaScript(
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptBytes<'local>(
     mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong, id: jlong,
 ) -> JByteArray<'local> {
-    let bytes = engine(handle).and_then(|engine| engine.lock().ok()).and_then(|engine| engine.script.as_ref().and_then(|script| script.runtime.take_bytes(id as u64)));
+    let bytes = engine(handle).map(|engine| engine.lock_arc()).and_then(|engine| engine.script.as_ref().and_then(|script| script.runtime.take_bytes(id as u64)));
     match bytes {
         Some(bytes) => env.with_env(|env| env.byte_array_from_slice(&bytes)).resolve::<jni::errors::LogErrorAndDefault>(),
         None => JByteArray::default(),
@@ -396,7 +419,26 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceiveB
     let (message, bytes) = env.with_env(|env| -> jni::errors::Result<_> {
         Ok((message.try_to_string(env)?, env.convert_byte_array(&bytes)?))
     }).resolve::<jni::errors::LogErrorAndDefault>();
-    (engine(handle).and_then(|engine| engine.lock().ok()).is_some_and(|engine| engine.script.as_ref().is_some_and(|script| script.runtime.send_bytes(message, bytes).is_ok()))) as jboolean
+    (engine(handle).map(|engine| engine.lock_arc()).is_some_and(|engine| engine.script.as_ref().is_some_and(|script| script.runtime.send_bytes(message, bytes).is_ok()))) as jboolean
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeReplaceCollection<'local>(
+    mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong, view: jlong, source: jlong, revision: jlong, rows: JString<'local>,
+) -> JString<'local> {
+    let rows = env.with_env(|env| rows.try_to_string(env)).resolve::<jni::errors::LogErrorAndDefault>();
+    let result = (|| -> Result<()> {
+        anyhow::ensure!(view > 0 && source > 0 && revision > 0, "Invalid native collection target");
+        let mut engine = engine(handle).context("App is no longer mounted")?.lock_arc();
+        let rows = serde_json::from_str(&rows)?;
+        let mut script = engine.script.take().context("App is no longer mounted")?;
+        let result = script.tree.replace_view_collection(view as usize, source as usize, revision as u64, rows, &mut engine.engine);
+        engine.script = Some(script);
+        anyhow::ensure!(result?, "Native view is no longer mounted");
+        Ok(())
+    })();
+    let message = result.err().map(|error| format!("{error:#}")).unwrap_or_default();
+    env.with_env(|env| env.new_string(message)).resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[unsafe(no_mangle)]
@@ -404,7 +446,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCaptureState(
     mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong, value: JString<'_>,
 ) -> jboolean {
     let value = env.with_env(|env| value.try_to_string(env)).resolve::<jni::errors::LogErrorAndDefault>();
-    engine(handle).and_then(|engine| engine.lock().ok()).is_some_and(|mut engine| {
+    engine(handle).map(|engine| engine.lock_arc()).is_some_and(|mut engine| {
         if value.is_empty() { engine.engine.remove_capture_state(controller as u64); return false; }
         serde_json::from_str(&value).ok().is_some_and(|value| engine.engine.update_capture_state(controller as u64, &value))
     }) as jboolean
@@ -415,7 +457,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePlaybackClock(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong,
     position: f32, duration: f32, playing: jboolean, speed: f32,
 ) -> jboolean {
-    engine(handle).and_then(|engine| engine.lock().ok()).is_some_and(|mut engine|
+    engine(handle).map(|engine| engine.lock_arc()).is_some_and(|mut engine|
         engine.engine.update_playback_clock(controller as u64, position, duration, playing, speed)) as jboolean
 }
 
@@ -423,7 +465,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePlaybackClock(
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRemovePlaybackClock(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong,
 ) {
-    if let Some(mut engine) = engine(handle).and_then(|engine| engine.lock().ok()) {
+    if let Some(mut engine) = engine(handle).map(|engine| engine.lock_arc()) {
         engine.engine.remove_playback_clock(controller as u64);
     }
 }

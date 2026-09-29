@@ -13,7 +13,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal class SqliteAdapter(private val context: Context) : NativeAdapter {
+internal class SqliteAdapter(private val context: Context,
+    private val replaceCollection: ((JSONObject, String, CancellationSignal, NativeResultHandler) -> Unit)? = null,
+) : NativeAdapter {
     private val executor = Executors.newSingleThreadExecutor()
     private val databases = mutableMapOf<String, SQLiteDatabase>()
     private val pending = ConcurrentHashMap<Long, CancellationSignal>()
@@ -25,6 +27,7 @@ internal class SqliteAdapter(private val context: Context) : NativeAdapter {
         pending[requestId] = signal
         try { executor.execute {
             var opened: String? = null
+            var collection: Pair<JSONObject, String>? = null
             val result = try {
                 signal.throwIfCanceled()
                 val input = JSONObject(payload)
@@ -48,9 +51,15 @@ internal class SqliteAdapter(private val context: Context) : NativeAdapter {
                         val id = UUID.randomUUID().toString()
                         databases[id] = SQLiteDatabase.openDatabase(destination.path, null, SQLiteDatabase.OPEN_READONLY)
                         opened = id
-                        NativeResult.Success(id)
+                        NativeResult.Success(id) {
+                            if (!stopped.get()) {
+                                try { executor.execute { databases.remove(id)?.close() } }
+                                catch (_: java.util.concurrent.RejectedExecutionException) { }
+                            }
+                        }
                     }
-                    "query" -> {
+                    "query", "query-collection" -> {
+                        if (operation == "query-collection") require(replaceCollection != null) { "Native collections require a mounted app" }
                         val database = databases[input.getString("id")] ?: error("Database is closed")
                         val sql = input.getString("sql")
                         require(sql.length <= 65536) { "SQL is too long" }
@@ -99,7 +108,12 @@ internal class SqliteAdapter(private val context: Context) : NativeAdapter {
                                 rows.put(row)
                             }
                         }
-                        NativeResult.Success(rows.toString())
+                        if (operation == "query-collection") {
+                            val target = input.getJSONObject("target")
+                            for (field in listOf("view", "source", "revision")) require(target.getLong(field) in 1..9007199254740991L) { "Invalid native collection target" }
+                            collection = target to rows.toString()
+                            NativeResult.Success(rows.length().toString())
+                        } else NativeResult.Success(rows.toString())
                     }
                     "close" -> {
                         databases.remove(input.getString("id"))?.close()
@@ -110,16 +124,28 @@ internal class SqliteAdapter(private val context: Context) : NativeAdapter {
             } catch (error: Exception) {
                 NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Database operation failed", false)
             }
-            pending.remove(requestId)
             if (signal.isCanceled || stopped.get()) opened?.let { databases.remove(it)?.close() }
-            if (!signal.isCanceled && !stopped.get()) complete(result)
+            val delivery = collection
+            if (delivery != null && result is NativeResult.Success && !signal.isCanceled && !stopped.get()) {
+                replaceCollection!!.invoke(delivery.first, delivery.second, signal) { applied ->
+                    pending.remove(requestId, signal)
+                    if (!signal.isCanceled && !stopped.get()) complete(if (applied is NativeResult.Success) result else applied)
+                }
+            } else {
+                pending.remove(requestId, signal)
+                if (!signal.isCanceled && !stopped.get()) complete(result)
+            }
         } } catch (error: java.util.concurrent.RejectedExecutionException) {
-            pending.remove(requestId)
+            pending.remove(requestId, signal)
             complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Database adapter is stopped", false))
         }
     }
 
     override fun cancel(requestId: Long) { pending[requestId]?.cancel() }
+    fun reset() {
+        pending.values.forEach { it.cancel() }
+        executor.execute { databases.values.forEach { it.close() }; databases.clear() }
+    }
     fun stop() {
         if (!stopped.compareAndSet(false, true)) return
         pending.values.forEach { it.cancel() }

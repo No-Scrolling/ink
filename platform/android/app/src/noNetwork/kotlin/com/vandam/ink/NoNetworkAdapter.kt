@@ -19,5 +19,6 @@ internal fun createNetworkAdapter(_context: android.content.Context, _cacheName:
 
         override fun cancel(requestId: Long) = Unit
 
+        override fun reset() = Unit
         override fun stop() = Unit
     }

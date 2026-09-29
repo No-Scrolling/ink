@@ -148,6 +148,6 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
             video: !!item?.mimeType.startsWith("video/"), onPress: item && (() => setSelected(previous => {
               const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next;
             })) };
-        })], mediaTemplate, row => row.flatMap(item => [item.src, item.mimeType, selected.has(item.id)])),
+        })], mediaTemplate),
       }));
 }

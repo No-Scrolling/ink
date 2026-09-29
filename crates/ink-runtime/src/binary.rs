@@ -6,10 +6,24 @@ pub(super) const MAX_BYTES: usize = 512 * 1024;
 const MAX_QUEUED_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Default)]
-pub(super) struct Buffers(Arc<Mutex<HashMap<u64, Vec<u8>>>>);
+pub(super) struct Buffers(Arc<Mutex<Queued>>);
+
+#[derive(Default)]
+struct Queued {
+    buffers: HashMap<u64, Vec<u8>>,
+    bytes: usize,
+}
+
+impl Queued {
+    fn remove(&mut self, id: u64) -> Option<Vec<u8>> {
+        let bytes = self.buffers.remove(&id)?;
+        self.bytes -= bytes.len();
+        Some(bytes)
+    }
+}
 
 impl Buffers {
-    pub fn take(&self, id: u64) -> Option<Vec<u8>> { self.0.lock().ok()?.remove(&id) }
+    pub fn take(&self, id: u64) -> Option<Vec<u8>> { self.0.lock().ok()?.remove(id) }
 }
 
 pub(super) fn install(ctx: &Ctx<'_>, buffers: Buffers, events: EventSink) -> rquickjs::Result<()> {
@@ -25,13 +39,14 @@ pub(super) fn install(ctx: &Ctx<'_>, buffers: Buffers, events: EventSink) -> rqu
         let bytes = unsafe { bytes.as_bytes() }.ok_or_else(|| Exception::throw_type(&ctx, "detached binary buffer"))?;
         if bytes.len() > MAX_BYTES { return Err(Exception::throw_range(&ctx, "native binary payload is too large")); }
         let mut queued = buffers.0.lock().map_err(|_| Exception::throw_message(&ctx, "binary queue unavailable"))?;
-        if queued.len() >= 256 || queued.values().map(Vec::len).sum::<usize>() + bytes.len() > MAX_QUEUED_BYTES {
+        if queued.buffers.len() >= 256 || queued.bytes + bytes.len() > MAX_QUEUED_BYTES {
             return Err(Exception::throw_message(&ctx, "busy: native binary queue is full"));
         }
-        if queued.contains_key(&id) { return Err(Exception::throw_type(&ctx, "duplicate binary request ID")); }
-        queued.insert(id, bytes.to_vec());
+        if queued.buffers.contains_key(&id) { return Err(Exception::throw_type(&ctx, "duplicate binary request ID")); }
+        queued.buffers.insert(id, bytes.to_vec());
+        queued.bytes += bytes.len();
         if events.try_send(Event::Message(message)).is_err() {
-            queued.remove(&id);
+            queued.remove(id);
             return Err(Exception::throw_message(&ctx, "busy: native event queue is unavailable"));
         }
         Ok(())
@@ -43,7 +58,7 @@ mod tests {
     use crate::{AppRuntime, Event};
     use std::time::Duration;
 
-    fn message(events: &std::sync::mpsc::Receiver<Event>) -> String {
+    fn message(events: &crate::EventReceiver) -> String {
         loop {
             match events.recv_timeout(Duration::from_secs(5)).unwrap() {
                 Event::Message(value) => return value,

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock, mpsc::Receiver},
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
@@ -16,7 +16,7 @@ use super::{ANDROID_LOG_ERROR, android_log};
 
 struct Worker {
     runtime: AppRuntime,
-    events: Mutex<Receiver<Event>>,
+    events: Mutex<ink_runtime::EventReceiver>,
 }
 
 #[derive(Default)]
