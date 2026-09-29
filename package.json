@@ -6,16 +6,7 @@
     "examples/light-template",
     "examples/counter",
     "examples/tuner",
-    "examples/weather",
-    "benchmarks/apps/ink-counter",
-    "benchmarks/apps/ink-bridge",
-    "benchmarks/apps/ink-updates",
-    "benchmarks/apps/ink-views",
-    "benchmarks/apps/ink-native-controls",
-    "benchmarks/apps/ink-paced",
-    "benchmarks/apps/ink-scroll",
-    "benchmarks/apps/ink-stress",
-    "benchmarks/apps/ink-list"
+    "examples/weather"
   ],
   "scripts": {
     "check": "tsc -p packages/ink/tsconfig.json"

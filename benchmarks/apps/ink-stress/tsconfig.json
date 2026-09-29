@@ -1,4 +1,0 @@
-{
-  "extends": "ink/tsconfig",
-  "include": ["app", "lib", "../../../packages/ink/runtime.d.ts"]
-}

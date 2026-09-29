@@ -18,74 +18,6 @@
         "typescript": "5.9.3",
       },
     },
-    "benchmarks/apps/ink-bridge": {
-      "name": "ink-bridge-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
-    "benchmarks/apps/ink-counter": {
-      "name": "ink-counter-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
-    "benchmarks/apps/ink-list": {
-      "name": "ink-list-benchmark",
-      "version": "1.0.0",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-      "devDependencies": {
-        "@types/react": "19.2.18",
-        "typescript": "5.9.3",
-      },
-    },
-    "benchmarks/apps/ink-native-controls": {
-      "name": "ink-native-controls-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
-    "benchmarks/apps/ink-paced": {
-      "name": "ink-paced-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
-    "benchmarks/apps/ink-scroll": {
-      "name": "ink-scroll-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
-    "benchmarks/apps/ink-stress": {
-      "name": "ink-stress-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
-    "benchmarks/apps/ink-updates": {
-      "name": "ink-updates-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
-    "benchmarks/apps/ink-views": {
-      "name": "ink-views-benchmark",
-      "dependencies": {
-        "ink": "workspace:*",
-        "react": "19.2.8",
-      },
-    },
     "examples/counter": {
       "name": "ink-counter-example",
       "dependencies": {
@@ -545,29 +477,11 @@
 
     "ink": ["ink@workspace:packages/ink"],
 
-    "ink-bridge-benchmark": ["ink-bridge-benchmark@workspace:benchmarks/apps/ink-bridge"],
-
-    "ink-counter-benchmark": ["ink-counter-benchmark@workspace:benchmarks/apps/ink-counter"],
-
     "ink-counter-example": ["ink-counter-example@workspace:examples/counter"],
 
     "ink-light-template-example": ["ink-light-template-example@workspace:examples/light-template"],
 
-    "ink-list-benchmark": ["ink-list-benchmark@workspace:benchmarks/apps/ink-list"],
-
-    "ink-native-controls-benchmark": ["ink-native-controls-benchmark@workspace:benchmarks/apps/ink-native-controls"],
-
-    "ink-paced-benchmark": ["ink-paced-benchmark@workspace:benchmarks/apps/ink-paced"],
-
-    "ink-scroll-benchmark": ["ink-scroll-benchmark@workspace:benchmarks/apps/ink-scroll"],
-
-    "ink-stress-benchmark": ["ink-stress-benchmark@workspace:benchmarks/apps/ink-stress"],
-
     "ink-tuner-example": ["ink-tuner-example@workspace:examples/tuner"],
-
-    "ink-updates-benchmark": ["ink-updates-benchmark@workspace:benchmarks/apps/ink-updates"],
-
-    "ink-views-benchmark": ["ink-views-benchmark@workspace:benchmarks/apps/ink-views"],
 
     "ink-weather-example": ["ink-weather-example@workspace:examples/weather"],
 

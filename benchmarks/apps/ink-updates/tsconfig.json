@@ -1,4 +1,0 @@
-{
-  "extends": "../ink-counter/tsconfig.json",
-  "include": ["app/**/*.tsx"]
-}

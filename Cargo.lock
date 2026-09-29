@@ -725,20 +725,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ink-headless"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "ink-compiler",
- "ink-core",
- "ink-protocol",
- "ink-runtime",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "ink-protocol"
 version = "0.1.0"
 dependencies = [

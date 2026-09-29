@@ -1,8 +1,0 @@
-{
-  "name": "ink-bridge-benchmark",
-  "private": true,
-  "dependencies": {
-    "ink": "workspace:*",
-    "react": "19.2.8"
-  }
-}

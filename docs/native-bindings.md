@@ -111,6 +111,4 @@ The existing React `PlayingScreen` API now supplies one native player descriptio
 
 ## Current scope
 
-This adapter supports persistent control structures, bound properties and keyed lists. Applications opt into `nativeView`; supported ordinary `List` rows compile automatically. Other React screen components still reconcile in JavaScript. A count change in the 500-cell binding benchmark hides predeclared cells; the separate 1,000-row native-controls fixture exercises keyed insertion, reordering, removal and window recycling.
-
-The 500-cell timed workload sends one tick; native expressions update every label and all 50 row gaps. Compare it with the unchanged React workload using [the headless harness](../benchmarks/headless/README.md). Both still exercise the same native layout and scrolling code.
+This adapter supports persistent control structures, bound properties and keyed lists. Applications opt into `nativeView`; supported ordinary `List` rows compile automatically. Other React screen components still reconcile in JavaScript.

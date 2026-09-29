@@ -1,4 +1,0 @@
-<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map>
-    <string name="migration">{&quot;id&quot;:&quot;migration&quot;,&quot;url&quot;:&quot;http:\/\/10.0.2.2:8787\/audio.mp3&quot;,&quot;title&quot;:&quot;Migration check&quot;,&quot;token&quot;:&quot;2541554d-292c-4103-9f2b-a65fb3a41d0f&quot;,&quot;status&quot;:&quot;finished&quot;,&quot;file&quot;:{&quot;id&quot;:&quot;2541554d-292c-4103-9f2b-a65fb3a41d0f&quot;,&quot;src&quot;:&quot;ink-file:\/\/2541554d-292c-4103-9f2b-a65fb3a41d0f&quot;,&quot;name&quot;:&quot;Migration check&quot;,&quot;mimeType&quot;:&quot;audio\/mpeg&quot;,&quot;size&quot;:4043295}}</string>
-</map>

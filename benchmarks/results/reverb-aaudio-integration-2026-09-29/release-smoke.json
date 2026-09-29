@@ -1,7 +1,0 @@
-{
-  "apk_sha256": "52f39420dd0c138a9f330024b186287c872e270f2e46b1ab1369624d63bc25ed",
-  "apk_bytes": 5217884,
-  "signing": "local development key; release optimisations enabled",
-  "native_output_confirmed": true,
-  "audio_errors": false
-}

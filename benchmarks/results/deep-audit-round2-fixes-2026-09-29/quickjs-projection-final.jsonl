@@ -1,9 +1,0 @@
-{"type":"log","level":"log","message":"{\"scenario\":\"mount-1000\",\"projects\":1000,\"keyCalls\":1000,\"operations\":4,\"records\":1000,\"ops\":[\"create\",\"create\",\"insert\",\"insert\"]}"}
-{"type":"log","level":"log","message":"{\"scenario\":\"callback-state-only\",\"projects\":0,\"keyCalls\":0,\"operations\":0,\"records\":0,\"ops\":[]}"}
-{"type":"log","level":"log","message":"{\"scenario\":\"one-record-replacement\",\"projects\":1,\"keyCalls\":1,\"operations\":1,\"records\":1,\"ops\":[\"update\"]}"}
-{"type":"log","level":"log","message":"{\"scenario\":\"scalar-capture-change\",\"projects\":1000,\"keyCalls\":0,\"operations\":1,\"records\":1000,\"ops\":[\"update\"]}"}
-{"type":"log","level":"log","message":"{\"scenario\":\"object-capture-change\",\"projects\":1000,\"keyCalls\":0,\"operations\":0,\"records\":0,\"ops\":[]}"}
-{"type":"log","level":"log","message":"{\"scenario\":\"callback-change-with-same-object-capture\",\"projects\":0,\"keyCalls\":0,\"operations\":0,\"records\":0,\"ops\":[]}"}
-{"type":"log","level":"log","message":"{\"scenario\":\"callback\",\"key\":\"row-700\",\"index\":700,\"action\":2,\"visual\":1}"}
-{"type":"log","level":"log","message":"{\"scenario\":\"callback-dispatch-reprojection\",\"projects\":1,\"keyCalls\":0,\"operations\":0,\"records\":0,\"ops\":[]}"}
-{"type":"observation-complete"}

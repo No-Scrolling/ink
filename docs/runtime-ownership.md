@@ -2,9 +2,9 @@
 
 Reviewed 28 September 2026. Rust owns Ink's visual engine and native list windows. JavaScript supplies application data, actions and React semantics. Android services remain in Kotlin where they use platform APIs.
 
-Android builds now select native list, message, playback and bound-view composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Dynamic native-view descriptions conservatively retain broader support; custom React components keep their existing behaviour. See the [optional UI build results](../benchmarks/results/optional-ui-2026-09-28/README.md).
+Android builds now select native list, message, playback and bound-view composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Dynamic native-view descriptions conservatively retain broader support; custom React components keep their existing behaviour.
 
-Canvas, text-input, camera, video and map primitives are also selected at build time. Core defaults retain all primitives; dynamic native views retain these paths because their descriptions can be constructed at runtime. The React commit decoder borrows QuickJS's JSON text until deserialisation finishes, then sends owned values across the thread boundary. See the [primitive and bridge cleanup results](../benchmarks/results/primitive-size-2026-09-28/README.md).
+Canvas, text-input, camera, video and map primitives are also selected at build time. Core defaults retain all primitives; dynamic native views retain these paths because their descriptions can be constructed at runtime. The React commit decoder borrows QuickJS's JSON text until deserialisation finishes, then sends owned values across the thread boundary.
 
 | Work | Owner | Behaviour |
 | --- | --- | --- |
@@ -53,11 +53,3 @@ Further compiler coverage should prove equivalence for pure wrappers. Dropping t
 Rust now owns the standard continuously changing displays covered by this audit. JS still executes app functions, hooks, effects, callbacks and general React reconciliation. Keeping that compatibility path is deliberate. Further pure-row compiler coverage and native template allocation work need workload-specific evidence, not a blanket language migration.
 
 The effects page still explicitly reads fresh player state once a second while visible. This is an app-specific statistic subscription, not a playback animation loop. A custom tuner can likewise retain JS measurements for its own note display policy. Kotlin remains appropriate for Android services and platform integration.
-
-## Validation
-
-See the [follow-up report](../benchmarks/results/ownership-followup-2026-09-28/README.md) for current paired list results, native video/recording evidence, bridge attribution and microphone test limitations.
-
-See the [boundary implementation report](../benchmarks/results/native-boundaries-2026-09-28/README.md) for paired list measurements, emulator screenshots and playback commit counts. The expanded headless suite retains custom React state and callback checks alongside native built-ins. The emulator checks cover conversation visuals/actions, media selection/pagination, reorder actions, playback, networking and a background fetch. LP3 was not connected for this validation.
-
-Earlier evidence: [list projection](../benchmarks/results/list-projection-2026-09-28/README.md), [automatic lists](../benchmarks/results/default-lists-2026-09-28/README.md), [native controls on LP3](../benchmarks/results/lp3-validation-2026-09-28/native-controls/README.md).

@@ -114,7 +114,3 @@ Packages share the app’s runtime, APIs and Android permissions. They are not i
 Use [Secure store](/secure-store) for credentials protected by Android Keystore. For JavaScript hashing, use [`@noble/hashes`](https://github.com/paulmillr/noble-hashes).
 
 [LightOS integration](/light-sdk) provides access to host services and preferences. Distribution approval is separate.
-
-## Benchmarks
-
-See the [benchmark results](https://github.com/vandamd/ink/blob/main/benchmarks/README.md) for app comparisons and measurement limits.
