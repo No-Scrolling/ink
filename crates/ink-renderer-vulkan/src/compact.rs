@@ -393,8 +393,15 @@ fn decode_encoded_image(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
 }
 
 #[cfg(not(target_os = "android"))]
+#[cfg(not(feature = "offscreen"))]
 fn decode_encoded_image(_bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     Err(anyhow!("encoded bundled images require Android"))
+}
+
+#[cfg(all(not(target_os = "android"), feature = "offscreen"))]
+fn decode_encoded_image(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
+    let image = image::load_from_memory(bytes)?.into_rgba8();
+    Ok((image.width(), image.height(), image.into_raw()))
 }
 
 struct ImageDraw {
@@ -660,8 +667,29 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    /// # Safety
+    /// `window` must point to a live Android `ANativeWindow` retained until this renderer is dropped.
     pub unsafe fn new(window: *mut std::ffi::c_void, width: u32, height: u32) -> Result<Self> {
         let surface = unsafe { gpu::Surface::new(window, width, height)? };
+        Self::from_surface(surface, width, height)
+    }
+
+    #[cfg(feature = "offscreen")]
+    pub fn offscreen(width: u32, height: u32) -> Result<Self> {
+        Self::from_surface(gpu::Surface::offscreen(width, height)?, width, height)
+    }
+
+    #[cfg(feature = "offscreen")]
+    pub fn pixels(&mut self) -> Result<Vec<u8>> {
+        self.surface.pixels()
+    }
+
+    #[cfg(feature = "offscreen")]
+    pub fn device_name(&self) -> String {
+        self.surface.device_name()
+    }
+
+    fn from_surface(surface: gpu::Surface, width: u32, height: u32) -> Result<Self> {
         let device = surface.device();
         let queue = device.clone();
         let config = gpu::SurfaceConfiguration {

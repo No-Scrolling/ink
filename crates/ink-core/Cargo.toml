@@ -20,6 +20,7 @@ camera = []
 video = []
 maps = []
 perf = []
+design-fonts = []
 
 [dependencies]
 arabic_reshaper = "0.4.2"

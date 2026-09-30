@@ -2,6 +2,7 @@ mod android;
 mod development;
 mod cli;
 mod create;
+mod export;
 mod output;
 mod process;
 mod quality;
@@ -91,6 +92,10 @@ fn run() -> Result<()> {
         InkCommand::Info => {
             let project = load_project(cli.directory.as_deref())?;
             show_info(&project)
+        }
+        InkCommand::Export(args) => {
+            let project = load_project(cli.directory.as_deref())?;
+            export::run(&project, args)
         }
     }
 }

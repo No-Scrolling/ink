@@ -301,7 +301,7 @@ fn run(
     let mut work_affinity = None;
     let runtime = Runtime::new()?;
     runtime.set_memory_limit(64 * 1024 * 1024);
-    runtime.set_max_stack_size(512 * 1024);
+    runtime.set_max_stack_size(if cfg!(target_os = "android") { 512 * 1024 } else { 1024 * 1024 });
     let interrupted = stopped.clone();
     runtime.set_interrupt_handler(Some(Box::new(move || interrupted.load(Ordering::Acquire))));
     let context = Context::full(&runtime)?;

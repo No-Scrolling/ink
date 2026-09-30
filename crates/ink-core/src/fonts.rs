@@ -97,9 +97,18 @@ fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
     FONTS.iter().enumerate().filter_map(|(index, font)| font.get().map(|font| (index + 1, font)))
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(all(not(target_os = "android"), not(feature = "design-fonts")))]
 fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
     std::iter::empty()
+}
+
+#[cfg(all(not(target_os = "android"), feature = "design-fonts"))]
+fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
+    static FONTS: OnceLock<[FontArc; 2]> = OnceLock::new();
+    FONTS.get_or_init(|| [
+        FontArc::try_from_slice(include_bytes!("../../../assets/fonts/NotoSansSymbols-Regular-Subsetted.ttf")).expect("bundled Noto Sans Symbols is valid"),
+        FontArc::try_from_slice(include_bytes!("../../../assets/fonts/NotoSansSymbols-Regular-Subsetted2.ttf")).expect("bundled Noto Sans Symbols is valid"),
+    ]).iter().enumerate().map(|(index, font)| (index + 1, font))
 }
 
 pub fn text_width(text: &str, size: f32) -> f32 {

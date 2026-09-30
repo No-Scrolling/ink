@@ -28,6 +28,7 @@ pub struct AppInfo {
 pub struct Project {
     config_path: PathBuf,
     config: ResolvedConfig,
+    preview: bool,
 }
 
 impl Project {
@@ -40,7 +41,20 @@ impl Project {
         Ok(Self {
             config_path,
             config,
+            preview: false,
         })
+    }
+
+    /// Compile design exports separately, without background workers.
+    pub fn for_preview(&self) -> Self {
+        let mut project = self.clone();
+        project.preview = true;
+        project.config.worker_entry = None;
+        project
+    }
+
+    pub fn work_path(&self) -> PathBuf {
+        self.root().join(if self.preview { ".ink/design" } else { ".ink" })
     }
 
     pub fn name(&self) -> &str {
@@ -90,7 +104,7 @@ impl Project {
     }
 
     pub fn android_assets_path(&self) -> PathBuf {
-        self.root().join(".ink/android/assets")
+        self.work_path().join("android/assets")
     }
 
     pub fn bundle_manifest_path(&self) -> PathBuf {
@@ -138,13 +152,27 @@ pub fn compile_development(project: &Project) -> Result<Capabilities> {
 
 fn compile_profile(project: &Project, development: bool) -> Result<Capabilities> {
     let bundle = javascript::bundle_profile(project, development)?;
+    install_bundle(project, bundle, development)
+}
+
+/// Compile a design entry point, optionally generating file routes.
+pub fn compile_preview(project: &Project, source: &str, routes: bool) -> Result<Capabilities> {
+    let bundle = javascript::bundle_entry(project, false, Some(source), routes)?;
+    install_bundle(project, bundle, false)
+}
+
+fn install_bundle(
+    project: &Project,
+    bundle: javascript::Bundle,
+    development: bool,
+) -> Result<Capabilities> {
     if development {
         write_if_changed(&project.bundle_manifest_path(), &bundle.manifest)?;
     } else {
         remove_obsolete_output(&project.bundle_manifest_path())?;
     }
     for name in ["app.js.map", "worker.js.map"] {
-        let path = project.root().join(".ink/bundle").join(name);
+        let path = project.work_path().join("bundle").join(name);
         let destination = project.android_assets_path().join(name);
         if development && (name == "app.js.map" || bundle.worker.is_some()) && path.is_file() {
             write_if_changed(&destination, &std::fs::read(path)?)?;
@@ -189,7 +217,9 @@ fn compile_profile(project: &Project, development: bool) -> Result<Capabilities>
     )?;
     remove_obsolete_output(&project.android_assets_path().join("ink-icons-v1.json"))?;
     write_if_changed(&project.capability_manifest_path(), &capabilities.encode()?)?;
-    generate_icon(project)?;
+    if !project.preview {
+        generate_icon(project)?;
+    }
     Ok(capabilities)
 }
 

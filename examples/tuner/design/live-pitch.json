@@ -1,0 +1,17 @@
+{
+  "calls": {
+    "audio.activate": null,
+    "permissions.status": "granted",
+    "audio.start": null
+  },
+  "controllers": {
+    "audio": {
+      "status": "active",
+      "frequencyHz": 529.7,
+      "note": "C#",
+      "octave": 5,
+      "cents": 18,
+      "confidence": 0.98
+    }
+  }
+}

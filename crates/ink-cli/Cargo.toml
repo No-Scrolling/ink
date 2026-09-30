@@ -10,10 +10,17 @@ name = "ink"
 path = "src/main.rs"
 
 [dependencies]
+ab_glyph.workspace = true
 anyhow = { workspace = true, features = ["std"] }
+base64 = "0.22.1"
 clap.workspace = true
 crossterm = "0.29"
+image.workspace = true
 indicatif.workspace = true
 ink-compiler = { path = "../ink-compiler" }
+ink-core = { path = "../ink-core", features = ["design-fonts"] }
+ink-renderer-vulkan = { path = "../ink-renderer-vulkan", features = ["offscreen"] }
+ink-runtime = { path = "../ink-runtime" }
 owo-colors.workspace = true
 serde_json.workspace = true
+sha2 = "0.10.9"

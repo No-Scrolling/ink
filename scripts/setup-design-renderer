@@ -1,0 +1,64 @@
+#!/bin/sh
+set -eu
+
+# Build a standalone CPU Vulkan driver. No Android SDK or emulator files are used.
+revision=3fc652a060
+checksum=4dbe30de0a0cf9956f833d12ad752fecb1de19cd47c165eb0ba35386ddb300bf
+runtime_directory="${INK_DESIGN_RENDERER_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/ink/design-renderer/mesa-$revision}"
+build_directory="$runtime_directory/build-source"
+venv="$build_directory/venv"
+
+if [ -f "$runtime_directory/lib/libvulkan_lvp.dylib" ] || [ -f "$runtime_directory/lib/libvulkan_lvp.so" ]; then
+  echo "Design renderer already installed: $runtime_directory"
+  exit 0
+fi
+
+case "$(uname -s)" in
+  Darwin)
+    command -v brew >/dev/null || { echo 'Install Homebrew before setting up the design renderer.' >&2; exit 1; }
+    echo 'Installing the desktop Mesa build dependencies…'
+    HOMEBREW_NO_AUTO_UPDATE=1 brew install llvm@21 ninja bison flex glslang spirv-tools pkgconf
+    export PATH="$(brew --prefix llvm@21)/bin:$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
+    export OBJC=/usr/bin/clang
+    developer_directory="${DEVELOPER_DIR:-$(xcode-select -p)}"
+    if [ -d "$developer_directory/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk" ]; then
+      export SDKROOT="$developer_directory/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    fi
+    library=libvulkan_lvp.dylib
+    ;;
+  Linux)
+    library=libvulkan_lvp.so
+    for dependency in cc c++ ninja llvm-config bison flex glslangValidator pkg-config; do
+      command -v "$dependency" >/dev/null || { echo "Install $dependency before setting up the design renderer." >&2; exit 1; }
+    done
+    ;;
+  *) echo 'The source setup supports macOS and Linux. Set INK_VULKAN_LIBRARY to a desktop Vulkan runtime on other systems.' >&2; exit 1 ;;
+esac
+command -v uv >/dev/null || { echo 'Install uv before setting up the design renderer.' >&2; exit 1; }
+mkdir -p "$build_directory"
+archive="$build_directory/mesa.tar.gz"
+if [ ! -f "$archive" ]; then
+  curl --fail --location --retry 2 "https://gitlab.freedesktop.org/mesa/mesa/-/archive/$revision/mesa-$revision.tar.gz" --output "$archive"
+fi
+uv run --no-project python - "$archive" "$checksum" <<'PY'
+import hashlib, pathlib, sys
+if hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() != sys.argv[2]:
+    raise SystemExit('The Mesa source archive checksum does not match the pinned revision.')
+PY
+if [ ! -d "$build_directory/mesa-$revision" ]; then
+  tar -xzf "$archive" -C "$build_directory"
+fi
+uv venv --allow-existing "$venv"
+uv pip install --python "$venv/bin/python" 'meson==1.9.1' 'mako==1.3.10' 'packaging==25.0' 'pyyaml==6.0.2'
+export VIRTUAL_ENV="$venv"
+export PATH="$venv/bin:$PATH"
+uv run --active --no-project --no-sync "$venv/bin/meson" setup --reconfigure "$build_directory/build" "$build_directory/mesa-$revision" \
+  --prefix "$runtime_directory" --libdir lib --buildtype release \
+  -Dgallium-drivers=llvmpipe -Dvulkan-drivers=swrast -Dllvm=enabled -Dshared-llvm=enabled \
+  -Dplatforms= -Dglx=disabled -Dgbm=disabled -Dgallium-va=disabled -Dopengl=false \
+  -Dgles1=disabled -Dgles2=disabled -Degl=disabled -Dzstd=disabled
+ninja -C "$build_directory/build" "src/gallium/targets/lavapipe/$library"
+mkdir -p "$runtime_directory/lib"
+cp "$build_directory/build/src/gallium/targets/lavapipe/$library" "$runtime_directory/lib/$library"
+cp "$build_directory/mesa-$revision/docs/license.rst" "$runtime_directory/MESA-LICENCE.rst"
+echo "Design renderer ready: $runtime_directory/lib/$library"

@@ -13,11 +13,14 @@ ink-core = { path = "../ink-core", default-features = false }
 miniz_oxide.workspace = true
 unicode-segmentation.workspace = true
 ash = { version = "0.38.0", default-features = false, features = ["loaded", "std", "debug"] }
+image = { workspace = true, optional = true }
+libloading = { version = "0.8.9", optional = true }
 
 [build-dependencies]
 naga = { version = "30.0.1", features = ["spv-out", "wgsl-in"] }
 
 [features]
 image = []
+offscreen = ["dep:image", "dep:libloading"]
 perf = ["ink-core/perf"]
 presentation-timing = ["perf"]

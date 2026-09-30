@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
-export async function generateFileRoutes(root) {
+export async function generateFileRoutes(root, output = resolve(root, ".ink/routes.tsx")) {
   const imports = ['import { FileNavigator } from "ink/file-router";'];
   const routes = new Set();
   const shapes = new Set();
@@ -45,7 +45,6 @@ export async function generateFileRoutes(root) {
   }
   const tree = await directory(resolve(root, "app"), [], "app");
   if (!routes.has("/")) throw new Error("File routing requires app/index.tsx or an index.tsx inside a route group");
-  const source = imports.join("\n") + `\nconst tree = ${tree};\nexport default function App() { return <FileNavigator tree={tree} />; }\n`;
-  const output = resolve(root, ".ink/routes.tsx");
+  const source = imports.join("\n") + `\nimport type { Destination } from "ink";\nconst tree = ${tree};\nexport default function App({ initialDestination }: { initialDestination?: Destination }) { return <FileNavigator tree={tree} initialDestination={initialDestination} />; }\n`;
   if (!await Bun.file(output).exists() || await Bun.file(output).text() !== source) await Bun.write(output, source);
 }

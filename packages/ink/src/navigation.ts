@@ -56,12 +56,36 @@ export function useRouteParams(decode?: string | ((value: unknown) => object)): 
   return params;
 }
 
-export function NavigationStack({ routes, renderEntries }: {
+function resolveDestination(routes: ReadonlySet<string>, destination: Destination) {
+  const target = typeof destination === "string" ? { path: destination, params: {} } : destination;
+  if (routes.has(target.path)) {
+    const params = { ...target.params };
+    for (const name of parameterNames(target.path)) {
+      const value = params[name];
+      if ((typeof value !== "string" && typeof value !== "number") || String(value) === "") throw new Error(`Missing route parameter: ${name}`);
+      params[name] = String(value);
+    }
+    return { path: target.path, params };
+  }
+  for (const pattern of [...routes.keys()].sort(comparePaths)) {
+    const params = matchPath(pattern, target.path);
+    if (params) return { path: pattern, params: { ...target.params, ...params } };
+  }
+  throw new Error(`Unknown route: ${target.path}`);
+}
+
+export function NavigationStack({ routes, renderEntries, initialDestination }: {
   routes: ReadonlySet<string>;
   renderEntries: (entries: Entry[], selectTab: (path: string) => void) => ReactNode;
+  initialDestination?: Destination;
 }) {
-  const [entries, setEntries] = useState<Entry[]>([{ key: 0, path: "/", params: {} }]);
-  const nextKey = useRef(1);
+  const [entries, setEntries] = useState<Entry[]>(() => {
+    const start = { key: 0, path: "/", params: {} };
+    if (initialDestination === undefined) return [start];
+    const target = resolveDestination(routes, initialDestination);
+    return target.path === "/" ? [{ ...start, ...target }] : [start, { key: 1, ...target }];
+  });
+  const nextKey = useRef(initialDestination === undefined ? 1 : 2);
   // Tab membership belongs to the route table, even while its layout is covered or unmounted.
   const tabGroups = useMemo(() => new Map<object, readonly string[]>(), [routes]);
   const registerTabs = useMemo(() => (group: object, paths: readonly string[], ownsStart: boolean) => {
@@ -86,23 +110,7 @@ export function NavigationStack({ routes, renderEntries }: {
       return [...current.slice(0, current.indexOf(first)), { ...first, tabGroup: group, path: retained ? last.path : paths[0], params: retained ? last.params : {} }, ...current.slice(current.indexOf(last) + 1)];
     });
   }, [routes, tabGroups]);
-  const resolve = useMemo(() => (destination: Destination) => {
-    const target = typeof destination === "string" ? { path: destination, params: {} } : destination;
-    if (routes.has(target.path)) {
-      const params = { ...target.params };
-      for (const name of parameterNames(target.path)) {
-        const value = params[name];
-        if ((typeof value !== "string" && typeof value !== "number") || String(value) === "") throw new Error(`Missing route parameter: ${name}`);
-        params[name] = String(value);
-      }
-      return { path: target.path, params };
-    }
-    for (const pattern of [...routes.keys()].sort(comparePaths)) {
-      const params = matchPath(pattern, target.path);
-      if (params) return { path: pattern, params: { ...target.params, ...params } };
-    }
-    throw new Error(`Unknown route: ${target.path}`);
-  }, [routes]);
+  const resolve = useMemo(() => (destination: Destination) => resolveDestination(routes, destination), [routes]);
   useLayoutEffect(() => {
     if (dispatch) throw new Error("An Ink app can mount one router");
     dispatch = action => {

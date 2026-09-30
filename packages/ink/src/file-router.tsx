@@ -1,5 +1,5 @@
 import { Activity, createElement, useMemo, type ComponentType, type ReactNode } from "react";
-import { back, LayoutContext, NavigationStack, RouteContext, type Entry } from "./navigation";
+import { back, LayoutContext, NavigationStack, RouteContext, type Destination, type Entry } from "./navigation";
 
 export type FileRoute = { name: string; path: string; component: ComponentType };
 export type FileLayout = { name: string; layout?: ComponentType; pages: FileRoute[]; children: FileLayout[] };
@@ -66,9 +66,9 @@ function LayoutBranch({ group, entries, active, selectTab, root = false }: {
   </Activity>;
 }
 
-export function FileNavigator({ tree }: { tree: FileLayout }) {
+export function FileNavigator({ tree, initialDestination }: { tree: FileLayout; initialDestination?: Destination }) {
   const routes = useMemo(() => new Set(paths(tree)), [tree]);
-  return <NavigationStack routes={routes} renderEntries={(entries, selectTab) => (
+  return <NavigationStack routes={routes} initialDestination={initialDestination} renderEntries={(entries, selectTab) => (
     <LayoutBranch group={tree} entries={entries} active={entries[entries.length - 1]} selectTab={selectTab} root />
   )} />;
 }

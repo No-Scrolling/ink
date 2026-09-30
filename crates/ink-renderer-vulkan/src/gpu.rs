@@ -1,6 +1,9 @@
 //! Vulkan resources and presentation. Frames complete before shared resources are reused.
 use anyhow::{Context, Result, anyhow, ensure};
 use ash::{Entry, vk};
+
+#[cfg(feature = "offscreen")]
+mod offscreen;
 use std::{
     ffi::c_void,
     ops::Range,
@@ -57,7 +60,7 @@ enum Upload {
     },
 }
 struct Core {
-    _entry: Entry,
+    _entry: VulkanEntry,
     instance: ash::Instance,
     device: ash::Device,
     physical: vk::PhysicalDevice,
@@ -70,6 +73,22 @@ struct Core {
     texture_layout: vk::DescriptorSetLayout,
     pipeline_layout: vk::PipelineLayout,
     sampler: vk::Sampler,
+}
+
+struct VulkanEntry {
+    entry: Entry,
+    #[cfg(feature = "offscreen")]
+    _library: Option<libloading::Library>,
+}
+
+impl From<Entry> for VulkanEntry {
+    fn from(entry: Entry) -> Self {
+        Self {
+            entry,
+            #[cfg(feature = "offscreen")]
+            _library: None,
+        }
+    }
 }
 impl Drop for Core {
     fn drop(&mut self) {
@@ -699,6 +718,14 @@ impl Device {
     }
 }
 fn render_pass(d: &ash::Device, format: vk::Format) -> Result<vk::RenderPass> {
+    render_pass_layout(d, format, vk::ImageLayout::PRESENT_SRC_KHR)
+}
+
+fn render_pass_layout(
+    d: &ash::Device,
+    format: vk::Format,
+    final_layout: vk::ImageLayout,
+) -> Result<vk::RenderPass> {
     unsafe {
         let attachments = [vk::AttachmentDescription::default()
             .format(format)
@@ -708,7 +735,7 @@ fn render_pass(d: &ash::Device, format: vk::Format) -> Result<vk::RenderPass> {
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
             .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)];
+            .final_layout(final_layout)];
         let colours = [vk::AttachmentReference {
             attachment: 0,
             layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -794,6 +821,8 @@ impl Drop for GpuTiming {
 }
 
 pub struct Surface {
+    #[cfg(feature = "offscreen")]
+    target: Option<offscreen::Target>,
     core: Arc<Core>,
     loader: ash::khr::surface::Instance,
     swap: ash::khr::swapchain::Device,
@@ -825,28 +854,72 @@ pub struct Surface {
 impl Surface {
     pub unsafe fn new(window: *mut c_void, width: u32, height: u32) -> Result<Self> {
         unsafe {
-            let entry = Entry::load().context("load Vulkan")?;
+            Self::create(
+                Entry::load().context("load Vulkan")?.into(),
+                Some(window),
+                width,
+                height,
+            )
+        }
+    }
+
+    unsafe fn create(
+        runtime: VulkanEntry,
+        window: Option<*mut c_void>,
+        width: u32,
+        height: u32,
+    ) -> Result<Self> {
+        unsafe {
+            let entry = &runtime.entry;
             let app = vk::ApplicationInfo::default()
                 .application_name(c"Ink direct Vulkan")
                 .api_version(vk::API_VERSION_1_1);
-            let extensions = [
-                ash::khr::surface::NAME.as_ptr(),
-                ash::khr::android_surface::NAME.as_ptr(),
-            ];
+            let mut extensions = if window.is_some() {
+                vec![
+                    ash::khr::surface::NAME.as_ptr(),
+                    ash::khr::android_surface::NAME.as_ptr(),
+                ]
+            } else {
+                vec![]
+            };
+            let portability = window.is_none()
+                && entry
+                    .enumerate_instance_extension_properties(None)?
+                    .iter()
+                    .any(|extension| {
+                        extension.extension_name_as_c_str().ok()
+                            == Some(ash::khr::portability_enumeration::NAME)
+                    });
+            if portability {
+                extensions.push(ash::khr::portability_enumeration::NAME.as_ptr());
+            }
             let instance = entry.create_instance(
                 &vk::InstanceCreateInfo::default()
                     .application_info(&app)
+                    .flags(if portability {
+                        vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
+                    } else {
+                        vk::InstanceCreateFlags::empty()
+                    })
                     .enabled_extension_names(&extensions),
                 None,
             )?;
             let cleanup_instance = Cleanup(Some(|| instance.destroy_instance(None)));
-            let loader = ash::khr::surface::Instance::new(&entry, &instance);
-            let android = ash::khr::android_surface::Instance::new(&entry, &instance);
-            let surface = android.create_android_surface(
-                &vk::AndroidSurfaceCreateInfoKHR::default().window(window.cast()),
-                None,
-            )?;
-            let cleanup_surface = Cleanup(Some(|| loader.destroy_surface(surface, None)));
+            let loader = ash::khr::surface::Instance::new(entry, &instance);
+            let android = ash::khr::android_surface::Instance::new(entry, &instance);
+            let surface = if let Some(window) = window {
+                android.create_android_surface(
+                    &vk::AndroidSurfaceCreateInfoKHR::default().window(window.cast()),
+                    None,
+                )?
+            } else {
+                vk::SurfaceKHR::null()
+            };
+            let cleanup_surface = Cleanup(Some(|| {
+                if window.is_some() {
+                    loader.destroy_surface(surface, None);
+                }
+            }));
             let mut choice = None;
             for physical in instance.enumerate_physical_devices()? {
                 if instance
@@ -862,8 +935,9 @@ impl Surface {
                     .enumerate()
                 {
                     if props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                        && loader
-                            .get_physical_device_surface_support(physical, i as u32, surface)?
+                        && (window.is_none()
+                            || loader
+                                .get_physical_device_surface_support(physical, i as u32, surface)?)
                     {
                         choice = Some((physical, i as u32));
                         break;
@@ -874,7 +948,21 @@ impl Surface {
                 }
             }
             let (physical, family) = choice.context("no Vulkan presentation queue")?;
-            let extensions = [ash::khr::swapchain::NAME.as_ptr()];
+            let mut extensions = if window.is_some() {
+                vec![ash::khr::swapchain::NAME.as_ptr()]
+            } else {
+                vec![]
+            };
+            if instance
+                .enumerate_device_extension_properties(physical)?
+                .iter()
+                .any(|extension| {
+                    extension.extension_name_as_c_str().ok()
+                        == Some(ash::khr::portability_subset::NAME)
+                })
+            {
+                extensions.push(ash::khr::portability_subset::NAME.as_ptr());
+            }
             #[cfg(feature = "presentation-timing")]
             let (extensions, has_display_timing) = {
                 let supported = instance
@@ -997,18 +1085,30 @@ impl Surface {
             #[cfg(feature = "presentation-timing")]
             let display_timing = has_display_timing
                 .then(|| ash::google::display_timing::Device::new(&instance, &device));
-            let formats = loader.get_physical_device_surface_formats(physical, surface)?;
-            let format = formats
-                .iter()
-                .find(|f| {
-                    matches!(
-                        f.format,
-                        vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
-                    )
-                })
-                .context("surface needs an sRGB format")?
-                .format;
-            let pass = render_pass(&device, format)?;
+            let format = if window.is_some() {
+                loader
+                    .get_physical_device_surface_formats(physical, surface)?
+                    .iter()
+                    .find(|f| {
+                        matches!(
+                            f.format,
+                            vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
+                        )
+                    })
+                    .context("surface needs an sRGB format")?
+                    .format
+            } else {
+                vk::Format::R8G8B8A8_SRGB
+            };
+            let pass = render_pass_layout(
+                &device,
+                format,
+                if window.is_some() {
+                    vk::ImageLayout::PRESENT_SRC_KHR
+                } else {
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL
+                },
+            )?;
             let cleanup_pass = Cleanup(Some(|| device.destroy_render_pass(pass, None)));
             cleanup_pass.disarm();
             cleanup_fence.disarm();
@@ -1023,7 +1123,7 @@ impl Surface {
             cleanup_surface.disarm();
             cleanup_instance.disarm();
             let core = Arc::new(Core {
-                _entry: entry,
+                _entry: runtime,
                 instance,
                 device,
                 physical,
@@ -1038,6 +1138,8 @@ impl Surface {
                 sampler,
             });
             let mut s = Self {
+                #[cfg(feature = "offscreen")]
+                target: None,
                 core,
                 loader,
                 swap,
@@ -1108,11 +1210,17 @@ impl Surface {
             for s in self.rendered.drain(..) {
                 self.core.device.destroy_semaphore(s, None)
             }
-            self.swap.destroy_swapchain(self.chain, None);
+            if self.chain != vk::SwapchainKHR::null() {
+                self.swap.destroy_swapchain(self.chain, None);
+            }
             self.chain = vk::SwapchainKHR::null();
         }
     }
     fn recreate(&mut self) -> Result<()> {
+        #[cfg(feature = "offscreen")]
+        if self.surface == vk::SurfaceKHR::null() {
+            return self.recreate_offscreen();
+        }
         unsafe {
             self.core.device.device_wait_idle()?;
             let caps = self
@@ -1222,18 +1330,22 @@ impl Surface {
             if self.dirty {
                 self.recreate()?
             }
-            let (index, suboptimal) = match self.swap.acquire_next_image(
-                self.chain,
-                u64::MAX,
-                self.acquired,
-                vk::Fence::null(),
-            ) {
-                Ok(v) => v,
-                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                    self.dirty = true;
-                    return Ok(None);
+            let (index, suboptimal) = if self.surface == vk::SurfaceKHR::null() {
+                (0, false)
+            } else {
+                match self.swap.acquire_next_image(
+                    self.chain,
+                    u64::MAX,
+                    self.acquired,
+                    vk::Fence::null(),
+                ) {
+                    Ok(v) => v,
+                    Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                        self.dirty = true;
+                        return Ok(None);
+                    }
+                    Err(e) => return Err(anyhow::Error::new(e).context("acquire surface")),
                 }
-                Err(e) => return Err(anyhow::Error::new(e).context("acquire surface")),
             };
             self.dirty = suboptimal;
             let d = &self.core.device;
@@ -1305,7 +1417,9 @@ impl Drop for Surface {
             self.core.device.destroy_render_pass(self.pass, None);
             self.core.device.destroy_fence(self.fence, None);
             self.core.device.destroy_semaphore(self.acquired, None);
-            self.loader.destroy_surface(self.surface, None);
+            if self.surface != vk::SurfaceKHR::null() {
+                self.loader.destroy_surface(self.surface, None);
+            }
         }
     }
 }
@@ -1382,6 +1496,10 @@ impl RenderPass<'_> {
             let s = &mut self.surface;
             let d = &s.core.device;
             d.cmd_end_render_pass(s.command);
+            #[cfg(feature = "offscreen")]
+            if let Some(target) = &s.target {
+                target.copy(d, s.command, s.extent);
+            }
             #[cfg(feature = "perf")]
             if let Some(timing) = &s.timing {
                 d.cmd_write_timestamp(
@@ -1401,6 +1519,15 @@ impl RenderPass<'_> {
             } else {
                 &commands[1..]
             };
+            if s.surface == vk::SurfaceKHR::null() {
+                d.queue_submit(
+                    s.core.queue,
+                    &[vk::SubmitInfo::default().command_buffers(commands)],
+                    s.fence,
+                )?;
+                s.submitted = true;
+                return Ok(true);
+            }
             d.queue_submit(
                 s.core.queue,
                 &[vk::SubmitInfo::default()

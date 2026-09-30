@@ -33,6 +33,7 @@
       {
         "group": "Guides",
         "pages": [
+          "design-export",
           "permissions-guide"
         ]
       },

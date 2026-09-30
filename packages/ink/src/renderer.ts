@@ -11,7 +11,7 @@ declare const __inkCommit: (operations: Operation[]) => void;
 declare const __inkPost: (message: string) => void;
 
 type Props = Record<string, unknown>;
-type Instance = { id: number; type: string; props: Props; children: Instance[] };
+type Instance = { id: number; type: string; props: Props; children: Instance[]; hidden?: boolean };
 type Container = { id: number; children: Instance[] };
 type Operation =
   | ViewUpdate
@@ -73,6 +73,7 @@ function publish(instance: Instance) {
   if (mounted.has(instance.id)) return;
   mounted.set(instance.id, instance);
   queue({ op: "create", id: instance.id, type: instance.type, props: nativeProps(instance.props, instance.type) });
+  if (instance.hidden) queue({ op: "hidden", id: instance.id, value: true });
   for (const child of instance.children) {
     publish(child);
     queue({ op: "insert", id: child.id, parent: instance.id, before: null });
@@ -196,7 +197,8 @@ function update(instance: Instance, type: string, _oldProps: Props, props: Props
 }
 
 function hide(instance: Instance, value: boolean) {
-  queue({ op: "hidden", id: instance.id, value });
+  instance.hidden = value;
+  if (mounted.has(instance.id)) queue({ op: "hidden", id: instance.id, value });
 }
 
 function errorMessage(error: unknown, info: { componentStack?: string | null }) {

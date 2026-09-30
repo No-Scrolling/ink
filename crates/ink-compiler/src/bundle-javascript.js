@@ -3,11 +3,11 @@ import { realpath } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { collectIconSizes } from "./icon-usage.js";
 import { compileNativeLists } from "./native-lists.js";
-const [root, entry, output, profile = "release"] = Bun.argv.slice(2);
+const [root, entry, output, profile = "release", routing] = Bun.argv.slice(2);
 const development = profile === "development";
-if (entry.endsWith("/entry.tsx")) {
+if (routing === "routes") {
   const { generateFileRoutes } = await import("./file-routes.js");
-  await generateFileRoutes(root);
+  await generateFileRoutes(root, resolve(dirname(entry), "routes.tsx"));
 }
 const splitWeb = !development && process.env.INK_SPLIT_WEB !== "0" && output.endsWith("/app.js");
 const inputs = new Set();

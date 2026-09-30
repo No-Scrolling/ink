@@ -45,18 +45,22 @@ pub(super) fn bundle(project: &Project) -> Result<Bundle> {
 }
 
 pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bundle> {
-    let entry = project.root().join(".ink/entry.tsx");
-    let output = project.root().join(".ink/bundle/app.js");
+    bundle_entry(project, development, None, true)
+}
+
+pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: Option<&str>, routes: bool) -> Result<Bundle> {
+    let entry = project.work_path().join("entry.tsx");
+    let output = project.work_path().join("bundle/app.js");
     let source = format!(
         "import {{ createElement }} from 'react';\nimport {{ render }} from 'ink/renderer';\nimport App from {};\nrender(createElement(App));\n",
-        serde_json::to_string(&project.root().join(".ink/routes.tsx"))?,
+        serde_json::to_string(&project.work_path().join("routes.tsx"))?,
     );
-    write_if_changed(&entry, source.as_bytes())?;
-    let builder = project.root().join(".ink/build.js");
+    write_if_changed(&entry, entry_source.unwrap_or(&source).as_bytes())?;
+    let builder = project.work_path().join("build.js");
     write_if_changed(&builder, include_bytes!("bundle-javascript.js"))?;
-    write_if_changed(&project.root().join(".ink/icon-usage.js"), include_bytes!("icon-usage.js"))?;
-    write_if_changed(&project.root().join(".ink/native-lists.js"), include_bytes!("native-lists.js"))?;
-    write_if_changed(&project.root().join(".ink/file-routes.js"), include_bytes!("file-routes.js"))?;
+    write_if_changed(&project.work_path().join("icon-usage.js"), include_bytes!("icon-usage.js"))?;
+    write_if_changed(&project.work_path().join("native-lists.js"), include_bytes!("native-lists.js"))?;
+    write_if_changed(&project.work_path().join("file-routes.js"), include_bytes!("file-routes.js"))?;
     run(Command::new("bun")
         .current_dir(project.root())
         .arg("--no-env-file")
@@ -68,14 +72,15 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
             "development"
         } else {
             "release"
-        }))?;
+        })
+        .arg(if routes { "routes" } else { "component" }))?;
     let source =
         fs::read(&output).with_context(|| format!("could not read {}", output.display()))?;
     let mut uses: Metadata =
         serde_json::from_slice(&fs::read(output.with_extension("js.metadata.json"))?)?;
     let worker = if let Some(worker_source) = &project.config.worker_entry {
-        let entry = project.root().join(".ink/worker-entry.ts");
-        let output = project.root().join(".ink/bundle/worker.js");
+        let entry = project.work_path().join("worker-entry.ts");
+        let output = project.work_path().join("bundle/worker.js");
         let source = format!(
             "import {};\nimport {{ startWorker }} from '@ink/background/worker';\nstartWorker();\n",
             serde_json::to_string(worker_source)?,
@@ -186,7 +191,7 @@ pub(super) fn bundle_profile(project: &Project, development: bool) -> Result<Bun
         "profile": if development { "development" } else { "release" },
     }))?;
     write_if_changed(
-        &project.root().join(".ink/bundle/ink-bundle-v1.json"),
+        &project.work_path().join("bundle/ink-bundle-v1.json"),
         &manifest,
     )?;
     Ok(Bundle {

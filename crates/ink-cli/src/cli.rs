@@ -82,6 +82,9 @@ pub enum InkCommand {
     /// Show resolved application and build information
     Info,
 
+    /// Export a page or TSX composition as a 1080 × 1240 design frame
+    Export(crate::export::ExportArgs),
+
     /// Check the local Ink and Android development environment
     Doctor,
 }
