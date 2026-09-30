@@ -7,7 +7,7 @@ import { rememberListPatch, type NativeListItem } from "./list-patch";
 
 type Captured = { value: unknown; prototype?: object | null; fields?: [PropertyKey, boolean, Captured][] };
 type Scope = { identity: string; values: readonly Captured[] };
-type Capture = { identity: string; values: () => readonly unknown[] };
+type Capture = { identity: string; values: () => readonly unknown[]; usesIndex?: boolean };
 type Plan<T> = { project: (item: T, index: number) => unknown[]; template: string; scope?: Capture };
 const needsReact = /* @__PURE__ */ Symbol("list needs React");
 const plans = /* @__PURE__ */ new WeakMap<Function, Plan<unknown>>();
@@ -171,7 +171,8 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
         if (typeof key !== "string" || rows.has(key)) throw new Error("List keys must be unique strings");
         const beforeRow = previous?.template === plan.template ? previous.rows.get(key) : undefined;
         const before = beforeRow?.native;
-        const projected = beforeRow && sameScope && beforeRow.item === item && beforeRow.index === index
+        const projected = beforeRow && sameScope && beforeRow.item === item
+          && (beforeRow.index === index || plan.scope?.usesIndex === false)
           ? beforeRow.native.values : nativeValue(plan.project(item, index), before?.values);
         const measurement = measurementKey ?? null;
         const record = before && before.values === projected && before.measurementKey === measurement

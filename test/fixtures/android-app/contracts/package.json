@@ -1,0 +1,10 @@
+{
+  "name": "ink-sdk-contract-fixture",
+  "private": true,
+  "dependencies": {
+    "ink": "workspace:*",
+    "@ink/store": "workspace:*",
+    "@ink/network": "workspace:*",
+    "react": "19.2.8"
+  }
+}

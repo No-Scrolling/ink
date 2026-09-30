@@ -1,0 +1,9 @@
+{
+  "name": "split-web-contract",
+  "private": true,
+  "dependencies": {
+    "ink": "workspace:*",
+    "@ink/network": "workspace:*",
+    "react": "19.2.8"
+  }
+}

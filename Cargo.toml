@@ -9,6 +9,7 @@ members = [
   "crates/ink-runtime",
   "crates/ink-protocol",
   "platform/android/native",
+  "test/native",
 ]
 
 [workspace.package]

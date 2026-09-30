@@ -759,6 +759,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ink-test"
+version = "0.1.0"
+dependencies = [
+ "ink-audio",
+ "ink-core",
+ "ink-protocol",
+ "ink-runtime",
+ "serde_json",
+]
+
+[[package]]
 name = "is-terminal"
 version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"

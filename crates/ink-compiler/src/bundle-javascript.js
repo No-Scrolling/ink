@@ -200,8 +200,8 @@ function buildOptions(bootstrap = false) { return {
         contents = compiled.code;
         compilerMap = compiled.map;
       }
-      if (splitWeb && path === networkEntry) {
-        contents = 'import * as native from "ink/native";\nlet web;\nfunction loadWeb() { if (!web) { __inkLoadWeb(); web = globalThis.__inkWebFactory(native); delete globalThis.__inkWebFactory; } return web; }\n' + contents.replace('require("./web-globals")[name]', 'loadWeb()[name]');
+      if (!development && path === networkEntry) {
+        contents = 'import * as native from "ink/native";\nlet web;\nfunction loadWeb() { if (!web) { ' + (splitWeb ? '__inkLoadWeb(); ' : '') + 'web = globalThis.__inkWebFactory(native); delete globalThis.__inkWebFactory; } return web; }\n' + contents.replace('require("./web-globals")[name]', 'loadWeb()[name]');
       }
       if (refresh) {
         let mixedExports = mixedExportsByPath.get(path);
@@ -273,7 +273,8 @@ if (development && result.success) {
   }
   result = await Bun.build(options);
 }
-if (splitWeb && networkEntry) {
+let inlineWeb = "";
+if (!development && networkEntry) {
   const web = await Bun.build({
     entrypoints: [resolve(dirname(networkEntry), "web-globals.ts")],
     target: "browser", format: "cjs", minify: true,
@@ -290,10 +291,15 @@ if (splitWeb && networkEntry) {
       }));
     } }],
   });
-  if (!web.success) throw new AggregateError(web.logs, "Could not build optional web runtime");
-  const path = resolve(dirname(output), "ink-web.js");
-  await Bun.write(path, 'globalThis.__inkWebFactory = function(inkNative) { const module = {exports:{}}; const exports = module.exports;\n' + await web.outputs[0].text() + '\nreturn module.exports; };');
-  assets.set("ink-web.js", path);
+  if (!web.success) throw new AggregateError(web.logs, "Could not build web runtime");
+  const factory = 'globalThis.__inkWebFactory = function(inkNative) { const module = {exports:{}}; const exports = module.exports;\n' + await web.outputs[0].text() + '\nreturn module.exports; };\n';
+  if (splitWeb) {
+    const path = resolve(dirname(output), "ink-web.js");
+    await Bun.write(path, factory);
+    assets.set("ink-web.js", path);
+  } else {
+    inlineWeb = factory;
+  }
   for (const name of moduleCapabilities.get(networkEntry) ?? []) capabilities.add(name);
 }
 if (!result.success) { for (const log of result.logs) console.error(log); process.exit(1); }
@@ -334,6 +340,10 @@ if (development) {
   for (const artifact of result.outputs) await Bun.write(artifact.kind === "sourcemap" ? output + ".map" : output, artifact);
 }
 let bundledCode = await Bun.file(output).text();
+if (inlineWeb) {
+  bundledCode = inlineWeb + bundledCode;
+  await Bun.write(output, bundledCode);
+}
 if (development) {
   const usedIcons = await Bun.build({ ...buildOptions(true), minify: true, sourcemap: "none" });
   if (!usedIcons.success) throw new AggregateError(usedIcons.logs, "Could not determine application icons");

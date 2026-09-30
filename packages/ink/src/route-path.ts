@@ -16,7 +16,11 @@ export function matchPath(pattern: string, path: string): Record<string, string>
     const name = /^\[([A-Za-z_][A-Za-z0-9_]*)\]$/.exec(expected[index])?.[1];
     if (name) {
       if (!actual[index]) return;
-      try { params[name] = decodeURIComponent(actual[index]); } catch { return; }
+      try {
+        Object.defineProperty(params, name, {
+          value: decodeURIComponent(actual[index]), enumerable: true, writable: true, configurable: true,
+        });
+      } catch { return; }
     } else if (expected[index] !== actual[index]) return;
   }
   return params;

@@ -1,0 +1,5 @@
+{
+  "name": "lifecycle-contract-fixture",
+  "private": true,
+  "dependencies": { "ink": "workspace:*", "react": "19.2.8" }
+}

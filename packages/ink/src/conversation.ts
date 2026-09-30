@@ -187,7 +187,7 @@ export function ConversationScreen<T extends ConversationMessage>({ title, right
       if (!previous) { previous = { current: 0 }; taps.current.set(message.id, previous); }
       doubleTap(previous, props.onDoubleTap);
     })];
-  }, messageTemplate, { identity: "ink/conversation", values: () => [group, !!onRetry, !!onFilePress, new Date().toDateString()] });
+  }, messageTemplate, { identity: "ink/conversation", usesIndex: false, values: () => [group, !!onRetry, !!onFilePress, new Date().toDateString()] });
   const iconButton = (name: string, onPress?: () => void) => createElement("Pressable", { onPress },
     createElement("Icon", { name, size: 28, tone: onPress ? "primary" : "muted" }));
   return createElement("Screen", { title, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress, pinnedFooter: true, initialEnd: true, scrollToEnd },

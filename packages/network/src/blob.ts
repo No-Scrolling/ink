@@ -161,6 +161,7 @@ export function parseFormData(bytes: Uint8Array, contentType: string): FormData 
   if (offset < 0) throw new TypeError("Invalid multipart boundary");
   offset += delimiter.length - 2;
   while (bytes[offset] !== 45 || bytes[offset + 1] !== 45) {
+    while (bytes[offset] === 32 || bytes[offset] === 9) offset++;
     if (bytes[offset] !== 13 || bytes[offset + 1] !== 10) throw new TypeError("Invalid multipart framing");
     const headersEnd = find(encoder.encode("\r\n\r\n"), offset + 2);
     if (headersEnd < 0 || headersEnd - offset > 16 * 1024) throw new TypeError("Invalid multipart headers");

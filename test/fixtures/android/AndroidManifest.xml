@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <application android:label="Ink Android contracts" android:usesCleartextTraffic="true" />
+    <instrumentation android:name="com.vandam.ink.ContractInstrumentation" android:targetPackage="com.vandam.ink.contracttests" />
+</manifest>

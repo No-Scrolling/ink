@@ -9,7 +9,9 @@
     "examples/weather"
   ],
   "scripts": {
-    "check": "tsc -p packages/ink/tsconfig.json"
+    "check": "tsc -p packages/ink/tsconfig.json",
+    "test": "bun ./test/run.ts",
+    "bench": "bun ./test/performance/run.ts"
   },
   "devDependencies": {
     "@jridgewell/remapping": "2.3.5",

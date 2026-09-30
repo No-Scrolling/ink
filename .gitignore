@@ -2,6 +2,11 @@
 target/
 __pycache__/
 **/*.rs.bk
+/.test-output/
+/test/visual/references/
+/test/**/build/
+/test/**/.gradle/
+/test/**/dist/
 
 # TypeScript
 node_modules/

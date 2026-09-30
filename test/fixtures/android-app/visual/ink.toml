@@ -1,0 +1,4 @@
+name = "Ink pixel fixture"
+package = "com.vandam.ink.visualcontracts"
+version = "0.1.0"
+version_code = 1

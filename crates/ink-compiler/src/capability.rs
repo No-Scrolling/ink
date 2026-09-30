@@ -40,7 +40,6 @@ pub enum Capability {
     Notifications,
     PhotoCapture,
     TextInput,
-    TextInputFull,
     UiCanvas,
     UiLists,
     UiMessages,

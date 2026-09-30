@@ -1,0 +1,3 @@
+name = "Ink SDK contracts"
+package = "com.vandam.ink.sdkcontracts"
+capabilities = ["network-cleartext"]
