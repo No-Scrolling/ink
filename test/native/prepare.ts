@@ -13,8 +13,8 @@ if (suites.some((suite) => !["runtime", "scene", "performance"].includes(suite))
 const root = resolve(import.meta.dir, "../..");
 const fixtures = {
   runtime: ["bridge", "split-web"],
-  scene: ["lists", "views", "input", "navigation", "lifecycle"],
-  performance: ["bindings", "react", "list", "rows", "navigation", "conversation", "playback"],
+  scene: ["lists", "input", "navigation"],
+  performance: ["react", "list", "rows", "navigation", "conversation", "playback"],
 };
 for (const suite of suites) {
   for (const fixture of fixtures[suite as keyof typeof fixtures]) {

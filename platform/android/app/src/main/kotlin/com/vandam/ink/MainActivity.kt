@@ -62,16 +62,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var videoPortal: VideoPortal? = null
     private var mapPortal: MapPortal? = null
     private val filesAdapter by lazy { createFilesAdapter(this) }
-    private val sqliteRuntime = lazy { SqliteAdapter(this) { target, rows, signal, complete ->
-        runOnUiThread {
-            if (!signal.isCanceled) {
-                val error = if (engineHandle == 0L) "App is no longer mounted" else
-                    nativeReplaceCollection(engineHandle, target.getLong("view"), target.getLong("source"), target.getLong("revision"), rows)
-                if (error.isEmpty()) { inkView.requestFrame(); complete(NativeResult.Success("")) }
-                else complete(NativeResult.Failure(NativeErrorKind.UNEXPECTED, error, false))
-            } else complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Database query cancelled", false))
-        }
-    } }
+    private val sqliteRuntime = lazy { SqliteAdapter(this) }
     private val sqliteAdapter by sqliteRuntime
     private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
     private val secureStoreAdapter by lazy { SecureStoreAdapter(this) }
@@ -1659,9 +1650,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativePlaybackClock(handle: Long, controller: Long, position: Float, duration: Float, playing: Boolean, speed: Float): Boolean
         @JvmStatic
         private external fun nativeCaptureState(handle: Long, controller: Long, value: String): Boolean
-        @JvmStatic
-        private external fun nativeReplaceCollection(handle: Long, view: Long, source: Long, revision: Long, rows: String): String
-
         @JvmStatic
         private external fun nativeRemovePlaybackClock(handle: Long, controller: Long)
 

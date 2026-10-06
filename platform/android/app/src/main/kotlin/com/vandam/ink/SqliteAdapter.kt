@@ -13,9 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal class SqliteAdapter(private val context: Context,
-    private val replaceCollection: ((JSONObject, String, CancellationSignal, NativeResultHandler) -> Unit)? = null,
-) : NativeAdapter {
+internal class SqliteAdapter(private val context: Context) : NativeAdapter {
     private val executor = Executors.newSingleThreadExecutor()
     private val databases = mutableMapOf<String, SQLiteDatabase>()
     private val pending = ConcurrentHashMap<Long, CancellationSignal>()
@@ -27,7 +25,6 @@ internal class SqliteAdapter(private val context: Context,
         pending[requestId] = signal
         try { executor.execute {
             var opened: String? = null
-            var collection: Pair<JSONObject, String>? = null
             val result = try {
                 signal.throwIfCanceled()
                 val input = JSONObject(payload)
@@ -58,8 +55,7 @@ internal class SqliteAdapter(private val context: Context,
                             }
                         }
                     }
-                    "query", "query-collection" -> {
-                        if (operation == "query-collection") require(replaceCollection != null) { "Native collections require a mounted app" }
+                    "query" -> {
                         val database = databases[input.getString("id")] ?: error("Database is closed")
                         val sql = input.getString("sql")
                         require(sql.length <= 65536) { "SQL is too long" }
@@ -108,12 +104,7 @@ internal class SqliteAdapter(private val context: Context,
                                 rows.put(row)
                             }
                         }
-                        if (operation == "query-collection") {
-                            val target = input.getJSONObject("target")
-                            for (field in listOf("view", "source", "revision")) require(target.getLong(field) in 1..9007199254740991L) { "Invalid native collection target" }
-                            collection = target to rows.toString()
-                            NativeResult.Success(rows.length().toString())
-                        } else NativeResult.Success(rows.toString())
+                        NativeResult.Success(rows.toString())
                     }
                     "close" -> {
                         databases.remove(input.getString("id"))?.close()
@@ -125,16 +116,8 @@ internal class SqliteAdapter(private val context: Context,
                 NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Database operation failed", false)
             }
             if (signal.isCanceled || stopped.get()) opened?.let { databases.remove(it)?.close() }
-            val delivery = collection
-            if (delivery != null && result is NativeResult.Success && !signal.isCanceled && !stopped.get()) {
-                replaceCollection!!.invoke(delivery.first, delivery.second, signal) { applied ->
-                    pending.remove(requestId, signal)
-                    if (!signal.isCanceled && !stopped.get()) complete(if (applied is NativeResult.Success) result else applied)
-                }
-            } else {
-                pending.remove(requestId, signal)
-                if (!signal.isCanceled && !stopped.get()) complete(result)
-            }
+            pending.remove(requestId, signal)
+            if (!signal.isCanceled && !stopped.get()) complete(result)
         } } catch (error: java.util.concurrent.RejectedExecutionException) {
             pending.remove(requestId, signal)
             complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Database adapter is stopped", false))

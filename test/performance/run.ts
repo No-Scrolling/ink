@@ -4,11 +4,9 @@ import { resolve } from "node:path";
 import { arch, cpus, platform, release } from "node:os";
 
 const root = resolve(import.meta.dir, "../..");
-const fixtures = ["bindings", "react", "list", "rows", "navigation", "conversation", "playback"];
+const fixtures = ["react", "list", "rows", "navigation", "conversation", "playback"];
 const expectedWorkloads = [
-  ...["bindings", "react"].flatMap((fixture) =>
-    ["small", "bulk", "resize"].map((command) => `${fixture}-${command}`),
-  ),
+  ...["small", "bulk", "resize"].map(command => `react-${command}`),
   ...[100, 1000, 10000].flatMap((count) => [`list-edit-${count}`, `list-scroll-${count}`]),
   "scrollbar-drag-10000",
   "rows-edit-100",

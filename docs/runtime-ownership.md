@@ -1,10 +1,10 @@
 # Rust and JavaScript ownership
 
-Reviewed 28 September 2026. Rust owns Ink's visual engine and native list windows. JavaScript supplies application data, actions and React semantics. Android services remain in Kotlin where they use platform APIs.
+Reviewed 6 October 2026. Rust owns Ink's visual engine and native list windows. Apps use React components and JSX; JavaScript supplies application data, actions and React semantics. Android services remain in Kotlin where they use platform APIs.
 
-Android builds now select native list, message, playback and bound-view composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Dynamic native-view descriptions conservatively retain broader support; custom React components keep their existing behaviour.
+Android builds now select native list, message and playback composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Custom React components keep their existing behaviour.
 
-Canvas, text-input, camera, video and map primitives are also selected at build time. Core defaults retain all primitives; dynamic native views retain these paths because their descriptions can be constructed at runtime. The React commit decoder borrows QuickJS's JSON text until deserialisation finishes, then sends owned values across the thread boundary.
+Canvas, text-input, camera, video and map primitives are also selected at build time. Core defaults retain all primitives. The React commit decoder borrows QuickJS's JSON text until deserialisation finishes, then sends owned values across the thread boundary.
 
 | Work | Owner | Behaviour |
 | --- | --- | --- |
@@ -14,7 +14,6 @@ Canvas, text-input, camera, video and map primitives are also selected at build 
 | Text/Stack and standard Row list templates | Rust windows and identity; JS data dependencies | Supported inline declarations compile automatically. |
 | Conversation, reorder and media picker lists | Rust windows and visual templates; JS data/actions | Ink's built-ins now use native row plans automatically. Message composition is native too. |
 | Playback screen and progress labels | Rust composition and clock; native audio supplies anchors | `PlayingScreen` takes one playback binding and connects native clocks and transport commands. JS receives state changes; `getState()` reads a fresh snapshot. Source replacement and relative seeks preserve native timing. |
-| Persistent view bindings | Rust targets; JS values | Explicit native views avoid repeated React host-tree reconciliation. |
 | Custom React components | JavaScript execution and lifecycle; Rust resulting primitives | Hooks, effects, conditional trees and custom render functions retain React behaviour. |
 | Controlled text input | Kotlin IME, Rust editor, JS value/actions | Event ordering and composition semantics remain intact. |
 | Navigation, resources, filtering, fetching decisions | JavaScript | Application responsibilities. |

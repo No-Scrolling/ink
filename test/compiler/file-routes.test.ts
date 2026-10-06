@@ -61,7 +61,7 @@ test("route groups preserve layout ancestry without adding URL segments", async 
       { name: "settings", pages: [{ name: "index", path: "/settings", component: resolve(root, "app/settings/index.tsx") }], children: [] },
     ],
   });
-  expect(generated).toContain('<FileNavigator tree={tree} />');
+  expect(generated).toContain('<FileNavigator tree={tree} initialDestination={initialDestination} />');
   const before = await stat(resolve(root, ".ink/routes.tsx"));
   await generateFileRoutes(root);
   const after = await stat(resolve(root, ".ink/routes.tsx"));

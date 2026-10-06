@@ -5,7 +5,6 @@ import { ConcurrentRoot, DefaultEventPriority, DiscreteEventPriority } from "rea
 import { onNativeMessage } from "./native";
 import { openLink } from "./external";
 import { listPatch, type NativeListItem } from "./list-patch";
-import { allocateHostId, dispatchHostAction, takeViewUpdates, type ViewUpdate } from "./host";
 
 declare const __inkCommit: (operations: Operation[]) => void;
 declare const __inkPost: (message: string) => void;
@@ -14,7 +13,6 @@ type Props = Record<string, unknown>;
 type Instance = { id: number; type: string; props: Props; children: Instance[]; hidden?: boolean };
 type Container = { id: number; children: Instance[] };
 type Operation =
-  | ViewUpdate
   | { op: "create"; id: number; type: string; props: Props }
   | { op: "update"; id: number; props: Props }
   | { op: "text"; changes: (number | string)[] }
@@ -23,11 +21,17 @@ type Operation =
   | { op: "hidden"; id: number; value: boolean };
 
 const mounted = new Map<number, Instance>();
+let nextId = 1;
 let operations: Operation[] = [];
 let textChanges: (number | string)[] | undefined;
 let commitScheduled = false;
 let priority = DefaultEventPriority;
 const hostContext = {};
+
+function allocateHostId() {
+  if (!Number.isSafeInteger(nextId)) throw new RangeError("Host identifiers exhausted");
+  return nextId++;
+}
 
 function queue(operation: Operation, preserveTextBatch = false) {
   if (!preserveTextBatch) textChanges = undefined;
@@ -246,7 +250,6 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
       while (reconciler.flushPassiveEffects()) {}
       reconciler.flushSyncWork();
       const committed = operations;
-      committed.push(...takeViewUpdates());
       operations = [];
       textChanges = undefined;
       commitScheduled = false;
@@ -304,7 +307,7 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
 
 export function dispatchEvent(id: number, name: string, args: unknown[]) {
   const handler = mounted.get(id)?.props[name];
-  if (typeof handler !== "function") return dispatchHostAction(id, name, args);
+  if (typeof handler !== "function") return;
   const previous = priority;
   priority = DiscreteEventPriority;
   try {

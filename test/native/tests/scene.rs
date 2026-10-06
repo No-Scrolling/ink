@@ -11,13 +11,6 @@ fn list() -> SceneApp {
     app
 }
 
-fn views() -> SceneApp {
-    let mut app = SceneApp::new("views");
-    app.pump_until(|app| app.labels().iter().any(|label| label == "Gamma"));
-    assert_eq!(app.native_view_creates, 1);
-    app
-}
-
 #[test]
 fn compiled_list_scrolls_thousands_of_rows_with_bounded_scene_and_no_js_window_events() {
     let mut app = list();
@@ -138,60 +131,6 @@ fn quickjs_proxy_items_fall_back_to_react_and_remain_interactive() {
         app.native_list_creates, 1,
         "Proxy input should replace the existing NativeList with React List"
     );
-}
-
-#[test]
-fn native_collection_batch_preserves_edit_order_and_updates_native_expressions() {
-    let mut app = views();
-    assert!(app.labels().contains(&"Count 00".into()));
-    command(&app.runtime, "edit");
-    app.pump_until(|app| app.labels().contains(&"Béatrice".into()));
-    let rows: Vec<_> = app
-        .labels()
-        .into_iter()
-        .filter(|label| ["Alpha", "Béatrice", "Gamma", "Delta"].contains(&label.as_str()))
-        .collect();
-    assert_eq!(rows, ["Gamma", "Delta", "Béatrice"]);
-    assert!(app.labels().contains(&"Count 07".into()));
-    assert_eq!(
-        app.values_commits, 1,
-        "same-turn edits should be one Values commit"
-    );
-    let (_, x, y) = app.visible_label("Delta");
-    assert_eq!(app.tap(x, y), json!({"type":"selected", "args":["d"]}));
-}
-
-#[test]
-fn resetting_a_collection_keeps_edits_after_the_reset_and_removes_previous_rows() {
-    let mut app = views();
-    command(&app.runtime, "reset");
-    app.pump_until(|app| app.labels().contains(&"Zero".into()));
-    assert!(
-        !app.labels()
-            .iter()
-            .any(|label| ["Alpha", "Beta", "Gamma", "Zulu"].contains(&label.as_str()))
-    );
-    let (_, x, y) = app.visible_label("Zero");
-    assert_eq!(app.tap(x, y), json!({"type":"selected", "args":["z"]}));
-}
-
-#[test]
-fn native_button_events_update_values_without_recreating_the_view() {
-    let mut app = views();
-    let (_, x, y) = app.visible_label("Increase");
-    app.engine.tap(x, y);
-    let request = app.engine.take_native_request().unwrap();
-    app.runtime
-        .send(
-            app.tree
-                .route_native_message(request.payload().to_owned())
-                .unwrap(),
-        )
-        .unwrap();
-    app.pump_until(|app| app.labels().contains(&"Count 01".into()));
-    assert_eq!(app.values_commits, 1);
-    assert_eq!(app.native_view_creates, 1);
-    assert!(app.labels().contains(&"Alpha".into()));
 }
 
 #[test]

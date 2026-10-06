@@ -153,7 +153,7 @@ function buildOptions(bootstrap = false) { return {
         inspectedNativeModules.add(path);
         const source = ts.createSourceFile(path, contents, ts.ScriptTarget.Latest, true);
         const requirements = new Set(moduleCapabilities.get(path) ?? []);
-        const families = { Canvas: "ui-canvas", CanvasIcon: "ui-canvas", CanvasRectangle: "ui-canvas", CanvasText: "ui-canvas", NativeList: "ui-lists", NativeView: "ui-views", PlayingScreen: "ui-playing", MessageContent: "ui-messages" };
+        const families = { Canvas: "ui-canvas", CanvasIcon: "ui-canvas", CanvasRectangle: "ui-canvas", CanvasText: "ui-canvas", NativeList: "ui-lists", PlayingScreen: "ui-playing", MessageContent: "ui-messages" };
         function visit(node) {
           if (ts.isCallExpression(node)) {
             const callee = node.expression;

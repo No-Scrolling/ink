@@ -15,8 +15,6 @@ use super::{
 
 pub use ink_protocol::ReactCommit;
 use ink_protocol::{HostKind, Operation};
-mod view;
-use view::BoundView;
 mod native_list;
 use native_list::{NativeList, RowEvent};
 mod playing;
@@ -142,7 +140,6 @@ pub struct ReactTree {
     active_screen: Option<usize>,
     scroll_positions: FxHashMap<usize, f32>,
     list_windows: FxHashMap<usize, (usize, usize, u64, bool)>,
-    views: FxHashMap<usize, BoundView>,
     native_lists: FxHashMap<usize, NativeList>,
     native_events: FxHashMap<usize, RowEvent>,
     next_native_id: usize,
@@ -175,7 +172,6 @@ impl Default for ReactTree {
             active_screen: None,
             scroll_positions: FxHashMap::default(),
             list_windows: FxHashMap::default(),
-            views: FxHashMap::default(),
             native_lists: FxHashMap::default(),
             native_events: FxHashMap::default(),
             next_native_id: usize::MAX,
@@ -248,7 +244,6 @@ impl ReactTree {
     }
 
     pub fn apply(&mut self, ReactCommit(operations): ReactCommit, engine: &mut Engine) -> Result<()> {
-        let operations = self.expand_views(operations)?;
         let operations = self.expand_native_lists(operations, engine)?;
         let structural = operations
             .iter()
@@ -320,7 +315,6 @@ impl ReactTree {
                     }
                 }
                 Operation::Hidden { id, value } => self.node_mut(id)?.hidden = value,
-                Operation::Values { .. } => bail!("native view values require ui-views"),
                 Operation::Insert { id, parent, before } => self.insert(id, parent, before)?,
                 Operation::Remove { id, parent } => {
                     ensure!(
@@ -610,9 +604,6 @@ impl ReactTree {
             self.native_events.remove(&id);
             self.playing_ids.remove(&id);
             self.message_ids.remove(&id);
-            if node.kind == HostKind::NativeView {
-                self.views.retain(|_, view| view.root != id);
-            }
             for child in node.children {
                 self.remove(child);
             }
@@ -674,10 +665,6 @@ impl ReactTree {
             }
             node.identity = NodeIdentity(id);
             return Ok(Some(node));
-        }
-        if host.kind == HostKind::NativeView {
-            ensure!(host.children.len() == 1, "NativeView requires one root");
-            return self.render_node(host.children[0], depth + 1);
         }
         let props = &host.props;
         let mut node = match host.kind {
@@ -1364,7 +1351,6 @@ fn host_enabled(kind: HostKind) -> bool {
         HostKind::MapView => cfg!(feature = "maps"),
         HostKind::VideoView => cfg!(feature = "video"),
         HostKind::NativeList => cfg!(feature = "ui-lists"),
-        HostKind::NativeView => cfg!(feature = "ui-views"),
         HostKind::PlayingScreen => cfg!(feature = "ui-playing"),
         HostKind::MessageContent => cfg!(feature = "ui-messages"),
         _ => true,

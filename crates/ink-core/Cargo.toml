@@ -9,11 +9,10 @@ rust-version.workspace = true
 path = "src/lib.rs"
 
 [features]
-default = ["ui-lists", "ui-playing", "ui-messages", "ui-views", "ui-canvas", "text-input", "camera", "video", "maps"]
+default = ["ui-lists", "ui-playing", "ui-messages", "ui-canvas", "text-input", "camera", "video", "maps"]
 ui-lists = []
 ui-playing = []
 ui-messages = []
-ui-views = ["ui-canvas", "text-input", "camera", "video", "maps"]
 ui-canvas = []
 text-input = []
 camera = []

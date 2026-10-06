@@ -15,4 +15,4 @@ The suite protects these contracts with independently specified results:
 - Multipart messages accept spaces and tabs after opening and intermediate delimiters, including `--fixture \t\r\n`, and reject other whitespace there. This follows [RFC 2046 section 5.1.1](https://www.rfc-editor.org/rfc/rfc2046.html#section-5.1.1); the wire fixtures do not use the encoder under test.
 - `matchPath("/[__proto__]/[constructor]", "/note/section")` returns both accepted parameter names as own string-valued properties, preserves the ordinary object prototype and includes both fields in JSON serialisation.
 
-Store migration/CAS/subscription behaviour, SQLite, SDK/native result envelopes, ViewScope lifecycle and renderer integration are not covered here. Adding simulated persistence would overstate coverage; those contracts need the actual native runtime or a separately labelled protocol boundary suite.
+Store migration/CAS/subscription behaviour, SQLite, SDK/native result envelopes, renderer integration are not covered here. Adding simulated persistence would overstate coverage; those contracts need the actual native runtime or a separately labelled protocol boundary suite.

@@ -14,7 +14,6 @@ path = "src/lib.rs"
 ui-lists = ["ink-core/ui-lists"]
 ui-playing = ["ink-core/ui-playing"]
 ui-messages = ["ink-core/ui-messages"]
-ui-views = ["ink-core/ui-views"]
 ui-canvas = ["ink-core/ui-canvas"]
 text-input = ["ink-core/text-input"]
 camera = ["ink-core/camera"]

@@ -61,16 +61,6 @@ fn read(batch: Array<'_>) -> Result<(ReactCommit, usize)> {
                 id: item.get::<_, Id>("id")?.0,
                 value: item.get("value")?,
             },
-            "values" => {
-                let values: Vec<(usize, serde_json::Value)> = json(ctx, &item, "values", &mut bytes)?;
-                if values.iter().any(|(id, _)| *id as u64 > 9_007_199_254_740_991) {
-                    return Err(Exception::throw_type(ctx, "invalid binding identifier"));
-                }
-                let collections = if item.contains_key("collections")? {
-                    json(ctx, &item, "collections", &mut bytes)?
-                } else { Vec::new() };
-                Operation::Values { view: item.get::<_, Id>("view")?.0, values, collections }
-            }
             "text" => {
                 let changes: Array = item.get("changes")?;
                 let count = changes.len() / 2;

@@ -16,7 +16,6 @@ struct App {
     events: EventReceiver,
     tree: ReactTree,
     engine: Engine,
-    native_views: usize,
     native_lists: usize,
 }
 
@@ -50,7 +49,6 @@ impl App {
             events,
             tree: ReactTree::with_icons(icons).unwrap(),
             engine,
-            native_views: 0,
             native_lists: 0,
         };
         let mut ready = false;
@@ -58,15 +56,6 @@ impl App {
             match app.next() {
                 Event::Commit(commit) => {
                     for op in &commit.0 {
-                        if matches!(
-                            op,
-                            Operation::Create {
-                                r#type: HostKind::NativeView,
-                                ..
-                            }
-                        ) {
-                            app.native_views += 1;
-                        }
                         if matches!(
                             op,
                             Operation::Create {
@@ -219,16 +208,12 @@ fn event_name(event: &Event) -> String {
 fn commit_work(commit: &ReactCommit) -> Value {
     let mut creates = 0;
     let mut removes = 0;
-    let mut values = 0;
     let mut changed_rows = 0;
     let mut full_datasets = 0;
     for op in &commit.0 {
         match op {
             Operation::Create { .. } => creates += 1,
             Operation::Remove { .. } => removes += 1,
-            Operation::Values {
-                values: sources, ..
-            } => values += sources.len(),
             Operation::Update { props, .. } => {
                 changed_rows += props
                     .get("itemChanges")
@@ -241,14 +226,13 @@ fn commit_work(commit: &ReactCommit) -> Value {
         }
     }
     json!({ "operations": commit.0.len(), "creates": creates, "removes": removes,
-        "source_values": values, "changed_rows": changed_rows, "full_datasets": full_datasets,
+        "changed_rows": changed_rows, "full_datasets": full_datasets,
         "serialised_commit_bytes": serde_json::to_vec(commit).unwrap().len() })
 }
 
-fn cells(fixture: &str, command: &str, samples: usize, warmup: usize) -> Value {
-    let mut app = App::new(fixture);
+fn cells(command: &str, samples: usize, warmup: usize) -> Value {
+    let mut app = App::new("react");
     app.verify_cells(command, 0);
-    assert_eq!(app.native_views, usize::from(fixture == "bindings"));
     let initial_nodes = app.host_nodes();
     let initial_width = app
         .engine
@@ -310,25 +294,9 @@ fn cells(fixture: &str, command: &str, samples: usize, warmup: usize) -> Value {
         app.verify_cells(command, bit);
         assert_eq!(work["creates"], 0);
         assert_eq!(work["removes"], 0);
-        if fixture == "bindings" {
-            assert_eq!(
-                work["operations"], 1,
-                "bound changes must use a single Values batch"
-            );
-            assert_eq!(
-                work["source_values"],
-                if command == "small" {
-                    1
-                } else if command == "resize" {
-                    501
-                } else {
-                    500
-                }
-            );
-        }
         contracts.push(work);
     }
-    json!({"name":format!("{fixture}-{command}"), "samples":times, "contracts":contracts,
+    json!({"name":format!("react-{command}"), "samples":times, "contracts":contracts,
         "host_nodes":initial_nodes, "queue_high_water_bytes":app.runtime.queue_metrics().1})
 }
 
@@ -615,7 +583,7 @@ fn scrollbar_drag(samples: usize, warmup: usize) -> Value {
 }
 
 fn idle() -> Value {
-    let mut app = App::new("bindings");
+    let mut app = App::new("react");
     app.verify_cells("small", 0);
     let revision = app.engine.scene().revision;
     let mut probes = 0;
@@ -656,10 +624,8 @@ fn main() {
     let warmup: usize = args[2].parse().unwrap();
     assert!(samples > 0 && samples.is_multiple_of(2) && warmup.is_multiple_of(2));
     let mut workloads = Vec::new();
-    for fixture in ["bindings", "react"] {
-        for command in ["small", "bulk", "resize"] {
-            workloads.push(cells(fixture, command, samples, warmup));
-        }
+    for command in ["small", "bulk", "resize"] {
+        workloads.push(cells(command, samples, warmup));
     }
     for count in [100, 1000, 10000] {
         workloads.push(list_edits(count, samples, warmup));

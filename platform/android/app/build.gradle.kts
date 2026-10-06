@@ -386,7 +386,6 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
             "ui-lists" to inkUses("ui-lists"),
             "ui-playing" to inkUses("ui-playing"),
             "ui-messages" to inkUses("ui-messages"),
-            "ui-views" to inkUses("ui-views"),
             "ui-canvas" to inkUses("ui-canvas"),
             "text-input" to inkUses("text-input"),
             "camera" to inkUsesCameraPermission,

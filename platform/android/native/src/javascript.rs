@@ -423,25 +423,6 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceiveB
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeReplaceCollection<'local>(
-    mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong, view: jlong, source: jlong, revision: jlong, rows: JString<'local>,
-) -> JString<'local> {
-    let rows = env.with_env(|env| rows.try_to_string(env)).resolve::<jni::errors::LogErrorAndDefault>();
-    let result = (|| -> Result<()> {
-        anyhow::ensure!(view > 0 && source > 0 && revision > 0, "Invalid native collection target");
-        let mut engine = engine(handle).context("App is no longer mounted")?.lock_arc();
-        let rows = serde_json::from_str(&rows)?;
-        let mut script = engine.script.take().context("App is no longer mounted")?;
-        let result = script.tree.replace_view_collection(view as usize, source as usize, revision as u64, rows, &mut engine.engine);
-        engine.script = Some(script);
-        anyhow::ensure!(result?, "Native view is no longer mounted");
-        Ok(())
-    })();
-    let message = result.err().map(|error| format!("{error:#}")).unwrap_or_default();
-    env.with_env(|env| env.new_string(message)).resolve::<jni::errors::LogErrorAndDefault>()
-}
-
-#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCaptureState(
     mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong, value: JString<'_>,
 ) -> jboolean {

@@ -105,7 +105,7 @@ impl ReactTree {
         previous: Option<&Row>, cursor: &mut usize, nodes: &mut Vec<usize>, operations: &mut Vec<Operation>, depth: usize, event_list: Option<usize>,
     ) -> Result<usize> {
         ensure!(depth < 128 && *cursor < 4096, "native row template is too large");
-        ensure!(!matches!(template.kind, HostKind::Root | HostKind::NativeView | HostKind::NativeList | HostKind::List | HostKind::PlayingScreen), "unsupported row template node");
+        ensure!(!matches!(template.kind, HostKind::Root | HostKind::NativeList | HostKind::List | HostKind::PlayingScreen), "unsupported row template node");
         let id = match previous.and_then(|row| row.nodes.get(*cursor)) { Some(id) => *id, None => self.native_id()? };
         *cursor += 1;
         nodes.push(id);

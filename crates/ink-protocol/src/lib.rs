@@ -36,31 +36,6 @@ pub enum Operation {
         id: usize,
         value: bool,
     },
-    Values {
-        view: usize,
-        values: Vec<(usize, Json)>,
-        #[serde(default)]
-        collections: Vec<CollectionPatch>,
-    },
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct CollectionPatch {
-    pub source: usize,
-    pub revision: u64,
-    pub edits: Vec<CollectionEdit>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(tag = "op", rename_all = "lowercase", deny_unknown_fields)]
-pub enum CollectionEdit {
-    Reverse,
-    Reset { items: Vec<Json> },
-    Insert { item: Json, before: Option<String> },
-    Update { key: String, value: Map<String, Json> },
-    Remove { key: String },
-    Move { key: String, before: Option<String> },
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -70,7 +45,6 @@ pub enum HostKind {
     Root,
     #[serde(rename = "#text")]
     RawText,
-    NativeView,
     NativeList,
     PlayingScreen,
     List,

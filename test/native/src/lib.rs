@@ -62,8 +62,6 @@ pub struct SceneApp {
     pub tree: ReactTree,
     pub engine: Engine,
     pub native_list_creates: usize,
-    pub native_view_creates: usize,
-    pub values_commits: usize,
 }
 
 impl SceneApp {
@@ -79,8 +77,6 @@ impl SceneApp {
             tree: ReactTree::with_icons(&icons).unwrap(),
             engine,
             native_list_creates: 0,
-            native_view_creates: 0,
-            values_commits: 0,
         }
     }
 
@@ -110,18 +106,6 @@ impl SceneApp {
                             }
                         ) {
                             self.native_list_creates += 1;
-                        }
-                        if matches!(
-                            operation,
-                            ink_protocol::Operation::Create {
-                                r#type: ink_protocol::HostKind::NativeView,
-                                ..
-                            }
-                        ) {
-                            self.native_view_creates += 1;
-                        }
-                        if matches!(operation, ink_protocol::Operation::Values { .. }) {
-                            self.values_commits += 1;
                         }
                     }
                     self.tree.apply(commit, &mut self.engine).unwrap();

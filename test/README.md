@@ -22,7 +22,7 @@ Android suites also work with a headless emulator. Start `emulator -avd Light_Ph
 | `compiler` | Real JSX, routing and icon transforms; emitted output uses Ink's genuine helpers. Bun execution does not establish QuickJS behaviour. |
 | `sdk` | Portable SDK data/validation contracts executed in Bun. Native IO and Android lifecycle require the integration suites. |
 | `runtime` | Fixtures compiled by Ink's compiler, executed by `AppRuntime` in real QuickJS, including lazy split-web loading and direct runtime transport/lifetime checks. |
-| `scene` | Compiled fixtures through QuickJS, React commits, `ReactTree`, layout and interaction, including navigation and native-view lifetime. No Vulkan, Android activity lifetime or physical display measurements. |
+| `scene` | Compiled fixtures through QuickJS, React commits, `ReactTree`, layout and interaction, including navigation. No Vulkan, Android activity lifetime or physical display measurements. |
 | `audio` | Production level/pitch processors with analytically known signal inputs. No microphone or playback-device claims. |
 | `android` | Selected production Kotlin adapters on Android, using a separate fixture APK. See `android/README.md` for prerequisites and cleanup. |
 | `android-app` | Public store/network SDKs through the real compiled Android app, QuickJS, Rust/JNI and Kotlin. Uses SQLite, a local HTTP server and a process restart. See `android/app.md`. |

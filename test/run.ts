@@ -99,7 +99,7 @@ for (const suite of suites) {
   } else if (suite === "visual") {
     await run(suite, [process.execPath, "test/visual/run.ts", "--serial", values.serial!]);
   } else if (suite === "audio" || prepared) {
-    const targets = suite === "runtime" ? ["runtime", "split_web"] : suite === "scene" ? ["scene", "navigation", "lifecycle"] : [suite];
+    const targets = suite === "runtime" ? ["runtime", "split_web"] : suite === "scene" ? ["scene", "navigation"] : [suite];
     await run(suite, ["cargo", "test", "--no-fail-fast", "--profile", values.profile!, "-p", "ink-test", ...targets.flatMap(target => ["--test", target]), ...(values.filter ? [values.filter] : [])]);
   }
 }

@@ -137,19 +137,6 @@ try {
 }
 ```
 
-### Query directly into a native collection
-
-Inside `nativeView`, declare `const places = view.collection<Place>([], "id")`, then call:
-
-```ts
-await database.queryInto(places,
-  "SELECT CAST(id AS TEXT) AS id, name FROM stops ORDER BY name LIMIT ?",
-  [100], { signal },
-);
-```
-
-Bind `places` to `view.list`. The rows travel from Android's SQLite adapter directly to Rust; JavaScript receives the row count. The declared key must contain unique strings. The usual query limits and cancellation apply. Results older than an edit or result already applied in Rust are ignored. Queries targeting a removed view reject. This path requires a mounted app; workers should use `query()`.
-
 ### Queries and results
 
 Queries must start with `SELECT`, `WITH` or `EXPLAIN`. The database prevents writes. Pass strings, finite numbers or `null` as parameters instead of inserting values into SQL text.

@@ -26,15 +26,6 @@
       "ui-messages",
       "ui-lists"
     ],
-    "src/view.ts": [
-      "ui-views",
-      "ui-lists",
-      "ui-messages",
-      "ui-playing",
-      "image",
-      "network",
-      "text-input"
-    ],
     "src/canvas.ts": [
       "ui-canvas"
     ]
