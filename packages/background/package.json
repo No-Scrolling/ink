@@ -1,12 +1,12 @@
 {
   "name": "@ink/background",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "private": true,
   "exports": {
     ".": "./src/index.ts",
     "./worker": "./src/worker.ts"
   },
   "peerDependencies": {
-    "ink": "0.1.0-alpha.6"
+    "ink": "0.1.0-alpha.7"
   }
 }
