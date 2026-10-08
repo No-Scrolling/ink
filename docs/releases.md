@@ -96,4 +96,22 @@ Native commands check prerequisites before changing package declarations. A fail
 
 Update notices use a daily cached check in interactive terminals and are disabled in CI. The first check runs in the background, so a notice can appear on the next command. Ignoring a notice leaves the installed release unchanged. CI should install an explicit release with `INK_VERSION` and use its commands.
 
-Source-checkout development continues to use `scripts/ink` and local `file:` dependencies. Installed releases use registry packages and never dispatch through another source checkout.
+## Develop from a checkout
+
+Install Git, Bun, Rust through rustup, Java 17 and the Android SDK command-line tools. Set `JAVA_HOME` and `ANDROID_HOME` for those installations and put Android's `platform-tools` on `PATH`.
+
+```sh
+git clone https://github.com/No-Scrolling/ink.git
+cd ink
+bun install
+rustup toolchain install 1.96.0 --component clippy --component rustfmt --target aarch64-linux-android
+cargo +1.96.0 install cargo-ndk --version 4.1.2 --locked
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
+sdkmanager --licenses
+./scripts/ink doctor
+./scripts/ink -C examples/light-template dev
+```
+
+Source-checkout development uses `scripts/ink` and local `file:` dependencies. App commands resolve their SDK from the app's `ink` dependency. When the launcher belongs to another checkout, build and editing commands forward to the selected SDK's launcher. `INK_SDK_ROOT` selects the SDK for app creation and environment checks only. Installed releases use registry packages and never dispatch through another source checkout.
+
+To move an app between checkouts, update its `ink` and `@ink/*` `file:` dependencies in `package.json`, remove obsolete Ink `overrides` produced by older scaffolds, then run the new checkout's `scripts/ink add` with your existing modules and `scripts/ink check` from the app directory. Apps without modules can run `bun install` instead. All Ink packages must come from that checkout. Workspace examples use their enclosing SDK.
