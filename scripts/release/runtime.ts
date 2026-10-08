@@ -140,10 +140,24 @@ async function prerequisites(install) {
       "Android builds on Linux ARM64 are not supported by Ink: Google's Linux SDK/NDK host tools require x64. Use Linux x64 or macOS Apple Silicon for ink dev and ink build. Package installation and ink check remain available here.",
     );
   let failures = 0;
-  const report = (label, ready, detail) => {
-    if (action !== "prerequisites" || !ready)
-      console.log(`${ready ? "✓" : "✗"} ${label}: ${detail}`);
-    if (!ready) failures++;
+  const tree = action !== "prerequisites";
+  const colour =
+    process.stdout.isTTY &&
+    process.env.NO_COLOR === undefined &&
+    process.env.CLICOLOR !== "0" &&
+    process.env.TERM !== "dumb";
+  const mark = (ready) => {
+    const symbol = ready ? "✓" : "✗";
+    return colour ? `\x1b[${ready ? 32 : 31}m${symbol}\x1b[0m` : symbol;
+  };
+  if (tree) console.log(`Ink · ${action}`);
+  const report = (label, ready, detail, guidance) => {
+    if (tree || !ready)
+      console.log(`${tree ? "├── " : ""}${mark(ready)} ${label.padEnd(16)} ${detail}`);
+    if (!ready) {
+      console.log(`${tree ? "│   " : "    "}${guidance}`);
+      failures++;
+    }
   };
   let rust = capture(["rustup", "run", sdk.rust, "rustc", "--version"]);
   if (!rust && install && (await confirm(`Install Rust ${sdk.rust} through rustup?`))) {
@@ -166,8 +180,8 @@ async function prerequisites(install) {
   report(
     "Rust",
     !!rust,
-    rust ??
-      `run: rustup toolchain install ${sdk.rust} --profile minimal --target aarch64-linux-android`,
+    rust ? rust.split(" ")[1] : "not found",
+    `Run rustup toolchain install ${sdk.rust} --profile minimal --target aarch64-linux-android`,
   );
   let targets = capture(["rustup", "target", "list", "--installed", "--toolchain", sdk.rust]);
   if (
@@ -180,9 +194,10 @@ async function prerequisites(install) {
     targets = capture(["rustup", "target", "list", "--installed", "--toolchain", sdk.rust]);
   }
   report(
-    "Rust Android target",
+    "Android target",
     !!targets?.includes("aarch64-linux-android"),
-    `aarch64-linux-android for Rust ${sdk.rust}`,
+    targets?.includes("aarch64-linux-android") ? "aarch64-linux-android" : "not installed",
+    `Run rustup target add --toolchain ${sdk.rust} aarch64-linux-android`,
   );
   let ndkTool = capture(["cargo", "ndk", "--version"]);
   if (
@@ -197,7 +212,8 @@ async function prerequisites(install) {
   report(
     "cargo-ndk",
     !!ndkTool,
-    ndkTool ?? `run: cargo +${sdk.rust} install cargo-ndk --version ${sdk.cargoNdk} --locked`,
+    ndkTool ? ndkTool.replace(/^cargo-ndk\s+/, "") : "not found",
+    `Run cargo +${sdk.rust} install cargo-ndk --version ${sdk.cargoNdk} --locked`,
   );
   const javaConfigured =
     !process.env.JAVA_HOME || (await exists(join(process.env.JAVA_HOME, "bin/java")));
@@ -211,9 +227,8 @@ async function prerequisites(install) {
   report(
     "Java",
     javaConfigured && javaResult.exitCode === 0 && javaVersion >= sdk.java && javaVersion <= 24,
-    javaVersion
-      ? `${javaVersion} (${process.env.JAVA_HOME ?? "PATH"}); supported: ${sdk.java}–24`
-      : `Install JDK ${sdk.java} or Android Studio and set JAVA_HOME${process.env.JAVA_HOME ? ` (currently ${process.env.JAVA_HOME})` : ""}`,
+    javaVersion ? String(javaVersion) : "not found",
+    `Install JDK ${sdk.java}–24 or Android Studio and set JAVA_HOME${process.env.JAVA_HOME ? ` (currently ${process.env.JAVA_HOME})` : ""}. Then run ink setup.`,
   );
   let android = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
   if (!android)
@@ -224,16 +239,25 @@ async function prerequisites(install) {
   let manager = join(android, "cmdline-tools/latest/bin/sdkmanager");
   if (!(await exists(manager))) manager = Bun.which("sdkmanager");
   const needs = [
-    ["platform-tools", join(android, "platform-tools/adb")],
+    ["platform-tools", join(android, "platform-tools/adb"), "Platform tools", "installed"],
     [
       `platforms;android-${sdk.androidPlatform}`,
       join(android, `platforms/android-${sdk.androidPlatform}/android.jar`),
+      "Android SDK",
+      String(sdk.androidPlatform),
     ],
     [
       `build-tools;${sdk.androidBuildTools}`,
       join(android, `build-tools/${sdk.androidBuildTools}/apksigner`),
+      "Build tools",
+      sdk.androidBuildTools,
     ],
-    [`ndk;${sdk.androidNdk}`, join(android, `ndk/${sdk.androidNdk}/source.properties`)],
+    [
+      `ndk;${sdk.androidNdk}`,
+      join(android, `ndk/${sdk.androidNdk}/source.properties`),
+      "Android NDK",
+      sdk.androidNdk,
+    ],
   ];
   const missing = [];
   for (const [name, file] of needs) if (!(await exists(file))) missing.push(name);
@@ -251,14 +275,25 @@ async function prerequisites(install) {
       run([manager, `--sdk_root=${android}`, ...missing]);
     }
   }
-  for (const [name, file] of needs) {
+  for (const [name, file, label, version] of needs) {
     const ready = await exists(file);
-    report(name, ready, ready ? file : `run: sdkmanager --sdk_root="${android}" "${name}"`);
+    report(
+      label,
+      ready,
+      ready ? version : "not installed",
+      `Run sdkmanager --sdk_root="${android}" "${name}"`,
+    );
   }
-  if (failures)
+  if (failures) {
+    if (tree)
+      console.log(
+        `└── ${mark(false)} ${failures} missing or incompatible prerequisite${failures === 1 ? "" : "s"}\n`,
+      );
     throw new Error(
       "Build prerequisites are incomplete. Run ink setup or follow the instructions above.",
     );
+  }
+  if (tree) console.log(`└── ${mark(true)} Ready to build\n`);
 }
 async function github(path) {
   const response = await fetch(`https://api.github.com/repos/${sdk.repository}/${path}`, {
