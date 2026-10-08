@@ -55,73 +55,73 @@
     },
     "packages/audio": {
       "name": "@ink/audio",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.3",
-        "ink": "0.1.0-alpha.3",
+        "@ink/files": "0.1.0-alpha.5",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/auth": {
       "name": "@ink/auth",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/background": {
       "name": "@ink/background",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/barcode": {
       "name": "@ink/barcode",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "@ink/camera": "0.1.0-alpha.3",
-        "ink": "0.1.0-alpha.3",
+        "@ink/camera": "0.1.0-alpha.5",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/camera": {
       "name": "@ink/camera",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.3",
-        "ink": "0.1.0-alpha.3",
+        "@ink/files": "0.1.0-alpha.5",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/clipboard": {
       "name": "@ink/clipboard",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/crypto": {
       "name": "@ink/crypto",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/files": {
       "name": "@ink/files",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "dependencies": {
-        "@ink/lightos": "0.1.0-alpha.3",
+        "@ink/lightos": "0.1.0-alpha.5",
       },
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/ink": {
       "name": "ink",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "dependencies": {
         "linkify-it": "^6.1.0",
         "react-reconciler": "0.33.0",
@@ -132,86 +132,86 @@
     },
     "packages/lightos": {
       "name": "@ink/lightos",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/location": {
       "name": "@ink/location",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/maps": {
       "name": "@ink/maps",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/network": {
       "name": "@ink/network",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "dependencies": {
         "@types/whatwg-url": "13.0.0",
         "web-streams-polyfill": "4.3.0",
         "whatwg-url": "14.2.0",
       },
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.3",
-        "ink": "0.1.0-alpha.3",
+        "@ink/files": "0.1.0-alpha.5",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/nfc": {
       "name": "@ink/nfc",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/notifications": {
       "name": "@ink/notifications",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/secure-store": {
       "name": "@ink/secure-store",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/store": {
       "name": "@ink/store",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
       },
     },
     "packages/video": {
       "name": "@ink/video",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.3",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
     "packages/wallet": {
       "name": "@ink/wallet",
-      "version": "0.1.0-alpha.4",
+      "version": "0.1.0-alpha.5",
       "dependencies": {
         "valibot": "1.5.0",
       },
       "peerDependencies": {
-        "@ink/barcode": "0.1.0-alpha.3",
-        "ink": "0.1.0-alpha.3",
+        "@ink/barcode": "0.1.0-alpha.5",
+        "ink": "0.1.0-alpha.5",
         "react": "19.2.8",
       },
     },
