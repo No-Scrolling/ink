@@ -73,11 +73,15 @@ fn run() -> Result<()> {
             if distribution::installed_root().is_some() {
                 distribution::run("install", config.parent(), &[])
             } else {
-                let status = std::process::Command::new("bun")
-                    .arg("install")
-                    .current_dir(config.parent().expect("config has a parent"))
-                    .status()?;
-                anyhow::ensure!(status.success(), "bun install failed");
+                println!("Ink · install");
+                process::run_quiet(
+                    std::process::Command::new("bun")
+                        .arg("install")
+                        .current_dir(config.parent().expect("config has a parent")),
+                    "bun install",
+                    cli.verbose,
+                )?;
+                output::tree_step("Packages", "installed", true, true);
                 Ok(())
             }
         }
@@ -168,7 +172,7 @@ fn develop(project: Project, requested_device: Option<&str>, once: bool, logs: b
 fn list_devices() -> Result<()> {
     let devices = android::connected_devices()?;
     let remembered = android::remembered_device();
-    println!("Android devices");
+    println!("Ink · devices");
     if devices.is_empty() {
         output::tree_section("None connected", true);
         return Ok(());

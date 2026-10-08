@@ -31,14 +31,34 @@ for (const name of await readdir(join(sdkRoot, "packages"))) {
   const pkg = await file.json();
   packages.set(pkg.name, pkg);
 }
-function run(command, cwd = sdkRoot) {
+const colour =
+  process.stdout.isTTY &&
+  process.env.NO_COLOR === undefined &&
+  process.env.CLICOLOR !== "0" &&
+  process.env.TERM !== "dumb";
+const mark = (ready) => {
+  const symbol = ready ? "✓" : "✗";
+  return colour ? `\x1b[${ready ? 32 : 31}m${symbol}\x1b[0m` : symbol;
+};
+function step(label, detail, last = false) {
+  console.log(`${last ? "└──" : "├──"} ${mark(true)} ${label.padEnd(12)} ${detail}`);
+}
+function run(command, cwd = sdkRoot, quiet = false) {
   const result = Bun.spawnSync(command, {
     cwd,
     stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
+    stdout: quiet ? "pipe" : "inherit",
+    stderr: quiet ? "pipe" : "inherit",
   });
-  if (result.exitCode) throw new Error(`${command[0]} exited with ${result.exitCode}`);
+  if (result.exitCode) {
+    if (quiet) {
+      for (const bytes of [result.stdout, result.stderr]) {
+        const text = bytes.toString().trim();
+        if (text) console.error(text);
+      }
+    }
+    throw new Error(`${command[0]} exited with ${result.exitCode}`);
+  }
 }
 function capture(command) {
   if (!Bun.which(command[0])) return null;
@@ -114,15 +134,22 @@ async function synchronise(root, additions = []) {
       if (actual?.name !== publicName(name) || actual?.version !== sdk.version)
         packagesMatch = false;
     }
-    if (next === original && installed === sdk.version && packagesMatch && action !== "install")
+    if (next === original && installed === sdk.version && packagesMatch && action !== "install") {
+      if (action === "add") {
+        console.log("Ink · add");
+        step("Packages", "already installed", true);
+      }
       return;
-    console.log(`Preparing project for Ink ${sdk.version}`);
+    }
+    console.log(`Ink · ${action === "prepare" ? "install" : action}`);
     const lockPath = join(root, "bun.lock");
     const oldLock = await readFile(lockPath).catch(() => null);
     await writeFile(path, next);
     try {
-      run([process.execPath, "install"], root);
+      run([process.execPath, "install"], root, true);
       await writeFile(stamp, sdk.version);
+      step("Packages", `Ink ${sdk.version}`, additions.length === 0);
+      if (additions.length) step("Add", additions.join(", "), true);
     } catch (error) {
       await writeFile(path, original);
       if (oldLock) await writeFile(lockPath, oldLock);
@@ -141,15 +168,6 @@ async function prerequisites(install) {
     );
   let failures = 0;
   const tree = action !== "prerequisites";
-  const colour =
-    process.stdout.isTTY &&
-    process.env.NO_COLOR === undefined &&
-    process.env.CLICOLOR !== "0" &&
-    process.env.TERM !== "dumb";
-  const mark = (ready) => {
-    const symbol = ready ? "✓" : "✗";
-    return colour ? `\x1b[${ready ? 32 : 31}m${symbol}\x1b[0m` : symbol;
-  };
   if (tree) console.log(`Ink · ${action}`);
   const report = (label, ready, detail, guidance) => {
     if (tree || !ready)
@@ -330,6 +348,7 @@ async function notice() {
 async function update(version) {
   if (sdk.distribution !== "release")
     throw new Error("Run ink update from an installed release, not a source checkout.");
+  console.log("Ink · update");
   const release = version
     ? await github(`releases/tags/v${version.replace(/^v/, "")}`)
     : await latest();
@@ -337,9 +356,10 @@ async function update(version) {
   const next = release.tag_name.replace(/^v/, "");
   if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(next)) throw new Error("Invalid release version");
   if (next === sdk.version || (!version && Bun.semver.order(next, sdk.version) < 0)) {
-    console.log(`Ink ${next} is already installed.`);
+    console.log(`└── ${mark(true)} Already up to date · Ink ${sdk.version}`);
     return;
   }
+  step("Check", `${sdk.version} → ${next}`);
   const name = `ink-${process.platform}-${process.arch}.tar.gz`;
   const asset = release.assets.find((a) => a.name === name);
   const checksums = release.assets.find((a) => a.name === "SHA256SUMS");
@@ -353,15 +373,17 @@ async function update(version) {
       if (!r.ok) throw new Error(`Download returned ${r.status}`);
       return r;
     };
-    console.log(`Downloading Ink ${next}`);
+
     const sums = await (await download(checksums.browser_download_url)).text();
     const expected = sums
       .split("\n")
       .find((line) => line.endsWith(`  ${name}`))
       ?.split(" ")[0];
     const bytes = await (await download(asset.browser_download_url)).arrayBuffer();
+    step("Download", `${process.platform}-${process.arch}`);
     const actual = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
     if (!expected || actual !== expected) throw new Error("Release checksum mismatch");
+    step("Verify", "checksum passed");
     const archive = join(staging, "release.tar.gz");
     await writeFile(archive, new Uint8Array(bytes));
     const payload = join(staging, "payload");
@@ -369,7 +391,7 @@ async function update(version) {
     run(["tar", "-xzf", archive, "-C", payload]);
     const metadata = await Bun.file(join(payload, "sdk.json")).json();
     if (metadata.version !== next) throw new Error("Release archive version mismatch");
-    run([join(payload, "bin/ink"), "--version"]);
+    run([join(payload, "bin/ink"), "--version"], sdkRoot, true);
     const destination = join(home, "versions", next);
     if (await exists(destination))
       throw new Error(`Release directory already exists: ${destination}`);
@@ -377,7 +399,8 @@ async function update(version) {
     const link = join(home, `.current-${process.pid}`);
     await symlink(destination, link);
     await rename(link, join(home, "current"));
-    console.log(`Installed Ink ${next}. Projects will update on their next Ink command.`);
+    step("Install", `Ink ${next}`, true);
+    console.log("\nProjects update on their next Ink command.");
   } finally {
     await rm(staging, { recursive: true, force: true });
   }

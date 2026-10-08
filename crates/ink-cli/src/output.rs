@@ -11,14 +11,6 @@ pub fn initialise() {
     set_override(colour);
 }
 
-pub fn success(message: impl AsRef<str>) {
-    println!(
-        "{} {}",
-        "✓".if_supports_color(Stream::Stdout, |text| text.green()),
-        message.as_ref()
-    );
-}
-
 pub fn warning(message: impl AsRef<str>) {
     eprintln!(
         "{} {}",

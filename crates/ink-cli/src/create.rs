@@ -66,11 +66,10 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
     if installed {
         super::distribution::prepare(directory)?;
     }
-    super::output::success(if installed {
-        format!("Created {}. Run ink dev in {}", title, directory.display())
-    } else {
-        format!("Created {}. Run bun install in {}", title, directory.display())
-    });
+    println!("Ink · create");
+    super::output::tree_step("Create", title, false, true);
+    super::output::tree_root_field("Directory", directory.display().to_string(), true);
+    println!("\nRun {} in {}", if installed { "ink dev" } else { "bun install" }, directory.display());
     Ok(())
 }
 
@@ -156,14 +155,14 @@ pub fn add_modules(project: &ink_compiler::Project, modules: &[String]) -> Resul
         &manifest,
         format!("{}\n", serde_json::to_string_pretty(&metadata)?),
     )?;
-    let status = std::process::Command::new("bun")
-        .arg("install")
-        .current_dir(project.root())
-        .status()?;
-    ensure!(
-        status.success(),
-        "dependencies were updated; bun install failed, fix the reported problem and retry bun install"
-    );
-    super::output::success(format!("Added {}", modules.join(", ")));
+    println!("{} · add", project.name());
+    super::process::run_quiet(
+        std::process::Command::new("bun")
+            .arg("install")
+            .current_dir(project.root()),
+        "bun install",
+        false,
+    )?;
+    super::output::tree_step("Add", &modules.join(", "), true, true);
     Ok(())
 }
