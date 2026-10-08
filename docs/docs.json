@@ -109,12 +109,17 @@
   "navbar": {
     "links": [
       {
-        "href": "https://github.com/vandamd/ink",
+        "href": "https://github.com/No-Scrolling/ink",
         "label": "GitHub"
       }
     ]
   },
   "redirects": [
+    {
+      "source": "/install.sh",
+      "destination": "https://raw.githubusercontent.com/No-Scrolling/ink/main/scripts/install.sh",
+      "permanent": false
+    },
     {
       "source": "/components",
       "destination": "/screens"
