@@ -1,1 +1,11 @@
-{"name":"@ink/secure-store","version":"0.1.0-alpha.1","private":true,"exports":{".":"./src/index.ts"},"peerDependencies":{"ink":"0.1.0-alpha.1"}}
+{
+  "name": "@ink/secure-store",
+  "version": "0.1.0-alpha.2",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "ink": "0.1.0-alpha.2"
+  }
+}
