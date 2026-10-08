@@ -146,7 +146,9 @@ async function synchronise(root, additions = []) {
     const oldLock = await readFile(lockPath).catch(() => null);
     await writeFile(path, next);
     try {
-      run([process.execPath, "install"], root, true);
+      // Fresh releases may be missing from Bun's cached registry manifests.
+      const refresh = installed !== sdk.version || !packagesMatch;
+      run([process.execPath, "install", ...(refresh ? ["--no-cache"] : [])], root, true);
       await writeFile(stamp, sdk.version);
       step("Packages", `Ink ${sdk.version}`, additions.length === 0);
       if (additions.length) step("Add", additions.join(", "), true);
