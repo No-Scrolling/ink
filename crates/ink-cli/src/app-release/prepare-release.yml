@@ -1,0 +1,35 @@
+name: Prepare Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'App version, for example 0.2.0'
+        required: true
+        type: string
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - name: Bump the app version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: bun .github/ink-release.mjs prepare
+      - uses: peter-evans/create-pull-request@v8
+        with:
+          branch: release/v${{ inputs.version }}
+          title: 'release: v${{ inputs.version }}'
+          commit-message: 'release: v${{ inputs.version }}'
+          body: 'Release v${{ inputs.version }}. Merging this PR builds and publishes the signed APK.'
+          add-paths: ink.toml

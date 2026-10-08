@@ -28,7 +28,10 @@ pub enum InkCommand {
     /// Install this application's dependencies using the installed Ink release
     Install,
     /// Check prerequisites and offer to install missing build tools
-    Setup,
+    Setup {
+        #[command(subcommand)]
+        command: Option<SetupCommand>,
+    },
     /// Install a new Ink release
     #[command(visible_alias = "upgrade")]
     Update {
@@ -103,4 +106,10 @@ pub enum InkCommand {
 
     /// Check the local Ink and Android development environment
     Doctor,
+}
+
+#[derive(Subcommand)]
+pub enum SetupCommand {
+    /// Add GitHub workflows for preparing and publishing signed app releases
+    Release,
 }

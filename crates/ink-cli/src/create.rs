@@ -66,8 +66,10 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
     if installed {
         super::distribution::prepare(directory)?;
     }
+    super::app_release::write(directory)?;
     println!("Ink · create");
     super::output::tree_step("Create", title, false, true);
+    super::output::tree_step("Workflows", "Prepare Release and Release", false, true);
     super::output::tree_root_field("Directory", directory.display().to_string(), true);
     println!("\nRun {} in {}", if installed { "ink dev" } else { "bun install" }, directory.display());
     Ok(())

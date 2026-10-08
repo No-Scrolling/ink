@@ -1,4 +1,5 @@
 mod android;
+mod app_release;
 mod development;
 mod distribution;
 mod cli;
@@ -85,7 +86,13 @@ fn run() -> Result<()> {
                 Ok(())
             }
         }
-        InkCommand::Setup => distribution::run("setup", None, &[]),
+        InkCommand::Setup { command: None } => distribution::run("setup", None, &[]),
+        InkCommand::Setup {
+            command: Some(cli::SetupCommand::Release),
+        } => {
+            let config = find_config(cli.directory.as_deref())?;
+            app_release::setup(config.parent().expect("config has a parent"))
+        }
         InkCommand::Update { version } => {
             distribution::run("update", None, &version.into_iter().collect::<Vec<_>>())
         }
@@ -243,19 +250,24 @@ fn show_info(project: &Project) -> Result<()> {
     if let Some(signing) = project.release_signing() {
         output::tree_field(false, false, "Signing", &signing.key_alias);
     }
-    let debug_suffix = format!("-{}-arm64-debug.apk", project.version());
-    let release_suffix = format!("-{}-arm64.apk", project.version());
+    let debug_suffix = format!("-{}-debug.apk", project.version());
+    let release_suffix = format!("-{}.apk", project.version());
+    let old_debug_suffix = format!("-{}-arm64-debug.apk", project.version());
+    let old_release_suffix = format!("-{}-arm64.apk", project.version());
     let current_builds: Vec<_> = builds
         .iter()
         .filter(|build| {
-            build.name.ends_with(&debug_suffix) || build.name.ends_with(&release_suffix)
+            build.name.ends_with(&debug_suffix)
+                || build.name.ends_with(&release_suffix)
+                || build.name.ends_with(&old_debug_suffix)
+                || build.name.ends_with(&old_release_suffix)
         })
         .collect();
     if current_builds.is_empty() {
         output::tree_field(false, true, "APKs", "None");
     } else {
         for (index, build) in current_builds.iter().enumerate() {
-            let label = if build.name.ends_with(&debug_suffix) {
+            let label = if build.name.ends_with(&debug_suffix) || build.name.ends_with(&old_debug_suffix) {
                 "Debug APK"
             } else {
                 "Release APK"

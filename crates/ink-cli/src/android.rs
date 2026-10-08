@@ -281,7 +281,7 @@ pub fn copy_build(
         ""
     };
     let file_name = format!(
-        "{}-{}-arm64{suffix}.apk",
+        "{}-{}{suffix}.apk",
         slug(project.name()),
         project.version()
     );

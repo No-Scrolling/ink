@@ -1,0 +1,139 @@
+name: Release
+on:
+  push:
+    branches: [main]
+    paths: [ink.toml]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the signed APK as a GitHub release'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: app-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      INK_SKIP_SETUP: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - id: app
+        name: Read app and Ink versions
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: bun .github/ink-release.mjs metadata
+      - name: Check signing secrets
+        if: steps.app.outputs.changed == 'true'
+        env:
+          KEYSTORE: ${{ secrets.INK_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.INK_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ]; then
+            echo '::error::Add INK_KEYSTORE_BASE64 and INK_KEYSTORE_PASSWORD in repository Settings → Secrets and variables → Actions.'
+            exit 1
+          fi
+      - name: Reserve the release tag
+        if: steps.app.outputs.changed == 'true' && (github.event_name == 'push' || inputs.publish)
+        run: bun .github/ink-release.mjs tag
+      - name: Install the pinned Ink release
+        if: steps.app.outputs.changed == 'true'
+        env:
+          INK_VERSION: ${{ steps.app.outputs.ink }}
+          INK_HOME: ${{ runner.temp }}/ink
+          INK_BIN_DIR: ${{ runner.temp }}/ink-bin
+        run: |
+          curl -fsSL https://ink.noscroll.ing/install.sh -o "$RUNNER_TEMP/install-ink.sh"
+          sh "$RUNNER_TEMP/install-ink.sh"
+          echo "INK_HOME=$INK_HOME" >> "$GITHUB_ENV"
+          echo "$INK_BIN_DIR" >> "$GITHUB_PATH"
+          echo "$INK_HOME/current/bin" >> "$GITHUB_PATH"
+      - id: tools
+        if: steps.app.outputs.changed == 'true'
+        name: Read Ink build requirements
+        run: bun .github/ink-release.mjs toolchain
+      - uses: actions/setup-java@v5
+        if: steps.app.outputs.changed == 'true'
+        with:
+          distribution: temurin
+          java-version: ${{ steps.tools.outputs.java }}
+      - name: Install Android and Rust build tools
+        if: steps.app.outputs.changed == 'true'
+        env:
+          RUST_VERSION: ${{ steps.tools.outputs.rust }}
+          CARGO_NDK_VERSION: ${{ steps.tools.outputs.cargo_ndk }}
+          NDK_VERSION: ${{ steps.tools.outputs.ndk }}
+          PLATFORM_VERSION: ${{ steps.tools.outputs.platform }}
+          BUILD_TOOLS_VERSION: ${{ steps.tools.outputs.build_tools }}
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target aarch64-linux-android
+          cargo +"$RUST_VERSION" install cargo-ndk --version "$CARGO_NDK_VERSION" --locked
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            platform-tools "platforms;android-$PLATFORM_VERSION" \
+            "build-tools;$BUILD_TOOLS_VERSION" "ndk;$NDK_VERSION"
+          ink doctor
+      - name: Install and check the app
+        if: steps.app.outputs.changed == 'true'
+        run: |
+          bun install --frozen-lockfile
+          ink install
+          bun run check
+          git diff --exit-code -- package.json bun.lock
+      - name: Build the signed APK
+        if: steps.app.outputs.changed == 'true'
+        env:
+          KEYSTORE: ${{ secrets.INK_KEYSTORE_BASE64 }}
+          INK_KEYSTORE_PASSWORD: ${{ secrets.INK_KEYSTORE_PASSWORD }}
+          INK_KEY_PASSWORD: ${{ secrets.INK_KEY_PASSWORD || secrets.INK_KEYSTORE_PASSWORD }}
+          INK_KEY_ALIAS: ${{ vars.INK_KEY_ALIAS || 'app' }}
+          APK_NAME: ${{ steps.app.outputs.apk }}
+          BUILD_TOOLS_VERSION: ${{ steps.tools.outputs.build_tools }}
+        run: |
+          umask 077
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/ink-release.jks"
+          bun .github/ink-release.mjs signing
+          ink build
+          # Older Ink releases include the architecture in the filename.
+          apks=(dist/*.apk)
+          if [ "${#apks[@]}" -ne 1 ]; then
+            echo '::error::Expected exactly one release APK.'
+            exit 1
+          fi
+          mkdir -p release
+          cp "${apks[0]}" "release/$APK_NAME"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "release/$APK_NAME"
+          cd release
+          sha256sum "$APK_NAME" > SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        if: steps.app.outputs.changed == 'true'
+        with:
+          name: signed-apk
+          path: release/
+          if-no-files-found: error
+      - name: Publish the GitHub release
+        if: steps.app.outputs.changed == 'true' && (github.event_name == 'push' || inputs.publish)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.app.outputs.version }}
+        run: |
+          bun .github/ink-release.mjs tag
+          if ! gh release view "v$VERSION" > /dev/null 2>&1; then
+            flags=()
+            if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+            gh release create "v$VERSION" --verify-tag --title "v$VERSION" \
+              --generate-notes "${flags[@]}" release/*.apk release/SHA256SUMS
+          fi
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/ink-release.jks"

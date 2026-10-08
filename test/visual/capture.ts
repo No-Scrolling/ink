@@ -107,7 +107,7 @@ export async function capture(serial: string, output: string) {
     await generateArtwork(fixture);
     const fixtureSha256 = await fixtureHash();
     await command(["cargo", "run", "--profile", "ink-dev", "-p", "ink-cli", "--", "-C", fixture, "build", "--debug"], "build", 900_000);
-    const apks = (await readdir(resolve(fixture, "dist"))).filter(name => name.endsWith("-arm64-debug.apk"));
+    const apks = (await readdir(resolve(fixture, "dist"))).filter(name => name.endsWith("-debug.apk"));
     if (apks.length !== 1) throw Error("Expected exactly one freshly built fixture APK");
     const apk = resolve(fixture, "dist", apks[0]!);
     const apkSha256 = sha256(await Bun.file(apk).bytes());
