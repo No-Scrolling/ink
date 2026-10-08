@@ -4,9 +4,7 @@
   "workspaces": [
     "packages/*",
     "examples/light-template",
-    "examples/counter",
-    "examples/tuner",
-    "examples/weather"
+    "examples/counter"
   ],
   "scripts": {
     "check": "tsc -p packages/ink/tsconfig.json",

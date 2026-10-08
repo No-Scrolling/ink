@@ -1,4 +1,0 @@
-{
-  "extends": "ink/tsconfig",
-  "include": ["app/**/*.tsx", "lib/**/*.ts"]
-}

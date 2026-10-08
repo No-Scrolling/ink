@@ -42,4 +42,4 @@ Use plain British English and direct action names. Remove text that repeats a co
 
 Check the app with the keyboard open, long content, missing data and navigation back from another page. Check light and dark modes. Use the emulator for layout and the phone for hardware features.
 
-See [Screens and layout](docs/screens.mdx) for components and [Tuner](examples/tuner) for an example app.
+See [Screens and layout](docs/screens.mdx) for components and [Light Template](examples/light-template) for an example app.

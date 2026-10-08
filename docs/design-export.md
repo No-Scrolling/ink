@@ -113,7 +113,7 @@ The props file must contain a JSON object. Without `--name`, the frame name is t
 
 Use `--setup` to run a module's default function before mounting the screen. Ink awaits the function, so it can seed a [Store](/store) or install fixed API responses.
 
-In the Tuner example, `design/setup.ts` seeds the app's `preferences` store:
+For a tuning app with a `preferences` store in `lib/preferences.ts`, create `design/setup.ts`:
 
 ```ts
 import { preferences } from "../lib/preferences";
@@ -128,7 +128,7 @@ export default async function setup() {
 }
 ```
 
-From `examples/tuner/`:
+From the app directory:
 
 ```sh
 ink export /settings --setup design/setup.ts --out design/exports/settings
@@ -136,11 +136,11 @@ ink export /settings --setup design/setup.ts --out design/exports/settings
 
 Each export uses a fresh in-memory store without changing installed app data. Background workers do not run.
 
-Module imports run before setup. Keep side effects out of preview components' module-level code. Network requests do not reach real services; use setup to install fixed `fetch` responses, as in the [Weather example](#export-the-example-apps).
+Module imports run before setup. Keep side effects out of preview components' module-level code. Network requests do not reach real services; use setup to install fixed `fetch` responses.
 
 ## Supply native fixtures
 
-Use `--fixtures` to supply public microphone state. The Tuner example's `design/live-pitch.json` matches the `PitchState` delivered by `usePitchDetector().measurements`:
+Use `--fixtures` to supply public microphone state. For a screen using `usePitchDetector().measurements`, create `design/live-pitch.json` matching its `PitchState`:
 
 ```json
 {
@@ -239,20 +239,11 @@ When an agent imports a screen flow:
 - Use native arrow labels and leave space between labels, frame names and other arrows.
 - Fit the flow in the viewport. Open a fresh board view to confirm the page and frames are visible.
 
-## Export the example apps
+## Export Light Template
 
 From the Ink SDK checkout:
 
 ```sh
 ./scripts/ink -C examples/light-template export --entry app/display/icons.tsx \
   --name "Ink · icons" --out design/exports/icons
-
-./scripts/ink -C examples/tuner export --entry design/pitch.tsx \
-  --props design/sharp.json --name "Tuner · sharp" --out design/exports/sharp
-
-./scripts/ink -C examples/weather export --entry design/forecast.tsx \
-  --props design/london.json --setup design/setup.ts --wait 1500 \
-  --name "Weather · London" --out design/exports/london
 ```
-
-Tuner's pitch component accepts a note and deviation as props. Weather uses its Forecast component with fixed API responses supplied by the setup module.
