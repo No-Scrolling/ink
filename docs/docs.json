@@ -34,6 +34,7 @@
       {
         "group": "Guides",
         "pages": [
+          "build-app",
           "design-export",
           "permissions-guide"
         ]
