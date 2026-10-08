@@ -43,7 +43,3 @@ export default function Counter() {
   );
 }
 ```
-
-## Documentation
-
-See [ink.noscroll.ing](https://ink.noscroll.ing).

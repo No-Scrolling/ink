@@ -1,44 +1,33 @@
 ---
 title: "Get started"
-description: "Install the local SDK, create an app and run it on Android."
+description: "Install Ink, create an app and run it on a Light Phone III."
 ---
-
-Ink supports an installed release or a local SDK checkout. Release packaging and publishing are described in [Releases](releases.md); until the first release is published, use the checkout instructions below.
 
 Build Android apps on macOS Apple Silicon or Linux x64. Linux release archives require glibc 2.35 or newer, such as Ubuntu 22.04. The Linux ARM64 CLI supports JavaScript tooling, but Android builds are not supported because Google's Linux SDK/NDK host tools require x64.
 
-Install Git, Bun, Rust through rustup, Java 17 and the Android SDK command-line tools. Set `JAVA_HOME` and `ANDROID_HOME` for those installations and put Android's `platform-tools` on `PATH`.
-
-## Install the SDK
+## Install Ink
 
 ```sh
-git clone https://github.com/No-Scrolling/ink.git
-cd ink
-bun install
-rustup toolchain install 1.96.0 --component clippy --component rustfmt --target aarch64-linux-android
-cargo +1.96.0 install cargo-ndk --version 4.1.2 --locked
-sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
-sdkmanager --licenses
-mkdir -p "$HOME/.local/bin"
-ln -s "$PWD/scripts/ink" "$HOME/.local/bin/ink"
-export PATH="$HOME/.local/bin:$PATH"
-ink doctor
+curl -fsSL https://ink.noscroll.ing/install.sh | sh
 ```
 
-Keep the `PATH` change in your shell configuration. The launcher uses its checkout to create apps. `ink doctor` reports missing tools and connected devices; resolve its reported problems before continuing.
+The installer downloads the CLI and a private copy of Bun, then runs `ink setup` in interactive terminals. You do not need to clone Ink or install Bun separately. Follow any printed PATH instructions and keep that change in your shell configuration.
+
+Setup reuses existing Rust, Java and Android tools and asks before installing missing components. If rustup, Java or Android SDK command-line tools are missing, follow its installation instructions, then run `ink setup` again. Set `JAVA_HOME` and `ANDROID_HOME` if those tools are installed in custom locations. Ink leaves global toolchain defaults unchanged.
+
+CI and non-interactive installs skip setup. Run `ink setup` manually when needed; `ink doctor` checks prerequisites without installing anything. Resolve missing prerequisites before building an Android app.
 
 ## Create an app
 
-Choose a unique Android application ID. From the SDK checkout:
+Choose a unique Android application ID:
 
 ```sh
-ink create ../my-app --name "My app" --package com.example.myapp
-cd ../my-app
-bun install
+ink create my-app --name "My app" --package com.example.myapp
+cd my-app
 ink check
 ```
 
-`app/index.tsx` is the home screen. See [Project structure](/project-structure) for layouts, assets and environment variables. `ink check` checks formatting, lint, TypeScript and bundling without changing source files. Use `ink format` to apply formatting.
+`ink create` installs the app's dependencies. `app/index.tsx` is the home screen. See [Project structure](/project-structure) for layouts, assets and environment variables. `ink check` checks formatting, lint, TypeScript and bundling without changing source files. Use `ink format` to apply formatting.
 
 ## Run on a phone
 
@@ -55,13 +44,13 @@ For the project's Light Phone III emulator configuration, launch `emulator -avd 
 
 ## Add a module
 
-Modules use the same SDK checkout as your `ink` dependency:
+Add an Ink module from your app directory:
 
 ```sh
 ink add @ink/audio
 ```
 
-Ink installs the requested module and resolves its local dependencies. Import the module you use; Ink includes its native requirements automatically. Use `import "@ink/network"` in modules that use `fetch` or other network globals. Importing `@ink/lightos` enables LightOS integration. Use `bun add` for ordinary JavaScript packages.
+Ink installs the requested module and its Ink dependencies at the installed release version. Import the module you use; Ink compiles the native features required by your app. Use `import "@ink/network"` in modules that use `fetch` or other network globals. Importing `@ink/lightos` enables LightOS integration. Use your own package manager for other JavaScript packages; Ink's bundled Bun is private to the CLI.
 
 ## Build an APK
 
@@ -93,10 +82,14 @@ ink build
 
 The signed APK is written to `dist/`. Keep keystores and passwords out of version control. Increase `version_code` in `ink.toml` before distributing an update; `version` is its human-readable version.
 
-## Change SDK checkout
+## Update Ink
 
-App commands resolve their SDK from the app's `ink` dependency, independently of `INK_SDK_ROOT`. When the launcher belongs to another checkout, build and editing commands forward to the selected SDK's launcher. That environment variable selects the SDK for creation and environment checks only.
+```sh
+ink update
+```
 
-To move an existing app to another checkout, update its `ink` and `@ink/*` `file:` dependencies in `package.json`, remove obsolete Ink `overrides` produced by older scaffolds, then run `ink add` with your existing `@ink/*` modules and `ink check`. Apps without modules can run `bun install` instead. All Ink packages must come from that checkout. Workspace examples use their enclosing SDK.
+`ink upgrade` does the same thing. The next `ink dev`, `ink build` or `ink check` synchronises the app's Ink packages with the installed release. Alpha releases can introduce breaking changes; the compiler reports any app changes needed. Ignoring an update notice leaves the installed version unchanged.
 
 `ink info` shows configuration and built APKs without compiling. JavaScript size and capabilities are labelled cached and describe the last successful compilation; run `ink check` to refresh them.
+
+For framework development from a checkout and release publishing, see [Releases](/releases).
