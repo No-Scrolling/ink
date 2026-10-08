@@ -17,6 +17,8 @@ concurrency:
 jobs:
   version:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     outputs:
       changed: ${{ steps.check.outputs.changed }}
     steps:
@@ -36,6 +38,19 @@ jobs:
           const changed = process.env.EVENT === 'workflow_dispatch' || previous.status !== 0 || JSON.parse(previous.stdout).version !== current;
           fs.appendFileSync(process.env.GITHUB_OUTPUT, 'changed=' + changed + '\n');
           JS
+      - name: Reserve the release tag before building
+        if: steps.check.outputs.changed == 'true' && (github.event_name == 'push' || inputs.publish)
+        run: |
+          tag="v$(node -p 'JSON.parse(require("fs").readFileSync("sdk.json")).version')"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            if [ "$(git rev-parse "$tag^{commit}")" != "$GITHUB_SHA" ]; then
+              echo "::error::Tag $tag already points to another commit. Choose a new release version."
+              exit 1
+            fi
+          else
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "refs/tags/$tag"
+          fi
   build:
     needs: version
     if: needs.version.outputs.changed == 'true'
@@ -112,6 +127,15 @@ jobs:
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
+      - name: Verify the release tag before publishing
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          git fetch origin "refs/tags/v$VERSION:refs/tags/v$VERSION"
+          if [ "$(git rev-parse "v$VERSION^{commit}")" != "$GITHUB_SHA" ]; then
+            echo "::error::Release tag does not match the build commit."
+            exit 1
+          fi
       - name: Publish packages using npm trusted publishing
         run: node scripts/release/publish.ts release/npm
       - name: Publish GitHub release after all packages are available
@@ -120,5 +144,5 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           if ! gh release view "v$VERSION" > /dev/null 2>&1; then
-            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Ink $VERSION" --generate-notes --prerelease release/ink-*.tar.gz release/SHA256SUMS
+            gh release create "v$VERSION" --verify-tag --title "Ink $VERSION" --generate-notes --prerelease release/ink-*.tar.gz release/SHA256SUMS
           fi

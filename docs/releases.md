@@ -59,11 +59,11 @@ The release workflow uses GitHub OIDC, so subsequent releases do not require a s
 
 In GitHub Actions, run **Prepare Release** with a version such as `0.1.0-alpha.2`. It updates the SDK, package and CLI versions and lockfiles, then opens a release pull request against `main`.
 
-Review and merge the pull request. **Release** builds all three platform archives on native GitHub runners, checks installation and bundled JavaScript tooling, publishes the npm packages once, then creates the GitHub tag and prerelease with all downloads and a combined checksum file. All platforms must pass before publishing. All packages use the same version. npm's `latest` tag is intentional during the alpha; it does not promise API stability.
+Review and merge the pull request. **Release** first creates the version tag at the release commit, then builds all three platform archives on native GitHub runners. It checks installation and bundled JavaScript tooling, verifies that the tag still matches the build commit, publishes the npm packages once, then creates the GitHub prerelease with all downloads and a combined checksum file. All platforms must pass before publishing. All packages use the same version. npm's `latest` tag is intentional during the alpha; it does not promise API stability.
 
 To verify packaging without publishing, run **Release** manually and leave **Publish packages and the GitHub release after verification** unchecked. Download the resulting platform and npm artifacts from the workflow run. Enable that option only when manually publishing or retrying a release.
 
-If publishing fails partway through, rerun the workflow on the same commit. Already published package versions are skipped. Do not reuse a published version for changed contents.
+If a build or publishing step fails, rerun the failed jobs on the same commit. The version tag may already exist; the workflow reuses it only if it points to that commit. Already published package versions are skipped. Do not reuse a published version for changed contents.
 
 ## Install and update
 
