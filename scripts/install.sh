@@ -68,8 +68,19 @@ case "$target" in
   linux-*) mv -fT "$ink_home/.current-$$" "$ink_home/current" ;;
 esac
 ln -sf "$ink_home/current/bin/ink" "$bin_dir/ink"
-echo "Installed Ink $release. Run ink setup to check your build tools."
+echo "Installed Ink $release."
 case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) echo "Add $bin_dir to your PATH. The installer has not changed your shell configuration." ;;
 esac
+if [ "$target" = linux-arm64 ]; then
+  echo 'Android setup requires Linux x64 or macOS Apple Silicon. The CLI is ready to use.'
+elif [ -z "${CI:-}" ] && [ "${INK_SKIP_SETUP:-0}" != 1 ] && [ -t 1 ] && ( : < /dev/tty ) 2>/dev/null; then
+  # curl | sh uses stdin for the script; setup needs the terminal for its prompts.
+  echo 'Checking build tools with ink setup...'
+  if ! "$bin_dir/ink" setup < /dev/tty; then
+    echo 'Ink is installed. Finish the prerequisites above, then run ink setup again.' >&2
+  fi
+else
+  echo 'Run ink setup to check your build tools.'
+fi
