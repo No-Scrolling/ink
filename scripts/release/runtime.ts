@@ -146,6 +146,16 @@ async function synchronise(root, additions = []) {
     const oldLock = await readFile(lockPath).catch(() => null);
     await writeFile(path, next);
     try {
+      // Bun reads saved overrides before reconciling them with package.json.
+      if (oldLock) {
+        const saved = Bun.JSONC.parse(oldLock.toString());
+        const overrides = Object.keys(saved.overrides ?? {}).filter(firstParty);
+        if (overrides.length) {
+          for (const name of overrides) delete saved.overrides[name];
+          if (!Object.keys(saved.overrides).length) delete saved.overrides;
+          await writeFile(lockPath, JSON.stringify(saved, null, 2) + "\n");
+        }
+      }
       // Fresh releases may be missing from Bun's cached registry manifests.
       const refresh = installed !== sdk.version || !packagesMatch;
       run([process.execPath, "install", ...(refresh ? ["--no-cache"] : [])], root, true);
