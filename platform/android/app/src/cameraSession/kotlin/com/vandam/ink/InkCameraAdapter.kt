@@ -99,7 +99,6 @@ private class InkCameraAdapter(
             PERMISSION_STATUS -> complete(NativeResult.Success(permissionStatus()))
             REQUEST_PERMISSION -> requestPermission(complete)
             IMAGE -> loadImage(payload, complete)
-            "remove-photo" -> removePhoto(payload, complete)
             else -> complete(protocol("Unknown camera operation: $operation"))
         }
     }
@@ -364,23 +363,6 @@ private class InkCameraAdapter(
         val state = state(controller, "ready", value)
         readyStates[controller] = state
         publish(controller, state)
-    }
-
-    private fun removePhoto(payload: String, complete: NativeResultHandler) {
-        val source = runCatching { JSONObject(payload).getString(SOURCE) }.getOrNull()
-        val id = source?.takeIf { it.startsWith(PHOTO_PREFIX) }?.removePrefix(PHOTO_PREFIX)
-        if (id == null || !PHOTO_ID.matches(id)) {
-            complete(protocol("Invalid captured photo source"))
-            return
-        }
-        val file = File(photoDirectory, "$id.jpg")
-        if (file.exists() && !file.delete()) {
-            complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Photo could not be removed", true))
-        } else {
-            runCatching { InkManagedFiles(activity).remove(id) }
-                .onSuccess { complete(NativeResult.Success("")) }
-                .onFailure { complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, it.message ?: "Photo metadata could not be removed", true)) }
-        }
     }
 
     private fun publishError(

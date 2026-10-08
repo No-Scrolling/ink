@@ -60,7 +60,7 @@ export function compileNativeLists(ts, path, contents) {
       if (kind === "Row") {
         const props = [];
         for (const attribute of opening.attributes.properties) {
-          if (!ts.isJsxAttribute(attribute) || !["image","title","titleMaxLines","titleIcon","subtitle","subtitleIcon","href","onPress","onLongPress"].includes(attribute.name.text)) throw Error("unsupported Row property");
+          if (!ts.isJsxAttribute(attribute) || !["image","title","titleMaxLines","titleIcon","subtitle","subtitleIcon","href","url","onPress","onLongPress"].includes(attribute.name.text)) throw Error("unsupported Row property");
           const name = attribute.name.text, value = attribute.initializer;
           if (value && ts.isStringLiteral(value) && !value.text.includes("&")) { props.push(`${name}:${JSON.stringify(value.text)}`); }
           else if (value && ts.isJsxExpression(value) && value.expression && pure(value.expression, name.startsWith("on"))) { props.push(`${name}:${text(value.expression)}`); capture(value.expression); }
@@ -77,7 +77,7 @@ export function compileNativeLists(ts, path, contents) {
       for (const attribute of opening.attributes.properties) {
         if (!ts.isJsxAttribute(attribute)) throw Error("spread properties need React");
         const name = attribute.name.text;
-        if (["ref", "key", "href", "children"].includes(name)) throw Error("special property needs React");
+        if (["ref", "key", "href", "url", "children"].includes(name)) throw Error("special property needs React");
         const value = attribute.initializer;
         if (!value) result.props[name] = true;
         else if (ts.isStringLiteral(value) && !value.text.includes("&")) result.props[name] = value.text;

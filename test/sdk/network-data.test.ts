@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 const { ReadableStream } = await import(Bun.resolveSync("web-streams-polyfill", resolve(import.meta.dir, "../../packages/network")));
 const { URLSearchParams } = await import(Bun.resolveSync("whatwg-url", resolve(import.meta.dir, "../../packages/network")));
 import { Headers, Request, Response } from "../../packages/network/src/fetch";
-import { Blob, File, FormData, multipart, parseFormData } from "../../packages/network/src/blob";
+import { Blob, File, FormData, multipart, parseFormData, nativeBlob, nativeBlobParts } from "../../packages/network/src/blob";
 
 
 test("Headers normalises names and whitespace, combines ordinary fields and preserves separate cookies", () => {
@@ -142,12 +142,12 @@ test("Blob snapshots typed-array views and slices across UTF-8 and binary part b
 });
 
 test("managed Blob slicing retains file ranges without eagerly reading the file", () => {
-  const blob = new Blob(["AB", Blob.fromNative("ink-file://file-7", 100, "image/jpeg"), "XY"]);
+  const blob = new Blob(["AB", nativeBlob("ink-file://file-7", 100, "image/jpeg"), "XY"]);
   expect(blob.size).toBe(104);
-  expect([...blob.slice(1, 103).nativeParts()!]).toEqual([
+  expect([...nativeBlobParts(blob.slice(1, 103))!]).toEqual([
     { bytes: new Uint8Array([66]) }, { src: "ink-file://file-7", offset: 0, size: 100 }, { bytes: new Uint8Array([88]) },
   ]);
-  expect([...blob.slice(12, 22).nativeParts()!]).toEqual([{ src: "ink-file://file-7", offset: 10, size: 10 }]);
+  expect([...nativeBlobParts(blob.slice(12, 22))!]).toEqual([{ src: "ink-file://file-7", offset: 10, size: 10 }]);
 });
 
 test("FormData set preserves the first field position and removes duplicate names", async () => {

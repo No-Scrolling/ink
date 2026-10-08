@@ -1,19 +1,15 @@
 import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Field, Image, Stack, useAction } from "ink";
-import { callNative, NativeError } from "ink/native";
+import { NativeError } from "ink/native";
 import { attachNativeController } from "ink/native/controller";
 import type { FileRef } from "@ink/files";
 
-export const camera = {
-  removePhoto: async (file: CapturedFile): Promise<void> => {
-    await callNative("camera", "remove-photo", { source: file.source });
-  },
-};
+const previewController = Symbol("previewController");
+
 export const codeFormats = ["qr", "aztec", "data-matrix", "pdf417", "codabar", "code-39", "code-93", "code-128", "ean-8", "ean-13", "itf", "upc-a", "upc-e"] as const;
 export type CodeFormat = typeof codeFormats[number];
 export interface CodeScan { text: string; format: CodeFormat; rawBytes: Uint8Array | null }
-export interface CapturedFile extends FileRef { uri: string; source: string; mimeType: "image/jpeg" }
-export interface CapturedPhoto { file: CapturedFile; source: string; width: number; height: number; mimeType: "image/jpeg"; capturedAt: number }
+export interface CapturedPhoto { file: FileRef & { width: number; height: number; mimeType: "image/jpeg" }; capturedAt: number }
 interface CameraState<T> {
   status: "idle" | "opening" | "active" | "review" | "ready" | "error";
   ready: boolean;
@@ -70,11 +66,11 @@ export function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown
     };
     return { capture: () => call("capture"), open: () => call("open"), retake: () => call("retake"), accept: () => call("use-photo") };
   }, []);
-  return { kind, state, previewId, ...commands };
+  return { kind, state, [previewController]: previewId, ...commands };
 }
 export function CameraPreview({ controller }: { controller: ReturnType<typeof useSession<CapturedPhoto>> | ReturnType<typeof useSession<CodeScan>> }) {
   const command = useAction((run: () => Promise<void>) => run());
-  const { state } = controller;
+  const { state, [previewController]: previewId } = controller;
   let content;
   if (state.reviewSource) {
     content = createElement(Stack, { align: "stretch", gap: 47 },
@@ -83,13 +79,13 @@ export function CameraPreview({ controller }: { controller: ReturnType<typeof us
       createElement(Button, { disabled: state.saving || command.status === "pending", onPress: () => command.run(controller.accept) }, state.saving ? "Saving photo…" : "Use photo"));
   } else if (state.status === "ready" && state.value) {
     content = createElement(Stack, { align: "stretch", gap: 47 },
-      "source" in state.value ? createElement(Image, { src: state.value.source, width: 300, height: 340 }) : createElement(Field, { label: "Code" }, state.value.text),
+      "file" in state.value ? createElement(Image, { src: state.value.file.src, width: 300, height: 340 }) : createElement(Field, { label: "Code" }, state.value.text),
       createElement(Button, { disabled: command.status === "pending", onPress: () => command.run(controller.open) }, controller.kind === "photo" ? "Take another photo" : "Scan again"));
   } else if (state.error) {
     content = createElement(Stack, {}, createElement(Field, { label: "Camera" }, state.error.message),
       createElement(Button, { disabled: command.status === "pending", onPress: () => command.run(controller.open) }, "Try again"));
-  } else if (controller.previewId !== null) {
-    content = createElement("CameraPreview", { controller: controller.previewId, kind: controller.kind });
+  } else if (previewId !== null) {
+    content = createElement("CameraPreview", { controller: previewId, kind: controller.kind });
   } else content = createElement(Field, { label: "Camera" }, "Connecting...");
   return command.status === "error" ? createElement(Stack, {}, content, createElement(Field, { label: "Camera action" }, command.error.message)) : content;
 }

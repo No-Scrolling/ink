@@ -63,13 +63,13 @@ The review image stays at screen resolution after saving finishes.
 
 ## Save the result
 
-After acceptance, `camera.state.value` contains `source`, `width`, `height`, `mimeType`, `capturedAt` and a [FileRef](/files#file-metadata) in `file`.
+After acceptance, `camera.state.value` contains `capturedAt` and a [FileRef](/files#file-metadata) in `file`. Image dimensions and MIME type are on `file`.
 
 Save `photo.file.id` with your app’s data to reopen an accepted photo later. Photos stay in private app storage across app restarts.
 
 Remove accepted photos with `files.remove(photo.file.id)` from `@ink/files`. Unaccepted photos are removed when the session closes.
 
-The earlier `uri`, `source` and `camera.removePhoto` APIs remain available for compatibility.
+Use `photo.file.src` to read or display the image. Earlier saved camera URLs still resolve, but new captures expose only the managed file.
 
 ## Custom capture controls
 

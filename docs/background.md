@@ -100,22 +100,23 @@ Cancellation removes pending work and signals running work to stop. It cannot un
 Read scheduling information and the latest outcome for up to 256 task keys:
 
 ```ts
-import { getJobs } from "@ink/background";
+import { jobs } from "@ink/background";
 
-const jobs = await getJobs();
+const currentJobs = await jobs.get();
 ```
 
 ### Watch for changes
 
-Provide a cancellation `signal` and an `updateJobs` handler:
+Use the shared source in a component. Ink starts observation when subscribed and cancels it when the last subscriber leaves:
 
 ```ts
-import { watchJobs } from "@ink/background";
+import { jobs } from "@ink/background";
+import { useSnapshot } from "ink";
 
-for await (const jobs of watchJobs({ signal })) {
-  updateJobs(jobs);
-}
+const snapshot = useSnapshot(jobs);
 ```
+
+The snapshot is `loading`, `ready` with job data, or `error`. For non-React consumers, `watchJobs({ signal })` remains available as an async iterable.
 
 States are `queued`, `running`, `retrying`, `succeeded`, `failed` or `cancelled`. `scheduled` and `periodic` describe pending work, so a periodic task can be both successful and still scheduled.
 

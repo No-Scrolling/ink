@@ -1,11 +1,7 @@
 import * as v from "valibot";
 import "@ink/network";
 
-import type {
-  PrecipitationUnit,
-  TemperatureUnit,
-  WindSpeedUnit,
-} from "./preferences";
+import type { PrecipitationUnit, TemperatureUnit, WindSpeedUnit } from "./preferences";
 
 export interface WeatherData {
   current: {
@@ -223,7 +219,14 @@ function unitValues(
 ) {
   return {
     temperature_unit: temperatureUnit === "Celsius" ? "celsius" : "fahrenheit",
-    wind_speed_unit: windSpeedUnit === "km/h" ? "kmh" : windSpeedUnit === "m/s" ? "ms" : windSpeedUnit === "Knots" ? "kn" : "mph",
+    wind_speed_unit:
+      windSpeedUnit === "km/h"
+        ? "kmh"
+        : windSpeedUnit === "m/s"
+          ? "ms"
+          : windSpeedUnit === "Knots"
+            ? "kn"
+            : "mph",
     precipitation_unit: precipitationUnit === "Millimeter" ? "mm" : "inch",
   };
 }
@@ -242,23 +245,56 @@ export async function getWeatherData(
   url.searchParams.set("forecast_days", "7");
   url.searchParams.set("forecast_hours", "24");
   url.searchParams.set("current", "weather_code,temperature_2m,apparent_temperature,is_day");
-  url.searchParams.set("hourly", [
-    "temperature_2m", "apparent_temperature", "precipitation_probability", "precipitation",
-    "weather_code", "wind_speed_10m", "wind_gusts_10m", "uv_index",
-    "relative_humidity_2m", "dew_point_2m", "cloud_cover", "visibility", "surface_pressure", "is_day",
-  ].join(","));
-  url.searchParams.set("daily", [
-    "temperature_2m_max", "temperature_2m_min", "weather_code", "apparent_temperature_max",
-    "apparent_temperature_min", "precipitation_probability_max", "uv_index_max", "precipitation_sum",
-    "wind_speed_10m_max", "wind_gusts_10m_max", "relative_humidity_2m_mean",
-    "dew_point_2m_mean", "cloud_cover_mean", "visibility_mean", "surface_pressure_mean", "sunrise", "sunset",
-  ].join(","));
+  url.searchParams.set(
+    "hourly",
+    [
+      "temperature_2m",
+      "apparent_temperature",
+      "precipitation_probability",
+      "precipitation",
+      "weather_code",
+      "wind_speed_10m",
+      "wind_gusts_10m",
+      "uv_index",
+      "relative_humidity_2m",
+      "dew_point_2m",
+      "cloud_cover",
+      "visibility",
+      "surface_pressure",
+      "is_day",
+    ].join(","),
+  );
+  url.searchParams.set(
+    "daily",
+    [
+      "temperature_2m_max",
+      "temperature_2m_min",
+      "weather_code",
+      "apparent_temperature_max",
+      "apparent_temperature_min",
+      "precipitation_probability_max",
+      "uv_index_max",
+      "precipitation_sum",
+      "wind_speed_10m_max",
+      "wind_gusts_10m_max",
+      "relative_humidity_2m_mean",
+      "dew_point_2m_mean",
+      "cloud_cover_mean",
+      "visibility_mean",
+      "surface_pressure_mean",
+      "sunrise",
+      "sunset",
+    ].join(","),
+  );
   const units = unitValues(temperatureUnit, windSpeedUnit, precipitationUnit);
   for (const [key, value] of Object.entries(units)) url.searchParams.set(key, value);
   return v.parse(weatherSchema, JSON.parse(await requestJson(url.href)));
 }
 
-export async function getAirQualityData(latitude: number, longitude: number): Promise<AirQualityData | null> {
+export async function getAirQualityData(
+  latitude: number,
+  longitude: number,
+): Promise<AirQualityData | null> {
   const url = new URL("https://air-quality-api.open-meteo.com/v1/air-quality");
   url.searchParams.set("latitude", String(latitude));
   url.searchParams.set("longitude", String(longitude));
@@ -327,7 +363,9 @@ export function formatTime(value: string, format: "24h" | "12h"): string {
 export function formatWeekday(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   if (!match) return "—";
-  const day = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay();
+  const day = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  ).getUTCDay();
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day];
 }
 
@@ -352,8 +390,10 @@ export function getWeatherIconKey(code: number, isDay: number): string {
   if (code === 3) return "cloudy";
   if (code === 45 || code === 48) return isDay === 1 ? "fog" : "nightFog";
   if (code >= 51 && code <= 57) return isDay === 1 ? "drizzle" : "nightDrizzle";
-  if (code >= 61 && code <= 67 || code >= 80 && code <= 82) return isDay === 1 ? "rain" : "nightRain";
-  if (code >= 71 && code <= 77 || code === 85 || code === 86) return isDay === 1 ? "snow" : "nightSnow";
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82))
+    return isDay === 1 ? "rain" : "nightRain";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86)
+    return isDay === 1 ? "snow" : "nightSnow";
   if (code >= 95) return isDay === 1 ? "storm" : "nightStorm";
   return "cloud";
 }

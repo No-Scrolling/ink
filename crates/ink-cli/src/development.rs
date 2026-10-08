@@ -26,7 +26,7 @@ pub fn run(
     let device = android::select_device(requested)?;
     println!("{} · dev", project.name());
     output::tree_root_field("Device", device.name(), false);
-    watch::include_framework(android::framework_root()?);
+    watch::include_framework(android::project_framework_root(&project)?);
     let config = project.config_path().to_owned();
     let mut installed = None;
     let mut log_stream = None;
@@ -237,7 +237,7 @@ fn native_fingerprint(project: &Project) -> Result<Vec<u8>> {
         result.extend(hash.as_bytes());
     }
 
-    let framework = android::framework_root()?;
+    let framework = android::project_framework_root(&project)?;
     for name in ["Cargo.toml", "Cargo.lock", "sdk.json"] {
         fingerprint_files(&framework.join(name), &mut result)?;
     }

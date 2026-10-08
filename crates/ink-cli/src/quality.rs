@@ -7,8 +7,8 @@ use crate::{android, output};
 
 const SOURCES: &str = "**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}";
 
-fn tool(name: &str) -> Result<PathBuf> {
-    let path = android::framework_root()?
+fn tool(project: &Project, name: &str) -> Result<PathBuf> {
+    let path = android::project_framework_root(project)?
         .join("node_modules/.bin")
         .join(name);
     if !path.is_file() {
@@ -22,7 +22,7 @@ fn tool(name: &str) -> Result<PathBuf> {
 fn format_command(project: &Project, write: bool) -> Result<Command> {
     let mut command = Command::new("bun");
     command
-        .arg(tool("oxfmt")?)
+        .arg(tool(project, "oxfmt")?)
         .current_dir(project.root())
         .args([
             if write { "--write" } else { "--check" },
@@ -34,14 +34,14 @@ fn format_command(project: &Project, write: bool) -> Result<Command> {
 }
 
 fn lint_command(project: &Project) -> Result<Command> {
-    let config = android::framework_root()?.join("oxlint.config.mjs");
+    let config = android::project_framework_root(project)?.join("oxlint.config.mjs");
     anyhow::ensure!(
         config.is_file(),
         "Ink lint configuration is missing from the SDK"
     );
     let mut command = Command::new("bun");
     command
-        .arg(tool("oxlint")?)
+        .arg(tool(project, "oxlint")?)
         .current_dir(project.root())
         .args([
             "--deny-warnings",

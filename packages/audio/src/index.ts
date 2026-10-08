@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { attachNativeController } from "ink/native/controller";
 import { NativeError } from "ink/native";
+import { playbackController } from "ink/internal/playback";
 
 export interface AudioItem {
   id: string;
@@ -131,7 +132,6 @@ export function usePlayer(options: { session?: string; mode?: "attached" | "deta
         return call("setQueue", { items, startIndex: options.startIndex ?? 0, startPosition, prepare: options.prepare ?? true });
       },
       play: () => call("play"),
-      playRecording: () => call("playRecording"),
       pause: () => call("pause"),
       toggle: () => call("toggle"),
       stop: () => call("stop"),
@@ -149,5 +149,5 @@ export function usePlayer(options: { session?: string; mode?: "attached" | "deta
       },
     };
   }, []);
-  return { state, clock: controller.current ? { controller: controller.current.id } : undefined, ...commands };
+  return { state, [playbackController]: controller.current?.id, ...commands };
 }

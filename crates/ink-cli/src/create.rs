@@ -1,6 +1,6 @@
-use std::{fs, path::Path};
+use std::{collections::{BTreeMap, BTreeSet}, fs, path::Path};
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use serde_json::json;
 
 pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()> {
@@ -30,23 +30,10 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
             serde_json::to_string(package)?
         ),
     )?;
-    let mut overrides = serde_json::Map::new();
-    for entry in fs::read_dir(sdk.join("packages"))? {
-        let path = entry?.path();
-        let manifest = path.join("package.json");
-        if !manifest.is_file() {
-            continue;
-        }
-        let package: serde_json::Value = serde_json::from_slice(&fs::read(manifest)?)?;
-        if let Some(name) = package["name"].as_str() {
-            overrides.insert(name.to_owned(), json!(format!("file:{}", path.display())));
-        }
-    }
     let metadata = json!({
         "name": package.replace('.', "-"),
         "private": true,
-        "overrides": overrides,
-        "scripts": { "check": "tsc --noEmit" },
+        "scripts": { "check": "ink check" },
         "dependencies": {
             "ink": format!("file:{}", sdk.join("packages/ink").display()),
             "react": "19.2.8"
@@ -64,16 +51,107 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
     fs::create_dir_all(directory.join("app"))?;
     fs::write(
         directory.join("app/index.tsx"),
-        "import { Screen, Text } from \"ink\";\n\nexport default function App() {\n  return <Screen title=\"Home\"><Text>Welcome to Ink!</Text></Screen>;\n}\n",
+        "import { Screen, Text } from \"ink\";\n\nexport default function App() {\n  return (\n    <Screen title=\"Home\">\n      <Text>Welcome to Ink!</Text>\n    </Screen>\n  );\n}\n",
     )?;
     fs::write(
         directory.join(".gitignore"),
-        "node_modules/\n.ink/\ndist/\n*.jks\n*.keystore\n",
+        "node_modules/\n.ink/\ndist/\n*.jks\n*.keystore\n.env.local\n",
     )?;
     super::output::success(format!(
         "Created {}. Run bun install in {}",
         title,
         directory.display()
     ));
+    Ok(())
+}
+
+pub fn add_modules(project: &ink_compiler::Project, modules: &[String]) -> Result<()> {
+    let sdk = super::android::project_framework_root(project)?;
+    let mut packages = BTreeMap::new();
+    for entry in fs::read_dir(sdk.join("packages"))? {
+        let directory = entry?.path();
+        let manifest = directory.join("package.json");
+        if !manifest.is_file() {
+            continue;
+        }
+        let metadata: serde_json::Value = serde_json::from_slice(&fs::read(manifest)?)?;
+        if let Some(name) = metadata["name"].as_str() {
+            packages.insert(name.to_owned(), (directory, metadata));
+        }
+    }
+    for name in modules {
+        ensure!(
+            name.starts_with("@ink/") && packages.contains_key(name),
+            "unknown Ink module {name}; use a package name such as @ink/audio"
+        );
+    }
+    let manifest = project.root().join("package.json");
+    let mut metadata: serde_json::Value = serde_json::from_slice(&fs::read(&manifest)?)?;
+    let mut pending = modules.to_vec();
+    if let Some(dependencies) = metadata["dependencies"].as_object() {
+        pending.extend(
+            dependencies
+                .keys()
+                .filter(|name| name.starts_with("@ink/"))
+                .cloned(),
+        );
+    }
+    let mut resolved = BTreeSet::new();
+    while let Some(name) = pending.pop() {
+        if !resolved.insert(name.clone()) {
+            continue;
+        }
+        let (_, package) = packages
+            .get(&name)
+            .with_context(|| format!("SDK has no package {name}"))?;
+        for kind in ["dependencies", "peerDependencies"] {
+            if let Some(dependencies) = package[kind].as_object() {
+                pending.extend(
+                    dependencies
+                        .keys()
+                        .filter(|name| name.as_str() == "ink" || name.starts_with("@ink/"))
+                        .cloned(),
+                );
+            }
+        }
+    }
+    let object = metadata
+        .as_object_mut()
+        .context("package.json must contain an object")?;
+    let dependencies = object
+        .entry("dependencies")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .context("dependencies must be an object")?;
+    for name in modules {
+        dependencies.insert(
+            name.clone(),
+            json!(format!("file:{}", packages[name].0.display())),
+        );
+    }
+    let overrides = object
+        .entry("overrides")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .context("overrides must be an object")?;
+    for name in resolved {
+        overrides.insert(
+            name.clone(),
+            json!(format!("file:{}", packages[&name].0.display())),
+        );
+    }
+    fs::write(
+        &manifest,
+        format!("{}\n", serde_json::to_string_pretty(&metadata)?),
+    )?;
+    let status = std::process::Command::new("bun")
+        .arg("install")
+        .current_dir(project.root())
+        .status()?;
+    ensure!(
+        status.success(),
+        "dependencies were updated; bun install failed, fix the reported problem and retry bun install"
+    );
+    super::output::success(format!("Added {}", modules.join(", ")));
     Ok(())
 }

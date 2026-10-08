@@ -5,7 +5,9 @@ import { notifications, useNotificationTap } from "@ink/notifications";
 import { Button, Field, Screen, Stack, useAction, useRouteParams } from "ink";
 
 export default function Notifications() {
-  const params = useRouteParams(v.parser(v.object({ source: v.fallback(v.optional(v.string()), undefined) })));
+  const params = useRouteParams(
+    v.parser(v.object({ source: v.fallback(v.optional(v.string()), undefined) })),
+  );
   const permission = useAction(() => lightos.getPermission("notifications"));
   const request = useAction(async () => {
     await lightos.requestPermission("notifications");
@@ -18,34 +20,70 @@ export default function Notifications() {
   return (
     <Screen title="Notifications">
       <Field label="Permission">
-        {permission.status === "success" ? permission.data
-          : permission.status === "error" ? permission.error.message : "Checking..."}
+        {permission.status === "success"
+          ? permission.data
+          : permission.status === "error"
+            ? permission.error.message
+            : "Checking..."}
       </Field>
       <Button onPress={() => request.run()}>Request Permission</Button>
-      {request.status === "error" && <Field label="Permission error">{request.error.message}</Field>}
-      <Button onPress={() => command.run(() => notifications.show({
-        id: "example-reminder",
-        title: "Ink reminder",
-        body: "This notification was presented by Ink.",
-        href: "/modules/notifications",
-        data: "immediate",
-      }))}>Show Now</Button>
-      <Button onPress={() => command.run(() => notifications.schedule({
-        id: "example-reminder",
-        title: "Updated reminder",
-        body: "The same ID atomically replaces the earlier reminder.",
-        href: "/modules/notifications",
-        data: "future",
-        at: Date.now() + 15_000,
-      }))}>Replace in 15 Seconds</Button>
-      <Button onPress={() => command.run(() => notifications.cancel("example-reminder"))}>Cancel Reminder</Button>
-      <Button onPress={() => command.run(lightos.requestExactPermission)}>Allow Exact Reminders</Button>
-      <Button onPress={() => command.run(() => notifications.schedule({
-        id: "example-reminder", title: "Exact reminder", body: "Open the reminder details.",
-        at: Date.now() + 15_000, exact: true,
-        href: { path: "/modules/notifications", params: { source: "exact-reminder" } },
-        data: "exact",
-      }))}>Exact in 15 Seconds</Button>
+      {request.status === "error" && (
+        <Field label="Permission error">{request.error.message}</Field>
+      )}
+      <Button
+        onPress={() =>
+          command.run(() =>
+            notifications.show({
+              id: "example-reminder",
+              title: "Ink reminder",
+              body: "This notification was presented by Ink.",
+              href: "/modules/notifications",
+              data: "immediate",
+            }),
+          )
+        }
+      >
+        Show Now
+      </Button>
+      <Button
+        onPress={() =>
+          command.run(() =>
+            notifications.schedule({
+              id: "example-reminder",
+              title: "Updated reminder",
+              body: "The same ID atomically replaces the earlier reminder.",
+              href: "/modules/notifications",
+              data: "future",
+              at: Date.now() + 15_000,
+            }),
+          )
+        }
+      >
+        Replace in 15 Seconds
+      </Button>
+      <Button onPress={() => command.run(() => notifications.cancel("example-reminder"))}>
+        Cancel Reminder
+      </Button>
+      <Button onPress={() => command.run(lightos.requestExactPermission)}>
+        Allow Exact Reminders
+      </Button>
+      <Button
+        onPress={() =>
+          command.run(() =>
+            notifications.schedule({
+              id: "example-reminder",
+              title: "Exact reminder",
+              body: "Open the reminder details.",
+              at: Date.now() + 15_000,
+              exact: true,
+              href: { path: "/modules/notifications", params: { source: "exact-reminder" } },
+              data: "exact",
+            }),
+          )
+        }
+      >
+        Exact in 15 Seconds
+      </Button>
       {params.source !== undefined && <Field label="Route source">{params.source}</Field>}
       {command.status === "error" && <Field label="Error">{command.error.message}</Field>}
       {tap.state.status === "ready" ? (
@@ -54,7 +92,15 @@ export default function Notifications() {
           <Field label="Data">{tap.state.value.data}</Field>
           <Button onPress={() => command.run(tap.consume)}>Consume Tap</Button>
         </Stack>
-      ) : <Field label="Last tap">{tap.state.status === "error" ? tap.state.error.message : tap.state.status === "loading" ? "Loading..." : "None"}</Field>}
+      ) : (
+        <Field label="Last tap">
+          {tap.state.status === "error"
+            ? tap.state.error.message
+            : tap.state.status === "loading"
+              ? "Loading..."
+              : "None"}
+        </Field>
+      )}
     </Screen>
   );
 }

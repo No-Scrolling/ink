@@ -11,7 +11,7 @@ A file in `app/` defines a page. Export its React component as the default. Use 
 <Button href="/settings">Settings</Button>
 ```
 
-This opens `app/settings.tsx`. To navigate inside a handler:
+This opens `app/settings.tsx`. `Button`, `Field`, `Row` and `Text` accept the same mutually exclusive action props: `href` for an app route, `url` for an external URL, or `onPress` for a handler. Their `href` values use the same required-parameter checks as `navigate()`. To navigate inside a handler:
 
 ```tsx
 import { navigate } from "ink";
@@ -75,7 +75,7 @@ Static paths take priority: `/album/new` opens `new.tsx` before `[id].tsx`. Dupl
 
 `navigate()` and `replace()` check required path parameters in TypeScript and at runtime. Numeric IDs become strings; encoded path segments are decoded.
 
-`useRouteParams(path)` supplies types from the path but does not check that the file exists. For other parameters, pass a `decode(unknown)` function to validate them. A generic type alone does not validate data. Invalid notification routes show “Page unavailable”.
+`useRouteParams(path)` supplies types from the path but does not check that the file exists. For other parameters, pass a `decode(unknown)` function to validate them. Without an argument, `useRouteParams()` returns JSON values that you must narrow before use. A generic result type requires a decoder. Invalid notification routes show “Page unavailable”.
 
 ## Layouts
 

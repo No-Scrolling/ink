@@ -9,7 +9,7 @@ use ink_core::{ControllerId, StateValue};
 struct Processor {
     enabled: bool,
     inner: Box<dyn AudioProcessor>,
-    status_only: bool,
+    observed: bool,
     status: String,
 }
 
@@ -36,8 +36,7 @@ impl Processors {
         let mut processor = Processor {
             enabled: false,
             inner,
-            status_only: config.get("updates").and_then(serde_json::Value::as_str)
-                == Some("status"),
+            observed: false,
             status: String::new(),
         };
         if let Some(format) = self.format {
@@ -89,7 +88,7 @@ impl Processors {
                         .unwrap_or_default(),
                     _ => "",
                 };
-                let notify = !processor.status_only || processor.status != status;
+                let notify = processor.observed || processor.status != status;
                 if processor.status != status {
                     processor.status = status.to_owned();
                 }
@@ -105,6 +104,7 @@ struct Configuration {
     kind: String,
     config: String,
     enabled: bool,
+    observed: bool,
     generation: u64,
 }
 #[derive(Default)]
@@ -152,6 +152,9 @@ impl Default for AudioRuntime {
                             processors.activate(*id, &config.kind, &config.config);
                             processors.set_enabled(*id, config.enabled);
                             configured.insert(*id, config.generation);
+                        }
+                        if let Some(processor) = processors.processors.get_mut(id) {
+                            processor.observed = config.observed;
                         }
                     }
                     let Some((samples, rate)) = samples else {
@@ -211,6 +214,7 @@ impl AudioRuntime {
                 kind: kind.into(),
                 config: config.into(),
                 enabled: false,
+                observed: false,
                 generation,
             },
         );
@@ -236,6 +240,16 @@ impl AudioRuntime {
         config.enabled = enabled;
         config.generation = generation;
         pending.updates.remove(&id);
+        pending.dirty = true;
+        self.shared.1.notify_one();
+        true
+    }
+    pub fn observe(&self, id: ControllerId, observed: bool) -> bool {
+        let mut pending = self.shared.0.lock().unwrap();
+        let Some(config) = pending.controllers.get_mut(&id) else {
+            return false;
+        };
+        config.observed = observed;
         pending.dirty = true;
         self.shared.1.notify_one();
         true

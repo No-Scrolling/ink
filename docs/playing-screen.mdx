@@ -38,7 +38,7 @@ import artwork from "../assets/wallsocket.jpg";
 
 `PlayingScreen` reads the native clock from its playback binding. Apps do not pass position, speed or seek handlers separately. See [native playback progress](/audio#keep-visual-progress-native).
 
-Custom players implement the exported `Playback` interface: state, an optional native clock, `toggle()` and `seek()`. Optional `previous()`, `next()` and `seekBy()` methods enable the corresponding buttons. This also supports controlled previews without a native clock.
+Custom players implement the exported `Playback` interface: state, `toggle()` and `seek()`. Optional `previous()`, `next()` and `seekBy()` methods enable the corresponding buttons. Native clock bindings remain internal to Ink players. Custom players and controlled previews render their supplied state.
 
 Transport commands and bottom actions may return promises. The screen prevents overlapping commands, shows failures and retries the command that failed. App-specific commands supplied in the binding still run, including persistence and sleep-timer logic.
 
@@ -68,11 +68,11 @@ Pass up to two cover sources in `preloadImages`, such as the next and previous t
 <div className="pattern-example">
 <div>
 
-<p>Set <code>seconds</code> to 5, 10 or 30 to use relative seeking instead of track navigation.</p>
+<p>Set <code>kind: "skip"</code> and <code>seconds</code> to 5, 10 or 30 to use relative seeking.</p>
 
 ```tsx
-previous={{ seconds: 10 }}
-next={{ seconds: 30 }}
+previous={{ kind: "skip", seconds: 10 }}
+next={{ kind: "skip", seconds: 30 }}
 ```
 <p><code>onLongPress</code> adds a separate long-press action. It runs once and suppresses the tap on release. <code>disabled</code> prevents both actions.</p>
 
@@ -114,7 +114,9 @@ const actions = [
 </div>
 </div>
 
-An explicit `onPress` overrides the default transport action. Without an override, the screen calls `previous()` or `next()`, or `seekBy()` when `seconds` is supplied. Unavailable actions are disabled.
+Transport controls default to `{ kind: "track" }`, which calls the matching `previous()` or `next()` method on `playback`. `{ kind: "skip", seconds: 10 }` calls `seekBy()` with the matching direction and interval. Unavailable methods disable the control.
+
+Use `{ kind: "custom", icon, onPress }` for a custom transport action. Its icon and handler are explicit, so there is no default action to override. Every variant accepts `onLongPress` and `disabled`; long presses remain separate from taps.
 
 ## Title and artists
 

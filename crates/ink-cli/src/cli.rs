@@ -33,6 +33,12 @@ pub enum InkCommand {
         #[arg(long, default_value = "com.example.inkapp")]
         package: String,
     },
+    /// Add modules from this app's Ink SDK and install their dependencies
+    Add {
+        #[arg(required = true)]
+        modules: Vec<String>,
+    },
+
     /// Check formatting, lint and types without changing files
     Check,
 

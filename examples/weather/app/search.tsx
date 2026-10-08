@@ -9,7 +9,14 @@ export default function SearchScreen() {
   };
   return (
     <Screen title="Add location">
-      <TextInput value={query} onChange={setQuery} placeholder="Search for a location" action="search" autoFocus onSubmit={submit} />
+      <TextInput
+        value={query}
+        onChange={setQuery}
+        placeholder="Search for a location"
+        action="search"
+        autoFocus
+        onSubmit={submit}
+      />
     </Screen>
   );
 }

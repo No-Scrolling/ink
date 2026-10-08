@@ -1,24 +1,34 @@
 import { lightos } from "@ink/lightos";
 import { useEffect, useState } from "react";
 import { PitchIndicator, usePitchDetector } from "@ink/audio/microphone";
-import { Screen, Stack, Text, navigate } from "ink";
+import { Screen, Stack, Text, navigate, useSnapshot } from "ink";
 import { settings } from "ink/icons";
 import { useSettings } from "../lib/settings-context";
 
-const flatNames = new Map([["C#", "D♭"], ["D#", "E♭"], ["F#", "G♭"], ["G#", "A♭"], ["A#", "B♭"]]);
+const flatNames = new Map([
+  ["C#", "D♭"],
+  ["D#", "E♭"],
+  ["F#", "G♭"],
+  ["G#", "A♭"],
+  ["A#", "B♭"],
+]);
 const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export default function Tuner() {
   const { referenceHz, flats, showCents, showFrequency } = useSettings();
   const pitch = usePitchDetector({ referenceHz });
+  const measurement = useSnapshot(pitch.measurements);
+  const currentFrequency =
+    measurement.status === "ready" &&
+    measurement.data.status === "active" &&
+    measurement.data.frequency > 0
+      ? measurement.data.frequency
+      : null;
   const [lastFrequency, setLastFrequency] = useState<number | null>(null);
-  const frequency = pitch.state.status === "active" && pitch.state.frequency > 0
-    ? pitch.state.frequency : lastFrequency;
+  const frequency = currentFrequency ?? lastFrequency;
   useEffect(() => {
-    if (pitch.state.status === "active" && pitch.state.frequency > 0) {
-      setLastFrequency(pitch.state.frequency);
-    }
-  }, [pitch.state.status, pitch.state.frequency]);
+    if (currentFrequency !== null) setLastFrequency(currentFrequency);
+  }, [currentFrequency]);
   const [permissionMessage, setPermissionMessage] = useState<string | null>(null);
   const [initialError, setInitialError] = useState<string | null>(null);
   useEffect(() => {
@@ -33,14 +43,19 @@ export default function Tuner() {
         if (permission === "denied") permission = await lightos.requestPermission("microphone");
         if (cancelled) return;
         if (permission === "granted") await pitch.start();
-        else setPermissionMessage(permission === "blocked"
-          ? "Allow microphone access in your phone’s app settings, then reopen Tuner."
-          : "Microphone access is needed to hear a note. Reopen Tuner to try again.");
+        else
+          setPermissionMessage(
+            permission === "blocked"
+              ? "Allow microphone access in your phone’s app settings, then reopen Tuner."
+              : "Microphone access is needed to hear a note. Reopen Tuner to try again.",
+          );
       } catch (error) {
         if (!cancelled) setInitialError(error instanceof Error ? error.message : String(error));
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [pitch.ready, pitch.start]);
 
   const midi = frequency === null ? 69 : 69 + 12 * Math.log2(frequency / referenceHz);
@@ -48,22 +63,44 @@ export default function Tuner() {
   const deviation = (midi - nearest) * 100;
   const cents = Math.round(deviation);
   const name = noteNames[((nearest % 12) + 12) % 12];
-  const note = flats ? flatNames.get(name) ?? name : name.replace("#", "♯");
+  const note = flats ? (flatNames.get(name) ?? name) : name.replace("#", "♯");
   const octave = Math.floor(nearest / 12) - 1;
-  const error = initialError ?? pitch.state.error?.message;
+  const error =
+    initialError ??
+    pitch.state.error?.message ??
+    (measurement.status === "error" ? measurement.error.message : undefined);
   const readings = [];
-  if (showCents) readings.push(frequency !== null ? `${cents > 0 ? "+" : ""}${cents} cents` : "— cents");
+  if (showCents)
+    readings.push(frequency !== null ? `${cents > 0 ? "+" : ""}${cents} cents` : "— cents");
   if (showFrequency) readings.push(frequency !== null ? `${frequency.toFixed(1)} Hz` : "— Hz");
 
   return (
-    <Screen title="Tuner" centered rightAction={{ icon: settings, onPress: () => navigate("/settings") }}>
-      {error ? <Text size={20} align="center">{error}</Text>
-        : permissionMessage ? <Text size={20} align="center">{permissionMessage}</Text>
-        : <Stack gap={14} align="center">
-          <Text size={100} align="center">{frequency !== null ? `${note}${octave}` : "—"}</Text>
+    <Screen
+      title="Tuner"
+      centered
+      rightAction={{ icon: settings, onPress: () => navigate("/settings") }}
+    >
+      {error ? (
+        <Text size={20} align="center">
+          {error}
+        </Text>
+      ) : permissionMessage ? (
+        <Text size={20} align="center">
+          {permissionMessage}
+        </Text>
+      ) : (
+        <Stack gap={14} align="center">
+          <Text size={100} align="center">
+            {frequency !== null ? `${note}${octave}` : "—"}
+          </Text>
           <PitchIndicator cents={frequency !== null ? deviation : null} />
-          {readings.length > 0 && <Text size={20} align="center" tabularNumbers>{readings.join(" · ")}</Text>}
-        </Stack>}
+          {readings.length > 0 && (
+            <Text size={20} align="center" tabularNumbers>
+              {readings.join(" · ")}
+            </Text>
+          )}
+        </Stack>
+      )}
     </Screen>
   );
 }

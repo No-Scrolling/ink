@@ -1,6 +1,5 @@
 package com.vandam.ink
 
-import java.io.File
 import org.json.JSONObject
 
 internal fun createAudioAdapter(
@@ -35,16 +34,7 @@ internal fun createAudioAdapter(
                 }
                 else -> {
                     require(controller in controllers) { "Audio controller is not active" }
-                    if (operation == "playRecording") {
-                        val recording = File(activity.filesDir, "recordings").listFiles().orEmpty()
-                            .filter { it.extension == "m4a" && !it.name.endsWith(".partial.m4a") }
-                            .maxByOrNull(File::lastModified)
-                        if (recording == null) NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "No saved recording", true)
-                        else playback.execute(controller, "play", JSONObject().put("item", JSONObject()
-                            .put("id", recording.nameWithoutExtension)
-                            .put("src", "ink://audio/recordings/${recording.nameWithoutExtension}")
-                            .put("title", "Recording")).toString())
-                    } else playback.execute(controller, operation, payload)
+                    playback.execute(controller, operation, payload)
                 }
             }
         } catch (error: Exception) {

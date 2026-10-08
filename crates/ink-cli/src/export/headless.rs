@@ -12,13 +12,13 @@ use std::{
 };
 
 pub(super) fn capture(project: &Project, marker: &str, args: &ExportArgs) -> Result<Capture> {
-    let fixtures = match &args.fixtures {
+    let mut fixtures = match &args.fixtures {
         Some(path) => serde_json::from_slice::<Value>(&fs::read(resolve_file(project, path)?)?)?,
         None => json!({}),
     };
     ensure!(
         fixtures.is_object(),
-        "--fixtures must contain an object with calls, controllers, images or glyphs"
+        "--fixtures must contain an object with pitch, level, calls, controllers, images or glyphs"
     );
     for key in ["calls", "controllers", "images", "glyphs"] {
         ensure!(
@@ -26,6 +26,7 @@ pub(super) fn capture(project: &Project, marker: &str, args: &ExportArgs) -> Res
             "fixture {key} must be an object"
         );
     }
+    expand_public_fixtures(&mut fixtures)?;
     let assets = project.android_assets_path();
     let source = fs::read_to_string(assets.join("app.js"))?;
     let web = assets.join("ink-assets/ink-web.js");
@@ -330,4 +331,81 @@ fn store_call(message: &Value, store: &mut HashMap<String, Value>) -> Result<Val
         }
         _ => bail!("preview needs a fixture for store.{}", message["operation"]),
     }
+}
+
+fn expand_public_fixtures(fixtures: &mut Value) -> Result<()> {
+    let kind = match (fixtures.get("pitch"), fixtures.get("level")) {
+        (Some(_), Some(_)) => bail!("supply one microphone fixture: pitch or level"),
+        (Some(_), None) => "pitch",
+        (None, Some(_)) => "level",
+        (None, None) => return Ok(()),
+    };
+    let value = &fixtures[kind];
+    let mut state = value
+        .as_object()
+        .with_context(|| format!("fixture {kind} must be an object"))?
+        .clone();
+    let status = value["status"]
+        .as_str()
+        .with_context(|| format!("{kind}.status is required"))?;
+    ensure!(
+        ["idle", "listening", "active", "error"].contains(&status)
+            || kind == "level" && status == "clipping",
+        "invalid {kind}.status"
+    );
+    let fields: &[&str] = if kind == "pitch" {
+        &["frequency", "octave", "cents", "confidence"]
+    } else {
+        &["rms", "peak"]
+    };
+    for name in fields {
+        ensure!(
+            value[name]
+                .as_f64()
+                .is_some_and(|number| matches!(*name, "octave" | "cents") || number >= 0.0),
+            "{kind}.{name} must be a valid number"
+        );
+    }
+    if kind == "pitch" {
+        ensure!(value["note"].is_string(), "pitch.note must be a string");
+        let frequency = state.remove("frequency").unwrap();
+        state.insert("frequencyHz".into(), frequency);
+    }
+    if status == "error" {
+        let message = value["error"]["message"]
+            .as_str()
+            .with_context(|| format!("{kind}.error.message is required for error state"))?;
+        state.insert(
+            "error".into(),
+            json!({"kind":"unavailable", "message":message}),
+        );
+    }
+    let calls = fixtures
+        .as_object_mut()
+        .unwrap()
+        .entry("calls")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .unwrap();
+    for (name, value) in [
+        ("audio.activate", Value::Null),
+        ("audio.start", Value::Null),
+        ("audio.stop", Value::Null),
+        ("audio.observeMeasurements", Value::Null),
+        ("audio.deactivate", Value::Null),
+        ("permissions.status", json!("granted")),
+        ("permissions.request", json!("granted")),
+    ] {
+        calls.entry(name).or_insert(value);
+    }
+    fixtures
+        .as_object_mut()
+        .unwrap()
+        .entry("controllers")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .unwrap()
+        .entry("audio")
+        .or_insert(Value::Object(state));
+    Ok(())
 }

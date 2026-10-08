@@ -3,7 +3,7 @@ import { lightos } from "@ink/lightos";
 import "@ink/network";
 import { notifications } from "@ink/notifications";
 import { location } from "@ink/location";
-import { defineTask, getJobs } from "@ink/background";
+import { defineTask, jobs } from "@ink/background";
 import { decodePushDelivery } from "@ink/lightos/push";
 import { backgroundResult, pushResult, workerReport } from "./data/background";
 import { decodeTodo } from "./data/todos";
@@ -21,7 +21,10 @@ export const refreshTodo = defineTask({
       return { status: "success" };
     } catch (error) {
       signal.throwIfAborted();
-      await backgroundResult.update(previous => ({ ...previous, error: error instanceof Error ? error.message : String(error) }));
+      await backgroundResult.update((previous) => ({
+        ...previous,
+        error: error instanceof Error ? error.message : String(error),
+      }));
       return { status: "retry", delayMs: 60_000 };
     }
   },
@@ -32,9 +35,11 @@ export const processPush = defineTask({
   decode: decodePushDelivery,
   async run({ input, signal }) {
     signal.throwIfAborted();
-    await pushResult.update(previous => ({
+    await pushResult.update((previous) => ({
       deliveries: previous.deliveries + 1,
-      message: input.messages.map(message => message.title).join(", ") || `${input.cancelled.length} groups cleared`,
+      message:
+        input.messages.map((message) => message.title).join(", ") ||
+        `${input.cancelled.length} groups cleared`,
     }));
     return { status: "success" };
   },
@@ -46,9 +51,13 @@ export const inspectWorker = defineTask({
   async run({ signal }) {
     const permission = await lightos.getPermission("notifications");
     const exact = await lightos.canScheduleExact();
-    const jobs = await getJobs({ signal });
+    const scheduledJobs = await jobs.get({ signal });
     if (permission === "granted") {
-      await notifications.show({ id: "worker-inspection", title: "Background worker", body: "Native notifications are available" });
+      await notifications.show({
+        id: "worker-inspection",
+        title: "Background worker",
+        body: "Native notifications are available",
+      });
       await notifications.cancel("worker-inspection");
     }
     let position: string;
@@ -59,7 +68,9 @@ export const inspectWorker = defineTask({
       signal.throwIfAborted();
       position = error instanceof Error ? error.message : String(error);
     }
-    await workerReport.set(`Notifications: ${permission}. Exact alarms: ${exact}. Jobs: ${jobs.length}. Location: ${position}`);
+    await workerReport.set(
+      `Notifications: ${permission}. Exact alarms: ${exact}. Jobs: ${scheduledJobs.length}. Location: ${position}`,
+    );
     return { status: "success" };
   },
 });

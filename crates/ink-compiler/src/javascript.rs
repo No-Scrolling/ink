@@ -183,7 +183,7 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
     uses.assets.dedup_by(|a, b| a.name == b.name);
     let manifest = serde_json::to_vec_pretty(&serde_json::json!({
         "version": 1, "frameworkVersion": env!("CARGO_PKG_VERSION"), "protocolVersion": 1,
-        "inputs": uses.inputs, "assets": uses.assets,
+        "inputs": uses.inputs, "assets": uses.assets, "javascriptBytes": source.len(),
         "icons": icons.iter().map(|icon| serde_json::json!({"name": icon.name, "filled": icon.filled, "width": icon.width, "height": icon.height})).collect::<Vec<_>>(),
         "capabilities": capabilities.iter().collect::<Vec<_>>(), "worker": worker.is_some(),
         "devRuntimeHash": uses.dev_runtime_hash,

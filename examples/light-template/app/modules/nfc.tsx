@@ -24,7 +24,10 @@ export default function Nfc() {
   const card = useAction(async (enabled: boolean) => {
     session.current?.abort();
     if (enabled) {
-      await nfc.emulate({ aids: ["F000000001"], responses: [{ command: "00A4040005F000000001", response: "9000" }] });
+      await nfc.emulate({
+        aids: ["F000000001"],
+        responses: [{ command: "00A4040005F000000001", response: "9000" }],
+      });
     } else await nfc.stopEmulation();
     return enabled ? "Enabled" : "Disabled";
   });
@@ -44,11 +47,23 @@ export default function Nfc() {
           <Field label="Text">{tag.data.hasText ? tag.data.text : "None"}</Field>
           <Field label="URI">{tag.data.hasUri ? tag.data.uri : "None"}</Field>
         </Stack>
-      ) : <Field label="Tag">{tag.status === "error" ? tag.error.message : "Hold an NFC tag near the phone..."}</Field>}
-      <Button onPress={() => { if (raw.status !== "pending") tag.run(); }}>Read another tag</Button>
+      ) : (
+        <Field label="Tag">
+          {tag.status === "error" ? tag.error.message : "Hold an NFC tag near the phone..."}
+        </Field>
+      )}
+      <Button
+        onPress={() => {
+          if (raw.status !== "pending") tag.run();
+        }}
+      >
+        Read another tag
+      </Button>
       <Button onPress={() => raw.run("iso-dep")}>Read ISO-DEP Details</Button>
       <Button onPress={() => raw.run("nfc-a")}>Read NFC-A Details</Button>
-      {raw.status === "pending" && <Field label="Connection">Hold a compatible tag near the phone...</Field>}
+      {raw.status === "pending" && (
+        <Field label="Connection">Hold a compatible tag near the phone...</Field>
+      )}
       {raw.status === "success" && <Field label="Connection">{raw.data}</Field>}
       {raw.status === "error" && <Field label="Connection">{raw.error.message}</Field>}
       <Button onPress={() => card.run(true)}>Enable Demo Card</Button>

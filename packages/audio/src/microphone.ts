@@ -1,6 +1,6 @@
 import { createElement, useMemo } from "react";
 import { NativeError } from "ink/native";
-import { captureReadout, fields, useCapture, type CaptureDisplay, type CaptureOptions } from "./capture-internal";
+import { captureReadout, fields, useCapture, type CaptureDisplay } from "./capture-internal";
 
 export interface LevelState {
   status: "idle" | "listening" | "active" | "clipping" | "error";
@@ -17,10 +17,11 @@ function decodeLevel(value: unknown): LevelState {
   }
   return { status, rms: field.number("rms"), peak: field.number("peak"), error: field.error() };
 }
-export function useLevelMeter({ updates }: CaptureOptions = {}) {
-  const { state, ready, call, display } = useCapture("level", levelInitial, decodeLevel, undefined, updates);
-  const commands = useMemo(() => ({ start: () => call("start"), stop: () => call("stop") }), [call]);
-  return { state, ready, display, ...commands };
+const levelStatus = ({ status, error }: LevelState) => ({ status, error });
+export function useLevelMeter() {
+  const { state, ready, call, display, measurements } = useCapture("level", levelInitial, decodeLevel, levelStatus);
+  const commands = useMemo(() => ({ start: async () => { await call("start"); }, stop: async () => { await call("stop"); } }), [call]);
+  return { state, ready, display, measurements, ...commands };
 }
 
 export interface PitchState {
@@ -44,11 +45,12 @@ function decodePitch(value: unknown): PitchState {
     octave: field.number("octave", -Infinity), cents: field.number("cents", -Infinity),
     confidence: field.number("confidence"), error: field.error() };
 }
-export function usePitchDetector({ referenceHz = 440, updates }: { referenceHz?: number } & CaptureOptions = {}) {
+const pitchStatus = ({ status, error }: PitchState) => ({ status, error });
+export function usePitchDetector({ referenceHz = 440 }: { referenceHz?: number } = {}) {
   if (!Number.isFinite(referenceHz) || referenceHz <= 0) throw new RangeError("Pitch reference must be a positive frequency");
-  const { state, ready, call, display } = useCapture("pitch", pitchInitial, decodePitch, referenceHz, updates);
-  const commands = useMemo(() => ({ start: () => call("start"), stop: () => call("stop") }), [call]);
-  return { state, ready, display, ...commands };
+  const { state, ready, call, display, measurements } = useCapture("pitch", pitchInitial, decodePitch, pitchStatus, referenceHz);
+  const commands = useMemo(() => ({ start: async () => { await call("start"); }, stop: async () => { await call("stop"); } }), [call]);
+  return { state, ready, display, measurements, ...commands };
 }
 
 export function LevelReadout({ meter }: { meter: { display: CaptureDisplay } }) { return captureReadout(meter, "level"); }

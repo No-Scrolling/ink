@@ -7,7 +7,7 @@ export default function Counter() {
     <Screen title="Counter" centered>
       <Stack gap={16} align="center">
         <Text size={40}>Count: {count}</Text>
-        <Button onPress={() => setCount(value => value + 1)}>Increase</Button>
+        <Button onPress={() => setCount((value) => value + 1)}>Increase</Button>
       </Stack>
     </Screen>
   );

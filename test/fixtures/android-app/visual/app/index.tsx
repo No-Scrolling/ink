@@ -15,7 +15,7 @@ const albums = artwork.map((image, index) => ({ id: String(index + 1), image,
   subtitle: artists[index % artists.length] }));
 
 export default function VisualFixture() {
-  const requested = useRouteParams<{ fixtureState?: string }>().fixtureState;
+  const requested = useRouteParams().fixtureState;
   const state = requested === "list" || requested === "rows" ? requested : "graphics";
   useEffect(() => {
     console.log(`INK_VISUAL_STATE ${JSON.stringify({ version: 1, state })}`);

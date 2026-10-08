@@ -248,7 +248,7 @@ Each hook returns `ready`, `state` and commands that return promises. Wait for `
 
 ### Display measurements natively
 
-`RecordingDuration`, `LevelReadout` and `PitchReadout` display changing measurements without React updates. Use `updates: "status"` when the page needs status and errors but does not use live measurements in JavaScript. The default, `updates: "all"`, preserves live `state` values for custom interfaces and application calculations.
+`RecordingDuration`, `LevelReadout` and `PitchReadout` display changing measurements without React updates. Capture hooks expose lifecycle status and errors in `state`; native readouts update automatically.
 
 After granting microphone permission, a recording page can display elapsed time with this binding:
 
@@ -257,12 +257,12 @@ import { RecordingDuration, useRecorder } from "@ink/audio/recording";
 import { Button, Field, Screen, useAction } from "ink";
 
 export default function Recording() {
-  const recorder = useRecorder({ updates: "status" });
-  const command = useAction((run: () => Promise<void>) => run());
+  const recorder = useRecorder();
+  const command = useAction((run: () => Promise<unknown>) => run());
   return <Screen title="Recording">
     <RecordingDuration recorder={recorder} />
     <Button disabled={!recorder.ready} onPress={() => command.run(recorder.start)}>Start</Button>
-    <Button disabled={!recorder.ready} onPress={() => command.run(recorder.stop)}>Save</Button>
+    <Button disabled={!recorder.ready || recorder.state.status !== "recording"} onPress={() => command.run(recorder.stop)}>Save</Button>
     {command.status === "error" && <Field label="Error">{command.error.message}</Field>}
   </Screen>;
 }
@@ -281,7 +281,22 @@ The template's recording page uses the native elapsed label; its microphone page
 <img src="/images/patterns/audio-level-native.png" alt="Microphone page with native RMS and peak readings." width="1080" height="1240" />
 </div>
 
-With status updates, numerical fields in `state` are snapshots from the last notification. The native readouts continue updating. Completed recordings still deliver their saved file and final duration. Both update modes preserve permission, error and lifecycle handling.
+### Read live measurements
+
+Subscribe to `measurements` only when your component calculates or draws a custom reading:
+
+```tsx
+import { usePitchDetector } from "@ink/audio/microphone";
+import { useSnapshot } from "ink";
+
+const detector = usePitchDetector();
+const measurement = useSnapshot(detector.measurements);
+const frequency = measurement.status === "ready" ? measurement.data.frequency : null;
+```
+
+This component still needs microphone permission and must call `detector.start()`. The source is stable across renders. Ink enables measurement delivery while subscribed and stops it when the last subscriber leaves, without restarting capture. `state` continues to provide status and errors. Completed recordings include their final duration in `state.recording` and the result of `stop()`.
+
+When migrating, remove `updates` options. Replace reads of live `state.frequency`, `state.rms`, `state.cents` or recording `state.duration` with a `measurements` subscription. Native readouts need no subscription.
 
 ### Record audio
 
@@ -298,7 +313,7 @@ const start = useAction(() => recorder.start());
 Call `start.run()` from a button after permission is granted and `recorder.ready` is true. Stop it from a separate action:
 
 ```ts
-await recorder.stop();
+const recording = await recorder.stop();
 ```
 
 ### Detect pitch
@@ -315,17 +330,17 @@ Call its `start()` and `stop()` commands from actions, following the same permis
 
 | Hook | Commands | State |
 | --- | --- | --- |
-| `useRecorder()` | `start()`, `stop()`, `cancel()`, `delete()` | Status, duration in milliseconds, error and the saved recording when available. |
-| `useLevelMeter()` | `start()`, `stop()` | Status, RMS, peak and error. These are signal levels, not calibrated sound-pressure measurements. |
-| `usePitchDetector({ referenceHz })` | `start()`, `stop()` | Status, frequency in Hz, note, octave, cents, confidence and error. Reference defaults to 440 Hz. |
+| `useRecorder()` | `start()`, `stop()`, `cancel()`, `delete()` | Status, error and the saved recording when available. Live duration is in `measurements`. |
+| `useLevelMeter()` | `start()`, `stop()` | Status and error. `measurements` includes RMS and peak signal levels, not calibrated sound-pressure measurements. |
+| `usePitchDetector({ referenceHz })` | `start()`, `stop()` | Status and error. `measurements` includes frequency in Hz, note, octave, cents and confidence. Reference defaults to 440 Hz. |
 
 ### Tuning indicator
 
-Pass `state.cents` to `PitchIndicator`, or `null` when no note is detected. Its 25-tick scale spans −50 to +50 cents: flat on the left, sharp on the right. Readings within ±5 cents settle on the taller centre tick. The indicator follows Ink’s colour scheme and is not interactive.
+Pass `measurement.data.cents` from a ready, active measurement snapshot to `PitchIndicator`, or `null` when no note is detected. Its 25-tick scale spans −50 to +50 cents: flat on the left, sharp on the right. Readings within ±5 cents settle on the taller centre tick. The indicator follows Ink’s colour scheme and is not interactive.
 
 ### Saved recordings
 
-Recorder status is `idle`, `recording`, `stopping`, `ready` or `error`. Read the completed recording from state; `stop()` does not return it.
+Recorder status is `idle`, `recording`, `stopping`, `ready` or `error`. `stop()` resolves with the saved recording after the file has been finalised. It rejects if no recording is in progress. The completed file also appears in state, including when recording stops as the app backgrounds.
 
 The recording is a [FileRef](/files#file-metadata) with a duration in milliseconds. Use its `src` with `usePlayer` or `fetch`.
 

@@ -6,7 +6,6 @@ internal fun createAudioRecording(
     _analysisActive: () -> Boolean,
 ): AudioRecording = object : AudioRecording {
     override val active = false
-    override val source: String? = null
     override fun activate(controller: Long) = unavailable()
     override fun execute(operation: String) = unavailable()
     override fun deactivate() = Unit

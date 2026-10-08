@@ -192,7 +192,7 @@ export function ConversationScreen<T extends ConversationMessage>({ title, right
     createElement("Icon", { name, size: 28, tone: onPress ? "primary" : "muted" }));
   return createElement("Screen", { title, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress, pinnedFooter: true, initialEnd: true, scrollToEnd },
     loading ? createElement(Text, { size: 18, align: "center" }, "Loading…")
-      : createElement(List<T>, { items: messages, keyExtractor: messageKey, renderItem: messageItem, gap: 28, followEnd: true, initialEnd: true, onLoadOlder, hasOlder }),
+      : createElement(List<T>, { items: messages, keyExtractor: messageKey, renderItem: messageItem, gap: 28, followEnd: true, initialPosition: "end", onLoadOlder, hasOlder }),
     !loading && messages.length === 0 && createElement(Text, { size: 18, align: "center" }, "No messages yet"),
     createElement(Stack, { gap: 8, align: "stretch" },
       reply && createElement("ConversationComposer", null,

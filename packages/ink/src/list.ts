@@ -1,8 +1,9 @@
-import { createElement, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "./react";
+import { createElement, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "./react";
 
 import { useAction } from "./action";
 import { Button, Stack, Text } from "./index";
 import { CompiledList, nativeListPlan } from "./native-list";
+import { ScrollToEndContext } from "./scroll";
 
 const OLDER_PAGE_AHEAD_ITEMS = 8;
 
@@ -24,31 +25,43 @@ export type ListProps<T> = {
   hasMore?: boolean;
   onLoadOlder?: () => Promise<void>;
   hasOlder?: boolean;
-  initialEnd?: boolean;
+  initialPosition?: "start" | "end";
 };
 
 export function List<T>(props: ListProps<T>) {
+  const requestEnd = useContext(ScrollToEndContext);
+  const initialised = useRef(false);
+  useLayoutEffect(() => {
+    if (initialised.current || props.initialPosition === "end" && !props.items.length) return;
+    initialised.current = true;
+    if (props.initialPosition === "end") requestEnd?.();
+  }, [props.initialPosition, props.items.length, requestEnd]);
   const plan = nativeListPlan(props.renderItem);
   return plan ? createElement(CompiledList<T>, { ...props, plan, key: plan.template }) : createElement(ReactList<T>, props);
 }
 
-export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, followEnd = false, measurementKey, onLoadMore, hasMore = true, onLoadOlder, hasOlder = false, initialEnd = false }: ListProps<T>) {
+export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, followEnd = false, measurementKey, onLoadMore, hasMore = false, onLoadOlder, hasOlder = false, initialPosition = "start" }: ListProps<T>) {
   if (!Number.isFinite(gap) || gap < 0) {
     throw new Error("List gap must be finite and non-negative");
   }
+  const initialWindow = useRef(initialPosition === "end");
   const previous = useRef<{
     measurementKey?: string | number;
     keyExtractor: ListProps<T>["keyExtractor"];
     items: readonly T[]; keys: string[]; contentVersions: number[]; revision: number;
     records: Map<string, { item: T; version: number }>;
   } | null>(null);
-  const [window, setWindow] = useState({ start: initialEnd ? Math.max(0, items.length - 32) : 0, end: initialEnd ? items.length : 32, revision: 0, nearEnd: false });
+  const [window, setWindow] = useState({ start: initialPosition === "end" ? Math.max(0, items.length - 32) : 0, end: initialPosition === "end" ? items.length : 32, revision: 0, nearEnd: false });
   const requested = useRef<string | null>(null);
   const load = useAction(() => onLoadMore?.());
   const olderRequested = useRef<string | null>(null);
   const older = useAction(() => onLoadOlder?.());
   let start = Math.min(window.start, items.length);
   let end = Math.min(window.end, items.length);
+  if (initialWindow.current && items.length) {
+    start = Math.max(0, items.length - 32);
+    end = items.length;
+  }
   let data = previous.current;
   const old = data;
   const keys = old && old.items === items && old.keyExtractor === keyExtractor ? old.keys : items.map(keyExtractor);
@@ -66,7 +79,9 @@ export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, follow
     if (new TextEncoder().encode(JSON.stringify({ keys, contentVersions })).length > 128 * 1024) {
       throw new Error("List metadata exceeds 128 KiB; use shorter keys or a bounded data window");
     }
-    if (old && window.revision !== revision && old.keys[window.start] !== undefined) {
+    if (initialWindow.current && items.length) {
+      if (start !== window.start || end !== window.end) setWindow({ start, end, revision, nearEnd: false });
+    } else if (old && window.revision !== revision && old.keys[window.start] !== undefined) {
       const mapped = keys.indexOf(old.keys[window.start]);
       start = mapped < 0 ? Math.min(window.start, Math.max(0, items.length - 1)) : mapped;
       end = Math.min(start + window.end - window.start, items.length);
@@ -75,7 +90,10 @@ export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, follow
     data = { items, keys, keyExtractor, contentVersions, revision, records, measurementKey };
   }
   if (data.keyExtractor !== keyExtractor) data = { ...data, keyExtractor };
-  useLayoutEffect(() => { previous.current = data; });
+  useLayoutEffect(() => {
+    previous.current = data;
+    if (items.length) initialWindow.current = false;
+  });
   const { revision, contentVersions } = data;
   const boundary = JSON.stringify([keys.length, keys.at(-1)]);
   useEffect(() => {

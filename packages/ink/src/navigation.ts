@@ -30,7 +30,7 @@ function send(action: NavigationAction) {
   dispatch(action);
 }
 
-type CheckedDestination<D extends Destination> = D extends string
+export type CheckedDestination<D extends Destination> = D extends string
   ? keyof PathParams<D> extends never ? D : never
   : D extends { path: infer Path extends string }
     ? keyof PathParams<Path> extends never ? D : D & { params: { [Key in keyof PathParams<Path>]: string | number } }
@@ -43,7 +43,8 @@ export function back() { send({ type: "back" }); }
 export function presentPage(page: ReactElement) { send({ type: "present", page }); }
 
 export function useRouteParams<Path extends string>(path: Path): PathParams<Path>;
-export function useRouteParams<T extends object = Params>(decode?: (value: unknown) => T): T;
+export function useRouteParams(): Readonly<Partial<Params>>;
+export function useRouteParams<T extends object>(decode: (value: unknown) => T): T;
 export function useRouteParams(decode?: string | ((value: unknown) => object)): object {
   const params = useContext(RouteContext);
   if (!params) throw new Error("useRouteParams must be used inside a page");

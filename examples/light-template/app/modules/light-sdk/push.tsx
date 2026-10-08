@@ -15,21 +15,47 @@ export default function Push() {
       <Field label="Status">{push.ready ? push.state.status : "Connecting"}</Field>
       {push.state.endpoint !== "" && <Field label="Endpoint">{push.state.endpoint}</Field>}
       {push.state.error && <Field label="Error">{push.state.error.message}</Field>}
-      <Button disabled={disabled} onPress={() => command.run(() => push.register({ url: "http://127.0.0.1:18080/v1/push/subscriptions" }))}>Register Push</Button>
-      <Button disabled={disabled} onPress={() => command.run(push.retry)}>Retry Registration</Button>
-      <Button disabled={disabled} onPress={() => command.run(push.unregister)}>Unregister</Button>
-      <Button disabled={disabled} onPress={() => command.run(push.clear)}>Clear Inbox</Button>
-      <Button disabled={disabled} onPress={() => command.run(() => setPushTask(processPush))}>Enable Handler</Button>
-      <Button disabled={disabled} onPress={() => command.run(() => setPushTask(null))}>Disable Handler</Button>
-      {handled.status === "ready" && <Stack>
-        <Field label="Background deliveries">{handled.data.deliveries}</Field>
-        <Field label="Last handled">{handled.data.message}</Field>
-      </Stack>}
+      <Button
+        disabled={disabled}
+        onPress={() =>
+          command.run(() => push.register({ url: "http://127.0.0.1:18080/v1/push/subscriptions" }))
+        }
+      >
+        Register Push
+      </Button>
+      <Button disabled={disabled} onPress={() => command.run(push.retry)}>
+        Retry Registration
+      </Button>
+      <Button disabled={disabled} onPress={() => command.run(push.unregister)}>
+        Unregister
+      </Button>
+      <Button disabled={disabled} onPress={() => command.run(push.clear)}>
+        Clear Inbox
+      </Button>
+      <Button disabled={disabled} onPress={() => command.run(() => setPushTask(processPush))}>
+        Enable Handler
+      </Button>
+      <Button disabled={disabled} onPress={() => command.run(() => setPushTask(null))}>
+        Disable Handler
+      </Button>
+      {handled.status === "ready" && (
+        <Stack>
+          <Field label="Background deliveries">{handled.data.deliveries}</Field>
+          <Field label="Last handled">{handled.data.message}</Field>
+        </Stack>
+      )}
       {command.status === "error" && <Field label="Command error">{command.error.message}</Field>}
-      {push.state.messages.map(message => (
+      {push.state.messages.map((message) => (
         <Stack key={message.id}>
-          <Field label="Message">{message.title}: {message.body}</Field>
-          <Button disabled={disabled} onPress={() => command.run(() => push.dismiss(message.groupKey))}>Dismiss</Button>
+          <Field label="Message">
+            {message.title}: {message.body}
+          </Field>
+          <Button
+            disabled={disabled}
+            onPress={() => command.run(() => push.dismiss(message.groupKey))}
+          >
+            Dismiss
+          </Button>
         </Stack>
       ))}
     </Screen>

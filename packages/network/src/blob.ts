@@ -6,48 +6,57 @@ type BlobPart = string | ArrayBuffer | ArrayBufferView | Blob;
 type NativePart = { src: string; offset: number; size: number };
 type Part = Uint8Array | NativePart;
 const partSize = (part: Part) => part instanceof Uint8Array ? part.length : part.size;
+const blobParts = new WeakMap<Blob, Part[]>();
+function partsOf(blob: Blob): Part[] {
+  const parts = blobParts.get(blob);
+  if (!parts) throw new TypeError("Invalid Blob receiver");
+  return parts;
+}
+
+export function nativeBlob(src: string, size: number, type: string): Blob {
+  const blob = new Blob([], { type });
+  blobParts.set(blob, [{ src, offset: 0, size }]);
+  Object.defineProperty(blob, "size", { value: size });
+  return blob;
+}
+
+export function nativeBlobParts(blob: Blob): Iterable<{ bytes: Uint8Array } | NativePart> | undefined {
+  const parts = partsOf(blob);
+  if (!parts.some(part => !(part instanceof Uint8Array))) return undefined;
+  return (function* () {
+    for (const part of parts) {
+      if (part instanceof Uint8Array) {
+        for (let offset = 0; offset < part.length; offset += 32768) yield { bytes: part.subarray(offset, offset + 32768) };
+      } else yield part;
+    }
+  })();
+}
 export class Blob {
   readonly size: number;
   readonly type: string;
-  #parts: Part[];
   constructor(parts: Iterable<BlobPart> = [], options: { type?: string; endings?: "transparent" | "native" } = {}) {
-    this.#parts = [];
+    const stored: Part[] = [];
+    blobParts.set(this, stored);
     for (const part of parts) {
-      if (part instanceof Blob) this.#parts.push(...part.#parts);
-      else if (part instanceof ArrayBuffer) this.#parts.push(new Uint8Array(part.slice(0)));
-      else if (ArrayBuffer.isView(part)) this.#parts.push(new Uint8Array(part.buffer, part.byteOffset, part.byteLength).slice());
-      else this.#parts.push(new TextEncoder().encode(options.endings === "native" ? String(part).replace(/\r\n|\r/g, "\n") : String(part)));
+      if (part instanceof Blob) stored.push(...partsOf(part));
+      else if (part instanceof ArrayBuffer) stored.push(new Uint8Array(part.slice(0)));
+      else if (ArrayBuffer.isView(part)) stored.push(new Uint8Array(part.buffer, part.byteOffset, part.byteLength).slice());
+      else stored.push(new TextEncoder().encode(options.endings === "native" ? String(part).replace(/\r\n|\r/g, "\n") : String(part)));
     }
-    this.size = this.#parts.reduce((size, part) => size + partSize(part), 0);
+    this.size = stored.reduce((size, part) => size + partSize(part), 0);
     const type = String(options.type ?? "");
     this.type = /[^\x20-\x7e]/.test(type) ? "" : type.toLowerCase();
-  }
-  static fromNative(src: string, size: number, type: string): Blob {
-    const blob = new Blob([], { type });
-    blob.#parts = [{ src, offset: 0, size }];
-    Object.defineProperty(blob, "size", { value: size });
-    return blob;
-  }
-  nativeParts(): Iterable<{ bytes: Uint8Array } | NativePart> | undefined {
-    if (!this.#parts.some(part => !(part instanceof Uint8Array))) return undefined;
-    const parts = this.#parts;
-    return (function* () {
-      for (const part of parts) {
-        if (part instanceof Uint8Array) {
-          for (let offset = 0; offset < part.length; offset += 32768) yield { bytes: part.subarray(offset, offset + 32768) };
-        } else yield part;
-      }
-    })();
   }
   slice(start = 0, end = this.size, type = "") {
     const normalise = (value: number) => value < 0 ? Math.max(this.size + Math.trunc(value), 0) : Math.min(Math.trunc(value) || 0, this.size);
     let offset = 0;
     const result = new Blob([], { type });
+    const resultParts = partsOf(result);
     const from = normalise(start), to = normalise(end);
-    for (const part of this.#parts) {
+    for (const part of partsOf(this)) {
       const left = Math.max(0, from - offset), right = Math.min(partSize(part), to - offset);
       if (right > left) {
-        result.#parts.push(part instanceof Uint8Array ? part.subarray(left, right) : { ...part, offset: part.offset + left, size: right - left });
+        resultParts.push(part instanceof Uint8Array ? part.subarray(left, right) : { ...part, offset: part.offset + left, size: right - left });
       }
       offset += partSize(part);
     }
@@ -67,7 +76,7 @@ export class Blob {
   async text() { return new TextDecoder().decode(await this.bytes()); }
   stream(): ReadableStream<Uint8Array> {
     let index = 0, offset = 0;
-    const parts = this.#parts;
+    const parts = partsOf(this);
     return new ReadableStream({
       async pull(controller) {
         while (index < parts.length && offset === partSize(parts[index])) { index++; offset = 0; }

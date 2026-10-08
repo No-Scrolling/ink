@@ -10,7 +10,10 @@ export default function ScreenStates() {
   );
 }
 
-export function ScreenStateExample({ result, loadingMessage = "Loading..." }: {
+export function ScreenStateExample({
+  result,
+  loadingMessage = "Loading...",
+}: {
   result: "ready" | "error";
   loadingMessage?: string;
 }) {
@@ -35,10 +38,13 @@ export function ScreenStateExample({ result, loadingMessage = "Loading..." }: {
   if (status === "error") {
     return (
       <Screen title={title}>
-        <ErrorState message="The example could not load." onRetry={() => {
-          setRetrying(true);
-          setStatus("loading");
-        }} />
+        <ErrorState
+          message="The example could not load."
+          onRetry={() => {
+            setRetrying(true);
+            setStatus("loading");
+          }}
+        />
       </Screen>
     );
   }

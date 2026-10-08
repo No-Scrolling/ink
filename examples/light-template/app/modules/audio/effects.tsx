@@ -17,21 +17,37 @@ export default function Effects() {
       }
     };
     void refresh();
-    const timer = setInterval(() => { void refresh(); }, 1000);
-    return () => { active = false; clearInterval(timer); };
+    const timer = setInterval(() => {
+      void refresh();
+    }, 1000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [player.state.ready, player.getState]);
   const silence = useAction((enabled: boolean) => player.setSkipSilence(enabled));
   const voice = useAction((enabled: boolean) => player.setVoiceBoost(enabled));
-  const error = player.state.error
-    ?? (silence.status === "error" ? silence.error : null)
-    ?? (voice.status === "error" ? voice.error : null);
+  const error =
+    player.state.error ??
+    (silence.status === "error" ? silence.error : null) ??
+    (voice.status === "error" ? voice.error : null);
 
-  return <Screen title="Effects">
-    {!player.state.ready ? <LoadingState /> : <>
-      <Toggle label="Smart speed" value={player.state.skipSilence} onChange={silence.run}
-        subtitle={`Total time saved: ${Math.floor(silenceSaved / 1000)} seconds`} />
-      <Toggle label="Voice boost" value={player.state.voiceBoost} onChange={voice.run} />
-    </>}
-    {error && <Text>{error.message}</Text>}
-  </Screen>;
+  return (
+    <Screen title="Effects">
+      {!player.state.ready ? (
+        <LoadingState />
+      ) : (
+        <>
+          <Toggle
+            label="Smart speed"
+            value={player.state.skipSilence}
+            onChange={silence.run}
+            subtitle={`Total time saved: ${Math.floor(silenceSaved / 1000)} seconds`}
+          />
+          <Toggle label="Voice boost" value={player.state.voiceBoost} onChange={voice.run} />
+        </>
+      )}
+      {error && <Text>{error.message}</Text>}
+    </Screen>
+  );
 }

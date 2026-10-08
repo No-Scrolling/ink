@@ -1115,6 +1115,22 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSetEnabled(
 
 #[cfg(feature = "audio")]
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioObserve(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    controller: jlong,
+    observed: jboolean,
+) -> jboolean {
+    engine(handle)
+        .map(|engine| engine.lock_arc())
+        .is_some_and(|engine| {
+            engine.audio.observe(ControllerId::new(controller as usize), observed)
+        }) as jboolean
+}
+
+#[cfg(feature = "audio")]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSamples(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,

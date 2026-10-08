@@ -63,7 +63,6 @@ private class InkAudioRecording(
     }
 
     override val active get() = mediaRecorder != null
-    override val source get() = lastRecording?.let { "$RECORDING_PREFIX${it.id}" }
 
     override fun activate(controller: Long): NativeResult {
         if (recorderController != null && recorderController != controller) {
@@ -154,7 +153,7 @@ private class InkAudioRecording(
 
     private fun stopRecorder(): NativeResult {
         if (mediaRecorder == null) {
-            return NativeResult.Success("")
+            return protocol("No recording is in progress")
         }
         publishRecorder("stopping")
         handler.removeCallbacks(recorderProgress)
@@ -193,7 +192,7 @@ private class InkAudioRecording(
         }
         lastRecording = Recording(id, duration)
         publishRecorder("ready")
-        return NativeResult.Success("")
+        return NativeResult.Success(recorderState("ready"))
     }
 
     private fun cancelRecorder(publish: Boolean): NativeResult {

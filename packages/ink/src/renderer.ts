@@ -3,7 +3,8 @@ import { createContext, type ReactNode } from "./react";
 import Reconciler from "react-reconciler";
 import { ConcurrentRoot, DefaultEventPriority, DiscreteEventPriority } from "react-reconciler/constants";
 import { onNativeMessage } from "./native";
-import { openLink } from "./external";
+import { pressHandler } from "./press";
+import type { Destination } from "./navigation";
 import { listPatch, type NativeListItem } from "./list-patch";
 
 declare const __inkCommit: (operations: Operation[]) => void;
@@ -51,9 +52,9 @@ function textContent(type: string, props: Props): string | null {
 }
 
 function hostProps(type: string, props: Props): Props {
-  if (type !== "Text" || props.href === undefined) return props;
-  const { href, ...rest } = props;
-  return { ...rest, onPress: () => openLink(href as string) };
+  if (type !== "Text" || props.href === undefined && props.url === undefined) return props;
+  const { href, url, onPress, ...rest } = props;
+  return { ...rest, onPress: pressHandler({ href: href as Destination | undefined, url: url as string | undefined, onPress: onPress as (() => void) | undefined }) };
 }
 
 function nativeValue(value: unknown): unknown {
@@ -145,7 +146,7 @@ function compiledListUpdate(previous: Props, props: Props): Props | null {
 function update(instance: Instance, type: string, _oldProps: Props, props: Props) {
   const previous = instance.props;
   const isText = type === "Text";
-  if (isText && props.href !== undefined) props = hostProps(type, props);
+  if (isText) props = hostProps(type, props);
   instance.props = props;
   if (type === "NativeList" && props.keyField === "key" && previous.template === props.template) {
     const next = compiledListUpdate(previous, props);
@@ -231,9 +232,6 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
   finalizeInitialChildren: () => false,
   shouldSetTextContent: (type, props) => {
     if (type !== "Text") return false;
-    if (props.href !== undefined && props.onPress) {
-      throw new Error("Text accepts either href or onPress");
-    }
     const kind = typeof props.children;
     return kind === "string" || kind === "number" || kind === "bigint";
   },

@@ -33,10 +33,32 @@ fn run() -> Result<()> {
         return Ok(());
     };
 
+    if matches!(&command, InkCommand::Add { .. } | InkCommand::Check | InkCommand::Format | InkCommand::Lint | InkCommand::Build { .. } | InkCommand::Dev { .. } | InkCommand::Export(_)) {
+        let config = find_config(cli.directory.as_deref())?;
+        let sdk = android::framework_root_for_app(config.parent().expect("config has a parent"))?;
+        let compiled_sdk = Path::new(env!("CARGO_MANIFEST_DIR")).parent().and_then(Path::parent).and_then(|path| path.canonicalize().ok());
+        if compiled_sdk.as_ref() != Some(&sdk) {
+            anyhow::ensure!(std::env::var_os("INK_DISPATCHED_SDK").as_deref() != Some(sdk.as_os_str()), "selected SDK launcher ran a different SDK; check that {}/scripts/ink launches its own checkout", sdk.display());
+            let launcher = sdk.join("scripts/ink");
+            anyhow::ensure!(launcher.is_file(), "selected SDK launcher is missing: {}", launcher.display());
+            let status = std::process::Command::new(&launcher)
+                .args(std::env::args_os().skip(1))
+                .env("INK_SDK_ROOT", &sdk)
+                .env("INK_DISPATCHED_SDK", &sdk)
+                .status()
+                .with_context(|| format!("could not start {}", launcher.display()))?;
+            std::process::exit(status.code().unwrap_or(1));
+        }
+    }
+
     match command {
         InkCommand::Create { directory, name, package } => {
             let directory = cli.directory.as_deref().unwrap_or(Path::new(".")).join(directory);
             create::create(&directory, name.as_deref(), &package)
+        }
+        InkCommand::Add { modules } => {
+            let project = load_project(cli.directory.as_deref())?;
+            create::add_modules(&project, &modules)
         }
         InkCommand::Doctor => android::doctor(),
         InkCommand::Devices => list_devices(),
@@ -134,9 +156,21 @@ fn list_devices() -> Result<()> {
 }
 
 fn show_info(project: &Project) -> Result<()> {
-    let app = ink_compiler::inspect(project)?;
+    let (app, cache_status) = match ink_compiler::inspect(project) {
+        Ok(app) => (app, "Not compiled"),
+        Err(error) => {
+            output::warning(format!("Could not read cached bundle: {error}"));
+            (None, "Unavailable")
+        }
+    };
     let builds = build_summaries(&project.root().join("dist"))?;
-    let devices = android::connected_devices()?;
+    let devices = match android::connected_devices() {
+        Ok(devices) => devices,
+        Err(error) => {
+            output::warning(format!("Could not list devices: {error}"));
+            Vec::new()
+        }
+    };
     let remembered = android::remembered_device();
     let device = remembered
         .as_deref()
@@ -155,12 +189,13 @@ fn show_info(project: &Project) -> Result<()> {
     );
     output::tree_root_field("Package", project.package(), false);
     output::tree_root_field("Ink", env!("CARGO_PKG_VERSION"), false);
+    output::tree_root_field("SDK", android::project_framework_root(project).map(|path| path.display().to_string()).unwrap_or_else(|error| format!("Unavailable: {error}")), false);
     output::tree_section("Build", false);
     output::tree_field(
         false,
         false,
-        "JavaScript",
-        file_size(app.javascript_bytes as u64),
+        "JavaScript (cached)",
+        app.as_ref().map(|app| file_size(app.javascript_bytes as u64)).unwrap_or_else(|| cache_status.to_owned()),
     );
     if let Some(signing) = project.release_signing() {
         output::tree_field(false, false, "Signing", &signing.key_alias);
@@ -190,15 +225,18 @@ fn show_info(project: &Project) -> Result<()> {
             );
         }
     }
-    let capabilities = app.capabilities.join(", ");
-    let capabilities = if capabilities.is_empty() {
+    let names = app.as_ref().map(|app| app.capabilities.as_slice()).unwrap_or_default();
+    let capabilities = names.join(", ");
+    let capabilities = if app.is_none() {
+        cache_status.to_owned()
+    } else if capabilities.is_empty() {
         "None".to_owned()
     } else if capabilities.len() > 60 {
-        format!("{} enabled", app.capabilities.len())
+        format!("{} enabled", names.len())
     } else {
         capabilities
     };
-    output::tree_root_field("Capabilities", capabilities, false);
+    output::tree_root_field("Capabilities (cached)", capabilities, false);
     let device = device
         .map(|device| {
             let remembered = if remembered.as_deref() == Some(&device.serial) {
@@ -254,6 +292,10 @@ fn file_size(bytes: u64) -> String {
 }
 
 fn load_project(directory: Option<&Path>) -> Result<Project> {
+    Project::load(find_config(directory)?)
+}
+
+fn find_config(directory: Option<&Path>) -> Result<std::path::PathBuf> {
     let start = match directory {
         Some(directory) => fs::canonicalize(directory)
             .with_context(|| format!("could not find {}", directory.display()))?,
@@ -263,7 +305,7 @@ fn load_project(directory: Option<&Path>) -> Result<Project> {
     for directory in start.ancestors() {
         let config = directory.join("ink.toml");
         if config.is_file() {
-            return Project::load(config);
+            return Ok(config);
         }
     }
 

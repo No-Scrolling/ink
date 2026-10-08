@@ -29,7 +29,7 @@ private class InkAudioAdapter(
     setProcessorEnabled: (Long, Boolean) -> Boolean,
 ) : AudioAdapter {
     private val controllers = mutableMapOf<Long, String>()
-    private val statusOnly = mutableSetOf<Long>()
+    private val observed = mutableSetOf<Long>()
     private val lastStatus = mutableMapOf<Long, String>()
     private val playback = createAudioPlayback(activity, updateController)
     private val microphone = createAudioMicrophone(activity, processSamples, ::updateCapture,
@@ -40,7 +40,7 @@ private class InkAudioAdapter(
         activity.updateCaptureState(controller, value)
         val status = JSONObject(value).optString("status")
         val previous = lastStatus.put(controller, status)
-        if (controller !in statusOnly || status != previous || status != "recording") updateController(controller, value)
+        if (controller in observed || status != previous || status != "recording") updateController(controller, value)
     }
 
     override fun execute(
@@ -92,7 +92,7 @@ private class InkAudioAdapter(
         microphone.stop()
         controllers.keys.forEach(activity::removeCaptureState)
         controllers.clear()
-        statusOnly.clear()
+        observed.clear()
         lastStatus.clear()
     }
 
@@ -107,7 +107,6 @@ private class InkAudioAdapter(
         }
         val kind = recipe.optString(KIND)
         val config = recipe.optJSONObject(CONFIG)?.toString() ?: "{}"
-        if (recipe.optJSONObject(CONFIG)?.optString("updates") == "status") statusOnly.add(controller)
         val result = when (kind) {
             in SUPPORTED_PROCESSORS -> microphone.activate(controller, kind, config)
             PLAYER -> playback.activate(controller, config)
@@ -115,7 +114,7 @@ private class InkAudioAdapter(
             else -> protocol("Unknown audio controller: $kind")
         }
         if (result is NativeResult.Failure) {
-            statusOnly.remove(controller)
+            observed.remove(controller)
             lastStatus.remove(controller)
             activity.removeCaptureState(controller)
             complete(result)
@@ -132,7 +131,7 @@ private class InkAudioAdapter(
             RECORDER -> recording.deactivate()
             null -> Unit
         }
-        statusOnly.remove(controller)
+        observed.remove(controller)
         lastStatus.remove(controller)
         activity.removeCaptureState(controller)
         complete(NativeResult.Success(""))
@@ -144,38 +143,27 @@ private class InkAudioAdapter(
         payload: String,
         complete: NativeResultHandler,
     ) {
+        if (operation == "observeMeasurements") {
+            val kind = controllers[controller]
+            if (kind != RECORDER && kind !in SUPPORTED_PROCESSORS) {
+                complete(protocol("Audio capture is not active"))
+                return
+            }
+            val enabled = runCatching { JSONObject(payload).getBoolean("enabled") }.getOrElse {
+                complete(protocol("Invalid measurement subscription"))
+                return
+            }
+            if (kind in SUPPORTED_PROCESSORS && !activity.observeAudioMeasurements(controller, enabled)) {
+                complete(protocol("Audio processor is not active"))
+                return
+            }
+            if (enabled) observed.add(controller) else observed.remove(controller)
+            complete(NativeResult.Success(""))
+            return
+        }
         when (controllers[controller]) {
             in SUPPORTED_PROCESSORS -> microphone.execute(controller, operation, complete)
-            PLAYER -> {
-                val result = if (operation == PLAY_RECORDING) {
-                    val source = recording.source
-                    if (source == null) {
-                        playback.reportFailure(
-                            controller,
-                            "source",
-                            "No saved recording",
-                            true,
-                        )
-                        NativeResult.Failure(
-                            NativeErrorKind.UNAVAILABLE,
-                            "No saved recording",
-                            true,
-                        )
-                    } else {
-                        val item = JSONObject()
-                            .put("src", source)
-                            .put("title", "Recording")
-                        playback.execute(
-                            controller,
-                            "play",
-                            JSONObject().put("item", item).toString(),
-                        )
-                    }
-                } else {
-                    playback.execute(controller, operation, payload)
-                }
-                complete(result)
-            }
+            PLAYER -> complete(playback.execute(controller, operation, payload))
             RECORDER -> complete(recording.execute(operation))
             null -> complete(protocol("Audio controller is not active"))
             else -> complete(protocol("Unknown audio controller"))
@@ -210,7 +198,6 @@ private class InkAudioAdapter(
         private const val REQUEST_PERMISSION = "request-permission"
         private const val ACTIVATE = "activate"
         private const val DEACTIVATE = "deactivate"
-        private const val PLAY_RECORDING = "playRecording"
         private const val PLAYER = "player"
         private const val RECORDER = "recorder"
         private const val KIND = "kind"

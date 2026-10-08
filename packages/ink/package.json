@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./renderer": "./src/renderer.ts",
     "./internal/list": "./src/native-list.ts",
+    "./internal/playback": "./src/playback-binding.ts",
     "./native": "./src/native.ts",
     "./native/controller": "./src/controller.ts",
     "./assets": "./src/assets.ts",

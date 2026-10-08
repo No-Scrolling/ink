@@ -2,7 +2,7 @@
   "name": "ink-tuner-example",
   "private": true,
   "scripts": {
-    "check": "tsc --noEmit"
+    "check": "ink check"
   },
   "dependencies": {
     "@ink/audio": "workspace:*",

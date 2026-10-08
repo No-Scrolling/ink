@@ -27,6 +27,7 @@
       {
         "group": "Get started",
         "pages": [
+          "get-started",
           "project-structure"
         ]
       },

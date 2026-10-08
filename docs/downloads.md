@@ -30,15 +30,13 @@ Reusing a `key` avoids duplicate downloads. The same key with different source d
 Inside your component, observe a saved `downloadId`:
 
 ```ts
-import { useMemo } from "react";
 import { useSnapshot } from "ink";
 import { downloads } from "@ink/network/downloads";
 
-const source = useMemo(() => downloads.observe(downloadId), [downloadId]);
-const download = useSnapshot(source);
+const download = useSnapshot(downloads.observe(downloadId));
 ```
 
-Keep the source stable while the ID is unchanged.
+Ink shares observation for each download ID and releases the native subscription when no screen uses it.
 
 ### Read transfer state
 

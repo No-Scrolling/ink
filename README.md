@@ -38,7 +38,7 @@ export default function Counter() {
 
 ## Documentation
 
-Please see [ink.noscroll.ing](https://ink.noscroll.ing)
+Start with [Get started](docs/get-started.md), or see [ink.noscroll.ing](https://ink.noscroll.ing).
 
 ## Development
 
@@ -57,11 +57,11 @@ Commands:
 
 - `ink create <directory>` creates an app outside the repository using the selected local SDK.
 - `ink lint` checks app source with Oxlint without changing files.
-- `ink check` formats app source with Oxfmt, runs the linter, then checks TypeScript and bundles the app.
+- `ink check` checks formatting, lint, TypeScript and bundling without changing source files. Use `ink format` to apply formatting.
 - `ink dev` installs a development host, then transfers bundle generations over ADB. Compatible component edits preserve React state; other JavaScript edits reload the runtime and native changes rebuild the APK. Use `--device <serial>` to select a device.
 - `ink build` creates an optimised, signed APK.
 - `ink export` renders a route or TSX composition independently of the emulator as a 1080 × 1240 image frame for tldraw. See [Design exports](docs/design-export.md) for setup, fixture data and canvas imports.
 - `ink info` shows bundle size, native capabilities and project details.
 - `ink devices`, `ink logs` and `ink doctor` help with device setup and debugging.
 
-Enable LightOS integration with `[lightos]` and `enabled = true` in `ink.toml`.
+Import `@ink/lightos` to include LightOS integration.

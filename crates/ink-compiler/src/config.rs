@@ -14,6 +14,7 @@ struct AppConfig {
     version_code: u32,
     signing: Option<SigningConfig>,
     lightos: Option<LightOsConfig>,
+    network: Option<NetworkConfig>,
     background: Option<BackgroundConfig>,
     auth: Option<AuthConfig>,
     #[serde(default)]
@@ -30,9 +31,15 @@ struct SigningConfig {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LightOsConfig {
-    enabled: bool,
     #[serde(default = "default_light_server")]
     server: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NetworkConfig {
+    #[serde(default)]
+    allow_cleartext: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,12 +84,8 @@ impl ResolvedConfig {
         let directory = path.parent().expect("a canonical config path has a parent");
         validate(&config)?;
         let mut capabilities = config.capabilities;
-        if config
-            .lightos
-            .as_ref()
-            .is_some_and(|lightos| lightos.enabled)
-        {
-            capabilities.push(crate::Capability::LightSdk);
+        if config.network.as_ref().is_some_and(|network| network.allow_cleartext) {
+            capabilities.push(crate::Capability::NetworkCleartext);
         }
 
         Ok(Self {

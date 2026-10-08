@@ -1,3 +1,4 @@
 name = "Ink SDK contracts"
 package = "com.vandam.ink.sdkcontracts"
-capabilities = ["network-cleartext"]
+[network]
+allow_cleartext = true

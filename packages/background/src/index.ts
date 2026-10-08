@@ -1,3 +1,4 @@
+import type { Snapshot, SnapshotSource } from "ink";
 import { callNative } from "ink/native";
 
 export type TaskResult = { status: "success" } | { status: "retry"; delayMs?: number } | { status: "failed"; reason: string };
@@ -66,7 +67,7 @@ function decodeJobs(source: string): JobSnapshot {
   });
   return { revision: value.revision, jobs };
 }
-export async function getJobs(options: { signal?: AbortSignal } = {}): Promise<readonly JobState[]> {
+async function getJobs(options: { signal?: AbortSignal } = {}): Promise<readonly JobState[]> {
   return decodeJobs(await callNative("background", "task-state", {}, options)).jobs;
 }
 export async function* watchJobs(options: { signal?: AbortSignal } = {}): AsyncGenerator<readonly JobState[]> {
@@ -77,3 +78,40 @@ export async function* watchJobs(options: { signal?: AbortSignal } = {}): AsyncG
     revision = snapshot.revision;
   }
 }
+
+let jobsSnapshot: Snapshot<readonly JobState[]> = { status: "loading" };
+const jobListeners = new Set<() => void>();
+let jobObservation: AbortController | undefined;
+function publishJobs(snapshot: Snapshot<readonly JobState[]>) {
+  jobsSnapshot = snapshot;
+  for (const listener of jobListeners) listener();
+}
+export const jobs: SnapshotSource<readonly JobState[]> & { get: typeof getJobs } = {
+  get: getJobs,
+  getSnapshot: () => jobsSnapshot,
+  subscribe(listener) {
+    jobListeners.add(listener);
+    if (!jobObservation) {
+      const controller = new AbortController();
+      jobObservation = controller;
+      void (async () => {
+        try {
+          for await (const data of watchJobs({ signal: controller.signal })) {
+            if (jobObservation === controller) publishJobs({ status: "ready", data });
+          }
+        } catch (error) {
+          if (jobObservation === controller) publishJobs({ status: "error", error: error instanceof Error ? error : new Error(String(error)) });
+        }
+      })();
+    }
+    return () => {
+      jobListeners.delete(listener);
+      if (!jobListeners.size) {
+        const controller = jobObservation;
+        jobObservation = undefined;
+        jobsSnapshot = { status: "loading" };
+        controller?.abort();
+      }
+    };
+  },
+};

@@ -8,9 +8,13 @@ export default function Ringtone() {
   return (
     <Screen title="Ringtone">
       <Field label="Status">
-        {ringtone.status === "idle" ? "Ready to install"
-          : ringtone.status === "pending" ? "Installing..."
-          : ringtone.status === "success" ? "Installed" : ringtone.error.message}
+        {ringtone.status === "idle"
+          ? "Ready to install"
+          : ringtone.status === "pending"
+            ? "Installing..."
+            : ringtone.status === "success"
+              ? "Installed"
+              : ringtone.error.message}
       </Field>
       <Button onPress={() => ringtone.run()}>Install Ringtone</Button>
     </Screen>

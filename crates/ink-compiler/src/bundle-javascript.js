@@ -60,7 +60,25 @@ for (let directory = root; ; directory = dirname(directory)) {
   }
   if (dirname(directory) === directory) break;
 }
-const frameworkDirectory = dirname(Bun.resolveSync("ink", root));
+const projectManifest = await Bun.file(resolve(root, "package.json")).json();
+const inkDependency = projectManifest.dependencies?.ink;
+let selectedSdk;
+if (inkDependency?.startsWith("file:")) {
+  selectedSdk = dirname(dirname(await realpath(resolve(root, inkDependency.slice(5)))));
+} else if (inkDependency?.startsWith("workspace:")) {
+  for (let directory = root; ; directory = dirname(directory)) {
+    if (await Bun.file(resolve(directory, "sdk.json")).exists()) { selectedSdk = directory; break; }
+    if (dirname(directory) === directory) break;
+  }
+}
+const frameworkEntry = Bun.resolveSync("ink", root);
+if (selectedSdk) {
+  const installedEntry = await realpath(frameworkEntry);
+  if (installedEntry !== await realpath(resolve(selectedSdk, "packages/ink/src/index.ts"))) {
+    throw new Error("Installed ink differs from the SDK selected in package.json; update Ink file: dependencies and overrides, then run bun install");
+  }
+}
+const frameworkDirectory = dirname(frameworkEntry);
 const oxc = await import(Bun.resolveSync("oxc-transform-react", frameworkDirectory));
 const parser = development ? await import(Bun.resolveSync("oxc-parser", frameworkDirectory)) : null;
 let networkEntry;
@@ -81,6 +99,12 @@ async function inspect(path) {
       inputs.add(metadataPath);
       if (!declarations.has(directory)) {
         const pkg = await Bun.file(metadataPath).json();
+        if (selectedSdk && (pkg.name === "ink" || pkg.name?.startsWith("@ink/"))) {
+          const expectedPackage = resolve(selectedSdk, "packages", pkg.name === "ink" ? "ink" : pkg.name.slice(5), "package.json");
+          if (!await Bun.file(expectedPackage).exists() || await realpath(metadataPath) !== await realpath(expectedPackage)) {
+            throw new Error(`Installed ${pkg.name} differs from the selected SDK; run ink add ${pkg.name} to relink its dependencies`);
+          }
+        }
         const declarationPath = resolve(directory, "ink-native.json");
         let declaration;
         if (await Bun.file(declarationPath).exists()) {

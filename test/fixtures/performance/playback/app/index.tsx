@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { PlayingScreen } from "ink";
+import { playbackController } from "ink/internal/playback";
 import { onNativeMessage } from "ink/native";
 
 declare const __inkPost: (source: string) => void;
@@ -24,7 +25,7 @@ export default function App() {
       artists={[{ name: "Málaga Ensemble" }]}
       playback={{
         state: { position, duration: 240000, playWhenReady: playing },
-        clock: { controller: 7 },
+        [playbackController]: 7,
         toggle: () => setPlaying((previous) => !previous),
         seek: setPosition,
       }}

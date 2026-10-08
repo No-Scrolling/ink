@@ -33,15 +33,38 @@ function decode(value: unknown): DownloadState {
   if (value.state === "completed" && value.file === null) throw new Error("Completed download has no file");
   return value as DownloadState;
 }
+const sources = new Map<string, { source: SnapshotSource<DownloadState>; listeners: Set<() => void> }>();
+const idleSourceLimit = 128;
+function trimSources() {
+  let idle = 0;
+  for (const entry of sources.values()) if (!entry.listeners.size) idle++;
+  for (const [id, entry] of sources) {
+    if (idle <= idleSourceLimit) break;
+    if (!entry.listeners.size) { sources.delete(id); idle--; }
+  }
+}
 function observe(id: string): SnapshotSource<DownloadState> {
+  const existing = sources.get(id);
+  if (existing) {
+    sources.delete(id);
+    sources.set(id, existing);
+    return existing.source;
+  }
   let snapshot: Snapshot<DownloadState> = { status: "loading" };
   const listeners = new Set<() => void>();
   let attachment: ReturnType<typeof attachNativeController> | undefined;
   const publish = (value: Snapshot<DownloadState>) => { snapshot = value; for (const listener of listeners) listener(); };
-  return {
-    getSnapshot: () => snapshot,
+  const source: SnapshotSource<DownloadState> = {
+    getSnapshot: () => {
+      const current = sources.get(id)?.source;
+      return current && current !== source ? current.getSnapshot() : snapshot;
+    },
     subscribe(listener) {
+      const current = sources.get(id)?.source;
+      if (current && current !== source) return current.subscribe(listener);
+      sources.set(id, entry);
       listeners.add(listener);
+      trimSources();
       if (!attachment) {
         const current = attachNativeController("downloads", { id }, value => {
           if (attachment !== current) return;
@@ -60,10 +83,15 @@ function observe(id: string): SnapshotSource<DownloadState> {
           attachment = undefined;
           snapshot = { status: "loading" };
           void current?.dispose().catch(error => console.error("Could not stop observing download", error));
+          trimSources();
         }
       };
     },
   };
+  const entry = { source, listeners };
+  sources.set(id, entry);
+  trimSources();
+  return source;
 }
 const command = async (operation: string, id: string): Promise<void> => {
   await callNative("downloads", operation, { id });

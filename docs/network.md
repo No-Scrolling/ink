@@ -10,12 +10,13 @@ Import it in each module that uses these APIs.
 For services that require unencrypted HTTP, opt in explicitly in `ink.toml`:
 
 ```toml
-capabilities = ["network-cleartext"]
+[network]
+allow_cleartext = true
 ```
 
 This includes `network` and permits cleartext traffic throughout the app, including
 podcast feeds, downloads and audio playback. Audio can also follow redirects between
-HTTP and HTTPS. Without this capability, remote audio requires HTTPS and cleartext
+HTTP and HTTPS. Without this setting, remote audio requires HTTPS and cleartext
 network traffic remains restricted to local development hosts.
 
 ## Make a request
@@ -106,7 +107,7 @@ Read an attachment with `fetch(file.src)` and use its `blob()` in the upload. Bl
 
 Ink sends one native copy request per managed file range. Android copies into the temporary upload file on its network executor with a bounded 64 KiB buffer and checks cancellation between reads. JavaScript stream bodies still send 32 KiB chunks. Native file data is limited by available storage, not the 64 MiB JavaScript body limit.
 
-Managed sources do not allow arbitrary filesystem access. The earlier `fetch(photo.file.uri)` camera path remains supported.
+Managed sources do not allow arbitrary filesystem access. Earlier saved camera URLs remain readable; use `photo.file.src` for new captures.
 
 ## Transfer limits
 

@@ -44,7 +44,6 @@ pub enum Capability {
     UiLists,
     UiMessages,
     UiPlaying,
-    UiViews,
     Video,
 }
 

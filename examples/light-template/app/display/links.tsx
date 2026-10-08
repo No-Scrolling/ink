@@ -4,7 +4,7 @@ export default function Links() {
   return (
     <Screen title="Links">
       <Text>
-        Read the <Text href="https://ink.noscroll.ing">docs</Text>.
+        Read the <Text url="https://ink.noscroll.ing">docs</Text>.
       </Text>
       <LinkPreview
         url="https://www.youtube.com/watch?v=-zjJpFYtx9s"

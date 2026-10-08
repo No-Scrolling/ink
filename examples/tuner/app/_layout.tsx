@@ -9,15 +9,21 @@ export default function Layout() {
   if (saved.status !== "ready") {
     return (
       <Screen title="Tuner">
-        {saved.status === "loading" ? <LoadingState label="Loading settings…" /> : <>
-          <ErrorState message={saved.error.message} onRetry={() => reload.run()} />
-          <Button onPress={() => reset.run()}>Reset settings</Button>
-          {reset.status === "error" && <Text>{reset.error.message}</Text>}
-        </>}
+        {saved.status === "loading" ? (
+          <LoadingState label="Loading settings…" />
+        ) : (
+          <>
+            <ErrorState message={saved.error.message} onRetry={() => reload.run()} />
+            <Button onPress={() => reset.run()}>Reset settings</Button>
+            {reset.status === "error" && <Text>{reset.error.message}</Text>}
+          </>
+        )}
       </Screen>
     );
   }
   return (
-    <SettingsContext value={saved.data}><Slot /></SettingsContext>
+    <SettingsContext value={saved.data}>
+      <Slot />
+    </SettingsContext>
   );
 }

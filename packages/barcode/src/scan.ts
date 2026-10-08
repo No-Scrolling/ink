@@ -1,6 +1,6 @@
 import { NativeError } from "ink/native";
 import { useSession, codeFormats, type CodeFormat, type CodeScan } from "@ink/camera/internal";
-export { camera, CameraPreview, codeFormats, type CodeFormat, type CodeScan } from "@ink/camera/internal";
+export { CameraPreview, codeFormats, type CodeFormat, type CodeScan } from "@ink/camera/internal";
 
 function codeFormat(value: unknown): CodeFormat {
   const format = codeFormats.find(format => format === value);

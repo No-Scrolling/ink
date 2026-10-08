@@ -3,11 +3,6 @@ package = "com.vandam.ink.weather"
 version = "0.1.0"
 version_code = 1
 
-capabilities = ["network", "location"]
-
-[lightos]
-enabled = true
-
 [signing]
 keystore = "/Users/vandam/.keystores/weather-release.jks"
 key_alias = "weather"

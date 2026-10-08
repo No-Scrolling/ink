@@ -45,3 +45,11 @@ const bridgeURL = import.meta.env.INK_PUBLIC_BRIDGE_URL;
 Ink reads `.env`, then `.env.local`. Shell variables take precedence. Values are strings; a missing variable is `undefined`. Rebuild the app to change them, or edit the file while `ink dev` is running.
 
 Values are readable from the APK. Use [Secure storage](/secure-store) for passwords and encryption keys. Add `.env.local` to `.gitignore`.
+
+## Native features and app policies
+
+Imports determine native modules automatically. Import `@ink/lightos` to include LightOS services; the old `[lightos] enabled` setting is no longer accepted. An optional `[lightos] server` changes the Android host application ID.
+
+Use `[network] allow_cleartext = true` only when your app needs unencrypted HTTP. See [Network](/network). Configure background entry points and authentication redirects on their module pages.
+
+The top-level `capabilities` array remains an advanced override for app-local native extensions. Ordinary apps do not need to repeat imported features there. Existing `network-cleartext` entries can be replaced with the network policy above.

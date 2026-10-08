@@ -140,35 +140,29 @@ Module imports run before setup. Keep side effects out of preview components' mo
 
 ## Supply native fixtures
 
-Use `--fixtures` to supply fixed results for native capabilities such as microphone input. In the Tuner example, `design/live-pitch.json` contains:
+Use `--fixtures` to supply public microphone state. The Tuner example's `design/live-pitch.json` matches the `PitchState` delivered by `usePitchDetector().measurements`:
 
 ```json
 {
-  "calls": {
-    "audio.activate": null,
-    "permissions.status": "granted",
-    "audio.start": null
-  },
-  "controllers": {
-    "audio": {
-      "status": "active",
-      "frequencyHz": 529.7,
-      "note": "C#",
-      "octave": 5,
-      "cents": 18,
-      "confidence": 0.98
-    }
+  "pitch": {
+    "status": "active",
+    "frequency": 529.7,
+    "note": "C#",
+    "octave": 5,
+    "cents": 18,
+    "confidence": 0.98,
+    "error": null
   }
 }
 ```
-
-From `examples/tuner/`, export the app with fixed microphone state:
 
 ```sh
 ink export / --fixtures design/live-pitch.json
 ```
 
-Calls are keyed by `module.operation`. Strings are returned unchanged; other values are encoded as JSON. Controller states are delivered when the module activates. Store reads and writes work automatically in memory; other native operations require fixtures. Missing fixtures cause the export to fail.
+Ink supplies microphone lifecycle responses and granted permission for this fixture. A `level` fixture similarly accepts `LevelState` (`status`, `rms`, `peak`, `error`). Supply one microphone fixture per export.
+
+For app-local native extensions, `calls` and `controllers` objects remain available. Calls use `module.operation` keys; strings are returned unchanged and other values are encoded as JSON. Controllers use their native module name. Explicit raw entries override the public fixture defaults. Store reads and writes work automatically in memory; missing native fixtures fail with the required operation's name.
 
 ### Supply images and emoji
 

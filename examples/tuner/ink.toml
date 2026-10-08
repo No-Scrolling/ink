@@ -2,6 +2,3 @@ name = "Tuner"
 package = "com.vandam.tuner"
 version = "0.1.0"
 version_code = 1
-
-[lightos]
-enabled = true

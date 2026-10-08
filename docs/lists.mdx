@@ -82,7 +82,7 @@ export default function Items() {
   hasMore={hasMore}
 />
 ```
-<p><code>loadNextPage</code> must return a promise. Ink allows one request at a time and shows a retry action if it fails.</p>
+<p><code>loadNextPage</code> must return a promise. Set <code>hasMore</code> explicitly: it defaults to false, so a callback alone does not start pagination. Ink allows one request at a time and shows a retry action if it fails.</p>
 
 </div>
 <div className="pattern-preview">
@@ -127,6 +127,8 @@ export default function Items() {
 
 Replace arrays and changed items instead of mutating them. Rows outside the visible window unmount, so keep lasting state in the parent or a store. Ink preserves the visible position when earlier rows load or change height.
 
-Use `onLoadOlder` and `hasOlder` to prepend history. [Conversations](/conversations) handle this for chats. `initialEnd` mounts the last rows first; it does not scroll the screen on its own.
+Use `onLoadOlder` and `hasOlder` to prepend history. Both `hasMore` and `hasOlder` default to false; set the matching flag to true when a page is available. [Conversations](/conversations) handle this for chats.
+
+Set `initialPosition="end"` to mount the last rows and scroll their containing `Screen` to the bottom when the list mounts. The default is `"start"`. This also works when the list appears after loading. Changing the prop later does not move the reader; use a new React `key` to start a different list. Use `followEnd` separately to follow subsequent additions.
 
 Use `measurementKey` when a setting changes row layout without changing the items. Give the list a new React `key` when changing its data source. Keys and content versions have a combined 128 KiB limit; keep keys short and loaded history bounded.

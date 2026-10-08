@@ -65,7 +65,7 @@ Picking, capturing, recording and downloading files returns a `FileRef`:
 | `width`, `height` | Dimensions when available for images or video. |
 | `duration` | Duration in milliseconds when available for audio or video. |
 
-Camera results expose it as `photo.file` and retain `uri` and `source` aliases for compatibility.
+Camera results expose it as `photo.file`, alongside `photo.capturedAt`.
 
 ## Reopen a file
 

@@ -5,7 +5,9 @@ import { resource } from "ink";
 export const todoSchema = v.object({
   userId: v.pipe(v.number(), v.safeInteger()),
   id: v.pipe(v.number(), v.safeInteger()),
-  title: v.string(), completed: v.boolean(), note: v.optional(v.nullable(v.string())),
+  title: v.string(),
+  completed: v.boolean(),
+  note: v.optional(v.nullable(v.string())),
 });
 export type Todo = v.InferOutput<typeof todoSchema>;
 export const decodeTodo = v.parser(todoSchema);
@@ -16,7 +18,7 @@ async function readTodo(id: number, signal?: AbortSignal) {
 }
 export const todo = resource({
   key: (id: number) => [id],
-  load: id => readTodo(id),
+  load: (id) => readTodo(id),
   staleTime: 60_000,
 });
 export const page = resource({
@@ -29,8 +31,10 @@ export const page = resource({
 });
 export async function saveTodo(userId: number, signal?: AbortSignal) {
   const response = await fetch("https://jsonplaceholder.typicode.com/todos", {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId, title: "Ink", completed: false }), signal,
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId, title: "Ink", completed: false }),
+    signal,
   });
   if (!response.ok) throw new Error(`Could not save todo: HTTP ${response.status}`);
   return decodeTodo(await response.json());

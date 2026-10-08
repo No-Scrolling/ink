@@ -1,13 +1,16 @@
 /// <reference path="./assets.d.ts" />
 import type { IconAsset } from "./assets";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type {} from "react/jsx-runtime";
 import type {} from "react/jsx-dev-runtime";
-import { createElement } from "./react";
-import { navigate, type Destination } from "./navigation";
+import { createElement, useMemo, useState } from "./react";
+import { ScrollToEndContext } from "./scroll";
+import type { Destination } from "./navigation";
+import { pressHandler, type PressProps } from "./press";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
 export { resource, type ResourceSnapshot, type ResourceSource } from "./resource";
 export { useAction, type Action } from "./action";
+export { NativeError } from "./native";
 export { Tabs, Slot, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
 
 export function Screen({ header, children, leftAction, rightAction, ...props }: {
@@ -22,10 +25,12 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   leftAction?: { icon: IconAsset; onPress: () => void };
   rightAction?: { icon: IconAsset; onPress: () => void };
 }) {
-  return createElement("Screen", { ...props, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
+  const [scrollToEnd, setScrollToEnd] = useState(0);
+  const requestEnd = useMemo(() => () => setScrollToEnd(value => value + 1), []);
+  return createElement(ScrollToEndContext.Provider, { value: requestEnd }, createElement("Screen", { ...props, scrollToEnd, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
     header != null && createElement(Stack, { gap: 47 }, header),
     children,
-  );
+  ));
 }
 
 export interface StackProps {
@@ -40,9 +45,7 @@ export interface StackProps {
 
 export const Stack = "Stack";
 
-export interface TextProps {
-  href?: string;
-  onPress?: () => void;
+export type TextProps<D extends Destination = Destination> = PressProps<D> & {
   width?: number;
   children?: ReactNode;
   size?: number;
@@ -51,8 +54,8 @@ export interface TextProps {
   tabularNumbers?: boolean;
 }
 
-// A host element lets React reconcile text without an extra component wrapper.
-export const Text = "Text";
+// Keep text as a host element while checking literal route parameters in JSX.
+export const Text = "Text" as "Text" & (<const D extends Destination>(props: TextProps<D>) => ReactElement);
 
 declare module "react" {
   namespace JSX {
@@ -76,32 +79,26 @@ declare module "react/jsx-dev-runtime" {
   }
 }
 
-export function Button(props: {
+export function Button<const D extends Destination>(props: PressProps<D> & {
   children?: ReactNode;
-  onPress?: () => void;
   onLongPress?: () => void;
-  href?: Destination;
   disabled?: boolean;
   selected?: boolean;
   icon?: IconAsset;
 }) {
-  const { href, onPress, ...rest } = props;
-  if (href !== undefined && onPress) throw new Error("Button accepts either href or onPress");
-  return createElement("Button", { ...rest, onPress: href === undefined ? onPress : () => navigate(href) });
+  const { href, url, onPress, ...rest } = props;
+  return createElement("Button", { ...rest, onPress: pressHandler({ href, url, onPress }) });
 }
 
 export { Row, Image, Avatar } from "./image";
 export { Canvas, Rectangle, CanvasText, CanvasIcon } from "./canvas";
 
-export function Field(props: {
+export function Field<const D extends Destination>(props: PressProps<D> & {
   label: string;
   children?: ReactNode;
-  onPress?: () => void;
-  href?: Destination;
 }) {
-  const { href, onPress, ...rest } = props;
-  if (href !== undefined && onPress) throw new Error("Field accepts either href or onPress");
-  return createElement("Field", { ...rest, onPress: href === undefined ? onPress : () => navigate(href) });
+  const { href, url, onPress, ...rest } = props;
+  return createElement("Field", { ...rest, onPress: pressHandler({ href, url, onPress }) });
 }
 
 export function Toggle(props: {
@@ -134,7 +131,7 @@ export {
 } from "./patterns";
 
 export { findIcon, type IconAsset } from "./assets";
-export { PlayingScreen, type PlayingScreenProps, type Playback } from "./playing";
+export { PlayingScreen, type PlayingScreenProps, type Playback, type TransportControl } from "./playing";
 export { ConversationScreen, Message, type ConversationScreenProps, type ConversationMessage, type MessageProps, type MessageAction, type ReplyPreview } from "./conversation";
 export { openURL, share } from "./external";
 export { LinkPreview, type LinkPreviewData, type LinkPreviewProps } from "./link-preview";

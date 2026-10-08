@@ -20,21 +20,25 @@ export default function Database() {
         if (controller.signal.aborted) return;
         const rows = await db.query(
           "SELECT CAST(id AS TEXT) AS id, name FROM places WHERE name LIKE ? ORDER BY name LIMIT 10",
-          ["%Station%"], { signal: controller.signal },
+          ["%Station%"],
+          { signal: controller.signal },
         );
         if (!controller.signal.aborted) setPlaces(rows);
       } finally {
         await db.close();
       }
     } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : String(failure));
+      if (!controller.signal.aborted)
+        setError(failure instanceof Error ? failure.message : String(failure));
     }
   }
 
   return (
     <Screen title="Database">
       <Button onPress={() => void search()}>Find stations</Button>
-      {places.map(place => <Text key={String(place.id)}>{place.name}</Text>)}
+      {places.map((place) => (
+        <Text key={String(place.id)}>{place.name}</Text>
+      ))}
       {error && <Text>{error}</Text>}
     </Screen>
   );

@@ -11,8 +11,8 @@ export default function Typography() {
         final line aligned to the start.
       </Text>
       <Text size={24} maxLines={2}>
-        Set a maximum number of lines to wrap longer text and truncate anything that remains with
-        an ellipsis.
+        Set a maximum number of lines to wrap longer text and truncate anything that remains with an
+        ellipsis.
       </Text>
     </Screen>
   );

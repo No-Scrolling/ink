@@ -1,6 +1,7 @@
 import type { IconAsset } from "./index";
 import { createElement, memo } from "./react";
-import { navigate, type Destination } from "./navigation";
+import type { Destination } from "./navigation";
+import { pressHandler, type PressProps } from "./press";
 
 export function Avatar({ src = "", unread = false, onPress, onLongPress }: {
   src?: string;
@@ -11,24 +12,23 @@ export function Avatar({ src = "", unread = false, onPress, onLongPress }: {
   return createElement("Avatar", { src, unread, onPress, onLongPress });
 }
 
-export const Row = /* @__PURE__ */ memo(function Row({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, href, onPress, onLongPress }: {
+function RowComponent<const D extends Destination>({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, href, url, onPress, onLongPress }: PressProps<D> & {
   image?: string;
   title: string;
   titleMaxLines?: number;
   titleIcon?: IconAsset;
   subtitle?: string;
   subtitleIcon?: IconAsset;
-  href?: Destination;
-  onPress?: () => void;
   onLongPress?: () => void;
 }) {
-  if (href !== undefined && onPress) throw new Error("Row accepts either href or onPress");
   return createElement("RowContent", {
     image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon,
-    onPress: href === undefined ? onPress ?? (onLongPress ? () => {} : undefined) : () => navigate(href),
+    onPress: pressHandler({ href, url, onPress }) ?? (onLongPress ? () => {} : undefined),
     onLongPress,
   });
-});
+}
+
+export const Row = /* @__PURE__ */ memo(RowComponent) as typeof RowComponent;
 
 export function Image(props: {
   src: string;

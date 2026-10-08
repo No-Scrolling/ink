@@ -511,6 +511,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (engineHandle != 0L) nativeRemovePlaybackClock(engineHandle, controller)
     }
 
+    internal fun observeAudioMeasurements(controller: Long, enabled: Boolean): Boolean =
+        engineHandle != 0L && nativeAudioObserve(engineHandle, controller, enabled)
+
     internal fun updateCaptureState(controller: Long, value: String) {
         if (engineHandle != 0L && nativeCaptureState(engineHandle, -controller, value)) inkView.requestFrame()
     }
@@ -1797,6 +1800,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             controller: Long,
             enabled: Boolean,
         ): Boolean
+
+        @JvmStatic
+        private external fun nativeAudioObserve(handle: Long, controller: Long, observed: Boolean): Boolean
 
         @JvmStatic
         private external fun nativeAudioSamples(

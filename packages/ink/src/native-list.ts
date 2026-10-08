@@ -2,7 +2,7 @@ import { createElement, Fragment, useLayoutEffect, useMemo, useRef, type Compone
 import { ListLoadError, ReactList, type ListProps } from "./list";
 import { useAction } from "./action";
 import type { Row } from "./image";
-import { navigate } from "./navigation";
+import { pressHandler } from "./press";
 import { rememberListPatch, type NativeListItem } from "./list-patch";
 
 type Captured = { value: unknown; prototype?: object | null; fields?: [PropertyKey, boolean, Captured][] };
@@ -69,12 +69,10 @@ export function listText(parts: unknown[]): string {
 
 /** @internal The same presentation fields as Ink's stateless Row component. */
 export function listRowFields(props: ComponentProps<typeof Row>) {
-  const { href } = props;
-  if (href !== undefined && props.onPress) throw new Error("Row accepts either href or onPress");
   return { image: props.image, title: props.title, titleMaxLines: props.titleMaxLines,
     titleIcon: props.titleIcon, subtitle: props.subtitle, subtitleIcon: props.subtitleIcon,
     onLongPress: props.onLongPress,
-    onPress: href === undefined ? props.onPress ?? (props.onLongPress ? () => {} : undefined) : () => navigate(href) };
+    onPress: pressHandler(props) ?? (props.onLongPress ? () => {} : undefined) };
 }
 
 function nativeValue(value: unknown, previous?: unknown): unknown {
@@ -142,7 +140,7 @@ export function nativeListPlan<T>(render: ListProps<T>["renderItem"]): Plan<T> |
 }
 
 export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<T> }) {
-  const { items, keyExtractor, gap = 47, followEnd, initialEnd, measurementKey, onLoadMore, onLoadOlder, hasMore = true, hasOlder = false } = props;
+  const { items, keyExtractor, gap = 47, followEnd, initialPosition, measurementKey, onLoadMore, onLoadOlder, hasMore = false, hasOlder = false } = props;
   if (!Number.isFinite(gap) || gap < 0) throw new Error("List gap must be finite and non-negative");
   const load = useAction(() => onLoadMore?.());
   const older = useAction(() => onLoadOlder?.());
@@ -214,7 +212,7 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
   }, [plan.template]);
   if (!records) return createElement(ReactList<T>, props);
   const nativeProps = {
-    items: records.data, keyField: "key", template: plan.template, gap, followEnd, initialEnd,
+    items: records.data, keyField: "key", template: plan.template, gap, followEnd, initialEnd: initialPosition === "end",
     hasMore: hasMore && load.status !== "pending" && load.status !== "error",
     hasOlder: hasOlder && older.status !== "pending" && older.status !== "error",
     onEndReached: onLoadMore ? load.run : undefined,

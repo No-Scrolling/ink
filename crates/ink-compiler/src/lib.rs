@@ -121,25 +121,23 @@ pub fn check(project: &Project) -> Result<()> {
     Ok(())
 }
 
-pub fn inspect(project: &Project) -> Result<AppInfo> {
-    let bundle = javascript::bundle(project)?;
-    let manifest: serde_json::Value = serde_json::from_slice(&bundle.manifest)?;
-    Ok(AppInfo {
-        javascript_bytes: bundle.source.len(),
+/// Read the last compiled bundle without compiling or changing the project.
+pub fn inspect(project: &Project) -> Result<Option<AppInfo>> {
+    let directory = project.work_path().join("bundle");
+    let manifest_path = directory.join("ink-bundle-v1.json");
+    if !manifest_path.is_file() {
+        return Ok(None);
+    }
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(manifest_path)?)?;
+    let capabilities: Vec<Capability> = serde_json::from_value(manifest["capabilities"].clone())?;
+    Ok(Some(AppInfo {
+        javascript_bytes: manifest["javascriptBytes"].as_u64().context("cached bundle has no size metadata; run ink check to refresh it")? as usize,
         resolved_inputs: manifest["inputs"].as_array().map_or(0, Vec::len),
         asset_count: manifest["assets"].as_array().map_or(0, Vec::len),
         icon_variants: manifest["icons"].as_array().map_or(0, Vec::len),
-        capabilities: bundle
-            .capabilities
-            .iter()
-            .map(|capability| capability.name().to_owned())
-            .collect(),
-        capability_details: bundle
-            .capabilities
-            .iter()
-            .map(|capability| format!("{}: {}", capability.name(), capability.native_cost()))
-            .collect(),
-    })
+        capabilities: capabilities.iter().map(|capability| capability.name().to_owned()).collect(),
+        capability_details: capabilities.iter().map(|capability| format!("{}: {}", capability.name(), capability.native_cost())).collect(),
+    }))
 }
 
 pub fn compile(project: &Project) -> Result<Capabilities> {

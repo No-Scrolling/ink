@@ -1,5 +1,5 @@
 import { ReadableStream, type ReadableStreamDefaultReader } from "web-streams-polyfill";
-import { Blob, FormData, multipart, parseFormData } from "./blob";
+import { Blob, FormData, multipart, parseFormData, nativeBlob, nativeBlobParts } from "./blob";
 import { URL, URLSearchParams } from "whatwg-url";
 import { requestHttp } from "./http";
 import { callNative } from "ink/native";
@@ -160,6 +160,7 @@ type Init = {
   signal?: AbortSignal | null; redirect?: "follow" | "error" | "manual";
   credentials?: "omit" | "same-origin" | "include";
 };
+const requestBodies = new WeakMap<Request, Blob | undefined>();
 export class Request extends Body {
   readonly url: string;
   readonly method: string;
@@ -167,15 +168,14 @@ export class Request extends Body {
   readonly signal: AbortSignal;
   readonly redirect: "follow" | "error" | "manual";
   readonly credentials: "omit" | "same-origin" | "include";
-  #replay: Blob | undefined;
   constructor(input: string | URL | Request, init: Init = {}) {
     const original = input instanceof Request ? input : undefined;
     const supplied = init.body ?? original?.body;
     const body = supplied instanceof FormData ? multipart(supplied) : supplied;
     const signal = init.signal ?? original?.signal ?? new AbortController().signal;
     super(body, signal);
-    this.#replay = body instanceof ReadableStream ? (init.body == null ? (original ? original.#replay : undefined) : undefined)
-      : body == null ? undefined : body instanceof Blob ? body : new Blob([body instanceof URLSearchParams ? String(body) : body]);
+    requestBodies.set(this, body instanceof ReadableStream ? (init.body == null && original ? requestBodies.get(original) : undefined)
+      : body == null ? undefined : body instanceof Blob ? body : new Blob([body instanceof URLSearchParams ? String(body) : body]));
     const url = new URL(original?.url ?? String(input));
     if (url.username || url.password) throw new TypeError("HTTP URLs cannot contain credentials");
     this.url = url.href;
@@ -196,11 +196,9 @@ export class Request extends Body {
   protected get contentType() { return this.headers.get("content-type") ?? ""; }
   clone() {
     const copy = new Request(this, { body: this.copyBody() });
-    copy.#replay = this.#replay;
+    requestBodies.set(copy, requestBodies.get(this));
     return copy;
   }
-  replayBody() { return this.#replay?.stream() ?? null; }
-  nativeParts() { return this.#replay?.nativeParts(); }
 }
 type ResponseOptions = { status?: number; statusText?: string; headers?: HeaderInput; url?: string; redirected?: boolean; signal?: AbortSignal };
 export class Response extends Body {
@@ -254,20 +252,21 @@ export async function fetch(input: string | URL | Request, init?: Init): Promise
     if (request.method !== "GET" && request.method !== "HEAD") throw new TypeError("Managed files are read-only");
     const file = JSON.parse(await callNative("files", "open", { id: request.url.slice("ink-file://".length) }, { signal: request.signal }));
     if (!file) throw new TypeError("Managed file has been removed");
-    return new Response(request.method === "HEAD" ? null : Blob.fromNative(file.src, file.size, file.mimeType), {
+    return new Response(request.method === "HEAD" ? null : nativeBlob(file.src, file.size, file.mimeType), {
       url: request.url, headers: { "content-type": file.mimeType, "content-length": String(file.size) }, signal: request.signal,
     });
   }
   let url = new URL(request.url);
   let method = request.method;
   const headers = new Headers(request.headers);
+  const replay = requestBodies.get(request);
   let body = request.body;
   for (let redirects = 0; ; redirects++) {
     request.signal.throwIfAborted();
     if (!["https:", "http:", "file:"].includes(url.protocol)) throw new TypeError("Unsupported network protocol");
     let result;
     try {
-      result = await requestHttp({ url: url.href, method, headers: Object.fromEntries(headers), nativeParts: body ? request.nativeParts() : undefined }, body, request.signal);
+      result = await requestHttp({ url: url.href, method, headers: Object.fromEntries(headers), nativeParts: body && replay ? nativeBlobParts(replay) : undefined }, body, request.signal);
     } catch (error) {
       request.signal.throwIfAborted();
       throw new TypeError("Network request failed", { cause: error });
@@ -289,7 +288,7 @@ export async function fetch(input: string | URL | Request, init?: Init): Promise
         for (const name of ["content-type", "content-length", "content-encoding", "content-language", "content-location"]) headers.delete(name);
       }
       if (body !== null) {
-        body = request.replayBody();
+        body = replay?.stream() ?? null;
         if (body === null) throw new TypeError("Cannot replay a streaming upload after an HTTP redirect");
       }
       url = next;

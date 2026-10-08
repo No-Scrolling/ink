@@ -158,7 +158,7 @@ fn assemble(
     verbose: bool,
     light_server: &str,
 ) -> Result<BuildArtifact> {
-    let sdk = framework_root()?;
+    let sdk = project_framework_root(project)?;
     fs::create_dir_all(sdk.join("target"))?;
     let build_lock = fs::OpenOptions::new()
         .create(true)
@@ -197,7 +197,7 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
         None
     };
 
-    let framework = framework_root()?;
+    let framework = project_framework_root(project)?;
     let android = framework.join("platform/android");
     let mut gradle = Command::new(android.join("gradlew"));
     gradle
@@ -714,6 +714,36 @@ fn adb(device: &Device) -> Command {
     command
 }
 
+pub(crate) fn project_framework_root(project: &Project) -> Result<PathBuf> {
+    framework_root_for_app(project.root())
+}
+
+pub(crate) fn framework_root_for_app(root: &Path) -> Result<PathBuf> {
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("package.json"))?)?;
+    let dependency = manifest["dependencies"]["ink"]
+        .as_str()
+        .context("package.json must declare an ink dependency")?;
+    let candidate = if let Some(path) = dependency.strip_prefix("file:") {
+        let package = root.join(path).canonicalize().context(
+            "Ink dependency is missing; update its file: path in package.json and run bun install",
+        )?;
+        package
+            .parent()
+            .and_then(Path::parent)
+            .context("Ink dependency must point to packages/ink in an SDK checkout")?
+            .to_path_buf()
+    } else if dependency.starts_with("workspace:") {
+        root.ancestors()
+            .find(|path| path.join("sdk.json").is_file())
+            .context("workspace ink dependency has no enclosing SDK checkout")?
+            .to_path_buf()
+    } else {
+        bail!("local Ink SDK requires a file: dependency pointing to its packages/ink directory")
+    };
+    validate_framework_root(candidate)
+}
+
 pub(crate) fn framework_root() -> Result<PathBuf> {
     let candidate = if let Some(root) = env::var_os("INK_SDK_ROOT") {
         PathBuf::from(root)
@@ -724,6 +754,10 @@ pub(crate) fn framework_root() -> Result<PathBuf> {
             .context("set INK_SDK_ROOT to an Ink SDK checkout")?;
         config.join("ink/sdk/current")
     };
+    validate_framework_root(candidate)
+}
+
+fn validate_framework_root(candidate: PathBuf) -> Result<PathBuf> {
     let root = candidate.canonicalize().with_context(|| {
         format!(
             "Ink SDK not found at {}; set INK_SDK_ROOT to the SDK checkout",

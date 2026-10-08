@@ -15,9 +15,6 @@ name = "Weather"
 package = "com.example.weather"
 version = "1.0.0"
 version_code = 1
-
-[lightos]
-enabled = true
 ```
 
 The APK contains JavaScript source, icons, assets and the required native modules. Apps with background tasks also get a separate worker bundle.
