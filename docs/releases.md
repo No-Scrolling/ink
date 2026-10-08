@@ -61,6 +61,8 @@ In GitHub Actions, run **Prepare Release** with a version such as `0.1.0-alpha.2
 
 Review and merge the pull request. **Release** first creates the version tag at the release commit, then builds all three platform archives on native GitHub runners. It checks installation and bundled JavaScript tooling, verifies that the tag still matches the build commit, publishes the npm packages once, then creates the GitHub prerelease with all downloads and a combined checksum file. All platforms must pass before publishing. All packages use the same version. npm's `latest` tag is intentional during the alpha; it does not promise API stability.
 
+The workflow waits up to ten minutes for npm's full and install-specific package listings to expose every published version with the expected checksum before creating the GitHub release. If npm takes longer, the job fails without publishing the CLI release; retry the failed job later.
+
 To verify packaging without publishing, run **Release** manually and leave **Publish packages and the GitHub release after verification** unchecked. Download the resulting platform and npm artifacts from the workflow run. Enable that option only when manually publishing or retrying a release.
 
 If a build or publishing step fails, rerun the failed jobs on the same commit. The version tag may already exist; the workflow reuses it only if it points to that commit. Already published package versions are skipped. Do not reuse a published version for changed contents.
