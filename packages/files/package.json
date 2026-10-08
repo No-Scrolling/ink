@@ -1,6 +1,6 @@
 {
   "name": "@ink/files",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "private": true,
   "exports": {
     ".": "./src/index.ts",
@@ -8,10 +8,10 @@
     "./media": "./src/media.ts"
   },
   "peerDependencies": {
-    "ink": "0.1.0-alpha.5",
+    "ink": "0.1.0-alpha.6",
     "react": "19.2.8"
   },
   "dependencies": {
-    "@ink/lightos": "0.1.0-alpha.5"
+    "@ink/lightos": "0.1.0-alpha.6"
   }
 }
