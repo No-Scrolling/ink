@@ -46,6 +46,4 @@ export default function Counter() {
 
 ## Documentation
 
-Start with [Get started](docs/get-started.md), or see [ink.noscroll.ing](https://ink.noscroll.ing).
-
-For release packaging, installation and publishing, see [Releases](docs/releases.md).
+See [ink.noscroll.ing](https://ink.noscroll.ing).
