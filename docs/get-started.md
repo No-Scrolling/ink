@@ -3,15 +3,20 @@ title: "Get started"
 description: "Install the local SDK, create an app and run it on Android."
 ---
 
-Ink currently builds from a local SDK checkout. Install Git, Bun, Rust through rustup, Java 17 and the Android SDK command-line tools. Set `JAVA_HOME` and `ANDROID_HOME` for those installations and put Android's `platform-tools` on `PATH`.
+Ink supports an installed release or a local SDK checkout. Release packaging and publishing are described in [Releases](releases.md); until the first release is published, use the checkout instructions below.
+
+Build Android apps on macOS Apple Silicon or Linux x64. Linux release archives require glibc 2.35 or newer, such as Ubuntu 22.04. The Linux ARM64 CLI supports JavaScript tooling, but Android builds are not supported because Google's Linux SDK/NDK host tools require x64.
+
+Install Git, Bun, Rust through rustup, Java 17 and the Android SDK command-line tools. Set `JAVA_HOME` and `ANDROID_HOME` for those installations and put Android's `platform-tools` on `PATH`.
 
 ## Install the SDK
 
 ```sh
-git clone https://github.com/vandamd/ink.git
+git clone https://github.com/No-Scrolling/ink.git
 cd ink
 bun install
 rustup toolchain install 1.96.0 --component clippy --component rustfmt --target aarch64-linux-android
+cargo +1.96.0 install cargo-ndk --version 4.1.2 --locked
 sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
 sdkmanager --licenses
 mkdir -p "$HOME/.local/bin"

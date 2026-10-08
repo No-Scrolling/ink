@@ -1,7 +1,15 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "protocolVersion": 1,
   "distribution": "local-checkout",
   "react": "19.2.8",
-  "reactReconciler": "0.33.0"
+  "reactReconciler": "0.33.0",
+  "bun": "1.4.2",
+  "rust": "1.96.0",
+  "cargoNdk": "4.1.2",
+  "java": 17,
+  "androidPlatform": 36,
+  "androidBuildTools": "36.0.0",
+  "androidNdk": "29.0.14206865",
+  "repository": "No-Scrolling/ink"
 }

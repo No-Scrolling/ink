@@ -719,6 +719,9 @@ pub(crate) fn project_framework_root(project: &Project) -> Result<PathBuf> {
 }
 
 pub(crate) fn framework_root_for_app(root: &Path) -> Result<PathBuf> {
+    if let Some(sdk) = crate::distribution::installed_root() {
+        return validate_framework_root(sdk);
+    }
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(root.join("package.json"))?)?;
     let dependency = manifest["dependencies"]["ink"]
@@ -745,6 +748,9 @@ pub(crate) fn framework_root_for_app(root: &Path) -> Result<PathBuf> {
 }
 
 pub(crate) fn framework_root() -> Result<PathBuf> {
+    if let Some(sdk) = crate::distribution::installed_root() {
+        return validate_framework_root(sdk);
+    }
     let candidate = if let Some(root) = env::var_os("INK_SDK_ROOT") {
         PathBuf::from(root)
     } else {

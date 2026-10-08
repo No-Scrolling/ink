@@ -1,12 +1,12 @@
 {
   "name": "@ink/notifications",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "exports": {
     ".": "./src/index.ts"
   },
   "peerDependencies": {
-    "ink": "0.0.0",
+    "ink": "0.1.0-alpha.1",
     "react": "19.2.8"
   }
 }

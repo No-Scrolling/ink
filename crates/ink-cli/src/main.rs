@@ -1,5 +1,6 @@
 mod android;
 mod development;
+mod distribution;
 mod cli;
 mod create;
 mod export;
@@ -26,6 +27,7 @@ fn main() {
 }
 
 fn run() -> Result<()> {
+    distribution::initialise()?;
     let cli = Cli::parse();
     let Some(command) = cli.command else {
         Cli::command().print_help()?;
@@ -33,10 +35,24 @@ fn run() -> Result<()> {
         return Ok(());
     };
 
-    if matches!(&command, InkCommand::Add { .. } | InkCommand::Check | InkCommand::Format | InkCommand::Lint | InkCommand::Build { .. } | InkCommand::Dev { .. } | InkCommand::Export(_)) {
+    if matches!(&command, InkCommand::Install | InkCommand::Add { .. } | InkCommand::Check | InkCommand::Format | InkCommand::Lint | InkCommand::Build { .. } | InkCommand::Dev { .. } | InkCommand::Export(_)) {
         let config = find_config(cli.directory.as_deref())?;
-        let sdk = android::framework_root_for_app(config.parent().expect("config has a parent"))?;
-        let compiled_sdk = Path::new(env!("CARGO_MANIFEST_DIR")).parent().and_then(Path::parent).and_then(|path| path.canonicalize().ok());
+        let root = config.parent().expect("config has a parent");
+        if distribution::installed_root().is_some() {
+            if matches!(&command, InkCommand::Build { .. } | InkCommand::Dev { .. }) {
+                distribution::run("prerequisites", None, &[])?;
+            }
+            if !matches!(&command, InkCommand::Install) {
+                distribution::prepare(root)?;
+            }
+        }
+        let sdk = android::framework_root_for_app(root)?;
+        let compiled_sdk = distribution::installed_root().or_else(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .and_then(Path::parent)
+                .and_then(|path| path.canonicalize().ok())
+        });
         if compiled_sdk.as_ref() != Some(&sdk) {
             anyhow::ensure!(std::env::var_os("INK_DISPATCHED_SDK").as_deref() != Some(sdk.as_os_str()), "selected SDK launcher ran a different SDK; check that {}/scripts/ink launches its own checkout", sdk.display());
             let launcher = sdk.join("scripts/ink");
@@ -52,6 +68,23 @@ fn run() -> Result<()> {
     }
 
     match command {
+        InkCommand::Install => {
+            let config = find_config(cli.directory.as_deref())?;
+            if distribution::installed_root().is_some() {
+                distribution::run("install", config.parent(), &[])
+            } else {
+                let status = std::process::Command::new("bun")
+                    .arg("install")
+                    .current_dir(config.parent().expect("config has a parent"))
+                    .status()?;
+                anyhow::ensure!(status.success(), "bun install failed");
+                Ok(())
+            }
+        }
+        InkCommand::Setup => distribution::run("setup", None, &[]),
+        InkCommand::Update { version } => {
+            distribution::run("update", None, &version.into_iter().collect::<Vec<_>>())
+        }
         InkCommand::Create { directory, name, package } => {
             let directory = cli.directory.as_deref().unwrap_or(Path::new(".")).join(directory);
             create::create(&directory, name.as_deref(), &package)
@@ -60,7 +93,13 @@ fn run() -> Result<()> {
             let project = load_project(cli.directory.as_deref())?;
             create::add_modules(&project, &modules)
         }
-        InkCommand::Doctor => android::doctor(),
+        InkCommand::Doctor => {
+            if distribution::installed_root().is_some() {
+                distribution::run("doctor", None, &[])
+            } else {
+                android::doctor()
+            }
+        }
         InkCommand::Devices => list_devices(),
         InkCommand::Check => {
             let project = load_project(cli.directory.as_deref())?;

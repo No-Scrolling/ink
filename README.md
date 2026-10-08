@@ -40,6 +40,8 @@ export default function Counter() {
 
 Start with [Get started](docs/get-started.md), or see [ink.noscroll.ing](https://ink.noscroll.ing).
 
+For release packaging, installation and publishing, see [Releases](docs/releases.md).
+
 ## Development
 
 Install workspace dependencies, check the toolchain and run the template:

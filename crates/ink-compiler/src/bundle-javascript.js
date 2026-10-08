@@ -63,7 +63,7 @@ for (let directory = root; ; directory = dirname(directory)) {
 const projectManifest = await Bun.file(resolve(root, "package.json")).json();
 const inkDependency = projectManifest.dependencies?.ink;
 let selectedSdk;
-if (inkDependency?.startsWith("file:")) {
+if (!process.env.INK_RELEASE_ROOT && inkDependency?.startsWith("file:")) {
   selectedSdk = dirname(dirname(await realpath(resolve(root, inkDependency.slice(5)))));
 } else if (inkDependency?.startsWith("workspace:")) {
   for (let directory = root; ; directory = dirname(directory)) {
@@ -79,10 +79,11 @@ if (selectedSdk) {
   }
 }
 const frameworkDirectory = dirname(frameworkEntry);
-const oxc = await import(Bun.resolveSync("oxc-transform-react", frameworkDirectory));
-const parser = development ? await import(Bun.resolveSync("oxc-parser", frameworkDirectory)) : null;
+const toolingDirectory = process.env.INK_RELEASE_ROOT ?? frameworkDirectory;
+const oxc = await import(Bun.resolveSync("oxc-transform-react", toolingDirectory));
+const parser = development ? await import(Bun.resolveSync("oxc-parser", toolingDirectory)) : null;
 let networkEntry;
-const remapping = development ? (await import(Bun.resolveSync("@jridgewell/remapping", frameworkDirectory))).default : null;
+const remapping = development ? (await import(Bun.resolveSync("@jridgewell/remapping", toolingDirectory))).default : null;
 
 const compiledModules = new Map();
 const mixedExportsByPath = new Map();
@@ -111,7 +112,7 @@ async function inspect(path) {
           inputs.add(declarationPath);
           declaration = await Bun.file(declarationPath).json();
           if (declaration.version !== 1 || !declaration.modules || typeof declaration.modules !== "object" || Array.isArray(declaration.modules) || Object.values(declaration.modules).some(names => !Array.isArray(names) || names.some(name => typeof name !== "string"))) throw new Error(`Unsupported native requirements declaration: ${declarationPath}`);
-        } else if (pkg.name === "ink" || pkg.name?.startsWith("@ink/")) {
+        } else if (pkg.name === "ink" || pkg.name?.startsWith("@ink/") || pkg.name === "ink-framework" || pkg.name?.startsWith("ink-framework-")) {
           throw new Error(`Package ${pkg.name} is missing ink-native.json; reinstall a compatible Ink package or declare its native requirements.`);
         }
         declarations.set(directory, { pkg, declaration });
@@ -338,7 +339,7 @@ if (!development) {
 let devRuntimeHash;
 if (development) {
   const bootstrapEntry = resolve(dirname(output), "framework-entry.js");
-  const refreshPath = Bun.resolveSync("react-refresh/runtime", frameworkDirectory);
+  const refreshPath = Bun.resolveSync("react-refresh/runtime", toolingDirectory);
   let bootstrapSource = 'import Refresh from ' + JSON.stringify(refreshPath) + ';\nRefresh.injectIntoGlobalHook(globalThis);\nglobalThis.__inkFramework = {refresh: Refresh, modules: Object.create(null), appModules: Object.create(null)};\n';
   for (const path of [...shared.keys()].sort()) bootstrapSource += 'globalThis.__inkFramework.modules[' + JSON.stringify(path) + '] = require(' + JSON.stringify(shared.get(path)) + ');\n';
   await Bun.write(bootstrapEntry, bootstrapSource);

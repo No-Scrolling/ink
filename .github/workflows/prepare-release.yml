@@ -1,0 +1,37 @@
+name: Prepare Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without v, for example 0.1.0-alpha.1'
+        required: true
+        type: string
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - name: Prepare version and lockfiles
+        env:
+          INK_VERSION: ${{ inputs.version }}
+        run: |
+          bun scripts/release/prepare.ts "$INK_VERSION"
+          bun install --lockfile-only
+          cargo metadata --format-version 1 > /dev/null
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: release/v${{ inputs.version }}
+          title: 'release: v${{ inputs.version }}'
+          commit-message: 'release: v${{ inputs.version }}'
+          body: 'Release Ink ${{ inputs.version }}. Merging this PR publishes the matching CLI, SDK and JavaScript packages.'

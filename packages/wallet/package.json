@@ -1,8 +1,8 @@
 {
   "name": "@ink/wallet",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "exports": { ".": "./src/index.tsx" },
   "dependencies": { "valibot": "1.5.0" },
-  "peerDependencies": { "ink": "0.0.0", "react": "19.2.8", "@ink/barcode": "0.0.0" }
+  "peerDependencies": { "ink": "0.1.0-alpha.1", "react": "19.2.8", "@ink/barcode": "0.1.0-alpha.1" }
 }

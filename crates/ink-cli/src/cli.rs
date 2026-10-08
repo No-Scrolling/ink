@@ -25,6 +25,16 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum InkCommand {
+    /// Install this application's dependencies using the installed Ink release
+    Install,
+    /// Check prerequisites and offer to install missing build tools
+    Setup,
+    /// Install a new Ink release
+    #[command(visible_alias = "upgrade")]
+    Update {
+        /// Release version; defaults to the latest published release
+        version: Option<String>,
+    },
     /// Create an app using the selected local SDK
     Create {
         directory: PathBuf,

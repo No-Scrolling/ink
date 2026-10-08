@@ -1,0 +1,124 @@
+name: Release
+on:
+  push:
+    branches: [main]
+    paths: [sdk.json]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish packages and the GitHub release after verification'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+          const current = JSON.parse(fs.readFileSync('sdk.json')).version;
+          const previous = spawnSync('git', ['show', process.env.BEFORE + ':sdk.json'], { encoding: 'utf8' });
+          const changed = process.env.EVENT === 'workflow_dispatch' || previous.status !== 0 || JSON.parse(previous.stdout).version !== current;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'changed=' + changed + '\n');
+          JS
+  build:
+    needs: version
+    if: needs.version.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: ubuntu-22.04
+            target: linux-x64
+          - runner: ubuntu-22.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - id: version
+        run: echo "version=$(bun -p '(await Bun.file("sdk.json").json()).version')" >> "$GITHUB_OUTPUT"
+      - run: bun install --frozen-lockfile
+      - run: cargo build --locked --release -p ink-cli
+      - run: bun scripts/release/pack.ts
+      - name: Verify installed CLI
+        env:
+          INK_TARGET: ${{ matrix.target }}
+        run: |
+          INK_HOME="$RUNNER_TEMP/ink" INK_BIN_DIR="$RUNNER_TEMP/bin" INK_ARCHIVE="$PWD/target/distribution/ink-$INK_TARGET.tar.gz" sh scripts/install.sh
+          "$RUNNER_TEMP/bin/ink" --version
+          "$RUNNER_TEMP/bin/ink" upgrade --help
+          cd "$RUNNER_TEMP/ink/current"
+          "$RUNNER_TEMP/ink/current/bin/bun" -e 'await import("oxc-parser"); await import("oxc-transform-react"); console.log("Bundled native JavaScript tools loaded")'
+          "$RUNNER_TEMP/ink/current/bin/bun" node_modules/oxlint/bin/oxlint --version
+        working-directory: ${{ github.workspace }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            target/distribution/ink-*.tar.gz
+            target/distribution/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        if: matrix.target == 'darwin-arm64'
+        with:
+          name: release-npm
+          path: target/distribution/npm/*.tgz
+  publish:
+    needs: build
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts
+      - name: Assemble platform archives and checksums
+        run: |
+          mkdir -p release/npm
+          cp artifacts/release-npm/*.tgz release/npm/
+          for target in darwin-arm64 linux-x64 linux-arm64; do
+            cp "artifacts/release-$target/ink-$target.tar.gz" release/
+            cat "artifacts/release-$target/SHA256SUMS" >> release/SHA256SUMS
+          done
+          cd release
+          sha256sum -c SHA256SUMS
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Publish packages using npm trusted publishing
+        run: node scripts/release/publish.ts release/npm
+      - name: Publish GitHub release after all packages are available
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if ! gh release view "v$VERSION" > /dev/null 2>&1; then
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Ink $VERSION" --generate-notes --prerelease release/ink-*.tar.gz release/SHA256SUMS
+          fi

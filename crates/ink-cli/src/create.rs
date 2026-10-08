@@ -10,6 +10,7 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
         directory.display()
     );
     let sdk = super::android::framework_root()?;
+    let installed = super::distribution::installed_root().is_some();
     let title = name.unwrap_or("My Ink App");
     ensure!(
         package.split('.').count() >= 2
@@ -30,12 +31,17 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
             serde_json::to_string(package)?
         ),
     )?;
+    let dependency = if installed {
+        format!("npm:ink-framework@{}", env!("CARGO_PKG_VERSION"))
+    } else {
+        format!("file:{}", sdk.join("packages/ink").display())
+    };
     let metadata = json!({
         "name": package.replace('.', "-"),
         "private": true,
-        "scripts": { "check": "ink check" },
+        "scripts": { "dev": "ink dev", "build": "ink build", "check": "ink check" },
         "dependencies": {
-            "ink": format!("file:{}", sdk.join("packages/ink").display()),
+            "ink": dependency,
             "react": "19.2.8"
         },
         "devDependencies": { "typescript": "5.9.3", "@types/react": "19.2.18" }
@@ -57,15 +63,21 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
         directory.join(".gitignore"),
         "node_modules/\n.ink/\ndist/\n*.jks\n*.keystore\n.env.local\n",
     )?;
-    super::output::success(format!(
-        "Created {}. Run bun install in {}",
-        title,
-        directory.display()
-    ));
+    if installed {
+        super::distribution::prepare(directory)?;
+    }
+    super::output::success(if installed {
+        format!("Created {}. Run ink dev in {}", title, directory.display())
+    } else {
+        format!("Created {}. Run bun install in {}", title, directory.display())
+    });
     Ok(())
 }
 
 pub fn add_modules(project: &ink_compiler::Project, modules: &[String]) -> Result<()> {
+    if super::distribution::installed_root().is_some() {
+        return super::distribution::run("add", Some(project.root()), modules);
+    }
     let sdk = super::android::project_framework_root(project)?;
     let mut packages = BTreeMap::new();
     for entry in fs::read_dir(sdk.join("packages"))? {

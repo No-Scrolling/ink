@@ -1,0 +1,75 @@
+#!/bin/sh
+set -eu
+# Install a published Ink release, or an already verified local release archive.
+version="${INK_VERSION:-}"
+ink_home="${INK_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/ink}"
+bin_dir="${INK_BIN_DIR:-$HOME/.local/bin}"
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) target=darwin-arm64 ;;
+  Linux-x86_64) target=linux-x64 ;;
+  Linux-aarch64|Linux-arm64) target=linux-arm64 ;;
+  *) echo 'Ink supports macOS Apple Silicon and Linux x64/ARM64.' >&2; exit 1 ;;
+esac
+for tool in curl tar; do
+  command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }
+done
+if command -v sha256sum >/dev/null; then
+  checksum=sha256sum
+elif command -v shasum >/dev/null; then
+  checksum='shasum -a 256'
+else
+  echo 'sha256sum or shasum is required' >&2
+  exit 1
+fi
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+asset="ink-$target.tar.gz"
+repo=https://github.com/No-Scrolling/ink
+if [ -n "${INK_ARCHIVE:-}" ]; then
+  cp "$INK_ARCHIVE" "$tmp/$asset"
+  cp "$(dirname "$INK_ARCHIVE")/SHA256SUMS" "$tmp/SHA256SUMS"
+else
+  # Alpha releases use GitHub prereleases, which releases/latest excludes.
+  if [ -z "$version" ]; then
+    curl -fsSL 'https://api.github.com/repos/No-Scrolling/ink/releases?per_page=100' -o "$tmp/releases.json"
+    version=$(sed -n 's/^[[:space:]]*"tag_name": "\(v[0-9A-Za-z.-]*\)",*$/\1/p' "$tmp/releases.json" | head -n 1)
+    if [ -z "$version" ]; then
+      echo 'No published Ink release was found.' >&2
+      exit 1
+    fi
+  fi
+  case "$version" in v*) ;; *) version="v$version" ;; esac
+  curl -fL "$repo/releases/download/$version/$asset" -o "$tmp/$asset"
+  curl -fsSL "$repo/releases/download/$version/SHA256SUMS" -o "$tmp/SHA256SUMS"
+fi
+# A release checksum file covers every platform; only this archive was downloaded.
+awk -v asset="$asset" '$2 == asset { print; found = 1 } END { if (!found) exit 1 }' "$tmp/SHA256SUMS" > "$tmp/selected-checksum"
+(cd "$tmp" && $checksum -c selected-checksum)
+mkdir "$tmp/payload"
+tar -xzf "$tmp/$asset" -C "$tmp/payload"
+release=$("$tmp/payload/bin/bun" -e 'console.log((await Bun.file(process.argv[1]).json()).version)' "$tmp/payload/sdk.json")
+case "$release" in *[!0-9A-Za-z.-]*|'') echo 'Invalid release version' >&2; exit 1 ;; esac
+"$tmp/payload/bin/ink" --version
+mkdir -p "$ink_home/versions" "$bin_dir"
+if [ -e "$ink_home/versions/$release" ]; then
+  echo "Ink $release is already installed at $ink_home/versions/$release" >&2
+  exit 1
+fi
+if [ -e "$bin_dir/ink" ] || [ -L "$bin_dir/ink" ]; then
+  if [ "$(readlink "$bin_dir/ink" || true)" != "$ink_home/current/bin/ink" ]; then
+    echo "$bin_dir/ink already exists and is not managed by this installer. Choose INK_BIN_DIR." >&2
+    exit 1
+  fi
+fi
+mv "$tmp/payload" "$ink_home/versions/$release"
+ln -s "$ink_home/versions/$release" "$ink_home/.current-$$"
+case "$target" in
+  darwin-*) mv -fh "$ink_home/.current-$$" "$ink_home/current" ;;
+  linux-*) mv -fT "$ink_home/.current-$$" "$ink_home/current" ;;
+esac
+ln -sf "$ink_home/current/bin/ink" "$bin_dir/ink"
+echo "Installed Ink $release. Run ink setup to check your build tools."
+case ":$PATH:" in
+  *":$bin_dir:"*) ;;
+  *) echo "Add $bin_dir to your PATH. The installer has not changed your shell configuration." ;;
+esac
