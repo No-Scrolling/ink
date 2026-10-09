@@ -15,15 +15,8 @@ const ICONS: [(&str, u32); 5] = [
 const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
 
 pub fn generate(name: &str, resources: &Path) -> Result<()> {
-    let label = name
-        .graphemes(true)
-        .find(|grapheme| grapheme.chars().any(char::is_alphanumeric))
-        .context("the app name must contain a letter or number")?
-        .to_uppercase();
-    let font = FontArc::try_from_vec(PUBLIC_SANS.to_vec()).context("Public Sans is not valid")?;
-
     for (directory, size) in ICONS {
-        let image = render(&font, &label, size)?;
+        let image = generate_image(name, size)?;
         let output_directory = resources.join(directory);
         std::fs::create_dir_all(&output_directory)
             .with_context(|| format!("could not create {}", output_directory.display()))?;
@@ -36,6 +29,16 @@ pub fn generate(name: &str, resources: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn generate_image(name: &str, size: u32) -> Result<RgbaImage> {
+    let label = name
+        .graphemes(true)
+        .find(|grapheme| grapheme.chars().any(char::is_alphanumeric))
+        .context("the app name must contain a letter or number")?
+        .to_uppercase();
+    let font = FontArc::try_from_slice(PUBLIC_SANS).context("Public Sans is not valid")?;
+    render(&font, &label, size)
 }
 
 fn encode_png(image: RgbaImage) -> Result<Vec<u8>> {

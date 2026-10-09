@@ -4,6 +4,8 @@ mod icon;
 mod icons;
 mod javascript;
 
+pub use icon::generate_image as generate_icon_image;
+
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},

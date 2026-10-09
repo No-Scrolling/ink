@@ -45,6 +45,9 @@ pub enum InkCommand {
         name: Option<String>,
         #[arg(long, default_value = "com.example.inkapp")]
         package: String,
+        /// GitHub owner/repository for README badges and the download link
+        #[arg(long)]
+        repository: Option<String>,
     },
     /// Add modules from this app's Ink SDK and install their dependencies
     Add {
@@ -100,6 +103,16 @@ pub enum InkCommand {
 
     /// Show resolved application and build information
     Info,
+
+    /// Generate a header image from four app screenshots
+    Header {
+        /// Screenshot files in display order; defaults to assets/a.png through assets/d.png
+        #[arg(num_args = 4)]
+        screenshots: Vec<PathBuf>,
+        /// Output PNG, relative to the app directory
+        #[arg(long, default_value = "assets/header.png")]
+        out: PathBuf,
+    },
 
     /// Export a page or TSX composition as a 1080 × 1240 design frame
     Export(crate::export::ExportArgs),

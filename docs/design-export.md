@@ -5,6 +5,25 @@ description: "Export Ink screens as images for chat and tldraw."
 
 Use `ink export` to render pages and standalone TSX components as PNG images. Each image is 1080 × 1240 pixels, the Light Phone III screen size. Exports run independently of the emulator.
 
+## Generate an app header
+
+Save four LP3 screenshots as `assets/a.png`, `assets/b.png`, `assets/c.png` and `assets/d.png`, in display order. Each screenshot must be 1080 × 1240 pixels.
+
+```sh
+ink header
+```
+
+Ink writes `assets/header.png`: a 2572 × 1048 image with the app's generated icon, name and four screenshots. It uses bundled Public Sans and does not require the design renderer or Android build tools.
+
+To choose different files or an output path:
+
+```sh
+ink header assets/home.png assets/show.png assets/player.png assets/settings.png \
+  --out assets/header.png
+```
+
+Paths are relative to the app directory, including when using `ink -C <app-directory> header`.
+
 ## Set up the renderer
 
 Use an [Ink project](/project-structure) with its JavaScript dependencies installed. The renderer setup requires:

@@ -5,6 +5,7 @@ mod distribution;
 mod cli;
 mod create;
 mod export;
+mod header;
 mod output;
 mod process;
 mod quality;
@@ -96,9 +97,19 @@ fn run() -> Result<()> {
         InkCommand::Update { version } => {
             distribution::run("update", None, &version.into_iter().collect::<Vec<_>>())
         }
-        InkCommand::Create { directory, name, package } => {
+        InkCommand::Create {
+            directory,
+            name,
+            package,
+            repository,
+        } => {
             let directory = cli.directory.as_deref().unwrap_or(Path::new(".")).join(directory);
-            create::create(&directory, name.as_deref(), &package)
+            create::create(
+                &directory,
+                name.as_deref(),
+                &package,
+                repository.as_deref(),
+            )
         }
         InkCommand::Add { modules } => {
             let project = load_project(cli.directory.as_deref())?;
@@ -160,6 +171,10 @@ fn run() -> Result<()> {
             let device = android::select_device(device.as_deref())?;
             println!("{} · logs · {}\n", project.name(), device.name());
             android::stream_logs(&device, project.package(), resources)
+        }
+        InkCommand::Header { screenshots, out } => {
+            let project = load_project(cli.directory.as_deref())?;
+            header::generate(&project, &screenshots, &out)
         }
         InkCommand::Info => {
             let project = load_project(cli.directory.as_deref())?;

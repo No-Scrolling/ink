@@ -25,6 +25,8 @@ ink check
 
 Replace `com.example.myapp` with your app's Android application ID. Ink installs the dependencies and creates the home screen at `app/index.tsx`.
 
+New apps include a README and a header with the app’s icon, name and four starter screenshots. Add `--repository your-name/my-app` to set the README's licence badge, release badge and download link, or replace `OWNER/REPO` in the README later. Replace `assets/a.png`–`d.png` with your own screenshots, then run [ink header](/design-export#generate-an-app-header).
+
 `ink check` checks formatting, lint, types and bundling. Use `ink format` to fix formatting. See [Project structure](/project-structure) for routes, assets and configuration.
 
 ## Run on a phone

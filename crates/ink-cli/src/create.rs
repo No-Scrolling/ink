@@ -3,7 +3,12 @@ use std::{collections::{BTreeMap, BTreeSet}, fs, path::Path};
 use anyhow::{Context, Result, ensure};
 use serde_json::json;
 
-pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()> {
+pub fn create(
+    directory: &Path,
+    name: Option<&str>,
+    package: &str,
+    repository: Option<&str>,
+) -> Result<()> {
     ensure!(
         !directory.exists(),
         "destination already exists: {}",
@@ -21,6 +26,17 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
                     })
             }),
         "package must be an Android application identifier such as com.example.myapp"
+    );
+    let repository = repository.unwrap_or("OWNER/REPO");
+    ensure!(
+        repository.split('/').count() == 2
+            && repository.split('/').all(|part| {
+                !part.is_empty()
+                    && part != "."
+                    && part != ".."
+                    && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            }),
+        "repository must be a GitHub owner/repository such as your-name/my-app"
     );
     fs::create_dir_all(directory)?;
     fs::write(
@@ -67,6 +83,11 @@ pub fn create(directory: &Path, name: Option<&str>, package: &str) -> Result<()>
         super::distribution::prepare(directory)?;
     }
     super::app_release::write(directory)?;
+    super::header::create_default(title, directory)?;
+    fs::write(
+        directory.join("README.md"),
+        include_str!("app-readme.md").replace("{{repository}}", repository),
+    )?;
     println!("Ink · create");
     super::output::tree_step("Create", title, false, true);
     super::output::tree_step("Workflows", "Prepare Release and Release", false, true);
