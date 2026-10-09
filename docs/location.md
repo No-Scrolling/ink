@@ -39,7 +39,7 @@ if (await lightos.requestPermission("location-approximate") === "granted") {
 }
 ```
 
-This requires a LightOS host that supports `GetDefaultLocation`. Permission denial and an unavailable or unsupported host reject the call; they do not return `null`.
+This requires a LightOS host that implements `GetDefaultLocation`, introduced in Light SDK 0.1.2. Permission denial and an unavailable or unsupported host reject the call; they do not return `null`.
 
 ## Read a position
 
