@@ -1,6 +1,6 @@
 use std::{env, fmt, io::IsTerminal, time::Duration};
 
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressState, ProgressStyle};
 use owo_colors::{OwoColorize, Stream, set_override};
 
 pub fn initialise() {
@@ -93,14 +93,22 @@ pub fn tree_spinner(label: &str, last: bool) -> ProgressBar {
     let progress = if std::io::stderr().is_terminal() && env::var_os("CI").is_none() {
         ProgressBar::new_spinner()
     } else {
+        eprintln!("{branch} {label:<12} running…");
         ProgressBar::with_draw_target(None, ProgressDrawTarget::hidden())
     };
     progress.set_style(
-        ProgressStyle::with_template("{msg} {spinner:.cyan}")
+        ProgressStyle::with_template("{msg} · {elapsed_time} {spinner:.cyan}")
             .expect("the spinner template is valid")
+            .with_key(
+                "elapsed_time",
+                |state: &ProgressState, writer: &mut dyn fmt::Write| {
+                    let _ = write!(writer, "{}", duration(state.elapsed()));
+                },
+            )
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
-    progress.set_message(format!("{branch} {label}"));
+    progress.set_message(format!("{branch} {label:<12} running…"));
+    progress.tick();
     progress.enable_steady_tick(Duration::from_millis(80));
     progress
 }
