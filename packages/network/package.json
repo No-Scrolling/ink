@@ -1,6 +1,6 @@
 {
   "name": "@ink/network",
-  "version": "0.1.0-alpha.9",
+  "version": "0.1.0-alpha.10",
   "private": true,
   "exports": {
     ".": "./src/index.ts",
@@ -13,8 +13,8 @@
     "@types/whatwg-url": "13.0.0"
   },
   "peerDependencies": {
-    "ink": "0.1.0-alpha.9",
-    "@ink/files": "0.1.0-alpha.9"
+    "ink": "0.1.0-alpha.10",
+    "@ink/files": "0.1.0-alpha.10"
   },
   "sideEffects": [
     "./src/index.ts"
