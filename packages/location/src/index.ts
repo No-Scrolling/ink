@@ -65,6 +65,14 @@ function parseTracking(value: unknown): LocationTrackingState {
 
 export const location = {
   async default(): Promise<DefaultLocation | null> {
+    const version = await callNative("light-sdk", "version", "");
+    if (!/^\d+\.\d+\.\d+$/.test(version)) {
+      throw new NativeError("protocol", "Invalid Light SDK version");
+    }
+    const [major, minor, patch] = version.split(".").map(Number);
+    if (major === 0 && (minor < 1 || (minor === 1 && patch < 2))) {
+      throw new NativeError("unsupported", "LightOS default location requires Light SDK 0.1.2 or newer");
+    }
     const value: unknown = JSON.parse(await callNative("light-sdk", "default-location", ""));
     if (value === null) return null;
     if (typeof value !== "object"

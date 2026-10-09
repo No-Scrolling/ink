@@ -3,6 +3,7 @@ import { defineConfig } from "blume";
 export default defineConfig({
   title: "Ink",
   description: "Build small, fast Light Phone III apps with TypeScript.",
+  feedback: false,
   logo: {
     image: {
       light: "/images/title-light.png",
