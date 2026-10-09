@@ -228,11 +228,6 @@ val generateInkPermissionManifest by tasks.registering {
         })
     }
 }
-val inkLightSdkMarkerAction = if (inkUsesLightSdk.get()) {
-    "com.thelightphone.sdk.ACTION_SDK_MARKER"
-} else {
-    "com.vandam.ink.NO_LIGHT_SDK"
-}
 
 android {
     namespace = "com.vandam.ink"
@@ -255,9 +250,7 @@ android {
         versionCode = inkVersionCode.get().toInt()
         versionName = inkVersionName.get()
         resValue("string", "app_name", inkAppName.get())
-        manifestPlaceholders["inkLightSdkEnabled"] = inkUsesLightSdk.get()
         manifestPlaceholders["inkMapsHardwareAcceleration"] = inkUsesMaps.get()
-        manifestPlaceholders["inkLightSdkMarkerAction"] = inkLightSdkMarkerAction
         manifestPlaceholders["inkLightSdkVersion"] = inkLightSdkVersion
         manifestPlaceholders["inkLightServerPackage"] = inkLightServerPackage.get()
         buildConfigField(

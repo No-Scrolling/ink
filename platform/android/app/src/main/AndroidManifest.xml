@@ -26,11 +26,10 @@
         </activity>
         <receiver
             android:name=".InkLightSdkReceiver"
-            android:enabled="${inkLightSdkEnabled}"
             android:exported="true"
             android:permission="normal">
             <intent-filter>
-                <action android:name="${inkLightSdkMarkerAction}" />
+                <action android:name="com.thelightphone.sdk.ACTION_SDK_MARKER" />
             </intent-filter>
             <meta-data
                 android:name="com.thelightphone.sdk.SDK_VERSION"
@@ -40,7 +39,7 @@
     <queries>
         <package android:name="${inkLightServerPackage}" />
         <intent>
-            <action android:name="${inkLightSdkMarkerAction}" />
+            <action android:name="com.thelightphone.sdk.ACTION_SDK_MARKER" />
         </intent>
     </queries>
 </manifest>
