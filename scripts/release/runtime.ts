@@ -335,10 +335,15 @@ async function github(path) {
 }
 async function latest() {
   const releases = await github("releases?per_page=100");
-  return releases.find(
-    (r) =>
-      !r.draft && r.assets.some((a) => a.name === `ink-${process.platform}-${process.arch}.tar.gz`),
-  );
+  return releases
+    .filter(
+      (r) =>
+        !r.draft &&
+        r.assets.some((a) => a.name === `ink-${process.platform}-${process.arch}.tar.gz`),
+    )
+    .sort((a, b) =>
+      Bun.semver.order(b.tag_name.replace(/^v/, ""), a.tag_name.replace(/^v/, "")),
+    )[0];
 }
 async function notice() {
   if (process.env.CI || !process.stdout.isTTY) return;
