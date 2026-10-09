@@ -109,6 +109,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           pattern: release-*
@@ -144,5 +146,6 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           if ! gh release view "v$VERSION" > /dev/null 2>&1; then
-            gh release create "v$VERSION" --verify-tag --title "Ink $VERSION" --generate-notes --prerelease release/ink-*.tar.gz release/SHA256SUMS
+            node scripts/release/notes.ts "$VERSION" > release/notes.md
+            gh release create "v$VERSION" --verify-tag --title "Ink $VERSION" --notes-file release/notes.md --prerelease release/ink-*.tar.gz release/SHA256SUMS
           fi
