@@ -73,11 +73,11 @@ export default function Chat() {
 <div>
 
 <p>Long-press a message or image, then choose Reply. Ink returns to the conversation and shows a reply banner.</p>
-<p><code>onSend</code> receives <code>{ text, replyTo }</code>. Add the outgoing message, save its reply preview and clear the draft. Ink keeps the keyboard open and scrolls to the bottom.</p>
+<p><code>onSend</code> receives <code>&#123; text, replyTo &#125;</code>. Add the outgoing message, save its reply preview and clear the draft. Ink keeps the keyboard open and scrolls to the bottom.</p>
 
 </div>
 <div className="pattern-preview">
-<Tabs>
+<Tabs inline>
 <Tab title="Actions">
 <img src="/images/patterns/conversation-actions.png" alt="A message preview with Reply and a custom reaction action." width="1080" height="1240" />
 </Tab>
@@ -137,7 +137,7 @@ export default function Chat() {
 
 </div>
 <div className="pattern-preview">
-<Tabs>
+<Tabs inline>
 <Tab title="Sending and delivery">
 <img src="/images/patterns/message-status.png" alt="Messages showing sending, sent and delivered states." width="1080" height="1240" />
 </Tab>

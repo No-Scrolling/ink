@@ -1,3 +1,14 @@
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation: none !important;
+}
+
+[data-astro-transition-fallback] [data-astro-transition-scope],
+[data-astro-transition-fallback][data-astro-transition-scope] {
+  animation: none !important;
+}
+
 .pattern-example {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;

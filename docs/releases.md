@@ -80,7 +80,7 @@ ink dev
 
 The installer adds only Ink's installation and command symlink. It prints a PATH instruction when necessary and leaves shell configuration untouched. `INK_HOME` and `INK_BIN_DIR` select alternative locations. Existing unrelated commands are not overwritten.
 
-Mintlify redirects `/install.sh` to `scripts/install.sh` on GitHub through `docs/docs.json`. The endpoint must be accessible without signing in. After deploying a redirect change, download it with `curl -fsSL https://ink.noscroll.ing/install.sh -o /tmp/ink-install.sh` and check that the response is the shell script before advertising the URL.
+Blume defines the `/install.sh` redirect to `scripts/install.sh` on GitHub in `docs/blume.config.ts`. Cloudflare Workers serves it as an HTTP redirect from the generated `_redirects` file. The endpoint must be accessible without signing in. After deploying a redirect change, download it with `curl -fsSL https://ink.noscroll.ing/install.sh -o /tmp/ink-install.sh` and check that the response is the shell script before advertising the URL.
 
 Interactive installs run `ink setup` automatically, which asks before installing missing tools. CI and non-interactive installs skip setup; set `INK_SKIP_SETUP=1` to skip it explicitly. Run `ink setup` later if prerequisites remain incomplete. Linux ARM64 skips Android setup because its host tools are unsupported.
 

@@ -4,12 +4,17 @@
   "workspaces": [
     "packages/*",
     "examples/light-template",
-    "examples/counter"
+    "examples/counter",
+    "docs"
   ],
   "scripts": {
     "check": "tsc -p packages/ink/tsconfig.json",
     "test": "bun ./test/run.ts",
-    "bench": "bun ./test/performance/run.ts"
+    "bench": "bun ./test/performance/run.ts",
+    "docs:dev": "bun run --cwd docs dev",
+    "docs:build": "bun run --cwd docs build",
+    "docs:preview": "bun run --cwd docs preview",
+    "docs:validate": "bun run --cwd docs validate"
   },
   "devDependencies": {
     "@jridgewell/remapping": "2.3.5",

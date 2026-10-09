@@ -47,3 +47,10 @@ node_modules/
 ._*
 Thumbs.db
 **/design/exports/
+
+# Documentation
+/docs/.blume/
+/docs/.blume-verify/
+/docs/.astro/
+/docs/dist/
+/docs/.wrangler/
