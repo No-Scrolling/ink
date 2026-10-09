@@ -26,6 +26,21 @@ For precise access:
 const permission = await lightos.requestPermission("location-precise");
 ```
 
+## Use the LightOS location
+
+`location.default()` reads the location saved in the Light dashboard. It returns `{ latitude, longitude }`, or `null` when no location is set. It does not turn on GPS or fall back to the current position.
+
+```ts
+import { lightos } from "@ink/lightos";
+import { location } from "@ink/location";
+
+if (await lightos.requestPermission("location-approximate") === "granted") {
+  const saved = await location.default();
+}
+```
+
+This requires a LightOS host that supports `GetDefaultLocation`. Permission denial and an unavailable or unsupported host reject the call; they do not return `null`.
+
 ## Read a position
 
 `location.current()` returns one position:

@@ -180,7 +180,7 @@ private class InkLightSdkAdapter(
             return
         }
         val valid = when (operation) {
-            VERSION_OPERATION, "preferences", "keyboard-options" -> payload.isEmpty()
+            VERSION_OPERATION, "preferences", "keyboard-options", "default-location" -> payload.isEmpty()
             PERMISSION_STATUS_OPERATION, REQUEST_PERMISSION_OPERATION ->
                 payload == CAMERA ||
                     payload == MICROPHONE ||
@@ -292,6 +292,16 @@ private class InkLightSdkAdapter(
             UNIT_JSON,
         )) {
             is Response.Success -> NativeResult.Success(response.data)
+            is Response.Error -> response.failure()
+        }
+        "default-location" -> when (val response = authenticatedRequest("GetDefaultLocation", UNIT_JSON)) {
+            is Response.Success -> {
+                val location = JSONObject(response.data)
+                NativeResult.Success(
+                    if (location.isNull("latitude") && location.isNull("longitude")) "null"
+                    else response.data,
+                )
+            }
             is Response.Error -> response.failure()
         }
         PERMISSION_STATUS_OPERATION -> permissionStatus(request.payload)

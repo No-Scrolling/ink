@@ -1,6 +1,11 @@
 import { callNative, NativeError } from "ink/native";
 
 export type LocationAccuracy = "balanced" | "high";
+export interface DefaultLocation {
+  latitude: number;
+  longitude: number;
+}
+
 export interface LocationFix {
   latitude: number;
   longitude: number;
@@ -59,6 +64,16 @@ function parseTracking(value: unknown): LocationTrackingState {
 }
 
 export const location = {
+  async default(): Promise<DefaultLocation | null> {
+    const value: unknown = JSON.parse(await callNative("light-sdk", "default-location", ""));
+    if (value === null) return null;
+    if (typeof value !== "object"
+      || !("latitude" in value) || typeof value.latitude !== "number" || !Number.isFinite(value.latitude) || Math.abs(value.latitude) > 90
+      || !("longitude" in value) || typeof value.longitude !== "number" || !Number.isFinite(value.longitude) || Math.abs(value.longitude) > 180) {
+      throw new NativeError("protocol", "Invalid default location");
+    }
+    return { latitude: value.latitude, longitude: value.longitude };
+  },
   async *watch(options: LocationWatchOptions = {}): AsyncGenerator<LocationFix> {
     const watch = Number(await callNative("location", "watch-start", updateOptions(options), { signal: options.signal }));
     if (!Number.isSafeInteger(watch) || watch <= 0) throw new NativeError("protocol", "Invalid location watch");
