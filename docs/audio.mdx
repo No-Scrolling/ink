@@ -86,10 +86,52 @@ Detached playback continues after leaving the screen.
 | `mode: "detached"` | Keeps playing through a native media service. Call `stop()` to stop it. |
 | `usage: "music"` (default) | Music playback. |
 | `usage: "speech"` | Spoken audio. |
+| `cache: true` | Reuses cached HTTP(S) audio. Off by default. |
 
 Android can stop a detached session. Ink restores its queue, index, speed and progress in a paused state when you reconnect.
 
 Queue changes, seeks and pauses save immediately; progress saves every 30 seconds. `stop()` clears the queue and saved position.
+
+### Cache streamed audio
+
+To reuse streamed audio when replaying or seeking, set `cache: true` inside your playback component:
+
+```ts
+import { usePlayer } from "@ink/audio";
+
+const player = usePlayer({ session: "podcasts", mode: "detached", usage: "speech", cache: true });
+```
+
+Attached and detached players share a 256 MiB disc cache private to the app. Ink opens the cache on the first HTTP(S) request with caching enabled. When the cache reaches its limit, Ink removes the least recently used chunks. Local files, bundled assets and content URIs bypass the cache.
+
+Cached audio remains after `stop()` and app restarts, but Android can clear cache storage. If Ink cannot open the cache, streaming uses the network.
+
+The cache stores only audio fetched during playback and buffering. It does not download complete files in the background. Use [Downloads](/downloads) to save complete files for offline playback. Deleting a saved download does not clear cached stream data.
+
+Cache entries use resource URLs, independently of queue item IDs. Changing a URL, including its signed query string, creates a separate entry. The same rule applies to each segment URL in a [DASH stream](#play-a-dash-stream).
+
+Enable caching only when a URL continues to identify the same audio. Leave it off for live radio and URLs that serve changing content.
+
+### Play a DASH stream
+
+To play unprotected DASH (Dynamic Adaptive Streaming over HTTP) audio, use an HTTPS manifest URL as `src`. The URL's path must end in `.mpd`.
+
+Call `playDash` from an action after `player.state.ready` is true:
+
+```ts
+async function playDash() {
+  await player.setQueue([
+    {
+      id: "dig-the-uke",
+      src: "https://storage.googleapis.com/shaka-demo-assets/dig-the-uke-clear/dash.mpd",
+      title: "Dig the Uke",
+    },
+  ]);
+  await player.play();
+}
+```
+
+Both attached and detached players support DASH.
 
 ### Playback speed
 
@@ -168,7 +210,9 @@ const silence = useAction((enabled: boolean) => player.setSkipSilence(enabled));
 
 ### Sessions
 
-Players with the same `session` name share playback and must use the same `mode` and `usage`. Different names keep separate queues. Starting one session pauses the others.
+Players with the same `session` name share playback. They must use the same `mode`, `usage` and `cache` values while the session exists. This includes detached playback after you leave a screen.
+
+Different session names keep separate queues. Starting one session pauses the others.
 
 `session` defaults to `main`. Names accept 1–64 letters, numbers, dots, underscores or hyphens. Up to eight sessions can be active.
 
@@ -198,7 +242,7 @@ async function playAlbum() {
 }
 ```
 
-`setQueue` replaces the current queue. Use your own audio URLs or bundled audio for `src`. Items can also include artwork and a `duration` in milliseconds to display while loading.
+`setQueue` replaces the current queue. Each item needs a unique ID that is not blank. Use your own audio URLs or bundled audio for `src`. Items can also include artwork and a `duration` in milliseconds to display while loading.
 
 To set a queue without loading audio until playback or seeking, pass `prepare: false`:
 
@@ -211,6 +255,61 @@ Pass `startPosition` (milliseconds) to `setQueue` to resume without a separate s
 ```ts
 await player.setQueue(episodes, { startIndex: 0, startPosition: 33 * 60_000 });
 ```
+
+### Play a queued item
+
+Pass an item's ID to start it directly from the existing queue:
+
+```ts
+await player.play("track-2");
+```
+
+The native player resolves the ID when the command runs. Selecting an item preserves the queue's order and contents, including earlier items.
+
+A different item starts at position `0`. Selecting the current item resumes its position, or restarts it if it has ended. Call `play()` without an ID to play the current item.
+
+If the ID is not in the queue, the command rejects without changing playback.
+
+### Edit the queue during playback
+
+Use `add`, `remove`, `move` and `replace` to edit the queue. Editing upcoming items or moving the current item preserves the current audio, position and play/pause state. Ink saves edits automatically.
+
+Use the existing `player` from `usePlayer`. Call `editQueue` from a button action after `player.state.ready` is true:
+
+```ts
+const episode = {
+  id: "episode-3",
+  src: "https://example.com/podcasts/episode-3.mp3",
+  title: "Episode 3",
+};
+
+async function editQueue() {
+  await player.add(episode);
+  await player.move(episode.id, 0);
+  await player.replace(episode.id, { ...episode, title: "Episode 3: updated title" });
+  await player.remove(episode.id);
+}
+```
+
+To insert a new item immediately after the current item, pass `{ at: "next" }`:
+
+```ts
+await player.add(episode, { at: "next" });
+```
+
+The native player resolves `"next"` when the command runs. For an empty queue, Ink inserts the item at index `0`. Adding an item does not start playback. Call `play()` to start an idle queue.
+
+To insert at a specific position, use `add(item, { at: index })`. The index starts at `0` and can equal the queue length to append an item.
+
+For `move(id, index)`, the index is the item's final position. It must be at least `0` and less than the queue length.
+
+Invalid indices, missing IDs and duplicate IDs reject the command without changing the queue. A replacement can change the item's ID if the new ID is unique.
+
+Removing the current item selects the following item and preserves the play/pause state. If there is no following item, playback stops and earlier items remain queued. Removing the only item empties the queue and stops playback.
+
+Updating the current item's metadata preserves its position. Using `replace` to change its source starts the new source at position `0` and preserves the play/pause state. To keep progress when switching between a stream and a downloaded file, use [replaceSource](#replace-a-source-without-losing-progress).
+
+Read `player.state.queue` for the current ordered items. It updates from the native timeline, including edits from another screen using the same session. `getState()` also includes the queue.
 
 ### Seek
 
@@ -227,6 +326,7 @@ Player commands return promises.
 | Field | Meaning |
 | --- | --- |
 | `ready` | The player is connected and accepts commands. |
+| `queue` | The current ordered audio items. |
 | `current` | The current item, or `null` for an empty queue. |
 | `playing` | Audio is advancing. |
 | `playWhenReady` | Playback is requested, including while buffering. Use this for play/pause controls. |
@@ -358,6 +458,8 @@ Recording and analysis cannot use the microphone at the same time. Each import i
 
 ## Providers and offline media
 
-Direct audio files and podcast URLs work with this player. Music services may require their own SDK or playback engine, especially for protected or offline content.
+Direct audio files, podcast URLs and [unprotected DASH streams](#play-a-dash-stream) work with this player.
+
+Music services may require their own SDK or playback engine, especially for protected or offline content.
 
 Use [Downloads](/downloads) to save audio files. Reopen the file by ID before playback and handle missing files or expired provider access.

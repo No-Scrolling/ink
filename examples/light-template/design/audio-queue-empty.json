@@ -1,0 +1,30 @@
+{
+  "calls": {
+    "audio.activate": "",
+    "audio.deactivate": ""
+  },
+  "controllers": {
+    "audio": {
+      "ready": true,
+      "status": "idle",
+      "loading": false,
+      "playWhenReady": false,
+      "id": "",
+      "src": "",
+      "title": "",
+      "artist": "",
+      "album": "",
+      "artwork": "",
+      "index": -1,
+      "queue": [],
+      "positionMs": 0,
+      "durationMs": 0,
+      "bufferedMs": 0,
+      "speed": 1,
+      "silenceSavedMs": 0,
+      "voiceBoost": false,
+      "skipSilence": false,
+      "error": {}
+    }
+  }
+}

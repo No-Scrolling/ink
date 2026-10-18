@@ -7,7 +7,8 @@ internal interface AudioPlayback {
         controller: Long,
         operation: String,
         payload: String,
-    ): NativeResult
+        complete: NativeResultHandler,
+    )
 
     fun reportFailure(
         controller: Long,

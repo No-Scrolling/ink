@@ -34,7 +34,8 @@ internal fun createAudioAdapter(
                 }
                 else -> {
                     require(controller in controllers) { "Audio controller is not active" }
-                    playback.execute(controller, operation, payload)
+                    playback.execute(controller, operation, payload, complete)
+                    return
                 }
             }
         } catch (error: Exception) {

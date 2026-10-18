@@ -6,7 +6,7 @@ internal fun createAudioPlayback(
 ): AudioPlayback = object : AudioPlayback {
     override fun activate(controller: Long, config: String) = unavailable()
 
-    override fun execute(controller: Long, operation: String, payload: String) = unavailable()
+    override fun execute(controller: Long, operation: String, payload: String, complete: NativeResultHandler) = complete(unavailable())
 
     override fun reportFailure(
         controller: Long,

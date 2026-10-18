@@ -1,0 +1,58 @@
+{
+  "calls": {
+    "audio.activate": "",
+    "audio.deactivate": ""
+  },
+  "controllers": {
+    "audio": {
+      "ready": true,
+      "status": "paused",
+      "loading": false,
+      "playWhenReady": false,
+      "id": "A",
+      "src": "https://example.com/episode-A.mp3",
+      "title": "Episode A",
+      "artist": "",
+      "album": "",
+      "artwork": "",
+      "index": 0,
+      "queue": [
+        {
+          "id": "A",
+          "src": "https://example.com/episode-A.mp3",
+          "title": "Episode A",
+          "artist": "",
+          "album": "",
+          "artwork": "",
+          "duration": 180000
+        },
+        {
+          "id": "B",
+          "src": "https://example.com/episode-B.mp3",
+          "title": "Episode B",
+          "artist": "",
+          "album": "",
+          "artwork": "",
+          "duration": 180000
+        },
+        {
+          "id": "C",
+          "src": "https://example.com/episode-C.mp3",
+          "title": "Episode C",
+          "artist": "",
+          "album": "",
+          "artwork": "",
+          "duration": 180000
+        }
+      ],
+      "positionMs": 12000,
+      "durationMs": 180000,
+      "bufferedMs": 60000,
+      "speed": 1,
+      "silenceSavedMs": 0,
+      "voiceBoost": false,
+      "skipSilence": false,
+      "error": {}
+    }
+  }
+}

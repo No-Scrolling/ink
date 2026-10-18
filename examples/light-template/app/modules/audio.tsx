@@ -6,6 +6,8 @@ export default function Audio() {
       <Button href="/modules/audio/native-playback">Native Playback</Button>
       <Button href="/modules/audio/local-playback">Local Playback</Button>
       <Button href="/modules/audio/remote-playback">Remote Playback</Button>
+      <Button href="/modules/audio/dash-playback">DASH Playback</Button>
+      <Button href="/modules/audio/queue-playback">Live Queue</Button>
       <Button href={{ path: "/modules/audio/local-playback", params: { session: "secondary" } }}>
         Second Player
       </Button>

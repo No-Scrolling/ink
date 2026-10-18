@@ -9,6 +9,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaItem.RequestMetadata
+import androidx.media3.common.MediaLibraryInfo
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
@@ -34,7 +35,7 @@ private class InkAudioPlayback(
     private val activity: MainActivity,
     private val updateController: (Long, String) -> Unit,
 ) : AudioPlayback {
-    private data class Entry(val mode: String, val usage: String, val playback: AudioSessionPlayback)
+    private data class Entry(val mode: String, val usage: String, val cache: Boolean, val playback: AudioSessionPlayback)
     private val sessions = mutableMapOf<String, Entry>()
     private val controllers = mutableMapOf<Long, String>()
 
@@ -44,26 +45,29 @@ private class InkAudioPlayback(
         val name = options.optString("session", "main")
         val mode = options.optString("playback", "attached")
         val usage = options.optString("usage", "music")
+        val cache = options.optBoolean("cache", false)
         if (!Regex("[A-Za-z0-9._-]{1,64}").matches(name)) {
             return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio session name", false)
         }
         val existing = sessions[name]
-        if (existing != null && (existing.mode != mode || existing.usage != usage)) {
+        if (existing != null && (existing.mode != mode || existing.usage != usage || existing.cache != cache)) {
             return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio session options must agree", false)
         }
         if (existing == null && sessions.size >= 8) {
             return NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Too many audio sessions", false)
         }
-        val entry = existing ?: Entry(mode, usage, AudioSessionPlayback(activity, updateController, name) {
+        val entry = existing ?: Entry(mode, usage, cache, AudioSessionPlayback(activity, updateController, name, cache) {
             sessions.filterKeys { it != name }.values.forEach { it.playback.pauseForFocus() }
         }).also { sessions[name] = it }
         controllers[controller] = name
         return entry.playback.activate(controller, config)
     }
 
-    override fun execute(controller: Long, operation: String, payload: String): NativeResult =
-        sessions[controllers[controller]]?.playback?.execute(controller, operation, payload)
-            ?: NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio player is not active", false)
+    override fun execute(controller: Long, operation: String, payload: String, complete: NativeResultHandler) {
+        val playback = sessions[controllers[controller]]?.playback
+        if (playback == null) complete(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio player is not active", false))
+        else playback.execute(controller, operation, payload, complete)
+    }
 
     override fun reportFailure(controller: Long, kind: String, message: String, retryable: Boolean) {
         sessions[controllers[controller]]?.playback?.reportFailure(controller, kind, message, retryable)
@@ -89,6 +93,7 @@ private class AudioSessionPlayback(
     private val activity: MainActivity,
     private val updateController: (Long, String) -> Unit,
     private val name: String,
+    private val cache: Boolean,
     private val takeFocus: () -> Unit,
 ) : AudioPlayback, Player.Listener {
     private val handler = Handler(Looper.getMainLooper())
@@ -134,7 +139,58 @@ private class AudioSessionPlayback(
         return NativeResult.Success("")
     }
 
-    override fun execute(controller: Long, operation: String, payload: String): NativeResult {
+    override fun execute(controller: Long, operation: String, payload: String, complete: NativeResultHandler) {
+        if (operation !in AUDIO_QUEUE_OPERATIONS) {
+            complete(executeCommand(controller, operation, payload))
+            return
+        }
+        if (controller !in controllers) {
+            complete(failure("Audio player is not active"))
+            return
+        }
+        val args = runCatching {
+            val body = JSONObject(payload)
+            Bundle().apply {
+                putString("operation", operation)
+                putString("payload", payload)
+                body.optJSONObject("item")?.let {
+                    putBundle("item", Item.from(it).mediaItem(activity).toBundleIncludeLocalConfiguration(MediaLibraryInfo.INTERFACE_VERSION))
+                }
+            }
+        }.getOrElse {
+            complete(failure(it.message ?: "Invalid audio queue command"))
+            return
+        }
+        when (val active = player) {
+            is ExoPlayer -> {
+                val result = runCatching {
+                    executeAudioQueue(active, args, takeFocus)
+                    NativeResult.Success("")
+                }.getOrElse { failure(it.message ?: "Invalid audio queue command") }
+                publish()
+                complete(result)
+            }
+            is MediaController -> {
+                val future = active.sendCustomCommand(SessionCommand(AUDIO_QUEUE_COMMAND, Bundle.EMPTY), args)
+                future.addListener({
+                    val result = runCatching {
+                        val response = future.get()
+                        if (response.resultCode == SessionResult.RESULT_SUCCESS) {
+                            if (operation == "playItem") takeFocus()
+                            NativeResult.Success("")
+                        } else failure(response.sessionError?.message ?: "Audio queue command failed")
+                    }.getOrElse {
+                        NativeResult.Failure(NativeErrorKind.UNAVAILABLE, it.message ?: "Audio queue command failed", true)
+                    }
+                    publish()
+                    complete(result)
+                }, activity.mainExecutor)
+            }
+            else -> complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Audio player is not ready", false))
+        }
+    }
+
+    private fun executeCommand(controller: Long, operation: String, payload: String): NativeResult {
         if (controller !in controllers) {
             return failure("Audio player is not active")
         }
@@ -277,13 +333,20 @@ private class AudioSessionPlayback(
         publish()
     }
 
+    override fun onPlayerErrorChanged(error: PlaybackException?) {
+        if (error == null) {
+            failure = null
+            publish()
+        }
+    }
+
     private val effects = AudioEffects.get(activity, name)
     private var readiness: AudioReadiness? = null
 
     private fun attachedPlayer(): Player {
         player?.let { return it }
         val created = ExoPlayer.Builder(activity, InkAudioRenderersFactory(activity, effects))
-            .setMediaSourceFactory(audioMediaSourceFactory(activity))
+            .setMediaSourceFactory(audioMediaSourceFactory(activity, cache))
             .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
@@ -329,6 +392,7 @@ private class AudioSessionPlayback(
                 putBoolean(CONTROLLER_HINT, true)
                 putString("ink.session", name)
                 putInt(CONTENT_TYPE_HINT, contentType)
+                putBoolean(CACHE_HINT, cache)
             })
             .buildAsync()
         connection = future
@@ -370,22 +434,14 @@ private class AudioSessionPlayback(
         if (connected.isPlaying) handler.postDelayed(progress, PROGRESS_INTERVAL_MS)
     }
 
-    private fun startPlayback(player: Player) {
-        if (player.mediaItemCount == 0) return
-        val duration = player.duration.validTime()?.takeIf { it > 0 } ?: player.mediaMetadata.durationMs ?: 0
-        if (player.playbackState == Player.STATE_ENDED || (duration > 0 && player.currentPosition >= duration)) {
-            player.seekToDefaultPosition()
-        }
-        if (player.playbackState == Player.STATE_IDLE) player.prepare()
-        takeFocus()
-        player.play()
-    }
+    private fun startPlayback(player: Player) = startAudioPlayback(player, takeFocus)
 
     private fun setQueue(items: List<Item>, startIndex: Int, startPosition: Long = 0, prepare: Boolean = true) {
         require(items.isNotEmpty()) { "Audio queues cannot be empty" }
         require(startPosition >= 0) { "Start position must be non-negative" }
         require(startIndex in items.indices) { "Start index must reference an audio item" }
         val mediaItems = items.map { item -> item.mediaItem(activity) }
+        require(items.map { it.id }.toSet().size == items.size) { "Audio queue item IDs must be unique" }
         failure = null
         dispatch { player ->
             if (!prepare) {
@@ -424,6 +480,7 @@ private class AudioSessionPlayback(
     private fun clear() {
         failure = null
         dispatch { player ->
+            player.pause()
             player.stop()
             player.clearMediaItems()
         }
@@ -477,6 +534,9 @@ private class AudioSessionPlayback(
             .put("album", metadata?.albumTitle?.toString().orEmpty())
             .put("artwork", metadata?.artworkUri?.toString().orEmpty())
             .put("index", index)
+            .put("queue", JSONArray().apply {
+                if (player != null) repeat(player.mediaItemCount) { put(player.getMediaItemAt(it).audioItemJson()) }
+            })
             .put("positionMs", player?.currentPosition?.coerceAtLeast(0) ?: 0)
             .put("durationMs", player?.duration?.validTime()?.takeIf { it > 0 } ?: metadata?.durationMs ?: 0)
             .put("bufferedMs", player?.bufferedPosition?.coerceAtLeast(0) ?: 0)
@@ -579,7 +639,7 @@ private class AudioSessionPlayback(
             fun from(value: JSONObject): Item {
                 val src = value.getString("src")
                 return Item(
-                    id = value.optString("id").ifEmpty { src },
+                    id = value.getString("id").also { require(it.isNotBlank()) { "Audio item IDs must not be blank" } },
                     src = src,
                     title = value.getString("title"),
                     artist = value.optString("artist"),
@@ -605,6 +665,7 @@ private class AudioSessionPlayback(
         private const val SOURCE_METADATA_KEY = "ink.source"
         private const val CONTROLLER_HINT = "ink.controller"
         private const val CONTENT_TYPE_HINT = "ink.contentType"
+        private const val CACHE_HINT = "ink.cache"
         private val RECORDING_ID = Regex("[0-9a-f-]{36}")
 
         private fun Long.validTime() = takeIf { it != C.TIME_UNSET && it >= 0 } ?: 0

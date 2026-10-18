@@ -163,7 +163,7 @@ private class InkAudioAdapter(
         }
         when (controllers[controller]) {
             in SUPPORTED_PROCESSORS -> microphone.execute(controller, operation, complete)
-            PLAYER -> complete(playback.execute(controller, operation, payload))
+            PLAYER -> playback.execute(controller, operation, payload, complete)
             RECORDER -> complete(recording.execute(operation))
             null -> complete(protocol("Audio controller is not active"))
             else -> complete(protocol("Unknown audio controller"))
