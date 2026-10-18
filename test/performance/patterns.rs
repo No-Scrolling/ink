@@ -385,6 +385,7 @@ fn image_arrival(samples: usize, warmup: usize) -> Value {
         assert!(
             app.engine
                 .complete_native_image(request.id(), 64, 64, pixels, None)
+                .changed()
         );
         let time = app.sample(start);
         assert!(app.engine.scene().image_revision > revision);

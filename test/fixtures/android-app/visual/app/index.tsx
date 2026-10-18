@@ -20,7 +20,7 @@ export default function VisualFixture() {
   useEffect(() => {
     console.log(`INK_VISUAL_STATE ${JSON.stringify({ version: 1, state })}`);
   }, [state]);
-  return <Screen waitForImages wide={state === "rows"} title={state === "graphics" ? "Graphics" : state === "rows" ? "Rows" : "List"}>
+  return <Screen wide={state === "rows"} title={state === "graphics" ? "Graphics" : state === "rows" ? "Rows" : "List"}>
     {state === "graphics" ? <Stack gap={16}>
       <Text size={18}>Clipped canvas</Text>
       <Canvas width={300} height={90}>

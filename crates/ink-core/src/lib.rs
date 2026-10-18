@@ -255,6 +255,22 @@ impl ResourceError {
     }
 }
 
+/// How a completed image changed the scene.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageUpdate {
+    Unchanged,
+    /// The image is on screen and should be presented promptly.
+    Visible,
+    /// The image only landed in the scroll overscan; any frame can upload it.
+    Offscreen,
+}
+
+impl ImageUpdate {
+    pub const fn changed(self) -> bool {
+        !matches!(self, Self::Unchanged)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NativeRequestKind {
     Action,
@@ -506,6 +522,15 @@ fn visible_image(scene: &Scene, id: u64) -> bool {
     })
 }
 
+// Overscanned images are laid out ahead of scrolling but are not yet on screen.
+fn pending_image_on_screen(scene: &Scene, image: &PendingImage) -> bool {
+    let mut rect = image.rect;
+    if image.scrolling { rect.y += scene.scroll_origin - scene.scroll_offset; }
+    let mut visible = rect.intersection(image.clip);
+    if let (true, Some(clip)) = (image.scrolling, scene.scroll_clip) { visible = visible.intersection(clip); }
+    visible.width > 0.0 && visible.height > 0.0
+}
+
 fn image_content_rect(image: &ImageData, mut rect: Rect, fit: ImageFit) -> Rect {
     if rect.width <= 0.0 || rect.height <= 0.0 || image.height() == 0 {
         return rect;
@@ -696,7 +721,6 @@ struct ScreenNode {
     left_action: Option<(Mask, Action)>,
     right_action: Option<(Mask, Action)>,
     media_picker: bool,
-    wait_for_images: bool,
 }
 
 impl Node {
@@ -716,7 +740,6 @@ impl Node {
                 left_action: None,
                 right_action: None,
                 media_picker: false,
-                wait_for_images: true,
             })),
         }
     }
@@ -1567,12 +1590,12 @@ impl Engine {
         height: u32,
         pixels: Vec<u8>,
         animation: Option<Box<dyn ImageAnimation>>,
-    ) -> bool {
+    ) -> ImageUpdate {
         let Some(pending) = self.in_flight_requests.remove(&request_id) else {
-            return false;
+            return ImageUpdate::Unchanged;
         };
         let RequestOwner::Image(key) = pending.owner else {
-            return false;
+            return ImageUpdate::Unchanged;
         };
         if !matches!(
             self.remote_images.get(&key),
@@ -1581,7 +1604,7 @@ impl Engine {
             || height == 0
             || pixels.len() != width as usize * height as usize * 4
         {
-            return false;
+            return ImageUpdate::Unchanged;
         }
         if let Some(animation) = animation { self.image_animations.insert(key.clone(), animation); }
         let id = image_id(&key);
@@ -1601,6 +1624,8 @@ impl Engine {
         if key.module == "barcode" || self.pending_images.iter().any(|slot| slot.key == key && slot.needs_layout) {
             self.rebuild_scene();
         } else {
+            let mut slots = 0;
+            let mut on_screen = false;
             let mut index = 0;
             while index < self.pending_images.len() {
                 if self.pending_images[index].key != key {
@@ -1608,6 +1633,8 @@ impl Engine {
                     continue;
                 }
                 let slot = self.pending_images.remove(index);
+                slots += 1;
+                on_screen |= pending_image_on_screen(&self.scene, &slot);
                 self.scene.images.insert(slot.index, ImageRun {
                     avatar: slot.avatar,
                     image: ImageData::Remote(image.clone()),
@@ -1622,8 +1649,9 @@ impl Engine {
                 for later in &mut self.pending_images[index..] { later.index += 1; }
             }
             self.scene.image_revision = self.scene.image_revision.wrapping_add(1);
+            if slots > 0 && !on_screen && !self.preloaded_images.contains(&key) { return ImageUpdate::Offscreen; }
         }
-        true
+        ImageUpdate::Visible
     }
 
     pub fn fail_native(&mut self, request_id: u64, _error: ResourceError) -> bool {
@@ -3578,7 +3606,6 @@ impl Engine {
                     left_action,
                     right_action,
                     media_picker,
-                    wait_for_images,
                     bottom_inset,
                     background,
                 } = screen.as_ref();
@@ -3587,8 +3614,8 @@ impl Engine {
                         rect, clip: self.clip, colour: self.scene.colour(*colour), scrolling: false,
                     });
                 }
-                if *wait_for_images { self.visible_image_screens.insert(node.identity); }
-                let waiting = *wait_for_images && self.image_screens.get(&node.identity) != Some(&None);
+                self.visible_image_screens.insert(node.identity);
+                let waiting = self.image_screens.get(&node.identity) != Some(&None);
                 let pending_start = self.pending_images.len();
                 let image_start = self.scene.images.len();
                 self.layout_screen(
@@ -3606,13 +3633,15 @@ impl Engine {
                     rect,
                 );
                 if waiting && (self.scene.images.len() > image_start || self.pending_images.len() > pending_start) {
-                    let pending = &self.pending_images[pending_start..];
-                    let ready = !pending.iter().any(|image| {
-                        matches!(self.remote_images.get(&image.key), Some(RemoteImageState::Loading { .. }))
+                    let blocking: Vec<_> = self.pending_images[pending_start..].iter()
+                        .filter(|image| pending_image_on_screen(&self.scene, image))
+                        .map(|image| image.key.clone()).collect();
+                    let ready = !blocking.iter().any(|key| {
+                        matches!(self.remote_images.get(key), Some(RemoteImageState::Loading { .. }))
                     });
                     let started = self.image_screens.entry(node.identity).or_insert_with(|| Some(Instant::now()));
                     if ready { *started = None; }
-                    self.blocking_images.extend(pending.iter().map(|image| image.key.clone()));
+                    self.blocking_images.extend(blocking);
                 }
             },
             NodeKind::Stack {

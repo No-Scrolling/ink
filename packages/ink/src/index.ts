@@ -21,7 +21,6 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   centered?: boolean;
   wide?: boolean;
   bottomInset?: boolean;
-  waitForImages?: boolean;
   leftAction?: { icon: IconAsset; onPress: () => void };
   rightAction?: { icon: IconAsset; onPress: () => void };
 }) {

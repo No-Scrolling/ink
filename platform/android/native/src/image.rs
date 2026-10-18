@@ -1,6 +1,6 @@
 use ink_core::{ImageAnimation, ImageFit};
 use std::{
-    ffi::{c_int, c_void},
+    ffi::{CString, c_char, c_int, c_void},
     os::fd::AsRawFd,
     ptr::NonNull,
     sync::{Arc, Mutex, OnceLock, atomic::{AtomicBool, Ordering}, mpsc::{SyncSender, sync_channel}},
@@ -11,13 +11,30 @@ const IMAGE_DECODER_SUCCESS: c_int = 0;
 const IMAGE_DECODER_FINISHED: c_int = -10;
 const BITMAP_FORMAT_RGBA_8888: c_int = 1;
 
+const ASSET_MODE_BUFFER: c_int = 3;
+
 enum AImageDecoder {}
 enum AImageDecoderHeaderInfo {}
 enum AImageDecoderFrameInfo {}
+pub(super) enum AAssetManager {}
+enum AAsset {}
+
+#[link(name = "android")]
+unsafe extern "C" {
+    pub(super) fn AAssetManager_fromJava(env: *mut c_void, manager: *mut c_void) -> *mut AAssetManager;
+    fn AAssetManager_open(manager: *mut AAssetManager, path: *const c_char, mode: c_int) -> *mut AAsset;
+    fn AAsset_close(asset: *mut AAsset);
+}
 
 #[link(name = "jnigraphics")]
 unsafe extern "C" {
     fn AImageDecoder_createFromFd(fd: c_int, decoder: *mut *mut AImageDecoder) -> c_int;
+    fn AImageDecoder_createFromAAsset(asset: *mut AAsset, decoder: *mut *mut AImageDecoder) -> c_int;
+    fn AImageDecoder_createFromBuffer(
+        buffer: *const c_void,
+        length: usize,
+        decoder: *mut *mut AImageDecoder,
+    ) -> c_int;
     fn AImageDecoder_delete(decoder: *mut AImageDecoder);
     fn AImageDecoder_isAnimated(decoder: *mut AImageDecoder) -> bool;
     fn AImageDecoder_getRepeatCount(decoder: *mut AImageDecoder) -> i32;
@@ -45,17 +62,52 @@ unsafe extern "C" {
     ) -> c_int;
 }
 
+pub(super) enum Source<'a> {
+    File(&'a str),
+    Asset(*mut AAssetManager, &'a str),
+    Bytes(Vec<u8>),
+}
+
+// Keeps the encoded image alive for as long as its decoder reads from it.
+enum Input {
+    File(std::fs::File),
+    Asset(Asset),
+    Bytes(Vec<u8>),
+}
+
+struct Asset(NonNull<AAsset>);
+
+impl Drop for Asset {
+    fn drop(&mut self) {
+        unsafe { AAsset_close(self.0.as_ptr()) };
+    }
+}
+
 pub(super) fn decode(
-    path: &str,
+    source: Source<'_>,
     target_width: u32,
     target_height: u32,
     fit: ImageFit,
     looping: bool,
 ) -> Result<(u32, u32, Vec<u8>, Option<Box<dyn ImageAnimation>>), String> {
-    let file = std::fs::File::open(path)
-        .map_err(|error| format!("Android could not open the remote image: {error}"))?;
+    let input = match source {
+        Source::File(path) => Input::File(std::fs::File::open(path)
+            .map_err(|error| format!("Android could not open the remote image: {error}"))?),
+        Source::Asset(manager, path) => {
+            let path = CString::new(path).map_err(|_| "Bundled image path was invalid".to_owned())?;
+            let asset = unsafe { AAssetManager_open(manager, path.as_ptr(), ASSET_MODE_BUFFER) };
+            Input::Asset(Asset(NonNull::new(asset).ok_or_else(|| "Android could not open the bundled image".to_owned())?))
+        }
+        Source::Bytes(bytes) => Input::Bytes(bytes),
+    };
     let mut raw = std::ptr::null_mut();
-    let result = unsafe { AImageDecoder_createFromFd(file.as_raw_fd(), &mut raw) };
+    let result = unsafe {
+        match &input {
+            Input::File(file) => AImageDecoder_createFromFd(file.as_raw_fd(), &mut raw),
+            Input::Asset(asset) => AImageDecoder_createFromAAsset(asset.0.as_ptr(), &mut raw),
+            Input::Bytes(bytes) => AImageDecoder_createFromBuffer(bytes.as_ptr().cast(), bytes.len(), &mut raw),
+        }
+    };
     if result != IMAGE_DECODER_SUCCESS {
         return Err(format!(
             "Android could not decode the remote image ({result})"
@@ -138,7 +190,7 @@ pub(super) fn decode(
     let animation = Some(Box::new(Animation::new(DecoderAnimation {
         decoder,
         info,
-        _file: file,
+        _input: input,
         decoded,
         stride,
         width,
@@ -186,7 +238,7 @@ fn frame_delay(decoder: &ImageDecoder, info: &FrameInfo) -> Result<Duration, Str
 struct DecoderAnimation {
     decoder: ImageDecoder,
     info: FrameInfo,
-    _file: std::fs::File,
+    _input: Input,
     // Android composites partial frames into the previous premultiplied pixels.
     decoded: Vec<u8>,
     stride: usize,

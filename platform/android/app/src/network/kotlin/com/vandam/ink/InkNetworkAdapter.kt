@@ -37,6 +37,11 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
     }
     private val engine by httpEngine
 
+    init {
+        // Build the engine off the UI thread so the first request does not pay for it.
+        executor.execute { runCatching { engine } }
+    }
+
     private val streamTransport = lazy { InkFetchStreams(context, engine, executor, handler) }
     private val streams by streamTransport
     private val socketTransport = lazy { InkWebSockets(handler) }
@@ -112,7 +117,6 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
                 .addHeader("Accept", "image/*")
                 .build()
         }.getOrElse {
-            callback.discard()
             complete(protocol("Image request was invalid"))
             return
         }
@@ -126,9 +130,8 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
         private val complete: NativeResultHandler,
     ) : UrlRequest.Callback {
         var request: UrlRequest? = null
-        private val file = File.createTempFile("ink-image-", ".download", context.cacheDir)
-        private val output = file.outputStream().buffered()
         private val buffer = ByteBuffer.allocateDirect(BUFFER_BYTES)
+        private var body = ByteArray(BUFFER_BYTES)
         private var redirects = 0
         private var receivedBytes = 0
 
@@ -159,15 +162,15 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
             byteBuffer: ByteBuffer,
         ) {
             byteBuffer.flip()
-            val bytes = ByteArray(byteBuffer.remaining())
-            byteBuffer.get(bytes)
-            receivedBytes += bytes.size
-            if (receivedBytes > IMAGE_LIMIT) {
+            val size = receivedBytes + byteBuffer.remaining()
+            if (size > IMAGE_LIMIT) {
                 finishFailure(protocol("Network response exceeded Ink's size limit"))
                 request.cancel()
                 return
             }
-            output.write(bytes)
+            if (size > body.size) body = body.copyOf(maxOf(size, minOf(body.size * 2, IMAGE_LIMIT)))
+            byteBuffer.get(body, receivedBytes, byteBuffer.remaining())
+            receivedBytes = size
             byteBuffer.clear()
             request.read(byteBuffer)
         }
@@ -175,7 +178,7 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
         override fun onSucceeded(request: UrlRequest, info: UrlResponseInfo) {
             val status = info.httpStatusCode
             if (status in 200..299) {
-                finish(NativeResult.File(file.absolutePath), keepFile = true)
+                finish(NativeResult.EncodedImage(body, receivedBytes))
             } else {
                 finishFailure(
                     NativeResult.Failure(
@@ -203,22 +206,10 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
 
         override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {
             requests.remove(requestId, request)
-            discard()
         }
 
-        fun discard() {
-            runCatching { output.close() }
-            file.delete()
-        }
-
-        private fun finish(result: NativeResult, keepFile: Boolean = false) {
-            if (requests.remove(requestId, request)) {
-                runCatching { output.close() }
-                if (!keepFile) {
-                    file.delete()
-                }
-                complete(result)
-            } else discard()
+        private fun finish(result: NativeResult) {
+            if (requests.remove(requestId, request)) complete(result)
         }
 
         private fun finishFailure(failure: NativeResult.Failure) {

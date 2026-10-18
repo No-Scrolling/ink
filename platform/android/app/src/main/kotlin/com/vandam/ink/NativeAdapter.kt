@@ -27,6 +27,8 @@ internal fun javascriptResult(id: Long, result: NativeResult): String {
             if (result.deleteAfterRead) java.io.File(result.path).delete()
             response.put("kind", "protocol").put("message", "File results require a managed-file operation")
         }
+        is NativeResult.Asset, is NativeResult.EncodedImage ->
+            response.put("kind", "protocol").put("message", "Image results require an image request")
     }
     val message = response.toString()
     if (message.toByteArray(Charsets.UTF_8).size <= MAX_RESULT_BYTES) return message
@@ -62,6 +64,10 @@ internal sealed interface NativeResult {
     data class Pixels(val width: Int, val height: Int, val rgba: ByteArray) : NativeResult
 
     data class File(val path: String, val deleteAfterRead: Boolean = true) : NativeResult
+
+    data class Asset(val path: String) : NativeResult
+
+    class EncodedImage(val bytes: ByteArray, val size: Int) : NativeResult
 
     data class Failure(
         val kind: NativeErrorKind,

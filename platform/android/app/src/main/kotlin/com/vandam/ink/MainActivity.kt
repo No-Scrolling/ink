@@ -47,7 +47,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var usesPermissions = false
     private lateinit var lightSdkAdapter: LightSdkAdapter
     private val assetsAdapter by lazy { AssetsAdapter(this) }
-    private var usesAssets = false
     private val barcodeAdapter by lazy { createBarcodeAdapter(this) }
     private var usesBarcode = false
     private lateinit var networkAdapter: NetworkAdapter
@@ -83,7 +82,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val nativeTimeouts = mutableMapOf<Long, Runnable>()
     private val nativeRequestStartedAt = mutableMapOf<Long, Long>()
     private val nativeRequestLabels = mutableMapOf<Long, String>()
-    private val imageExecutor = Executors.newSingleThreadExecutor()
+    private val imageExecutor = Executors.newFixedThreadPool(2)
     private val backCallback = OnBackInvokedCallback {
         handleBack()
     }
@@ -228,6 +227,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     internal fun openBundleAsset(path: String): java.io.InputStream =
         developmentBundle?.let { java.io.File(it, path).inputStream() } ?: assets.open(path)
+
+    internal fun bundleImage(path: String): NativeResult =
+        developmentBundle?.let { NativeResult.File(java.io.File(it, path).path, deleteAfterRead = false) } ?: NativeResult.Asset(path)
 
     private fun activateDevelopmentBundle(generation: String) {
         if (!BuildConfig.DEBUG || !generation.matches(Regex("[0-9]+"))) return
@@ -650,7 +652,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         lightSdkAdapter.stop()
         notificationsAdapter.stop()
         stopJavaScriptSession()
-        if (usesAssets) assetsAdapter.stop()
         if (usesBarcode) barcodeAdapter.stop()
         networkAdapter.stop()
         audioAdapter.stop()
@@ -839,7 +840,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         nativeRequestStartedAt.remove(requestId)
         nativeRequestLabels.remove(requestId)
         lightSdkAdapter.cancel(requestId)
-        if (usesAssets) assetsAdapter.cancel(requestId)
         if (usesBarcode) barcodeAdapter.cancel(requestId)
         networkAdapter.cancel(requestId)
         audioAdapter.cancel(requestId)
@@ -891,7 +891,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 val adapter = when (module) {
                     "files" -> filesAdapter
                     LIGHT_SDK_MODULE -> lightSdkAdapter
-                    "assets" -> { usesAssets = true; assetsAdapter }
+                    "assets" -> assetsAdapter
                     "barcode" -> { usesBarcode = true; barcodeAdapter }
                     NETWORK_MODULE -> networkAdapter
                     AUDIO_MODULE -> if (lightAudioPermission) lightSdkAdapter else audioAdapter
@@ -1069,7 +1069,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val changed = when (result) {
             is NativeResult.Success, is NativeResult.Bytes, is NativeResult.Binary -> nativeCompleteAction(engineHandle, requestId)
             is NativeResult.Pixels -> nativeCompletePixels(engineHandle, requestId, result.width, result.height, result.rgba)
-            is NativeResult.File -> {
+            is NativeResult.File, is NativeResult.Asset, is NativeResult.EncodedImage -> {
                 completeImage(requestId, result)
                 return
             }
@@ -1092,17 +1092,24 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         drainNativeRequests()
     }
 
-    private fun completeImage(requestId: Long, result: NativeResult.File) {
+    private fun completeImage(requestId: Long, result: NativeResult) {
         val handle = engineHandle
         imageExecutor.execute {
-            val changed = try {
-                nativeCompleteFile(handle, requestId, result.path)
-            } finally {
-                if (result.deleteAfterRead) File(result.path).delete()
+            val update = when (result) {
+                is NativeResult.Asset -> nativeCompleteAsset(handle, requestId, assets, result.path)
+                is NativeResult.EncodedImage -> nativeCompleteEncoded(handle, requestId, result.bytes, result.size)
+                is NativeResult.File -> try {
+                    nativeCompleteFile(handle, requestId, result.path)
+                } finally {
+                    if (result.deleteAfterRead) File(result.path).delete()
+                }
+                else -> IMAGE_UNCHANGED
             }
             runOnUiThread {
                 if (engineHandle != handle) return@runOnUiThread
-                if (changed) inkView.requestFrame()
+                // Offscreen images share the next vsync frame so their uploads happen before scrolling.
+                if (update == IMAGE_VISIBLE) inkView.requestCommitFrame()
+                else if (update == IMAGE_OFFSCREEN) inkView.requestFrame()
                 syncNativePortals()
                 drainNativeRequests()
             }
@@ -1617,6 +1624,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val OPEN_OPERATION = "open"
         private const val NATIVE_REQUEST_CANCEL = 2
         private const val NATIVE_REQUEST_IMAGE = 3
+        private const val IMAGE_UNCHANGED = 0
+        private const val IMAGE_VISIBLE = 1
+        private const val IMAGE_OFFSCREEN = 2
 
         init {
             System.loadLibrary("ink_android")
@@ -1769,7 +1779,23 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             handle: Long,
             requestId: Long,
             path: String,
-        ): Boolean
+        ): Int
+
+        @JvmStatic
+        private external fun nativeCompleteAsset(
+            handle: Long,
+            requestId: Long,
+            assets: android.content.res.AssetManager,
+            path: String,
+        ): Int
+
+        @JvmStatic
+        private external fun nativeCompleteEncoded(
+            handle: Long,
+            requestId: Long,
+            bytes: ByteArray,
+            size: Int,
+        ): Int
 
         @JvmStatic
         private external fun nativeFailRequest(

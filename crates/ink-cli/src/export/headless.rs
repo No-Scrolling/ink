@@ -139,7 +139,7 @@ pub(super) fn capture(project: &Project, marker: &str, args: &ExportArgs) -> Res
                         image.height(),
                         image.into_raw(),
                         None
-                    ),
+                    ).changed(),
                     "preview image request was rejected"
                 );
             } else if request.kind() == NativeRequestKind::Action {

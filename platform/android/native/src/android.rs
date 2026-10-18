@@ -7,7 +7,7 @@ use std::time::Instant;
 #[cfg(feature = "benchmark")]
 use ink_core::PerfTraceSection;
 use ink_core::{
-    CameraPortal, CameraPreviewKind, ControllerId, Engine, MapPortal, NativeRequestKind, PUBLIC_SANS,
+    CameraPortal, CameraPreviewKind, ControllerId, Engine, ImageUpdate, MapPortal, NativeRequestKind, PUBLIC_SANS,
     PointerOutcome, ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
 };
 use ink_renderer_vulkan::{RenderOutcome, Renderer};
@@ -288,6 +288,7 @@ impl AndroidEngine {
     ) -> bool {
         self.engine
             .complete_native_image(request_id, width, height, pixels, None)
+            .changed()
     }
 
     fn fail_native(&mut self, request_id: u64, error: ResourceError) -> bool {
@@ -977,6 +978,34 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompletePixels(
 }
 
 #[cfg(feature = "image")]
+// Returns 0 when unchanged, 1 when the screen changed and 2 when only offscreen images changed.
+fn complete_encoded_image(handle: jlong, request_id: jlong, source: image::Source<'_>) -> jint {
+    let Some(engine) = engine(handle) else {
+        return 0;
+    };
+    let Some((width, height, fit, looping)) = engine.lock_arc().engine.image_request_target(request_id as u64)
+    else {
+        return 0;
+    };
+    let decoded = image::decode(source, width, height, fit, looping);
+    let mut engine = engine.lock_arc();
+    let update = match decoded {
+        Ok((width, height, pixels, animation)) => {
+            engine.engine.complete_native_image(request_id as u64, width, height, pixels, animation)
+        }
+        Err(message) => if engine.fail_native(
+            request_id as u64,
+            ResourceError::new(ResourceErrorKind::Protocol, message, false),
+        ) { ImageUpdate::Visible } else { ImageUpdate::Unchanged },
+    };
+    match update {
+        ImageUpdate::Unchanged => 0,
+        ImageUpdate::Visible => 1,
+        ImageUpdate::Offscreen => 2,
+    }
+}
+
+#[cfg(feature = "image")]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
     mut env: EnvUnowned<'_>,
@@ -984,28 +1013,48 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
     handle: jlong,
     request_id: jlong,
     path: JString<'_>,
-) -> jboolean {
+) -> jint {
     let path = env
         .with_env(|env| path.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
-    let Some(engine) = engine(handle) else {
-        return false as jboolean;
-    };
-    let Some((width, height, fit, looping)) = engine.lock_arc().engine.image_request_target(request_id as u64)
-    else {
-        return false as jboolean;
-    };
-    let decoded = image::decode(&path, width, height, fit, looping);
-    let mut engine = engine.lock_arc();
-    (match decoded {
-        Ok((width, height, pixels, animation)) => {
-            engine.engine.complete_native_image(request_id as u64, width, height, pixels, animation)
-        }
-        Err(message) => engine.fail_native(
-            request_id as u64,
-            ResourceError::new(ResourceErrorKind::Protocol, message, false),
-        ),
-    }) as jboolean
+    complete_encoded_image(handle, request_id, image::Source::File(&path))
+}
+
+#[cfg(feature = "image")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAsset(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+    assets: JObject<'_>,
+    path: JString<'_>,
+) -> jint {
+    let manager = unsafe { image::AAssetManager_fromJava(env.as_raw().cast(), assets.as_raw().cast()) };
+    let path = env
+        .with_env(|env| path.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    complete_encoded_image(handle, request_id, image::Source::Asset(manager, &path))
+}
+
+#[cfg(feature = "image")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteEncoded(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    request_id: jlong,
+    bytes: JByteArray<'_>,
+    size: jint,
+) -> jint {
+    let bytes = env
+        .with_env(|env| -> jni::errors::Result<Vec<u8>> {
+            let mut buffer = vec![0_i8; size as usize];
+            bytes.get_region(env, 0, &mut buffer)?;
+            Ok(buffer.into_iter().map(|byte| byte as u8).collect())
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    complete_encoded_image(handle, request_id, image::Source::Bytes(bytes))
 }
 
 #[unsafe(no_mangle)]

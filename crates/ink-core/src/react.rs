@@ -928,7 +928,6 @@ impl ReactTree {
                     screen.background = background;
                     screen.wide = props.wide;
                     screen.bottom_inset = props.bottom_inset.unwrap_or(true);
-                    screen.wait_for_images = props.wait_for_images.unwrap_or(true);
                     screen.pinned_header = state.is_none() && props.pinned_header;
                     screen.pinned_footer = state.is_none() && props.pinned_footer;
                     screen.left_action = left_action;
@@ -1213,8 +1212,6 @@ impl Engine {
 struct ScreenProps {
     #[serde(rename = "bottomInset")]
     bottom_inset: Option<bool>,
-    #[serde(rename = "waitForImages")]
-    wait_for_images: Option<bool>,
     title: Option<String>,
     #[serde(default)]
     wide: bool,
