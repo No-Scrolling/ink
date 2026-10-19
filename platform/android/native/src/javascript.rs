@@ -1,9 +1,9 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use std::time::{Duration, Instant};
 #[cfg(feature = "audio")]
 use ink_core::StateValue;
 use ink_core::{Engine, ReactCommit, ReactTree, TextEdit};
-use ink_runtime::{AppRuntime, Event};
+use ink_runtime::{AppRuntime, Event, Script};
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jlong};
 use jni::EnvUnowned;
@@ -19,11 +19,6 @@ jni::bind_java_type! {
         fn on_javascript_ready {
             sig = (),
             name = "onJavaScriptReady",
-        },
-        fn load_web_runtime {
-            sig = () -> JString,
-            name = "loadWebRuntime",
-            non_null = true,
         },
     },
 }
@@ -206,20 +201,37 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
     handle: jlong,
     source: JString<'_>,
     icons: JByteArray<'_>,
+    assets: JObject<'_>,
+    store_path: JString<'_>,
+    files_path: JString<'_>,
     activity: JObject<'_>,
 ) -> jboolean {
     let result = env
         .with_env(|env| -> jni::errors::Result<_> {
+            let assets = super::assets::BundleAssets::new(env, &assets)?;
+            #[cfg(any(feature = "store", feature = "crypto"))]
+            let host = Some(super::data::host(env, &assets, store_path.try_to_string(env)?, files_path.try_to_string(env)?)?);
+            #[cfg(not(any(feature = "store", feature = "crypto")))]
+            let host = { let _ = (store_path, files_path); None };
             Ok(Some((
-                source.try_to_string(env)?,
-                env.convert_byte_array(&icons)?,
+                (!source.is_null()).then(|| source.try_to_string(env)).transpose()?,
+                (!icons.is_null()).then(|| env.convert_byte_array(&icons)).transpose()?,
+                assets,
+                host,
                 env.get_java_vm()?,
                 env.new_global_ref(env.cast_local::<InkActivity>(activity)?)?,
             )))
         })
         .resolve::<jni::errors::LogErrorAndDefault>();
-    let Some((source, icons, vm, activity)) = result else {
+    let Some((source, icons, assets, host, vm, activity)) = result else {
         return false as jboolean;
+    };
+    let icons = match icons.map_or_else(|| assets.read(c"ink-icons-v1.bin"), Ok) {
+        Ok(icons) => icons,
+        Err(error) => {
+            android_log(ANDROID_LOG_ERROR, &format!("could not read icon assets: {error:#}"));
+            return false as jboolean;
+        }
     };
     let tree = match ReactTree::with_icons(&icons) {
         Ok(tree) => tree,
@@ -231,13 +243,18 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
             return false as jboolean;
         }
     };
-    let loader_vm = vm.clone();
     let activity = std::sync::Arc::new(activity);
-    let loader_activity = activity.clone();
     #[cfg(feature = "audio")]
-    let (audio_vm, audio_activity) = (loader_vm.clone(), loader_activity.clone());
-    let runtime = AppRuntime::spawn_with_web_loader(
-        source,
+    let (audio_vm, audio_activity) = (vm.clone(), activity.clone());
+    let script = match source {
+        Some(source) => Script::Source(source),
+        None => {
+            let assets = assets.clone();
+            Script::Load(Box::new(move || assets.script("app")))
+        }
+    };
+    let runtime = AppRuntime::spawn_script(
+        script,
         move || {
             #[cfg(feature = "bridge-timing")]
             android_log(
@@ -248,12 +265,8 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
                 android_log(ANDROID_LOG_ERROR, &error.to_string());
             }
         },
-        move || {
-            let source = loader_vm.attach_current_thread(|env| -> jni::errors::Result<String> {
-                loader_activity.load_web_runtime(env)?.try_to_string(env)
-            })?;
-            Ok(source)
-        },
+        Some(move || assets.script("ink-assets/ink-web")),
+        host,
     );
     match runtime {
         Ok((runtime, events)) => {

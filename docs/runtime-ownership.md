@@ -1,6 +1,6 @@
 # Rust and JavaScript ownership
 
-Reviewed 6 October 2026. Rust owns Ink's visual engine and native list windows. Apps use React components and JSX; JavaScript supplies application data, actions and React semantics. Android services remain in Kotlin where they use platform APIs.
+Updated 19 October 2026. Rust owns Ink's visual engine and native list windows. Apps use React components and JSX; JavaScript supplies application data, actions and React semantics. Android services remain in Kotlin where they use platform APIs.
 
 Android builds now select native list, message and playback composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Custom React components keep their existing behaviour.
 
@@ -18,12 +18,23 @@ Canvas, text-input, camera, video and map primitives are also selected at build 
 | Controlled text input | Kotlin IME, Rust editor, JS value/actions | Event ordering and composition semantics remain intact. |
 | Navigation, resources, filtering, fetching decisions | JavaScript | Application responsibilities. |
 | HTTP, WebSockets and Blob | Native I/O and byte transport; JS Web API semantics | Body bytes use typed buffers, without base64/JSON byte encoding. Metadata still uses JSON. |
-| Storage, SQLite, cryptography | Native operations; JS values/subscriptions | Large structured results can still incur JSON conversion. |
+| Storage and SQLite | Rust workers and result delivery; Kotlin system SQLite; JS values/subscriptions | Android supplies the database engine. Results bypass the Android UI thread. Large structured results still incur JSON conversion. |
+| Cryptography | Rust operations; JS values | Encryption runs as a Rust native function. Android Keystore remains in Kotlin. |
 | Camera, video, maps, location, NFC, notifications, auth | Native services; JS configuration/actions | Thin adapters remain appropriate. |
 | Video progress and time labels | Native playback clock and Rust visuals | Progress anchors bypass JS; React receives semantic state changes. |
 | Recording duration, microphone levels and pitch | Native capture/analysis and readouts; optional status-only JS delivery | Existing hooks retain live measurements by default. Native readouts can update without React; custom measurement-driven UI still subscribes in JS. |
 | Background work | Android scheduling, Rust runtime, JS task bodies | The binary bridge also works in worker runtimes. |
 | Compiler and CLI | Rust orchestration and build-time JS transformation | Not part of the phone's UI update path. |
+
+## Startup and resume
+
+Release builds package QuickJS bytecode for the app, optional networking runtime and background worker. Rust reads the app bundle on the JavaScript thread directly from APK assets. Development builds retain source for debugging and refresh. Icons load directly in Rust, avoiding the Java byte-array transfer.
+
+The Vulkan device, pipelines, glyph atlas and image textures survive surface loss while the activity remains alive. Ink recreates the window and swapchain on return and falls back to a new renderer if the retained device cannot attach. A pipeline cache in Android’s code cache can be reused by later launches.
+
+Store and SQLite calls run on Rust workers and reply directly to the runtime queue. Their Kotlin backend uses Android's built-in SQLite through synchronous JNI calls on those workers. Android APKs contain no bundled SQLite engine; host fixtures retain an embedded backend. SQL features follow the Android version's SQLite implementation.
+
+The store keeps its existing database path, schema and revision rules, using WAL with full synchronisation for committed writes. Foreground and background runtimes in the process share its connection and change notifications. Query cancellation interrupts Android SQLite through `CancellationSignal`. Encryption preserves the `ink1.` AES-256-GCM format. Android Keystore remains in Kotlin.
 
 ## Changes from the whole-runtime audit
 
@@ -31,7 +42,7 @@ Canvas, text-input, camera, video and map primitives are also selected at build 
 
 **Playback subscriptions.** Native-clock controllers receive meaningful state changes, including seeks, speed and queue changes. The native player sends clock anchors directly to Rust for elapsed-time labels and bars. `usePlayer` no longer sends periodic snapshots. JS `state.position` and `state.silenceSaved` are last-notified values; `getState()` reads fresh values when application logic needs them. See [native playback progress](audio.mdx#keep-visual-progress-native). Reverb's custom adapter uses the same native clocks and controller notifications instead of polling.
 
-**Sparse list application.** Unchanged-order patches reuse the key index, update changed mounted rows and invalidate only their cached heights. Reorders retain the existing anchor-preserving path. This avoids full key-map and height-index reconstruction for a one-row edit. Shared version arrays can still require copying; JS still scans keys and visual dependencies on invalidated renders. This is not an O(1) end-to-end update claim.
+**Sparse list application.** Unchanged-order patches reuse the key index, update changed mounted rows and invalidate only their cached heights. Reorders retain the existing anchor-preserving path. Compiled app lists with unchanged captured state scan item identities and project only replaced items when keys keep their positions. This avoids rebuilding the JS key map and projecting every row for a one-row edit. The identity scan and changed array copy remain O(n). Arrays and changed items must be replaced, as documented for `List`.
 
 **Binary transport.** Fetch chunks, managed-file reads, uploads and WebSocket binary batches travel beside the JSON envelope as byte arrays. Runtime queues own their data; cancellation and size limits remain. This removes base64 conversion, not every copy: QuickJS thread ownership and JNI still require byte copies. Native-file multipart parts retain their existing file-reference path. The unused JS base64 dependency was removed. No network throughput or APK-size improvement is claimed without a paired measurement.
 
@@ -45,7 +56,7 @@ Further compiler coverage should prove equivalence for pure wrappers. Dropping t
 
 - Video now feeds the native playback clock, including pause, completion, seeking and buffering. Its progress bar and labels no longer take a periodic trip through React.
 - `RecordingDuration`, `LevelReadout` and `PitchReadout` update their native text runs directly, without rebuilding layout. Capture hooks deliver lifecycle state by default. Custom calculations subscribe to the stable `measurements` source with `useSnapshot`; this enables live JavaScript delivery without restarting capture. The former `updates` option is removed.
-- Compiled list projection now records changed rows and key order in the same pass. The renderer consumes that patch only when its base matches the committed items. Mismatched bases retain the comparison path. Consumed patches are discarded so they do not retain a chain of previous lists. Key/dependency scanning is still O(n); arbitrary application expressions remain JS.
+- Compiled list projection records changed rows and key order in the same pass. The renderer consumes that patch only when its base matches the committed items. Mismatched bases retain the comparison path. Consumed patches are discarded so they do not retain a chain of previous lists. Identity scanning remains O(n); arbitrary application expressions remain JS.
 - Map configuration uses normalised field comparison, removing the JS stringify/parse round trip and duplicate initial update. The native adapter still owns gestures and marker updates. Props are checked on each render so in-place marker edits remain observable.
 - Complex bridge values retain the existing JSON semantics. The fresh instrumented React fixture measured about 0.051 ms in native transfer, including conversion and queue submission. This does not isolate arbitrary nested-value conversion. The earlier paired primitive converter gained roughly 2%, so a second general conversion path remains unjustified by the available measurements.
 

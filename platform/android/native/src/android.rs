@@ -19,6 +19,11 @@ use jni::objects::{JByteBuffer, JClass, JIntArray, JObject, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use ndk::native_window::NativeWindow;
 
+#[path = "assets.rs"]
+mod assets;
+#[cfg(any(feature = "store", feature = "crypto"))]
+#[path = "data.rs"]
+mod data;
 #[path = "javascript.rs"]
 mod javascript;
 
@@ -65,6 +70,10 @@ struct AndroidEngine {
     script: Option<javascript::ScriptRuntime>,
     javascript_error: Option<String>,
     surface: Option<AttachedSurface>,
+    /// A device kept while no window is attached, so returning to the app skips Vulkan setup.
+    idle_renderer: Option<DetachedRenderer>,
+    /// Compiled pipelines saved by an earlier launch.
+    pipeline_cache: Option<std::path::PathBuf>,
     sent_camera_portal: Option<(Option<CameraPortal>, bool)>,
     sent_map_portal: Option<Option<MapPortal>>,
     sent_video_portal: Option<Option<MapPortal>>,
@@ -82,13 +91,41 @@ struct AttachedSurface {
 // Vulkan buffers and surface ownership move together, exclusively under the engine mutex.
 unsafe impl Send for AttachedSurface {}
 
+impl AttachedSurface {
+    /// Release the window after its swapchain, keeping the device.
+    fn detach(self) -> DetachedRenderer {
+        let Self { mut renderer, _window } = self;
+        renderer.detach();
+        DetachedRenderer(renderer)
+    }
+}
+
+/// A renderer without a window. Like `AttachedSurface`, it is owned under the engine mutex.
+struct DetachedRenderer(Renderer);
+unsafe impl Send for DetachedRenderer {}
+
+/// Save new pipeline cache contents off the UI thread, replacing the file atomically.
+fn save_pipeline_cache(path: std::path::PathBuf, saved: Vec<u8>, data: Vec<u8>) {
+    if data.is_empty() || data == saved {
+        return;
+    }
+    std::thread::spawn(move || {
+        let temporary = path.with_extension("partial");
+        if std::fs::write(&temporary, &data).and_then(|()| std::fs::rename(&temporary, &path)).is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+    });
+}
+
 impl AndroidEngine {
-    fn new() -> Self {
+    fn new(cache: Option<std::path::PathBuf>) -> Self {
         Self {
             engine: Engine::new(),
             script: None,
             javascript_error: None,
             surface: None,
+            idle_renderer: None,
+            pipeline_cache: cache,
             sent_camera_portal: None,
             sent_map_portal: None,
             sent_video_portal: None,
@@ -99,8 +136,24 @@ impl AndroidEngine {
         }
     }
 
+    fn detach(&mut self) {
+        if let Some(surface) = self.surface.take() {
+            self.idle_renderer = Some(surface.detach());
+        }
+    }
+
+    /// Create a renderer for `window`, seeded with pipelines compiled by an earlier launch.
+    fn create_renderer(&self, window: *mut std::ffi::c_void, width: u32, height: u32) -> anyhow::Result<Renderer> {
+        let saved = self.pipeline_cache.as_ref().and_then(|path| std::fs::read(path).ok()).unwrap_or_default();
+        let renderer = unsafe { Renderer::with_pipeline_cache(window, width, height, &saved)? };
+        if let Some(path) = &self.pipeline_cache {
+            save_pipeline_cache(path.clone(), saved, renderer.pipeline_cache_data().unwrap_or_default());
+        }
+        Ok(renderer)
+    }
+
     fn attach(&mut self, env: &EnvUnowned<'_>, surface: &JObject<'_>, width: u32, height: u32) -> bool {
-        self.surface = None;
+        self.detach();
         self.engine.set_viewport(width, height);
 
         let Some(window) =
@@ -109,7 +162,17 @@ impl AndroidEngine {
             android_log(ANDROID_LOG_ERROR, "ANativeWindow_fromSurface returned null");
             return false;
         };
-        let renderer = match unsafe { Renderer::new(window.ptr().as_ptr().cast(), width, height) } {
+        let pointer = window.ptr().as_ptr().cast();
+        let reused = self.idle_renderer.take().and_then(|DetachedRenderer(mut renderer)| {
+            match unsafe { renderer.attach(pointer, width, height) } {
+                Ok(()) => Some(renderer),
+                Err(error) => {
+                    android_log(ANDROID_LOG_WARN, &format!("recreating Vulkan device: {error:#}"));
+                    None
+                }
+            }
+        });
+        let renderer = match reused.map_or_else(|| self.create_renderer(pointer, width, height), Ok) {
             Ok(renderer) => renderer,
             Err(error) => {
                 android_log(
@@ -416,7 +479,7 @@ impl AndroidEngine {
             self.update_ns = 0;
         }
         if surface_lost {
-            self.surface = None;
+            self.detach();
         }
         if surface_lost { RenderOutcome::SurfaceLost }
         else if deferred { RenderOutcome::Deferred }
@@ -444,9 +507,14 @@ impl AndroidEngine {
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
-    _env: EnvUnowned<'_>,
+    mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
+    cache_directory: JString<'_>,
 ) -> jlong {
+    let cache = env
+        .with_env(|env| cache_directory.try_to_string(env))
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    let cache = (!cache.is_empty()).then(|| std::path::Path::new(&cache).join("ink-vulkan-pipelines.bin"));
     PANIC_HOOK.call_once(|| {
         std::panic::set_hook(Box::new(|panic| {
             android_log(ANDROID_LOG_ERROR, &format!("native panic: {panic}"));
@@ -457,7 +525,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
     if engines.next_id == jlong::MAX { return 0; }
     engines.next_id += 1;
     let id = engines.next_id;
-    engines.active.insert(id, Arc::new(parking_lot::Mutex::new(AndroidEngine::new())));
+    engines.active.insert(id, Arc::new(parking_lot::Mutex::new(AndroidEngine::new(cache))));
     id
 }
 
@@ -1210,7 +1278,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDetachSurface(
         return;
     };
     let mut engine = engine.lock_arc();
-    engine.surface = None;
+    engine.detach();
 }
 
 #[unsafe(no_mangle)]

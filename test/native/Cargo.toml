@@ -10,8 +10,16 @@ ink-runtime = { path = "../../crates/ink-runtime" }
 ink-core = { path = "../../crates/ink-core", features = ["perf"] }
 ink-protocol = { path = "../../crates/ink-protocol" }
 serde_json.workspace = true
+anyhow.workspace = true
+ink-data = { path = "../../crates/ink-data", features = ["store", "crypto"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
 ink-audio = { path = "../../crates/ink-audio" }
+ink-renderer-vulkan = { path = "../../crates/ink-renderer-vulkan", features = ["offscreen", "perf"] }
 
 [[bin]]
 name = "ink-performance"
 path = "../performance/main.rs"
+
+[[bin]]
+name = "ink-render-performance"
+path = "../performance/render.rs"

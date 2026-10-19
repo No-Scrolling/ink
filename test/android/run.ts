@@ -72,7 +72,7 @@ try {
   const summaryLine = result.split("\n").find(line => line.startsWith("INSTRUMENTATION_RESULT: ink.summary="));
   if (!summaryLine) throw new Error(`Instrumentation did not produce a test summary. See ${output}/instrumentation.log`);
   const summary = JSON.parse(summaryLine.slice("INSTRUMENTATION_RESULT: ink.summary=".length)) as { passed: number; failures: string[] };
-  if (!Array.isArray(summary.failures) || summary.passed + summary.failures.length !== 15) throw new Error("Instrumentation returned an incomplete test summary.");
+  if (!Array.isArray(summary.failures) || summary.passed + summary.failures.length !== 11) throw new Error("Instrumentation returned an incomplete test summary.");
   if (summary.failures.length) throw new Error(`${summary.failures.length} Android contract(s) failed. See ${output}/instrumentation.log`);
   console.log(`${summary.passed} Android contracts passed.`);
 } catch (error) {

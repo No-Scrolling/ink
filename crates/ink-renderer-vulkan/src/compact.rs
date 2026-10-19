@@ -283,7 +283,7 @@ impl ImageCache {
             && cached.generation != generation
             && cached.width == image.width && cached.height == image.height
         {
-            queue.write_texture(&cached.texture, [0, 0], [image.width, image.height], &image.pixels);
+            queue.write_texture_shared(&cached.texture, [0, 0], [image.width, image.height], image.pixels.clone());
             cached.generation = generation;
             #[cfg(feature = "perf")]
             { self.uploaded_bytes += image.pixels.len() as u64; }
@@ -327,7 +327,10 @@ impl ImageCache {
                 return Err(anyhow!("an Ink image has invalid pixel data"));
             }
             let texture = device.texture(width, height, false);
-            queue.write_texture(&texture, [0, 0], [width, height], &pixels);
+            match image {
+                ImageData::Remote(image) => queue.write_texture_shared(&texture, [0, 0], [width, height], image.pixels.clone()),
+                ImageData::Asset(_) => queue.write_texture(&texture, [0, 0], [width, height], &pixels),
+            }
             let bind_group = texture.bind_group();
             self.images.insert(
                 id,
@@ -670,8 +673,40 @@ impl Renderer {
     /// # Safety
     /// `window` must point to a live Android `ANativeWindow` retained until this renderer is dropped.
     pub unsafe fn new(window: *mut std::ffi::c_void, width: u32, height: u32) -> Result<Self> {
-        let surface = unsafe { gpu::Surface::new(window, width, height)? };
+        unsafe { Self::with_pipeline_cache(window, width, height, &[]) }
+    }
+
+    /// Like [`Self::new`], seeding pipeline compilation from [`Self::pipeline_cache_data`] of an earlier run.
+    ///
+    /// # Safety
+    /// `window` must point to a live Android `ANativeWindow` retained until this renderer is dropped or detached.
+    pub unsafe fn with_pipeline_cache(window: *mut std::ffi::c_void, width: u32, height: u32, pipeline_cache: &[u8]) -> Result<Self> {
+        let surface = unsafe { gpu::Surface::new(window, width, height, pipeline_cache)? };
         Self::from_surface(surface, width, height)
+    }
+
+    /// Present to `window`. Uploaded glyphs, images and prepared geometry are kept.
+    ///
+    /// # Safety
+    /// `window` must point to a live Android `ANativeWindow` retained until [`Self::detach`] or drop.
+    pub unsafe fn attach(&mut self, window: *mut std::ffi::c_void, width: u32, height: u32) -> Result<()> {
+        unsafe { self.surface.attach(window, width, height)? };
+        self.config.width = width;
+        self.config.height = height;
+        Ok(())
+    }
+
+    /// Release the window while retaining the device and cached resources.
+    pub fn detach(&mut self) {
+        self.surface.detach();
+    }
+
+    pub fn attached(&self) -> bool {
+        self.surface.attached()
+    }
+
+    pub fn pipeline_cache_data(&self) -> Result<Vec<u8>> {
+        self.device.pipeline_cache_data()
     }
 
     #[cfg(feature = "offscreen")]
@@ -759,6 +794,9 @@ impl Renderer {
     }
 
     pub fn render(&mut self, scene: &Scene) -> Result<RenderOutcome> {
+        if !self.surface.attached() {
+            return Ok(RenderOutcome::Skipped);
+        }
         match self.render_frame(scene) {
             Err(error) if gpu::surface_lost(&error) => Ok(RenderOutcome::SurfaceLost),
             result => result,
@@ -1075,15 +1113,10 @@ impl Renderer {
                         self.glyph_atlas.cursor_x = 0;
                         self.glyph_atlas.cursor_y = 0;
                         self.glyph_atlas.row_height = 0;
-                        let size = self.glyph_atlas.size;
-                        self.queue.write_texture(
-                            &self.glyph_atlas.texture,
-                            [0, 0],
-                            [size, size],
-                            &vec![0; size as usize * size as usize],
-                        );
+                        self.queue.clear_texture(&self.glyph_atlas.texture);
                         reclaimed = true;
                     } else if self.glyph_atlas.size < MAX_ATLAS_SIZE {
+                        self.queue.discard_texture_uploads(&[&self.glyph_atlas.texture]);
                         self.glyph_atlas = GlyphAtlas::new(&self.device, self.glyph_atlas.size * 2)?;
                     } else {
                         return Err(

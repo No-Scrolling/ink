@@ -28,10 +28,13 @@ memory-diagnostics = ["ink-core/perf", "ink-renderer-vulkan/perf"]
 image = ["ink-renderer-vulkan/image"]
 network = []
 camera-photo = ["image"]
+store = ["dep:ink-data", "ink-data/store"]
+crypto = ["dep:ink-data", "ink-data/crypto"]
 
 [dependencies]
 ink-core = { path = "../../../crates/ink-core", default-features = false }
 ink-runtime = { path = "../../../crates/ink-runtime" }
+ink-data = { path = "../../../crates/ink-data", optional = true }
 anyhow.workspace = true
 ink-audio = { path = "../../../crates/ink-audio", optional = true }
 serde_json.workspace = true
@@ -42,4 +45,5 @@ ink-renderer-vulkan = { path = "../../../crates/ink-renderer-vulkan" }
 libc = { version = "0.2", optional = true }
 jni.workspace = true
 ndk = { workspace = true, features = ["rwh_06"] }
+ndk-sys = "0.6.0"
 parking_lot = { version = "0.12.5", features = ["arc_lock"] }

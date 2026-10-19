@@ -16,10 +16,6 @@ import java.util.concurrent.atomic.AtomicInteger
 
 internal class ContractTests(private val context: Context) {
     fun run(test: (String, () -> Unit) -> Unit) {
-        test("store persists opaque values and rejects stale writes", ::storePersistence)
-        test("store concurrent CAS commits exactly one writer", ::storeConcurrency)
-        test("store notifies other live adapters only after committed writes", ::storeNotifications)
-        test("store rejects downgraded versions and oversized values without mutation", ::storeValidation)
         test("native requests cancel and dispose late owned resources", ::requestCancellation)
         test("native requests timeout, close and suppress duplicate completion", ::requestLifetime)
         test("native requests enforce capacity and request identity", ::requestIdentity)
@@ -52,73 +48,6 @@ internal class ContractTests(private val context: Context) {
     }
     private fun input(key: String, revision: Long = 0, version: Long = 1, text: String = "initial") =
         JSONObject().put("key", key).put("revision", revision).put("version", version).put("value", text)
-    private fun entry(adapter: StoreAdapter, key: String) = JSONObject(value(call(adapter, "get", input(key))))
-    private fun committed(result: NativeResult) = JSONObject(value(result)).getBoolean("committed")
-
-    private fun storePersistence() {
-        val key = "persistence"
-        val stored = "{\"text\":\"hello 😀\\n\",\"count\":9}"
-        val first = StoreAdapter(context)
-        try {
-            equal("null", value(call(first, "get", input(key))))
-            equal(true, committed(call(first, "write", input(key, text = stored))))
-            equal(false, committed(call(first, "write", input(key, text = "lost"))))
-        } finally { first.stop() }
-        val reopened = StoreAdapter(context)
-        try {
-            val saved = entry(reopened, key)
-            equal(1L, saved.getLong("revision")); equal(1L, saved.getLong("version")); equal(stored, saved.getString("value"))
-            equal(true, committed(call(reopened, "replace", input(key, revision = 999, text = "replacement"))))
-            equal(2L, entry(reopened, key).getLong("revision"))
-            equal("replacement", entry(reopened, key).getString("value"))
-        } finally { reopened.stop() }
-    }
-
-    private fun storeConcurrency() {
-        val stores = List(12) { StoreAdapter(context) }
-        val results = LinkedBlockingQueue<NativeResult>()
-        try {
-            stores.forEachIndexed { index, store ->
-                store.execute(index + 1L, "write", input("contested", text = "writer-$index").toString()) { results.add(it) }
-            }
-            equal(1, List(stores.size) { committed(take(results)) }.count { it })
-            val saved = entry(stores.first(), "contested")
-            equal(1L, saved.getLong("revision"))
-            check(saved.getString("value") in (0..11).map { "writer-$it" })
-        } finally { stores.forEach { it.stop() } }
-    }
-
-    private fun storeNotifications() {
-        val writerEvents = LinkedBlockingQueue<String>()
-        val siblingEvents = LinkedBlockingQueue<String>()
-        val stoppedEvents = LinkedBlockingQueue<String>()
-        val writer = StoreAdapter(context) { writerEvents.add(it) }
-        val sibling = StoreAdapter(context) { siblingEvents.add(it) }
-        val stopped = StoreAdapter(context) { stoppedEvents.add(it) }
-        stopped.stop()
-        try {
-            equal(true, committed(call(writer, "write", input("notification"))))
-            equal("notification", siblingEvents.poll(5, TimeUnit.SECONDS))
-            equal("initial", entry(sibling, "notification").getString("value"))
-            equal(false, committed(call(writer, "write", input("notification"))))
-            equal(null, siblingEvents.poll(100, TimeUnit.MILLISECONDS))
-            equal(null, writerEvents.poll()); equal(null, stoppedEvents.poll())
-        } finally { writer.stop(); sibling.stop() }
-    }
-
-    private fun storeValidation() {
-        val store = StoreAdapter(context)
-        try {
-            equal(true, committed(call(store, "write", input("validated", version = 2, text = "stable"))))
-            failure(call(store, "replace", input("validated", version = 1, text = "downgrade")))
-            failure(call(store, "replace", input("validated", version = 2, text = "😀".repeat(300_000))))
-            val saved = entry(store, "validated")
-            equal(1L, saved.getLong("revision")); equal(2L, saved.getLong("version")); equal("stable", saved.getString("value"))
-            for (key in listOf("", "x".repeat(257))) failure(call(store, "write", input(key)))
-            for (version in listOf(0L, 9_007_199_254_740_992L)) failure(call(store, "write", input("version-$version", version = version)))
-            failure(call(store, "unknown", input("unknown")), NativeErrorKind.PROTOCOL)
-        } finally { store.stop() }
-    }
 
     private fun withHandler(operation: (Handler) -> Unit) {
         val thread = HandlerThread("ink-contract-handler").apply { start() }

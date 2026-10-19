@@ -61,8 +61,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var videoPortal: VideoPortal? = null
     private var mapPortal: MapPortal? = null
     private val filesAdapter by lazy { createFilesAdapter(this) }
-    private val sqliteRuntime = lazy { SqliteAdapter(this) }
-    private val sqliteAdapter by sqliteRuntime
     private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
     private val secureStoreAdapter by lazy { SecureStoreAdapter(this) }
     private val authAdapter by lazy { AuthAdapter(this) { message ->
@@ -124,7 +122,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 
-        engineHandle = nativeCreate()
+        engineHandle = nativeCreate(codeCacheDir.absolutePath)
         check(engineHandle != 0L) { "Ink could not create the runtime" }
         inkView = InkSurfaceView().apply {
             holder.setFormat(PixelFormat.OPAQUE)
@@ -289,20 +287,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         try {
             developmentError?.dismiss()
             if (BuildConfig.DEBUG && directory == null) java.io.File(filesDir, "ink-dev/active-worker").delete()
-            val source = if (directory == null) assets.open("app.js").bufferedReader().use { it.readText() }
-                else java.io.File(directory, "app.js").readText()
-            val icons = if (directory == null) assets.open("ink-icons-v1.bin").use { it.readBytes() }
-                else java.io.File(directory, "ink-icons-v1.bin").readBytes()
+            // Native code reads installed bundles from the APK off the UI thread.
+            val source = directory?.let { java.io.File(it, "app.js").readText() }
+            val icons = directory?.let { java.io.File(it, "ink-icons-v1.bin").readBytes() }
             if (BuildConfig.DEBUG) {
                 val manifest = if (directory == null) assets.open("ink-bundle-v1.json").bufferedReader().use { it.readText() }
                     else java.io.File(directory, "ink-bundle-v1.json").readText()
                 refreshCompatibility = JSONObject(manifest).optString("refreshCompatibilityHash")
-                developmentIcons = icons
+                developmentIcons = icons ?: assets.open("ink-icons-v1.bin").use { it.readBytes() }
             }
             stopJavaScriptSession()
             nativeRequestHandler.removeCallbacks(drainJavaScript)
             javascriptPending.set(false)
-            check(nativeStartJavaScript(engineHandle, source, icons, this)) { "Ink could not start JavaScript; see ink logs" }
+            check(nativeStartJavaScript(engineHandle, source, icons, assets,
+                getDatabasePath("ink-store.db").path, filesDir.path, this)) { "Ink could not start JavaScript; see ink logs" }
             developmentBundle = directory
             inkView.requestFrame()
         } catch (error: Exception) {
@@ -317,16 +315,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private val javascriptPending = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val storeAdapter by lazy {
-        StoreAdapter(this) { key ->
-            runOnUiThread {
-                if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle,
-                    JSONObject().put("type", "store-changed").put("key", key).toString())
-            }
-        }
-    }
     private val clipboardAdapter by lazy { ClipboardAdapter(this) }
-    private var usesStore = false
     private var pendingJavaScriptCalls: org.json.JSONArray? = null
     private var javascriptCallIndex = 0
     private fun drainJavaScriptCalls(): Boolean {
@@ -416,7 +405,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
         }
         javascriptControllers.clear()
-        if (sqliteRuntime.isInitialized()) sqliteAdapter.reset()
         networkAdapter.reset()
         connectivityAdapter.reset()
         javascriptRequests = newJavaScriptRequests()
@@ -445,13 +433,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         val adapter = when (module) {
             "permissions" -> { usesPermissions = true; permissionsAdapter }
-            "store" -> { usesStore = true; storeAdapter }
             "clipboard" -> clipboardAdapter
-            "sqlite" -> sqliteAdapter
             "connectivity" -> connectivityAdapter
             "files" -> filesAdapter
             "secure-store" -> secureStoreAdapter
-            "crypto" -> createCryptoAdapter()
             "auth" -> authAdapter
             "external" -> externalAdapter
             "downloads" -> downloadsAdapter
@@ -552,8 +537,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             nativeRequestHandler.post(drainJavaScript)
         }
     }
-
-    fun loadWebRuntime(): String = assets.open("ink-assets/ink-web.js").bufferedReader().use { it.readText() }
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -662,12 +645,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         mapsAdapter.stop()
         videoAdapter.stop()
         filesAdapter.stop()
-        if (sqliteRuntime.isInitialized()) sqliteAdapter.stop()
         externalAdapter.close()
         authAdapter.close()
         connectivityAdapter.close()
         downloadsAdapter.stop()
-        if (usesStore) storeAdapter.stop()
         imageExecutor.shutdown()
         nativeTimeouts.values.forEach(nativeRequestHandler::removeCallbacks)
         nativeTimeouts.clear()
@@ -1633,7 +1614,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
 
         @JvmStatic
-        private external fun nativeCreate(): Long
+        private external fun nativeCreate(cacheDirectory: String): Long
 
         @JvmStatic
         private external fun nativeTakeJavaScriptError(handle: Long): String?
@@ -1642,7 +1623,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private external fun nativeRefreshJavaScript(handle: Long, source: String): Boolean
 
         @JvmStatic
-        private external fun nativeStartJavaScript(handle: Long, source: String, icons: ByteArray, activity: MainActivity): Boolean
+        private external fun nativeStartJavaScript(
+            handle: Long, source: String?, icons: ByteArray?, assets: android.content.res.AssetManager,
+            storePath: String, filesPath: String, activity: MainActivity,
+        ): Boolean
 
         @JvmStatic
         private external fun nativeDrainJavaScript(handle: Long): Boolean

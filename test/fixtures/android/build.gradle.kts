@@ -27,7 +27,7 @@ kotlin {
         setSrcDirs(listOf("src", "../../../platform/android/app/src/main/kotlin", "../../../platform/android/app/src/network/kotlin"))
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
-            "**/NativeRequests.kt", "**/StoreAdapter.kt", "**/InkFetchStreams.kt", "**/InkManagedFiles.kt", "**/SecureStoreAdapter.kt",
+            "**/NativeRequests.kt", "**/InkFetchStreams.kt", "**/InkManagedFiles.kt", "**/SecureStoreAdapter.kt",
         )
     }
 }

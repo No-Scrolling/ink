@@ -1,7 +1,6 @@
 package com.vandam.ink
 
 import android.util.Base64
-import org.json.JSONObject
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -35,23 +34,4 @@ internal class InkCipher(key: String) {
         const val PREFIX = "ink1."
         val random = SecureRandom()
     }
-}
-
-internal fun createCryptoAdapter(): NativeAdapter = object : NativeAdapter {
-    override fun execute(requestId: Long, operation: String, payload: String, complete: NativeResultHandler) {
-        try {
-            val input = JSONObject(payload)
-            val cipher = InkCipher(input.getString("key"))
-            val text = input.getString("text")
-            val result = when (operation) {
-                "encrypt" -> cipher.encrypt(text)
-                "decrypt" -> cipher.decrypt(text)
-                else -> throw IllegalArgumentException("Unknown crypto operation")
-            }
-            complete(NativeResult.Success(JSONObject.quote(result)))
-        } catch (_: Exception) {
-            complete(NativeResult.Failure(NativeErrorKind.PROTOCOL, "Could not $operation data", false))
-        }
-    }
-    override fun cancel(requestId: Long) = Unit
 }

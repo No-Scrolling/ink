@@ -54,18 +54,26 @@ enum Upload {
     Clear(Texture),
     Write {
         texture: Texture,
-        offset: usize,
+        source: UploadSource,
         origin: [u32; 2],
         size: [u32; 2],
     },
+}
+enum UploadSource {
+    /// Offset into `Uploads::bytes`.
+    Copied(usize),
+    /// Shared pixels, copied straight into the staging buffer.
+    Shared(Arc<[u8]>),
 }
 struct Core {
     _entry: VulkanEntry,
     instance: ash::Instance,
     device: ash::Device,
     physical: vk::PhysicalDevice,
+    family: u32,
     queue: vk::Queue,
     memory: vk::PhysicalDeviceMemoryProperties,
+    pipeline_cache: vk::PipelineCache,
     commands: vk::CommandPool,
     upload: vk::CommandBuffer,
     descriptors: vk::DescriptorPool,
@@ -94,6 +102,7 @@ impl Drop for Core {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();
+            self.device.destroy_pipeline_cache(self.pipeline_cache, None);
             self.device.destroy_sampler(self.sampler, None);
             self.device
                 .destroy_pipeline_layout(self.pipeline_layout, None);
@@ -232,6 +241,7 @@ fn colour_range() -> vk::ImageSubresourceRange {
         .level_count(1)
         .layer_count(1)
 }
+#[cfg(feature = "offscreen")]
 fn barrier(
     d: &ash::Device,
     cmd: vk::CommandBuffer,
@@ -260,6 +270,50 @@ fn barrier(
                 .subresource_range(colour_range())],
         );
     }
+}
+/// Splits copies into ordered steps whose regions don't overlap, so later writes still win.
+fn copy_steps(regions: &[vk::BufferImageCopy]) -> Vec<Vec<vk::BufferImageCopy>> {
+    let bounds = |region: &vk::BufferImageCopy| {
+        let offset = region.image_offset;
+        let extent = region.image_extent;
+        [offset.x, offset.y, offset.x + extent.width as i32, offset.y + extent.height as i32]
+    };
+    let overlap = |first: [i32; 4], second: [i32; 4]| {
+        first[0] < second[2] && second[0] < first[2] && first[1] < second[3] && second[1] < first[3]
+    };
+    // Sweep down the texture: only regions spanning the current top can overlap.
+    let mut order = (0..regions.len()).collect::<Vec<_>>();
+    order.sort_unstable_by_key(|&index| bounds(&regions[index])[1]);
+    let mut active = Vec::<[i32; 4]>::new();
+    let disjoint = order.iter().all(|&index| {
+        let next = bounds(&regions[index]);
+        active.retain(|region| region[3] > next[1]);
+        let clear = active.iter().all(|&region| !overlap(region, next));
+        active.push(next);
+        clear
+    });
+    if regions.is_empty() {
+        return Vec::new();
+    }
+    if disjoint {
+        return vec![regions.to_vec()];
+    }
+    let mut steps: Vec<Vec<vk::BufferImageCopy>> = Vec::new();
+    for region in regions {
+        let next = bounds(region);
+        match steps.last_mut() {
+            Some(step) if step.iter().all(|other| !overlap(bounds(other), next)) => step.push(*region),
+            _ => steps.push(vec![*region]),
+        }
+    }
+    steps
+}
+fn check_write(texture: &Texture, origin: [u32; 2], size: [u32; 2], bytes: &[u8]) {
+    assert!(origin[0] + size[0] <= texture.0.width && origin[1] + size[1] <= texture.0.height);
+    assert_eq!(
+        bytes.len(),
+        size[0] as usize * size[1] as usize * texture.0.channels
+    );
 }
 impl Device {
     pub fn buffer(&self, size: usize, uniform: bool) -> Buffer {
@@ -432,21 +486,34 @@ impl Device {
         }
     }
     pub fn write_texture(&self, texture: &Texture, origin: [u32; 2], size: [u32; 2], bytes: &[u8]) {
-        assert!(origin[0] + size[0] <= texture.0.width && origin[1] + size[1] <= texture.0.height);
-        assert_eq!(
-            bytes.len(),
-            size[0] as usize * size[1] as usize * texture.0.channels
-        );
+        check_write(texture, origin, size, bytes);
         let mut uploads = self.1.lock().unwrap();
         let offset = uploads.bytes.len().next_multiple_of(4);
         uploads.bytes.resize(offset, 0);
         uploads.bytes.extend_from_slice(bytes);
         uploads.commands.push(Upload::Write {
             texture: texture.clone(),
-            offset,
+            source: UploadSource::Copied(offset),
             origin,
             size,
         });
+    }
+
+    /// Like `write_texture`, but keeps `pixels` until upload instead of copying them now.
+    pub fn write_texture_shared(&self, texture: &Texture, origin: [u32; 2], size: [u32; 2], pixels: Arc<[u8]>) {
+        check_write(texture, origin, size, &pixels);
+        self.1.lock().unwrap().commands.push(Upload::Write {
+            texture: texture.clone(),
+            source: UploadSource::Shared(pixels),
+            origin,
+            size,
+        });
+    }
+
+    /// Clears `texture` to zero on the GPU, replacing its pending uploads.
+    pub fn clear_texture(&self, texture: &Texture) {
+        self.discard_texture_uploads(&[texture]);
+        self.1.lock().unwrap().commands.push(Upload::Clear(texture.clone()));
     }
 
     pub fn discard_texture_uploads(&self, textures: &[&Texture]) {
@@ -471,7 +538,7 @@ impl Device {
         for command in commands {
             if let Upload::Write {
                 texture,
-                offset,
+                source: UploadSource::Copied(offset),
                 size,
                 ..
             } = command
@@ -492,10 +559,19 @@ impl Device {
         }
         let mut uploads = std::mem::take(&mut *pending);
         drop(pending);
-        let staging = if uploads.bytes.is_empty() {
+        // Shared pixels follow the copied bytes in the staging buffer.
+        let mut size = uploads.bytes.len();
+        let mut shared_offsets = Vec::new();
+        for upload in &uploads.commands {
+            if let Upload::Write { source: UploadSource::Shared(pixels), .. } = upload {
+                size = size.next_multiple_of(4);
+                shared_offsets.push(size);
+                size += pixels.len();
+            }
+        }
+        let staging = if size == 0 {
             None
         } else {
-            let size = uploads.bytes.len();
             let buffer = if size <= MAX_RETAINED_UPLOAD_BYTES {
                 if reusable.as_ref().is_none_or(|buffer| buffer.0.size < size) {
                     *reusable = Some(self.buffer(size.next_power_of_two(), false));
@@ -505,95 +581,158 @@ impl Device {
                 self.buffer(size, false)
             };
             self.write_buffer(&buffer, 0, &uploads.bytes);
+            let mut offsets = shared_offsets.iter();
+            for upload in &uploads.commands {
+                if let Upload::Write { source: UploadSource::Shared(pixels), .. } = upload {
+                    self.write_buffer(&buffer, *offsets.next().unwrap() as u64, pixels);
+                }
+            }
             Some(buffer)
         };
+        // Group work by texture. A clear supersedes earlier operations on its texture, and
+        // later copies run as one command unless regions overlap, which needs ordered steps.
+        struct Steps {
+            image: vk::Image,
+            cleared: bool,
+            regions: Vec<vk::BufferImageCopy>,
+        }
+        let mut textures: Vec<Steps> = Vec::new();
+        let mut shared_offsets = shared_offsets.into_iter();
+        for upload in &uploads.commands {
+            let texture = match upload {
+                Upload::Clear(texture) | Upload::Write { texture, .. } => texture,
+            };
+            let index = match textures.iter().position(|entry| entry.image == texture.0.image) {
+                Some(index) => index,
+                None => {
+                    textures.push(Steps { image: texture.0.image, cleared: false, regions: Vec::new() });
+                    textures.len() - 1
+                }
+            };
+            let entry = &mut textures[index];
+            match upload {
+                Upload::Clear(_) => {
+                    entry.cleared = true;
+                    entry.regions.clear();
+                }
+                &Upload::Write { ref source, origin, size, .. } => {
+                    let offset = match source {
+                        UploadSource::Copied(offset) => *offset,
+                        UploadSource::Shared(_) => shared_offsets.next().unwrap(),
+                    };
+                    entry.regions.push(
+                        vk::BufferImageCopy::default()
+                            .buffer_offset(offset as u64)
+                            .image_subresource(
+                                vk::ImageSubresourceLayers::default()
+                                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                                    .layer_count(1),
+                            )
+                            .image_offset(vk::Offset3D {
+                                x: origin[0] as i32,
+                                y: origin[1] as i32,
+                                z: 0,
+                            })
+                            .image_extent(vk::Extent3D {
+                                width: size[0],
+                                height: size[1],
+                                depth: 1,
+                            }),
+                    );
+                }
+            }
+        }
+        // Each texture runs its clear, then its copy steps; rounds share transfer barriers.
+        let steps = textures
+            .iter()
+            .map(|entry| copy_steps(&entry.regions))
+            .collect::<Vec<_>>();
         let d = &self.0.device;
+        let source = staging.as_ref().map(|buffer| buffer.0.buffer);
         self.0.record_uploads(|cmd| unsafe {
-            for upload in &uploads.commands {
-                match upload {
-                    Upload::Clear(texture) => {
-                        let image = texture.0.image;
-                        barrier(
-                            d,
+            let transitions = |entries: &mut dyn Iterator<Item = (vk::Image, vk::ImageLayout, vk::ImageLayout, vk::AccessFlags, vk::AccessFlags)>| {
+                entries
+                    .map(|(image, old, new, src, dst)| {
+                        vk::ImageMemoryBarrier::default()
+                            .old_layout(old)
+                            .new_layout(new)
+                            .src_access_mask(src)
+                            .dst_access_mask(dst)
+                            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                            .image(image)
+                            .subresource_range(colour_range())
+                    })
+                    .collect::<Vec<_>>()
+            };
+            // Earlier frames only sampled these textures in fragment shaders.
+            d.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &transitions(&mut textures.iter().map(|entry| {
+                    if entry.cleared {
+                        (entry.image, vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::AccessFlags::empty(), vk::AccessFlags::TRANSFER_WRITE)
+                    } else {
+                        (entry.image, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::AccessFlags::SHADER_READ, vk::AccessFlags::TRANSFER_WRITE)
+                    }
+                })),
+            );
+            let rounds = textures
+                .iter()
+                .zip(&steps)
+                .map(|(entry, steps)| usize::from(entry.cleared) + steps.len())
+                .max()
+                .unwrap_or(0);
+            for round in 0..rounds {
+                if round > 0 {
+                    d.cmd_pipeline_barrier(
+                        cmd,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::DependencyFlags::empty(),
+                        &[vk::MemoryBarrier::default()
+                            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)],
+                        &[],
+                        &[],
+                    );
+                }
+                for (entry, steps) in textures.iter().zip(&steps) {
+                    let step = if entry.cleared { round.checked_sub(1) } else { Some(round) };
+                    match step {
+                        None => d.cmd_clear_color_image(
                             cmd,
-                            image,
-                            vk::ImageLayout::UNDEFINED,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            vk::AccessFlags::empty(),
-                            vk::AccessFlags::TRANSFER_WRITE,
-                        );
-                        d.cmd_clear_color_image(
-                            cmd,
-                            image,
+                            entry.image,
                             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                             &vk::ClearColorValue { float32: [0.; 4] },
                             &[colour_range()],
-                        );
-                        barrier(
-                            d,
+                        ),
+                        Some(step) if step < steps.len() => d.cmd_copy_buffer_to_image(
                             cmd,
-                            image,
+                            source.expect("upload bytes have a staging buffer"),
+                            entry.image,
                             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            vk::AccessFlags::TRANSFER_WRITE,
-                            vk::AccessFlags::SHADER_READ,
-                        );
-                    }
-                    Upload::Write {
-                        texture,
-                        offset,
-                        origin,
-                        size,
-                    } => {
-                        let image = texture.0.image;
-                        barrier(
-                            d,
-                            cmd,
-                            image,
-                            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            vk::AccessFlags::SHADER_READ,
-                            vk::AccessFlags::TRANSFER_WRITE,
-                        );
-                        d.cmd_copy_buffer_to_image(
-                            cmd,
-                            staging
-                                .as_ref()
-                                .expect("upload bytes have a staging buffer")
-                                .0
-                                .buffer,
-                            image,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            &[vk::BufferImageCopy::default()
-                                .buffer_offset(*offset as u64)
-                                .image_subresource(
-                                    vk::ImageSubresourceLayers::default()
-                                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                                        .layer_count(1),
-                                )
-                                .image_offset(vk::Offset3D {
-                                    x: origin[0] as i32,
-                                    y: origin[1] as i32,
-                                    z: 0,
-                                })
-                                .image_extent(vk::Extent3D {
-                                    width: size[0],
-                                    height: size[1],
-                                    depth: 1,
-                                })],
-                        );
-                        barrier(
-                            d,
-                            cmd,
-                            image,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            vk::AccessFlags::TRANSFER_WRITE,
-                            vk::AccessFlags::SHADER_READ,
-                        );
+                            &steps[step],
+                        ),
+                        Some(_) => {}
                     }
                 }
             }
+            d.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &transitions(&mut textures.iter().map(|entry| {
+                    (entry.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL, vk::AccessFlags::TRANSFER_WRITE, vk::AccessFlags::SHADER_READ)
+                })),
+            );
         });
         if uploads.bytes.capacity() <= MAX_RETAINED_UPLOAD_BYTES {
             uploads.bytes.clear();
@@ -603,6 +742,10 @@ impl Device {
             _staging: staging,
             _commands: uploads.commands,
         })
+    }
+    /// Serialised pipeline cache, for reuse by a later process.
+    pub fn pipeline_cache_data(&self) -> Result<Vec<u8>> {
+        Ok(unsafe { self.0.device.get_pipeline_cache_data(self.0.pipeline_cache)? })
     }
     pub fn pipeline(&self, format: TextureFormat, text: bool) -> Result<RenderPipeline> {
         unsafe {
@@ -690,7 +833,7 @@ impl Device {
             let dynamic = vk::PipelineDynamicStateCreateInfo::default()
                 .dynamic_states(&[vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
             let result = d.create_graphics_pipelines(
-                vk::PipelineCache::null(),
+                self.0.pipeline_cache,
                 &[vk::GraphicsPipelineCreateInfo::default()
                     .stages(&stages)
                     .vertex_input_state(&vertex_input)
@@ -825,8 +968,11 @@ pub struct Surface {
     target: Option<offscreen::Target>,
     core: Arc<Core>,
     loader: ash::khr::surface::Instance,
+    android: ash::khr::android_surface::Instance,
     swap: ash::khr::swapchain::Device,
     surface: vk::SurfaceKHR,
+    /// Renders into an offscreen image rather than an Android window.
+    windowless: bool,
     chain: vk::SwapchainKHR,
     format: vk::Format,
     extent: vk::Extent2D,
@@ -851,30 +997,106 @@ pub struct Surface {
     #[cfg(feature = "presentation-timing")]
     pub present_id: u32,
 }
+/// What a surface presents to when it is created.
+#[derive(Clone, Copy)]
+pub(crate) enum Presentation {
+    Window(*mut c_void),
+    #[cfg_attr(not(feature = "offscreen"), allow(dead_code))]
+    Offscreen,
+}
+
+/// Preferred swapchain format; reattached windows must support the format the render pass was built for.
+const PRESENT_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
+
 impl Surface {
-    pub unsafe fn new(window: *mut c_void, width: u32, height: u32) -> Result<Self> {
+    pub unsafe fn new(window: *mut c_void, width: u32, height: u32, pipeline_cache: &[u8]) -> Result<Self> {
         unsafe {
             Self::create(
                 Entry::load().context("load Vulkan")?.into(),
-                Some(window),
+                Presentation::Window(window),
                 width,
                 height,
+                pipeline_cache,
             )
         }
     }
 
+    pub fn attached(&self) -> bool {
+        self.windowless || self.surface != vk::SurfaceKHR::null()
+    }
+
+    /// Present to `window`, keeping the device, render pass and uploaded resources.
+    ///
+    /// # Safety
+    /// `window` must point to a live `ANativeWindow` retained until [`Self::detach`] or drop.
+    pub unsafe fn attach(&mut self, window: *mut c_void, width: u32, height: u32) -> Result<()> {
+        ensure!(!self.windowless && !self.attached(), "Vulkan surface is already attached");
+        unsafe {
+            let surface = self.android.create_android_surface(
+                &vk::AndroidSurfaceCreateInfoKHR::default().window(window.cast()),
+                None,
+            )?;
+            let compatible = (|| -> Result<()> {
+                ensure!(
+                    self.loader.get_physical_device_surface_support(self.core.physical, self.core.family, surface)?,
+                    "Vulkan queue cannot present to this window"
+                );
+                ensure!(
+                    self.loader.get_physical_device_surface_formats(self.core.physical, surface)?.iter()
+                        .any(|f| f.format == self.format && f.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR),
+                    "window does not support the prepared sRGB format"
+                );
+                Ok(())
+            })();
+            if let Err(error) = compatible {
+                self.loader.destroy_surface(surface, None);
+                return Err(error);
+            }
+            self.surface = surface;
+            self.requested = [width, height];
+            self.dirty = true;
+            if let Err(error) = self.recreate() {
+                self.detach();
+                return Err(error);
+            }
+            Ok(())
+        }
+    }
+
+    /// Release the window and swapchain. The device and its resources remain for the next attach.
+    pub fn detach(&mut self) {
+        if self.windowless || self.surface == vk::SurfaceKHR::null() {
+            return;
+        }
+        unsafe {
+            let _ = self.core.device.device_wait_idle();
+            self.clear_chain();
+            self.loader.destroy_surface(self.surface, None);
+        }
+        self.surface = vk::SurfaceKHR::null();
+        self.submitted = false;
+        self.uploads = None;
+        self.dirty = true;
+    }
+
     unsafe fn create(
         runtime: VulkanEntry,
-        window: Option<*mut c_void>,
+        target: Presentation,
         width: u32,
         height: u32,
+        pipeline_cache: &[u8],
     ) -> Result<Self> {
+        let window = match target {
+            Presentation::Window(window) => Some(window),
+            Presentation::Offscreen => None,
+        };
+        let presentable = !matches!(target, Presentation::Offscreen);
         unsafe {
             let entry = &runtime.entry;
             let app = vk::ApplicationInfo::default()
                 .application_name(c"Ink direct Vulkan")
                 .api_version(vk::API_VERSION_1_1);
-            let mut extensions = if window.is_some() {
+            let mut extensions = if presentable {
                 vec![
                     ash::khr::surface::NAME.as_ptr(),
                     ash::khr::android_surface::NAME.as_ptr(),
@@ -882,7 +1104,7 @@ impl Surface {
             } else {
                 vec![]
             };
-            let portability = window.is_none()
+            let portability = !presentable
                 && entry
                     .enumerate_instance_extension_properties(None)?
                     .iter()
@@ -916,7 +1138,7 @@ impl Surface {
                 vk::SurfaceKHR::null()
             };
             let cleanup_surface = Cleanup(Some(|| {
-                if window.is_some() {
+                if surface != vk::SurfaceKHR::null() {
                     loader.destroy_surface(surface, None);
                 }
             }));
@@ -935,7 +1157,7 @@ impl Surface {
                     .enumerate()
                 {
                     if props.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                        && (window.is_none()
+                        && (surface == vk::SurfaceKHR::null()
                             || loader
                                 .get_physical_device_surface_support(physical, i as u32, surface)?)
                     {
@@ -948,7 +1170,7 @@ impl Surface {
                 }
             }
             let (physical, family) = choice.context("no Vulkan presentation queue")?;
-            let mut extensions = if window.is_some() {
+            let mut extensions = if presentable {
                 vec![ash::khr::swapchain::NAME.as_ptr()]
             } else {
                 vec![]
@@ -1074,6 +1296,12 @@ impl Surface {
                 None,
             )?;
             let cleanup_sampler = Cleanup(Some(|| device.destroy_sampler(sampler, None)));
+            // Drivers ignore incompatible cache data and start empty.
+            let cache = device.create_pipeline_cache(
+                &vk::PipelineCacheCreateInfo::default().initial_data(pipeline_cache),
+                None,
+            )?;
+            let cleanup_cache = Cleanup(Some(|| device.destroy_pipeline_cache(cache, None)));
             let acquired = device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?;
             let cleanup_acquired = Cleanup(Some(|| device.destroy_semaphore(acquired, None)));
             let fence = device.create_fence(
@@ -1086,24 +1314,18 @@ impl Surface {
             let display_timing = has_display_timing
                 .then(|| ash::google::display_timing::Device::new(&instance, &device));
             let format = if window.is_some() {
-                loader
-                    .get_physical_device_surface_formats(physical, surface)?
-                    .iter()
-                    .find(|f| {
-                        matches!(
-                            f.format,
-                            vk::Format::R8G8B8A8_SRGB | vk::Format::B8G8R8A8_SRGB
-                        )
-                    })
+                let formats = loader.get_physical_device_surface_formats(physical, surface)?;
+                [PRESENT_FORMAT, vk::Format::B8G8R8A8_SRGB]
+                    .into_iter()
+                    .find(|format| formats.iter().any(|f| f.format == *format))
                     .context("surface needs an sRGB format")?
-                    .format
             } else {
-                vk::Format::R8G8B8A8_SRGB
+                PRESENT_FORMAT
             };
             let pass = render_pass_layout(
                 &device,
                 format,
-                if window.is_some() {
+                if presentable {
                     vk::ImageLayout::PRESENT_SRC_KHR
                 } else {
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL
@@ -1114,6 +1336,7 @@ impl Surface {
             cleanup_fence.disarm();
             cleanup_acquired.disarm();
             cleanup_sampler.disarm();
+            cleanup_cache.disarm();
             cleanup_descriptors.disarm();
             cleanup_pipeline_layout.disarm();
             cleanup_texture_layout.disarm();
@@ -1127,8 +1350,10 @@ impl Surface {
                 instance,
                 device,
                 physical,
+                family,
                 queue,
                 memory,
+                pipeline_cache: cache,
                 commands,
                 upload: buffers[0],
                 descriptors,
@@ -1142,8 +1367,10 @@ impl Surface {
                 target: None,
                 core,
                 loader,
+                android,
                 swap,
                 surface,
+                windowless: !presentable,
                 chain: vk::SwapchainKHR::null(),
                 format,
                 extent: vk::Extent2D::default(),
@@ -1217,9 +1444,12 @@ impl Surface {
         }
     }
     fn recreate(&mut self) -> Result<()> {
-        #[cfg(feature = "offscreen")]
         if self.surface == vk::SurfaceKHR::null() {
-            return self.recreate_offscreen();
+            #[cfg(feature = "offscreen")]
+            if self.windowless {
+                return self.recreate_offscreen();
+            }
+            anyhow::bail!("Vulkan surface is detached");
         }
         unsafe {
             self.core.device.device_wait_idle()?;

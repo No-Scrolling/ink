@@ -7,7 +7,7 @@ use std::{
 use ink_runtime::{AppRuntime, Event};
 use jni::{
     EnvUnowned,
-    objects::{JByteArray, JClass, JString},
+    objects::{JByteArray, JClass, JObject, JString},
     sys::{jboolean, jlong},
 };
 use serde_json::json;
@@ -38,18 +38,41 @@ fn worker(handle: jlong) -> Option<Arc<Worker>> {
 pub extern "system" fn Java_com_vandam_ink_InkWorker_nativeStart(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
-    source: JString<'_>,
+    bundle: JByteArray<'_>,
+    assets: JObject<'_>,
+    store_path: JString<'_>,
+    files_path: JString<'_>,
 ) -> jlong {
-    let source = env
-        .with_env(|env| source.try_to_string(env))
-        .resolve::<jni::errors::LogErrorAndDefault>();
+    let Some((bundle, host)) = env
+        .with_env(|env| -> jni::errors::Result<_> {
+            let assets = super::assets::BundleAssets::new(env, &assets)?;
+            #[cfg(any(feature = "store", feature = "crypto"))]
+            let host = Some(super::data::host(env, &assets, store_path.try_to_string(env)?, files_path.try_to_string(env)?)?);
+            #[cfg(not(any(feature = "store", feature = "crypto")))]
+            let host = { let _ = (assets, store_path, files_path); None };
+            Ok(Some((
+                env.convert_byte_array(&bundle)?,
+                host,
+            )))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>()
+    else {
+        return 0;
+    };
+    let script = match ink_runtime::Script::from_bytes(bundle) {
+        Ok(script) => script,
+        Err(error) => {
+            android_log(ANDROID_LOG_ERROR, &format!("Could not read worker: {error:#}"));
+            return 0;
+        }
+    };
     let Ok(mut workers) = workers().lock() else {
         return 0;
     };
     if workers.active.len() >= 8 || workers.next_id == jlong::MAX {
         return 0;
     }
-    match AppRuntime::spawn(source) {
+    match AppRuntime::spawn_script(script, || {}, None::<fn() -> anyhow::Result<ink_runtime::Script>>, host) {
         Ok((runtime, events)) => {
             workers.next_id += 1;
             let id = workers.next_id;

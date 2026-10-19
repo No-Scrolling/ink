@@ -211,6 +211,24 @@ fn rgba(decoded: Vec<u8>, stride: usize, width: u32) -> Vec<u8> {
         }
         pixels
     };
+    unpremultiply(&mut pixels);
+    pixels
+}
+
+// Copies one row at a time so un-premultiplying reads pixels that are already in cache.
+fn frame(decoded: &[u8], stride: usize, width: u32) -> Arc<[u8]> {
+    let row = width as usize * 4;
+    // Zeroed bytes are initialised `u8`s.
+    let mut pixels = unsafe { Arc::<[u8]>::new_zeroed_slice(decoded.len() / stride * row).assume_init() };
+    let output = Arc::get_mut(&mut pixels).expect("a new frame is unshared");
+    for (source, target) in decoded.chunks_exact(stride).zip(output.chunks_exact_mut(row)) {
+        target.copy_from_slice(&source[..row]);
+        unpremultiply(target);
+    }
+    pixels
+}
+
+fn unpremultiply(pixels: &mut [u8]) {
     for pixel in pixels.chunks_exact_mut(4) {
         let alpha = u32::from(pixel[3]);
         if alpha != 0 && alpha != 255 {
@@ -219,7 +237,6 @@ fn rgba(decoded: Vec<u8>, stride: usize, width: u32) -> Vec<u8> {
             }
         }
     }
-    pixels
 }
 
 fn frame_delay(decoder: &ImageDecoder, info: &FrameInfo) -> Result<Duration, String> {
@@ -256,7 +273,7 @@ impl ImageAnimation for DecoderAnimation {
         self.finished
     }
 
-    fn advance(&mut self) -> Option<Vec<u8>> {
+    fn advance(&mut self) -> Option<Arc<[u8]>> {
         if self.finished || Instant::now() < self.next {
             return None;
         }
@@ -296,7 +313,7 @@ impl ImageAnimation for DecoderAnimation {
                 super::android_log(super::ANDROID_LOG_WARN, &message);
             }
         }
-        Some(rgba(self.decoded.clone(), self.stride, self.width))
+        Some(frame(&self.decoded, self.stride, self.width))
     }
 }
 
@@ -317,7 +334,7 @@ impl Drop for ImageDecoder {
 
 struct AnimationState {
     decoder: Mutex<DecoderAnimation>,
-    pixels: Mutex<Option<Vec<u8>>>,
+    pixels: Mutex<Option<Arc<[u8]>>>,
     queued: AtomicBool,
     finished: AtomicBool,
     stopped: AtomicBool,
@@ -361,7 +378,7 @@ impl ImageAnimation for Animation {
     fn finished(&self) -> bool {
         self.0.finished.load(Ordering::Acquire) && self.0.pixels.lock().unwrap().is_none()
     }
-    fn advance(&mut self) -> Option<Vec<u8>> {
+    fn advance(&mut self) -> Option<Arc<[u8]>> {
         let pixels = self.0.pixels.lock().unwrap().take();
         if !self.0.finished.load(Ordering::Acquire)
             && !self.0.queued.swap(true, Ordering::AcqRel)

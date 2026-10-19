@@ -11,3 +11,7 @@
 -keepclasseswithmembernames class com.vandam.ink.InkDirectPhotoCamera {
     native <methods>;
 }
+
+# Constructed and called by Rust database workers.
+-keep class com.vandam.ink.InkDatabases { public *; }
+-keep class com.vandam.ink.InkDatabaseConnection { public *; }

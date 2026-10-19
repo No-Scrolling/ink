@@ -39,7 +39,7 @@ fn compiled_list_scrolls_thousands_of_rows_with_bounded_scene_and_no_js_window_e
     assert!(index > 500);
     assert_eq!(
         app.tap(x, y),
-        json!({"type":"selected", "key":index.to_string(), "index":index, "prefix":"A"})
+        json!({"type":"selected", "key":index.to_string(), "index":index, "prefix":"A", "label":format!("Item {index}")})
     );
 }
 
@@ -53,7 +53,32 @@ fn changed_captured_state_updates_native_rows_and_their_event_closures() {
     let (_, x, y) = app.visible_label("B: Item 0");
     assert_eq!(
         app.tap(x, y),
-        json!({"type":"selected", "key":"0", "index":0, "prefix":"B"})
+        json!({"type":"selected", "key":"0", "index":0, "prefix":"B", "label":"Item 0"})
+    );
+    assert_eq!(app.native_list_creates, 1);
+}
+
+#[test]
+fn replacing_an_item_in_place_updates_its_row_and_press_without_touching_neighbours() {
+    let mut app = list();
+    let revision = app.engine.scene().revision;
+    app.runtime
+        .send(json!({"type":"test", "command":"rename", "key":"1", "value":"Renamed"}).to_string())
+        .unwrap();
+    app.pump_until(|app| app.engine.scene().revision > revision);
+    let labels = app.labels();
+    assert!(labels.iter().any(|label| label == "A: Renamed"), "{labels:?}");
+    assert!(!labels.iter().any(|label| label == "A: Item 1"), "{labels:?}");
+    assert!(labels.iter().any(|label| label == "A: Item 0") && labels.iter().any(|label| label == "A: Item 2"));
+    let (_, x, y) = app.visible_label("A: Renamed");
+    assert_eq!(
+        app.tap(x, y),
+        json!({"type":"selected", "key":"1", "index":1, "prefix":"A", "label":"Renamed"})
+    );
+    let (_, x, y) = app.visible_label("A: Item 2");
+    assert_eq!(
+        app.tap(x, y),
+        json!({"type":"selected", "key":"2", "index":2, "prefix":"A", "label":"Item 2"})
     );
     assert_eq!(app.native_list_creates, 1);
 }
@@ -76,7 +101,7 @@ fn prepending_preserves_the_visible_anchor_and_routes_its_new_index() {
     );
     assert_eq!(
         app.tap(x, after_y),
-        json!({"type":"selected", "key":index.to_string(), "index":index+1, "prefix":"A"})
+        json!({"type":"selected", "key":index.to_string(), "index":index+1, "prefix":"A", "label":format!("Item {index}")})
     );
 }
 
@@ -92,7 +117,7 @@ fn reversed_rows_dispatch_the_current_item_and_index() {
     let (_, x, y) = app.visible_label("A: Item 1999");
     assert_eq!(
         app.tap(x, y),
-        json!({"type":"selected", "key":"1999", "index":0, "prefix":"A"})
+        json!({"type":"selected", "key":"1999", "index":0, "prefix":"A", "label":"Item 1999"})
     );
 }
 
@@ -125,7 +150,7 @@ fn quickjs_proxy_items_fall_back_to_react_and_remain_interactive() {
     let (_, x, y) = app.visible_label("A: Proxy item");
     assert_eq!(
         app.tap(x, y),
-        json!({"type":"selected", "key":"proxy", "index":0, "prefix":"A"})
+        json!({"type":"selected", "key":"proxy", "index":0, "prefix":"A", "label":"Proxy item"})
     );
     assert_eq!(
         app.native_list_creates, 1,
@@ -153,7 +178,7 @@ fn updating_a_held_rows_closure_preserves_its_press_identity() {
         .unwrap();
     assert_eq!(
         ink_test::message(&app.events, |value| value["type"] == "selected"),
-        json!({"type":"selected", "key":"0", "index":0, "prefix":"B"})
+        json!({"type":"selected", "key":"0", "index":0, "prefix":"B", "label":"Item 0"})
     );
 }
 
@@ -171,7 +196,7 @@ fn removing_a_held_row_does_not_activate_its_replacement() {
     let (_, x, y) = app.visible_label("A: Item 1");
     assert_eq!(
         app.tap(x, y),
-        json!({"type":"selected", "key":"1", "index":0, "prefix":"A"})
+        json!({"type":"selected", "key":"1", "index":0, "prefix":"A", "label":"Item 1"})
     );
 }
 

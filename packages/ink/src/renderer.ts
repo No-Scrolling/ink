@@ -11,7 +11,7 @@ declare const __inkCommit: (operations: Operation[]) => void;
 declare const __inkPost: (message: string) => void;
 
 type Props = Record<string, unknown>;
-type Instance = { id: number; type: string; props: Props; children: Instance[]; hidden?: boolean };
+type Instance = { id: number; type: string; props: Props; children: Instance[]; parent: Container | undefined; hidden?: boolean };
 type Container = { id: number; children: Instance[] };
 type Operation =
   | { op: "create"; id: number; type: string; props: Props }
@@ -86,16 +86,18 @@ function publish(instance: Instance) {
 }
 
 function insert(parent: Container, child: Instance, before?: Instance) {
-  const previous = parent.children.indexOf(child);
-  if (previous !== -1) parent.children.splice(previous, 1);
-  const index = before ? parent.children.indexOf(before) : parent.children.length;
-  parent.children.splice(index, 0, child);
+  // Only a moved child needs searching for; appends stay constant-time.
+  if (child.parent === parent) parent.children.splice(parent.children.indexOf(child), 1);
+  child.parent = parent;
+  if (before) parent.children.splice(parent.children.indexOf(before), 0, child);
+  else parent.children.push(child);
   publish(child);
   queue({ op: "insert", id: child.id, parent: parent.id, before: before?.id ?? null });
 }
 
 function forget(instance: Instance) {
   mounted.delete(instance.id);
+  instance.parent = undefined;
   for (const child of instance.children) forget(child);
 }
 
@@ -226,9 +228,10 @@ const reconciler = Reconciler<string, Props, Container, Instance, Instance, neve
   supportsHydration: false,
   isPrimaryRenderer: true,
   supportsMicrotasks: true,
-  createInstance: (type, props) => ({ id: allocateHostId(), type, props: hostProps(type, props), children: [] }),
-  createTextInstance: text => ({ id: allocateHostId(), type: "#text", props: { text }, children: [] }),
-  appendInitialChild: (parent, child) => { parent.children.push(child); },
+  // Declare `parent` up front so every instance keeps one object shape.
+  createInstance: (type, props) => ({ id: allocateHostId(), type, props: hostProps(type, props), children: [], parent: undefined }),
+  createTextInstance: text => ({ id: allocateHostId(), type: "#text", props: { text }, children: [], parent: undefined }),
+  appendInitialChild: (parent, child) => { parent.children.push(child); child.parent = parent; },
   finalizeInitialChildren: () => false,
   shouldSetTextContent: (type, props) => {
     if (type !== "Text") return false;

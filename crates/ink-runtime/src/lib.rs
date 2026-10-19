@@ -1,10 +1,14 @@
 #[cfg(target_os = "android")]
 pub mod cpu_affinity;
+mod bytecode;
+mod host;
 mod encoding;
 mod commit;
 mod binary;
 mod queue;
 pub type EventReceiver = queue::Receiver<Event>;
+pub use bytecode::{Script, compile};
+pub use host::{NativeCall, NativeHost, NativeSession, Responder};
 
 use std::{
     cell::RefCell,
@@ -20,11 +24,13 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, anyhow};
-use rquickjs::{CatchResultExt, Context, Ctx, Exception, Function, Persistent, Runtime, Value};
+#[cfg(debug_assertions)]
+use rquickjs::CatchResultExt;
+use rquickjs::{Context, Ctx, Exception, Function, Persistent, Runtime, Value};
 
 const CHANNEL_CAPACITY: usize = 256;
 const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
-type WebLoader = Box<dyn Fn() -> Result<String> + Send>;
+type WebLoader = Box<dyn Fn() -> Result<Script> + Send>;
 
 pub enum Event {
     Ready,
@@ -34,7 +40,7 @@ pub enum Event {
     Stopped,
 }
 
-enum Command {
+pub(crate) enum Command {
     #[cfg(debug_assertions)]
     EvaluateDevelopment(String),
     Message(String, Option<Vec<u8>>),
@@ -62,7 +68,7 @@ impl AppRuntime {
         source: String,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<(Self, EventReceiver)> {
-        Self::spawn_with_options(source, wake, None)
+        Self::spawn_with_options(source.into(), wake, None, None)
     }
 
     pub fn spawn_with_web_loader(
@@ -70,13 +76,25 @@ impl AppRuntime {
         wake: impl Fn() + Send + Sync + 'static,
         load_web: impl Fn() -> Result<String> + Send + 'static,
     ) -> Result<(Self, EventReceiver)> {
-        Self::spawn_with_options(source, wake, Some(Box::new(load_web)))
+        Self::spawn_script(source.into(), wake, Some(move || load_web().map(Script::from)), None)
+    }
+
+    /// Start a runtime from source or bytecode, with an optional loader for the lazy web runtime
+    /// and Rust native modules that answer calls before they reach the platform.
+    pub fn spawn_script<L: Fn() -> Result<Script> + Send + 'static>(
+        script: Script,
+        wake: impl Fn() + Send + Sync + 'static,
+        load_web: Option<L>,
+        host: Option<Arc<dyn NativeHost>>,
+    ) -> Result<(Self, EventReceiver)> {
+        Self::spawn_with_options(script, wake, load_web.map(|load| Box::new(load) as WebLoader), host)
     }
 
     fn spawn_with_options(
-        source: String,
+        source: Script,
         wake: impl Fn() + Send + Sync + 'static,
         load_web: Option<WebLoader>,
+        host: Option<Arc<dyn NativeHost>>,
     ) -> Result<(Self, EventReceiver)> {
         let budget = Arc::new(queue::Budget::default());
         let (commands, incoming) = queue::channel(CHANNEL_CAPACITY, budget.clone());
@@ -94,6 +112,7 @@ impl AppRuntime {
         let pending_messages = latest_messages.clone();
         let binary = binary::Buffers::default();
         let binary_runtime = binary.clone();
+        let responder = host.map(|host| (host, Responder::new(commands.clone(), stopped.clone(), delivery_failed.clone())));
         let thread = thread::Builder::new()
             .name("ink-js".into())
             .stack_size(2 * 1024 * 1024)
@@ -107,6 +126,7 @@ impl AppRuntime {
                     pending_messages.clone(),
                     load_web,
                     binary_runtime,
+                    responder,
                 );
                 pending_messages.lock().unwrap().clear();
                 if let Err(error) = result {
@@ -288,7 +308,7 @@ impl TimerQueue {
 type Timers = Rc<RefCell<TimerQueue>>;
 
 fn run(
-    source: String,
+    source: Script,
     commands: queue::Receiver<Command>,
     events: EventSink,
     stopped: Arc<AtomicBool>,
@@ -296,6 +316,7 @@ fn run(
     latest_messages: Arc<Mutex<HashMap<u64, queue::Retained<String>>>>,
     load_web: Option<WebLoader>,
     binary: binary::Buffers,
+    host: Option<(Arc<dyn NativeHost>, Responder)>,
 ) -> Result<()> {
     #[cfg(target_os = "android")]
     let mut work_affinity = None;
@@ -327,38 +348,28 @@ fn run(
     )));
     let transport_failed = Rc::new(RefCell::new(false));
     let timers = Timers::default();
+    let requests = host.map(|(host, responder)| Rc::new(host::Requests::new(host, responder)));
     install(
         &context,
         events.clone(),
         timers.clone(),
         transport_failed.clone(),
         binary,
+        requests.clone(),
     )?;
     if let Some(load_web) = load_web {
         context.with(|ctx| -> rquickjs::Result<()> {
             ctx.globals().set(
                 "__inkLoadWeb",
                 Function::new(ctx.clone(), move |ctx: Ctx<'_>| {
-                    let source = load_web()
-                        .map_err(|error| Exception::throw_message(&ctx, &error.to_string()))?;
-                    ctx.eval_with_options::<(), _>(source, {
-                        let mut options = rquickjs::context::EvalOptions::default();
-                        options.filename = Some("ink-web.js".into());
-                        options
-                    })
+                    load_web()
+                        .and_then(|source| bytecode::evaluate(&ctx, source, "ink-web.js"))
+                        .map_err(|error| Exception::throw_message(&ctx, &error.to_string()))
                 })?,
             )
         })?;
     }
-    context.with(|ctx| {
-        ctx.eval_with_options::<(), _>(source, {
-            let mut options = rquickjs::context::EvalOptions::default();
-            options.filename = Some("app.js".into());
-            options
-        })
-        .catch(&ctx)
-        .map_err(|error| anyhow!("{error}"))
-    })?;
+    context.with(|ctx| bytecode::evaluate(&ctx, source, "app.js"))?;
     events
         .try_send(Event::Ready)
         .map_err(|_| anyhow!("native event queue is unavailable"))?;
@@ -366,6 +377,7 @@ fn run(
     // Reclaim temporary startup allocations once the initial render has settled.
     let mut startup_collection = Some(Instant::now() + Duration::from_secs(1));
     while !stopped.load(Ordering::Acquire) {
+        if let Some(requests) = &requests { requests.expire(); }
         if let Ok(mut failure) = delivery_failed.lock()
             && let Some(message) = failure.take()
         {
@@ -426,6 +438,13 @@ fn run(
                 .map(|deadline| deadline.saturating_duration_since(Instant::now()))
         };
         let wait = match startup_collection {
+            Some(deadline) => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                Some(wait.map_or(remaining, |wait| wait.min(remaining)))
+            }
+            None => wait,
+        };
+        let wait = match requests.as_ref().and_then(|requests| requests.next_deadline()) {
             Some(deadline) => {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 Some(wait.map_or(remaining, |wait| wait.min(remaining)))
@@ -506,6 +525,7 @@ fn install(
     timers: Timers,
     transport_failed: Rc<RefCell<bool>>,
     binary: binary::Buffers,
+    requests: Option<Rc<host::Requests>>,
 ) -> Result<()> {
     let start = Instant::now();
     context
@@ -538,6 +558,11 @@ fn install(
                 Function::new(ctx.clone(), move |ctx: Ctx<'_>, message: String| {
                     if message.len() > MAX_MESSAGE_BYTES {
                         return Err(Exception::throw_range(&ctx, "native message is too large"));
+                    }
+                    if let Some(requests) = &requests
+                        && host::intercept(requests, &message)
+                    {
+                        return Ok(());
                     }
                     events.try_send(Event::Message(message)).map_err(|error| {
                         Exception::throw_message(

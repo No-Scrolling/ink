@@ -104,8 +104,8 @@ internal object InkWorkerJobs {
             val generation = selected.takeIf { it.isFile }?.readText()
             val candidate = generation?.takeIf { it.matches(Regex("[0-9]+")) }
                 ?.let { java.io.File(context.filesDir, "ink-dev/$it/worker.js") }
-            candidate?.takeIf { it.isFile }?.readBytes() ?: context.assets.open("worker.js").use { it.readBytes() }
-        } else context.assets.open("worker.js").use { it.readBytes() }
+            candidate?.takeIf { it.isFile }?.readBytes() ?: InkWorker.installedBundle(context)
+        } else InkWorker.installedBundle(context)
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(workerBytes)
             .joinToString("") { "%02x".format(it) }
         val pinned = java.io.File(context.filesDir, "ink-workers/$digest.js")

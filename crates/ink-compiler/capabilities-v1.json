@@ -296,6 +296,15 @@
       ],
       "permissions": []
     },
+    "store": {
+      "cost": "SQLite storage and imported databases",
+      "dependencies": [],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "store",
+        "disabled": "noStore"
+      }
+    },
     "text-input": {
       "cost": "Android text editor and keyboard integration",
       "dependencies": [],

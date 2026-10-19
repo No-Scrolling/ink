@@ -379,3 +379,54 @@ fn outbound_binary_byte_budget_recovers_after_consuming_an_owned_buffer() {
     assert_eq!(runtime.take_bytes(18), Some(vec![18]));
     assert_eq!(runtime.take_bytes(2).unwrap().len(), 512 * 1024);
 }
+
+fn first_message_or_error(events: &ink_runtime::EventReceiver) -> Result<String, String> {
+    let deadline = Instant::now() + WAIT;
+    loop {
+        match next_event(events, deadline) {
+            Event::Message(value) => return Ok(value),
+            Event::Error(error) => return Err(error),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn bytecode_runs_like_its_source_and_keeps_stack_positions() {
+    let source = "const total = [1, 2, 3].reduce((sum, value) => sum + value, 0);\n__inkPost(JSON.stringify({ total, strict: (function () { return this; })() === undefined }));\nfunction fail() {\n  throw new Error('from line four');\n}\nPromise.resolve().then(fail);\n";
+    let bytecode = ink_runtime::compile(source, "app.js").unwrap();
+    assert!(!String::from_utf8_lossy(&bytecode).contains("sum + value"), "function source text must be stripped");
+    let (_runtime, events) = AppRuntime::spawn_script(
+        ink_runtime::Script::Bytecode(bytecode), || {}, None::<fn() -> anyhow::Result<ink_runtime::Script>>, None,
+    ).unwrap();
+    let posted: serde_json::Value = serde_json::from_str(&first_message_or_error(&events).unwrap()).unwrap();
+    assert_eq!(posted, json!({"total": 6, "strict": true}));
+    let deadline = Instant::now() + WAIT;
+    let error = loop {
+        if let Event::Error(error) = next_event(&events, deadline) { break error; }
+    };
+    assert!(error.contains("from line four"), "{error}");
+    assert!(error.contains("app.js:4"), "{error}");
+}
+
+#[test]
+fn bytecode_from_another_format_is_rejected_before_evaluation() {
+    let (_runtime, events) = AppRuntime::spawn_script(
+        ink_runtime::Script::Bytecode(b"__inkPost('ran')".to_vec()), || {}, None::<fn() -> anyhow::Result<ink_runtime::Script>>, None,
+    ).unwrap();
+    let error = first_message_or_error(&events).unwrap_err();
+    assert!(error.contains("not Ink bytecode"), "{error}");
+}
+
+#[test]
+fn deferred_loaders_supply_bytecode_for_the_app_and_web_runtime() {
+    let web = ink_runtime::compile("globalThis.webValue = 'web ready';", "ink-web.js").unwrap();
+    let app = ink_runtime::compile("__inkLoadWeb(); __inkPost(globalThis.webValue);", "app.js").unwrap();
+    let (_runtime, events) = AppRuntime::spawn_script(
+        ink_runtime::Script::Load(Box::new(move || Ok(ink_runtime::Script::Bytecode(app)))),
+        || {},
+        Some(move || Ok(ink_runtime::Script::Bytecode(web.clone()))),
+        None,
+    ).unwrap();
+    assert_eq!(first_message_or_error(&events).unwrap(), "web ready");
+}

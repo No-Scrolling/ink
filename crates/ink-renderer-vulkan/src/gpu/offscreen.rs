@@ -80,7 +80,7 @@ impl Drop for Target {
 impl Surface {
     pub fn offscreen(width: u32, height: u32) -> Result<Self> {
         ensure!(width > 0 && height > 0, "zero-sized offscreen frame");
-        unsafe { Self::create(load_entry()?, None, width, height) }
+        unsafe { Self::create(load_entry()?, Presentation::Offscreen, width, height, &[]) }
     }
 
     pub fn device_name(&self) -> String {

@@ -1,0 +1,21 @@
+[package]
+name = "ink-data"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+store = ["dep:rusqlite"]
+crypto = ["dep:aes-gcm", "dep:base64", "dep:getrandom"]
+
+[dependencies]
+ink-runtime = { path = "../ink-runtime" }
+anyhow.workspace = true
+serde_json.workspace = true
+aes-gcm = { version = "0.10.3", optional = true }
+base64 = { version = "0.22.1", optional = true }
+getrandom = { version = "0.3.4", optional = true }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rusqlite = { version = "0.37.0", features = ["bundled", "hooks"], optional = true }

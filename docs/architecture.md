@@ -17,7 +17,9 @@ version = "1.0.0"
 version_code = 1
 ```
 
-The APK contains JavaScript source, icons, assets and the required native modules. Apps with background tasks also get a separate worker bundle.
+Release APKs contain precompiled QuickJS bytecode, icons, assets and the required native modules. The CLI compiles the app, optional networking runtime and background worker with the same pinned QuickJS build as the Android runtime. Development builds retain JavaScript source for debugging and refresh.
+
+Rust reads installed app and networking bundles directly from APK assets. The app bundle loads on the JavaScript thread, avoiding source parsing and a Java string transfer through JNI at launch. Icons also load directly in Rust.
 
 Release builds load networking runtime code on first use. Set `INK_SPLIT_WEB=0` to disable this split for comparisons. General code splitting and downloading executable code after installation are not supported.
 
@@ -38,6 +40,8 @@ For app-local Android code, an `android/build.gradle.kts` library can supply res
 ## Running an app
 
 React runs on a dedicated JavaScript thread. It manages app state and sends UI changes to Rust. Native API calls return promises so file and network operations do not block that thread.
+
+Rust schedules store and read-only SQLite requests on worker threads. A Kotlin backend calls Android's built-in SQLite synchronously on those threads, and Rust sends results directly to the JavaScript queue. Android APKs do not bundle a SQLite engine. Encryption runs as a Rust native function. These modules retain the native request timeouts, cancellation and result-size limits. Android services such as Keystore, networking, camera and location use Kotlin adapters.
 
 QuickJS-ng manages its small-object allocation directly. Ink uses the standard runtime allocator, with a 64 MiB JavaScript memory limit and a 512 KiB stack limit.
 
@@ -95,6 +99,8 @@ Text and icons share a texture cache that starts at 1 MiB. When it fills, Ink cl
 | Saved settings and queued jobs | Data is deleted or app storage is cleared. |
 
 Putting the app in the background does not unsubscribe its screen from resources. Native modules handle backgrounding separately; check the module’s page for its behaviour.
+
+When the Android surface disappears, Ink releases its window and swapchain but keeps the Vulkan device, pipelines, glyph atlas and image textures while the activity remains alive. Returning to the app recreates the surface resources. Destroying the activity releases the renderer. Pipeline cache data is saved in Android’s code cache for later launches.
 
 Hooks release native resources when their effects end. For handles opened directly, call `close()` or unsubscribe when finished. Garbage collection does not close cameras, sockets or players. Reopen saved files by ID; old connection handles cannot be reused.
 

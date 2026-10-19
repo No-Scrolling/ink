@@ -99,9 +99,38 @@ function nativeValue(value: unknown, previous?: unknown): unknown {
 }
 
 type NativeItem = NativeListItem;
-type RowRecord<T> = { item: T; index: number; native: NativeItem };
-type Records<T> = { data: NativeItem[]; rows: Map<string, RowRecord<T>>; template: string;
+type Records<T> = { data: NativeItem[]; positions: Map<string, number>; template: string;
   items: readonly T[]; key: string | Function; measurementKey?: string | number; scope?: Scope };
+
+/**
+ * Reproject only the items replaced in place, when every key stays at its position.
+ * Returns undefined when keys move, so the caller rebuilds the whole list.
+ */
+function replaceInPlace<T>(previous: Records<T>, items: readonly T[], plan: Plan<T>,
+  keyExtractor: ListProps<T>["keyExtractor"]): Records<T> | null | undefined {
+  let data: NativeItem[] | undefined;
+  const changes: NativeItem[] = [];
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    if (item === previous.items[index]) continue;
+    const before = previous.data[index];
+    if (!plainData(item)) return null;
+    if (keyExtractor(item, index) !== before.key) return undefined;
+    let projected;
+    try {
+      projected = nativeValue(plan.project(item, index), before.values);
+    } catch (error) {
+      if (error === needsReact) return null;
+      throw error;
+    }
+    if (projected === before.values) continue;
+    const record = { key: before.key, values: projected, measurementKey: before.measurementKey };
+    (data ??= previous.data.slice())[index] = record;
+    changes.push(record);
+  }
+  if (data) rememberListPatch(data, { previous: previous.data, changes });
+  return { ...previous, data: data ?? previous.data, items };
+}
 
 function captureValue(value: unknown, cache: WeakMap<object, Captured>): Captured {
   if (value === null || typeof value !== "object" && typeof value !== "function") return { value };
@@ -156,7 +185,13 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
     if (previous && previous.items === items && previous.key === keyIdentity
       && previous.template === plan.template && previous.measurementKey === measurementKey
       && sameScope) return previous;
-    const rows = new Map<string, RowRecord<T>>();
+    if (previous && sameScope && typeof keyIdentity === "string" && previous.key === keyIdentity
+      && previous.template === plan.template && previous.measurementKey === measurementKey
+      && previous.items.length === items.length) {
+      const patched = replaceInPlace(previous, items, plan, keyExtractor);
+      if (patched !== undefined) return patched && { ...patched, scope };
+    }
+    const positions = new Map<string, number>();
     let unchanged = items.length === previous?.data.length;
     let reordered = !unchanged;
     const changes: NativeItem[] = [];
@@ -166,16 +201,16 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
       data = items.map((item, index) => {
         const key = typeof keyIdentity === "string" && previous?.key === keyIdentity && previous.items[index] === item
           ? previous.data[index].key : keyExtractor(item, index);
-        if (typeof key !== "string" || rows.has(key)) throw new Error("List keys must be unique strings");
-        const beforeRow = previous?.template === plan.template ? previous.rows.get(key) : undefined;
-        const before = beforeRow?.native;
-        const projected = beforeRow && sameScope && beforeRow.item === item
-          && (beforeRow.index === index || plan.scope?.usesIndex === false)
-          ? beforeRow.native.values : nativeValue(plan.project(item, index), before?.values);
+        if (typeof key !== "string" || positions.has(key)) throw new Error("List keys must be unique strings");
+        const beforeIndex = previous?.template === plan.template ? previous.positions.get(key) : undefined;
+        const before = previous && beforeIndex !== undefined ? previous.data[beforeIndex] : undefined;
+        const projected = previous && beforeIndex !== undefined && sameScope && previous.items[beforeIndex] === item
+          && (beforeIndex === index || plan.scope?.usesIndex === false)
+          ? previous.data[beforeIndex].values : nativeValue(plan.project(item, index), before?.values);
         const measurement = measurementKey ?? null;
         const record = before && before.values === projected && before.measurementKey === measurement
           ? before : { key, values: projected, measurementKey: measurement };
-        rows.set(key, { item, index, native: record });
+        positions.set(key, index);
         if (record !== previous?.data[index]) {
           unchanged = false;
           if (record !== before) changes.push(record);
@@ -190,7 +225,7 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
     if (unchanged && previous) data = previous.data;
     else if (previous) rememberListPatch(data, { previous: previous.data, changes,
       ...(reordered ? { keys: data.map(item => item.key) } : {}) });
-    return { data, rows, template: plan.template, items, key: keyIdentity, measurementKey, scope };
+    return { data, positions, template: plan.template, items, key: keyIdentity, measurementKey, scope };
   }, [items, keyExtractor, plan, measurementKey]);
   useLayoutEffect(() => { committed.current = records; }, [records]);
   const targets = useMemo(() => {
@@ -219,8 +254,8 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
     onStartReached: onLoadOlder ? older.run : undefined,
     onRowEvent(key: string, target: number, name: string, ...args: unknown[]) {
       const path = targets.get(target)?.[name];
-      const row = records.rows.get(key);
-      let callback: unknown = row && path ? plan.project(row.item, row.index) : undefined;
+      const index = records.positions.get(key);
+      let callback: unknown = index !== undefined && path ? plan.project(records.items[index], index) : undefined;
       for (const part of path ?? []) {
         callback = callback != null && typeof callback === "object" ? Reflect.get(callback, part) : undefined;
       }

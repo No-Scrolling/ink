@@ -385,6 +385,8 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
             "video" to inkUses("video"),
             "maps" to inkUsesMaps,
             "network" to inkUsesNetwork,
+            "store" to inkUses("store"),
+            "crypto" to inkUses("crypto"),
             "image" to inkUsesImage,
             "audio" to inkUses("audio-microphone"),
             "background" to inkUsesBackground,

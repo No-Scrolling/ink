@@ -16,16 +16,14 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
     fun run(task: String, input: Any?): JSONObject {
         val source = if (bundle != null) {
             require(bundle.matches(Regex("[a-f0-9]{64}"))) { "Invalid worker bundle" }
-            java.io.File(context.filesDir, "ink-workers/$bundle.js").readText()
-        } else context.assets.open("worker.js").bufferedReader().use { it.readText() }
-        val runtime = nativeStart(source)
+            java.io.File(context.filesDir, "ink-workers/$bundle.js").readBytes()
+        } else installedBundle(context)
+        val runtime = nativeStart(source, context.assets, context.getDatabasePath("ink-store.db").path, context.filesDir.path)
         check(runtime != 0L) { "Could not start background JavaScript" }
         check(handle.compareAndSet(0, runtime)) {
             nativeStop(runtime)
             "Worker is already running or closed"
         }
-        var store: StoreAdapter? = null
-        var sqlite: SqliteAdapter? = null
         val secureStore by lazy { SecureStoreAdapter(context) }
         val auth by lazy { AuthAdapter(context) }
         val connectivity by lazy { ConnectivityAdapter(context) {} }
@@ -69,8 +67,6 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
                             "background" -> background ?: createBackgroundAdapter(context).also { background = it }
                             "notifications" -> notifications ?: createWorkerNotificationsAdapter(context).also { notifications = it }
                             "location" -> if (operation == "current") location ?: createWorkerLocationAdapter(context).also { location = it } else null
-                            "store" -> store ?: StoreAdapter(context).also { store = it }
-                            "sqlite" -> sqlite ?: SqliteAdapter(context).also { sqlite = it }
                             "secure-store" -> secureStore
                             "auth" -> auth
                             "connectivity" -> if (operation == "snapshot") connectivity else null
@@ -98,8 +94,6 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
             background?.stop()
             location?.stop()
             network?.stop()
-            store?.stop()
-            sqlite?.stop()
             auth.close()
             downloads?.stop()
         }
@@ -129,7 +123,13 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
     companion object {
         private val handler = Handler(Looper.getMainLooper())
         init { System.loadLibrary("ink_android") }
-        @JvmStatic private external fun nativeStart(source: String): Long
+        /** The installed worker bundle: bytecode in release builds, source otherwise. */
+        fun installedBundle(context: Context): ByteArray =
+            try { context.assets.open("worker.jsbc") } catch (_: java.io.FileNotFoundException) { context.assets.open("worker.js") }
+                .use { it.readBytes() }
+        @JvmStatic private external fun nativeStart(
+            bundle: ByteArray, assets: android.content.res.AssetManager, storePath: String, filesPath: String,
+        ): Long
         @JvmStatic private external fun nativeNext(handle: Long): String
         @JvmStatic private external fun nativeTakeJavaScriptBytes(handle: Long, id: Long): ByteArray?
         @JvmStatic private external fun nativeJavaScriptReceiveBytes(handle: Long, message: String, bytes: ByteArray): Boolean

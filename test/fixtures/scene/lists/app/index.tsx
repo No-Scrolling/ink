@@ -21,6 +21,12 @@ export default function App() {
         if (message.command === "remove")
           setItems((previous) => previous.filter((item) => item.id !== message.key));
         if (message.command === "empty") setItems([]);
+        if (message.command === "rename")
+          setItems((previous) =>
+            previous.map((item) =>
+              item.id === message.key ? { ...item, label: String(message.value) } : item,
+            ),
+          );
         if (message.command === "proxy")
           setItems([
             new Proxy(
@@ -44,7 +50,9 @@ export default function App() {
         renderItem={(item, index) => (
           <Text
             onPress={() =>
-              __inkPost(JSON.stringify({ type: "selected", key: item.id, index, prefix }))
+              __inkPost(
+                JSON.stringify({ type: "selected", key: item.id, index, prefix, label: item.label }),
+              )
             }
           >
             {prefix}: {item.label}

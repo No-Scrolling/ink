@@ -55,3 +55,76 @@ Timing changes are reported without an automatic speed gate. Establish noise on 
 The suite excludes Android scheduling/Vulkan, artwork decoding, playback services, storage/network IO, whole-process memory/energy and APK size. It does not benchmark drag/fling frame pacing or Canvas input. Those need their own production-path workloads; headless CPU results do not establish LP3 frame latency or power consumption. Keep the existing correctness and reviewed pixel suites alongside performance work.
 
 Fixture bundles, release build caches and evidence remain ignored. Every runtime is stopped and joined when its workload finishes. No device packages, emulator processes or global device settings are created.
+
+## Performance audit: 19 October 2026
+
+The Android audit measured release APKs before and after adding QuickJS bytecode, direct Rust asset loading, retained Vulkan resources, Rust store/SQLite/encryption and faster compiled-list projection. A separate React host change removes the child-array search on append and clears parent references when removing a subtree.
+
+The device fixture hydrates a store before rendering 5,000 standard rows. Both APKs ran on the Light Phone III API 34 emulator on an Apple M4 Pro. Each latency scenario used 10 samples; native operations used 10 warm-ups and 200 measured calls. The final APK was rebuilt after the native timeout and shutdown-cancellation fixes.
+
+| Emulator workload | Before, median ms | After, median ms |
+| --- | ---: | ---: |
+| Process start to first submitted frame | 155.5 | 148.0 |
+| Process start to hydrated content frame | 223.5 | 148.0 |
+| Resume to submitted frame | 52.0 | 37.0 |
+| One edit in 5,000 rows, input-up to submitted frame | 6.37 | 2.41 |
+| Store read | 0.490 | 0.164 |
+| Durable store write | 16.683 | 1.288 |
+| Short AES-GCM encryption | 0.222 | 0.007 |
+| Short AES-GCM decryption | 0.223 | 0.007 |
+| SQLite query returning ten rows | 0.322 | 0.110 |
+
+Process starts use `am force-stop`, retaining filesystem caches. Frame timings end at submission, before display presentation. Native timings include the public JavaScript SDK call and result delivery. Earlier alternating before/after blocks also showed faster resume, list edits and native calls; two separate cold-start comparisons with 30 samples per APK reduced hydrated-content latency by 91–92 ms. A single fresh block does not establish a precise first-frame improvement.
+
+The headless suite reran the saved baseline and candidate in alternating order across three processes per version, with 20 warm-ups and 100 samples per workload/process:
+
+| Headless workload | Before, median ms | After, median ms |
+| --- | ---: | ---: |
+| One edit in 100 items | 0.220 | 0.166 |
+| One edit in 1,000 items | 0.743 | 0.207 |
+| One edit in 10,000 items | 8.513 | 0.624 |
+| One standard Row edit in 1,000 items | 0.794 | 0.283 |
+
+These list results include QuickJS dispatch through native scene application. The remaining identity scan is O(n). Background-input results varied substantially: one comparison measured 0.760 → 1.081 ms, while a repeat of the same executables measured 0.953 → 0.782 ms. No background-input improvement or consistent regression is established by those runs. Other unchanged paths also show timing noise; retain every workload when reviewing the evidence.
+
+A separate QuickJS compile-only benchmark on the 618,340-byte Podcasts bundle measured 29.87 ms to parse/compile source and 1.65 ms to read stripped bytecode, using 15 fresh runtimes. It excludes script execution, process launch and rendering. Icons avoid the Java byte-array transfer; their individual timing was not isolated from startup.
+
+Appending 4,000 plain Text children to an existing React Stack measured 378.96 → 276.87 ms, with p95 386.23 → 285.67 ms. Before/after bundles used the corresponding production renderer sources and the same current `AppRuntime`. Two fresh runtimes per version ran in before/after/after/before order, with 10 warm-ups and 30 measured appends each. Timing spans dispatch through receipt of the React commit, whose 4,000 creates were checked after timing. It excludes native scene application and rendering; compiled virtualised Lists use a different path.
+
+The fixture APK grew from 3,331,923 to 4,645,541 bytes, principally from bundled SQLite. SQLite is selected by the store capability. Retained renderer caches also keep resources alive while the activity is backgrounded; memory and energy changes were not measured. Background Vulkan preparation added waiting in the captured trace and was removed.
+
+Evidence remains under `.test-output/performance-audit/2026-10-19/` and `.test-output/performance/2026-10-19T10-44-39.144Z-62261/`. It includes APKs, saved headless executables/assets, raw frame samples and logcat, native-operation summaries, fixture source, source hashes and screenshots. The saved screenshots match below the changing title, with zero differing pixels in `(0, 120)–(1080, 1240)`. These are emulator and host measurements; they do not establish Light Phone III hardware latency, whole-process memory or energy use.
+
+## System SQLite follow-up: 19 October 2026
+
+Android now uses the platform SQLite engine through a synchronous Kotlin backend on Rust database workers. Rust retains scheduling, query cancellation and direct runtime replies. Android's normal dependency tree contains neither `rusqlite` nor `libsqlite3-sys`; host fixtures retain the embedded backend. The store keeps its database path, schema, revision rules, WAL and full synchronisation. Available SQL features follow Android's SQLite version.
+
+The same release fixture ran in bundled/system/bundled/system order on the same emulator. App bytecode, the imported database, icons and capability manifest are byte-identical. Generated DEX profiles changed with the backend code. Builds and correctness suites ran outside measurement blocks.
+
+| Release fixture size | Bundled SQLite, bytes | System SQLite, bytes |
+| --- | ---: | ---: |
+| APK | 4,645,541 | 3,540,005 |
+| Native library | 4,066,424 | 2,960,888 |
+| DEX code | 398,612 | 406,824 |
+
+The APK is 1,105,536 bytes smaller (23.8%). It remains 208,082 bytes larger than the original APK from before the performance audit.
+
+| Emulator workload | Bundled SQLite, median ms | System SQLite, median ms |
+| --- | ---: | ---: |
+| Process start to first submitted frame | 152.5 | 158.0 |
+| Process start to hydrated content frame | 152.5 | 162.0 |
+| Resume to submitted frame | 34.0 | 34.5 |
+| One edit in 5,000 rows, input-up to submitted frame | 2.557 | 2.603 |
+| Store read | 0.1615 | 0.1885 |
+| Durable store write | 1.2295 | 0.7820 |
+| SQLite query returning ten rows | 0.1175 | 0.1285 |
+| Short AES-GCM encryption | 0.0125 | 0.0070 |
+| Short AES-GCM decryption | 0.0070 | 0.0070 |
+
+Frame medians pool 20 raw samples per APK. Native values are the median of two block medians, each from 200 calls after 10 warm-ups; the per-call samples were not retained. Process starts retain filesystem caches, and frame timings stop at Vulkan submission rather than display presentation.
+
+Writes were faster in both system-backend blocks: 1.287 → 0.761 ms and 1.172 → 0.803 ms. Their p95 values were 2.806 → 1.800 ms and 4.246 → 2.228 ms. This fixture also showed a startup cost: hydrated content took 9.5 ms longer at the pooled median. Reads added 0.027 ms and the ten-row query added 0.011 ms. Resume and list edits stayed close. Encryption code did not change; its differing observations do not establish an improvement from switching SQLite.
+
+All 151 existing host checks, 11 Android app contracts and the SDK type check passed. Android native checks also passed for storage with background work, crypto-only background work and background work without either capability. The release benchmark exercises the system SQLite query path; the Android app contracts cover the system-backed store. No new tests were added.
+
+Evidence remains under `.test-output/system-sqlite/`: both APKs and hashes, per-block summaries, raw frame samples and logcat, the fixture source, dependency tree and check logs. `summary.json` records the aggregation method and individual block medians and p95 values. These measurements do not establish physical Light Phone III latency, memory use or energy consumption.

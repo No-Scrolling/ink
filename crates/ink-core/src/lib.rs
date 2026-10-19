@@ -463,7 +463,8 @@ impl AsRef<[u8]> for AssetBytes {
 }
 
 pub trait ImageAnimation: Send {
-    fn advance(&mut self) -> Option<Vec<u8>>;
+    /// Returns the next frame once it is due. Frames are shared with the renderer without copying.
+    fn advance(&mut self) -> Option<Arc<[u8]>>;
     fn finished(&self) -> bool;
 }
 
@@ -2625,13 +2626,15 @@ impl Engine {
 
     pub fn animate_scene(&mut self) -> bool {
         let mut changed = false;
+        // New image frames only bump `image_revision`, so the renderer refreshes images alone.
+        let mut images_changed = false;
         self.image_animations.retain(|key, animation| {
             let id = image_id(key);
             if !visible_image(&self.scene, id) { return true; }
             if let Some(pixels) = animation.advance()
                 && let Some(RemoteImageState::Ready { image, .. }) = self.remote_images.get_mut(key)
             {
-                image.pixels = pixels.into();
+                image.pixels = pixels;
                 image.generation = self.next_image_generation;
                 self.next_image_generation = self.next_image_generation.wrapping_add(1).max(1);
                 for run in &mut self.scene.images {
@@ -2644,7 +2647,7 @@ impl Engine {
                     if retained.id() == id { *retained = ImageData::Remote(image.clone()); }
                 }
                 self.scene.image_revision = self.scene.image_revision.wrapping_add(1);
-                changed = true;
+                images_changed = true;
             }
             !animation.finished()
         });
@@ -2685,7 +2688,7 @@ impl Engine {
             edge.colour.alpha = alpha;
         }
         if changed { self.scene.revision = self.scene.revision.wrapping_add(1); }
-        changed
+        changed || images_changed
     }
 
     pub fn scene(&self) -> &Scene {

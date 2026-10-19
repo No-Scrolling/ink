@@ -233,7 +233,11 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
         ))
         .arg(format!(
             "-PinkAndroidAssets={}",
-            project.android_assets_path().display()
+            match profile {
+                Profile::Debug => project.android_assets_path(),
+                Profile::Release => release_assets_path(project),
+            }
+            .display()
         ));
 
     if let Some(signing) = release_signing {
@@ -251,6 +255,45 @@ fn compile(project: &Project, profile: Profile) -> Result<()> {
         ink_compiler::compile_development(project)?;
     } else {
         ink_compiler::compile(project)?;
+        prepare_release_assets(&project.android_assets_path(), &release_assets_path(project))?;
+    }
+    Ok(())
+}
+
+const BYTECODE_BUNDLES: [&str; 3] = ["app.js", "worker.js", "ink-assets/ink-web.js"];
+
+fn release_assets_path(project: &Project) -> PathBuf {
+    project.work_path().join("android/release-assets")
+}
+
+/// Copy assets, replacing JavaScript bundles with QuickJS bytecode.
+pub(crate) fn prepare_release_assets(assets: &Path, release: &Path) -> Result<()> {
+    match fs::remove_dir_all(release) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).with_context(|| format!("could not clear {}", release.display())),
+    }
+    mirror(assets, release, assets)
+}
+
+fn mirror(source: &Path, destination: &Path, root: &Path) -> Result<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = destination.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            mirror(&path, &target, root)?;
+            continue;
+        }
+        let relative = path.strip_prefix(root)?.to_string_lossy().replace('\\', "/");
+        if BYTECODE_BUNDLES.contains(&relative.as_str()) {
+            let name = Path::new(&relative).file_name().unwrap().to_string_lossy().into_owned();
+            let source = fs::read_to_string(&path).with_context(|| format!("could not read {}", path.display()))?;
+            fs::write(target.with_extension("jsbc"), ink_runtime::compile(&source, &name)?)?;
+        } else if fs::hard_link(&path, &target).is_err() {
+            fs::copy(&path, &target).with_context(|| format!("could not copy {}", path.display()))?;
+        }
     }
     Ok(())
 }

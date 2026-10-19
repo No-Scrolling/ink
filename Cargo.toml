@@ -5,6 +5,7 @@ members = [
   "crates/ink-cli",
   "crates/ink-compiler",
   "crates/ink-core",
+  "crates/ink-data",
   "crates/ink-renderer-vulkan",
   "crates/ink-runtime",
   "crates/ink-protocol",
