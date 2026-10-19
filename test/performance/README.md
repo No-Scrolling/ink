@@ -23,6 +23,7 @@ This is opt-in and separate from `bun run test`. It builds release Rust and prod
 | `rows-edit-100/1000` | Update a subtitle in a standard `Row` list with accented names and mixed one/two-line titles, as used by Reverb and Podcasts. Check the changed subtitle, neighbouring content, order and bounded mounted hosts. |
 | `rows-prepend-1000`, `rows-reorder-1000` | Insert/remove before a scrolled viewport and reverse the collection. Check the visible anchor, supplied order and a native tap returning the current row's identity after reordering. |
 | `rows-native-scroll-1000`, `rows-react-scroll-1000` | Scroll standard rows and custom nested track components. Both must show the correct moving content and retain bounded hosts. The native path produces no JS window work; the custom React path must actually exercise JS window materialisation. |
+| `rows-pure-scroll-1000` | Scroll a module-level, expression-only custom row. Check moving content, bounded hosts and a tap returning the current item after scrolling. This exercises native template compilation when supported and the original React path in saved baselines. |
 | `rows-decoded-image-arrival` | Feed authored decoded RGBA through the real native-image completion boundary. Check the artwork dimensions/pixels, scene image revision and neighbouring rows. This measures scene application only; it supplies the decoder's output and does not measure file reads, decoding or GPU upload. |
 | `startup-runtime-to-library` | Start a fresh QuickJS runtime, React tree and engine, then reach a usable root screen. Source and icons are already read; this is not Android process launch or storage hydration. Every sample is a new runtime, including discarded warm-ups. |
 | `navigation-open/back/tab` | Use native hit testing, native back and the compiled file router. Open an album with 100 rows, return to retained state and switch tabs. Check released page hosts, retained selection and valid back history. |
@@ -34,7 +35,7 @@ This is opt-in and separate from `bun run test`. It builds release Rust and prod
 
 The cells form a fixed grid using tiny text so every result can be inspected together. This retains the 500-cell plus resize workload class from the earlier optimisation work; it is a fresh fixture and its timings must not be compared directly with deleted historical benchmarks.
 
-The 28 timed workloads cover common patterns found in Passes, Reverb, Beeper and Podcasts. They are controlled fixtures of those patterns, not timings of the complete apps: app-specific filtering, sorting, persistence, server latency and media-library scans remain separate concerns.
+The 29 timed workloads cover common patterns found in Passes, Reverb, Beeper and Podcasts. They are controlled fixtures of those patterns, not timings of the complete apps: app-specific filtering, sorting, persistence, server latency and media-library scans remain separate concerns.
 
 Update timing starts before host-message dispatch and ends after the resulting commit is applied to the native scene. It includes JS application work, React when applicable, QuickJS-to-Rust conversion, queueing and native apply/layout. It is not touch-to-display latency. Native apply is also recorded separately for the original cell/list update workloads. Native scrolling times cover Rust scrolling and window materialisation; custom-row samples also wait for React's window commits. Native `perf` instrumentation is enabled; full correctness checks, host-node diagnostics and commit serialisation run outside measured samples. Scene-readiness detection is part of the interaction measurement. Detailed bridge probes run separately from timing samples. Serialised commit bytes are a diagnostic representation, not measured physical wire bytes.
 
@@ -45,6 +46,20 @@ Load workloads begin with 128 messages and grow to a maximum of 512. Short trial
 Samples alternate values so no-op setters cannot win. Warm-up operations are discarded. Each round starts a new process and runtime instances; raw operation samples, per-round medians, combined median/p95/p99 and work probes are saved. Build/preparation time is excluded from measured execution time. Host nodes and queue high-water bytes describe only those resources, not total RSS or all allocation/GC costs.
 
 Scrollbar samples start immediately before each `pointer_move`. `thumb_update_ns` ends when the native scene's thumb rectangle has been computed through the same method used by the renderer; `elapsed_ns` also includes native row window materialisation and viewport readiness. Pointer capture and release are outside timing. The pointer remains held across repeated full-track sweeps, with independent checks that the thumb follows its requested position and that both endpoints remain reachable. These CPU timings exclude Android event delivery, frame scheduling, GPU submission and display presentation.
+
+## Renderer workloads
+
+Run the offscreen Vulkan workloads separately:
+
+```sh
+cargo run --release -p ink-test --bin ink-render-performance -- 20 4
+```
+
+The arguments select measured samples and discarded warm-ups. The output identifies the Vulkan device. CPU timings stop at render submission; GPU completion and pixel readback happen outside that interval.
+
+`artwork-revisit` alternates a six-image library with a scan of 42 other covers. The 48 decoded RGBA images occupy 12 MiB, exceeding the 8 MiB cache retention target. Each sample contains 66 draws; this workload caps samples at 12 and warm-ups at two. It checks source colours and reports cache misses, uploaded bytes and the peak image-texture byte count. Decoding, network access and whole-process memory are excluded.
+
+`distant-text-edits` changes the first and last of 24 text runs while keeping the intervening text fixed. It reports uploaded bytes, preparation time and a hash of the final RGBA pixels for baseline comparison. The existing animation, atlas and disjoint-screen workloads remain regression comparisons.
 
 ## Baselines and optimisation
 
@@ -128,3 +143,46 @@ Writes were faster in both system-backend blocks: 1.287 → 0.761 ms and 1.172 �
 All 151 existing host checks, 11 Android app contracts and the SDK type check passed. Android native checks also passed for storage with background work, crypto-only background work and background work without either capability. The release benchmark exercises the system SQLite query path; the Android app contracts cover the system-backed store. No new tests were added.
 
 Evidence remains under `.test-output/system-sqlite/`: both APKs and hashes, per-block summaries, raw frame samples and logcat, the fixture source, dependency tree and check logs. `summary.json` records the aggregation method and individual block medians and p95 values. These measurements do not establish physical Light Phone III latency, memory use or energy consumption.
+
+## Literature follow-up: 20 October 2026
+
+Two changes from the [literature review](../../docs/research/literature-performance-ideas.md) improved the measured workloads: native compilation of eligible custom rows and reuse-aware artwork admission. The baseline is `5a707a4`. Both versions use the same benchmark sources; only the production compiler and renderer differ.
+
+### Compile eligible custom rows
+
+The compiler can inline local, non-exported `const` arrow components with one destructured props parameter and an expression returning supported primitives. It caps nesting and template size, evaluates supplied props once and preserves current-item callbacks. Hooks, defaults, external references, unsupported children and unproven captures retain React rendering. Existing native rows receive no direct benefit.
+
+- Scrolling 1,000 custom rows: **0.778 → 0.122 ms** median, an 84% reduction. P95 fell from 0.852 to 0.141 ms. JavaScript window callbacks fell from 120 to zero per run, including warm-ups. Five alternating rounds supplied 500 measured samples per version. Content, ordering, mounted-node bounds and a tap returning the current item were checked.
+- Editing one custom row among 5,000 on the emulator: **6.609 → 2.081 ms** median. P95 fell from 7.632 to 2.836 ms. Timing starts at input-up and ends at Vulkan submission.
+- Editing an already-native row on the emulator: **2.018 → 2.064 ms** median. P95 was 2.629 → 2.613 ms. This does not establish a gain for that path.
+
+The emulator used release APKs in after/before/before/after order. Each mode retained 48 edit samples per version after six warm-ups per block.
+
+### Retain reused artwork
+
+Image admission uses a bounded frequency sketch and compares an incoming image with the combined frequency of enough older victims to make room. Images rejected from long-term retention remain available for the current draw and retire when unpinned. Visible and preloaded textures remain protected.
+
+In the 66-draw artwork-revisit cycle:
+
+- CPU submission time: **0.978 → 0.832 ms**, 15% lower.
+- Repeat cache misses: **48 → 23**.
+- Uploaded bytes: **12,583,968 → 6,030,368**, 52% fewer.
+- Peak accounted image-texture bytes: **8 → 8.25 MiB**. Policy metadata includes a 4 KiB frequency sketch. Driver padding and whole-process memory are excluded. The 8 MiB retention target is not a hard cap on current or preloaded images.
+
+These are medians of three alternating round medians, with 12 measured cycles after two warm-ups per round. The renderer used llvmpipe software Vulkan. The fixture supplies decoded pixels, so the result excludes decoding and network work. Other renderer workloads showed small timing differences without an established general gain.
+
+### Costs and rejected trials
+
+The final release fixture APK grew by 8,752 bytes, from 3,540,365 to 3,549,117 bytes. Process start to the first submission after the fixture's content marker measured **148 → 152 ms** median and **165 → 185 ms** p95, with 40 samples per version after two warm-ups per block. That endpoint follows a JavaScript marker; it does not verify display presentation or establish a startup improvement.
+
+Three trials were removed:
+
+- Chunked row-version storage left the 10,000-item edit at approximately **0.589 → 0.589 ms**. It did not remove the JavaScript array scan.
+- A layout measurement cache reduced measurements from **1,551 to 1,051**, but increased the resize workload from **2.374 → 2.441 ms**. Fewer measurements did not reduce total latency.
+- Sparse instance-buffer writes reduced the distant-edit workload from **50,032 to 976 bytes**, but CPU time was **37.8 → 39.8 μs** in the final trial. These writes copy into mapped memory. No latency gain was established, so the original write path remains.
+
+An authoritative list-delta API, general dependency-aware layout and cooperative application scheduling remain larger, unmeasured changes. The rejected trials do not evaluate those complete designs. No ISOP implementation was justified by the inspected hot paths.
+
+All 143 existing host checks and the SDK type check passed. Saved emulator captures passed the existing tolerances in all 14 regions across six states. A separate full-frame comparison of React and compiled custom rows differed at 43 of 1,339,200 pixels, with a maximum channel difference of four and no alpha differences, within the existing tolerance.
+
+Evidence is saved under `.test-output/literature-implementation/2026-10-20/`. `final-manifest.json` records source and binary hashes and measurement methods. The directory retains raw samples, APKs, fixture source, final source snapshots, rejected trials and saved pixel comparisons. These results describe controlled host and emulator workloads, not complete apps or physical Light Phone III latency or energy use.

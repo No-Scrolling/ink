@@ -15,6 +15,7 @@ const expectedWorkloads = [
   "rows-reorder-1000",
   "rows-native-scroll-1000",
   "rows-react-scroll-1000",
+  "rows-pure-scroll-1000",
   "rows-decoded-image-arrival",
   "startup-runtime-to-library",
   "navigation-open",

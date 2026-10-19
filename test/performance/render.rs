@@ -1,5 +1,8 @@
 //! Host renderer workloads: the real engine and offscreen Vulkan renderer on this machine's GPU.
-use ink_core::{Colour, Engine, ImageAnimation, ImageData, ReactTree, Rect, Scene, TextAlign, TextRun};
+use ink_core::{
+    Colour, Engine, ImageAnimation, ImageData, ImageFit, ImageRun, ReactTree, Rect, RemoteImage, Scene,
+    TextAlign, TextRun,
+};
 use ink_renderer_vulkan::{RenderOutcome, Renderer};
 use ink_runtime::{AppRuntime, Event, EventReceiver};
 use serde_json::{Value, json};
@@ -41,8 +44,72 @@ fn main() {
         atlas_recovery("atlas-recovery-1-mib", 140.0, samples.min(40), warmup.min(4)),
         atlas_recovery("atlas-recovery-4-mib", 280.0, samples.min(40), warmup.min(4)),
         atlas_recovery("atlas-recovery-16-mib", 560.0, samples.min(40), warmup.min(4)),
+        artwork_revisit(samples.min(12), warmup.min(2)),
+        distant_text_edits(samples, warmup),
     ];
     println!("{}", json!({"version":1, "device":device, "workloads":workloads}));
+}
+
+fn artwork_revisit(samples: usize, warmup: usize) -> Value {
+    let mut renderer = Renderer::offscreen(WIDTH, HEIGHT).unwrap();
+    let images = (0..48).map(|index| ImageData::Remote(RemoteImage {
+        id: index + 10_000, generation: 1, width: 256, height: 256,
+        pixels: [(index * 5) as u8, (index * 5) as u8, (index * 5) as u8, 255].repeat(256 * 256).into(),
+    })).collect::<Vec<_>>();
+    let mut revision = 0;
+    let mut results = Vec::new();
+    let mut peak_texture_bytes = 0;
+    for step in 0..warmup + samples {
+        // Revisit a small library between scans of different album covers.
+        let ids = (0..6).cycle().take(24)
+            .chain((6..48).map(|index| 6 + (index - 6 + step * 7) % 42));
+        let mut total = Sample::default();
+        for id in ids {
+            revision += 1;
+            let rect = Rect { x: 0.0, y: 0.0, width: 256.0, height: 256.0 };
+            let scene = Scene { revision, width: WIDTH, height: HEIGHT,
+                images: vec![ImageRun { avatar: None, image: images[id].clone(), zoom_id: None,
+                    rect, clip: rect, fit: ImageFit::Contain, scrolling: false, transform: Default::default() }],
+                ..Scene::default() };
+            let sample = render(&mut renderer, &scene);
+            peak_texture_bytes = peak_texture_bytes.max(renderer.memory_metrics().image_texture_bytes);
+            total.cpu_ns += sample.cpu_ns;
+            total.prepare_ns += sample.prepare_ns;
+            total.upload_ns += sample.upload_ns;
+            total.uploaded_bytes += sample.uploaded_bytes;
+            total.cache_misses += sample.cache_misses;
+            let pixels = renderer.pixels().unwrap();
+            let offset = (128 * WIDTH as usize + 128) * 4;
+            for channel in 0..3 {
+                assert!(pixels[offset + channel].abs_diff((id * 5) as u8) <= 1);
+            }
+            assert_eq!(pixels[offset + 3], 255);
+        }
+        if step >= warmup { results.push(total); }
+    }
+    summary("artwork-revisit", results, json!({"images":48, "image_bytes":262144,
+        "peak_texture_bytes":peak_texture_bytes}))
+}
+
+fn distant_text_edits(samples: usize, warmup: usize) -> Value {
+    let mut renderer = Renderer::offscreen(WIDTH, HEIGHT).unwrap();
+    let mut scene = dense_text_scene(0);
+    render(&mut renderer, &scene);
+    let last = scene.text.len() - 1;
+    let mut results = Vec::new();
+    for step in 0..warmup + samples {
+        scene.revision += 1;
+        let label = if step % 2 == 0 { "1111111111" } else { "2222222222" };
+        scene.text[0].text = label.into();
+        scene.text[last].text = label.into();
+        let sample = render(&mut renderer, &scene);
+        if step >= warmup { results.push(sample); }
+    }
+    let pixels = renderer.pixels().unwrap();
+    let pixel_hash = pixels.iter().fold(0xcbf29ce484222325u64,
+        |hash, byte| (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3));
+    summary("distant-text-edits", results, json!({"changed_runs":2, "runs":scene.text.len(),
+        "rgba_hash":format!("{pixel_hash:016x}")}))
 }
 
 fn summary(name: &str, samples: Vec<Sample>, extra: Value) -> Value {

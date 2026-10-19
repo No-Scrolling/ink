@@ -5,26 +5,30 @@ import { onNativeMessage } from "ink/native";
 declare const __inkPost: (source: string) => void;
 type Item = { id: string; title: string; subtitle: string; image?: string };
 
-function Track({ item, onPress }: { item: Item; onPress: () => void }) {
-  return (
-    <Stack axis="horizontal" align="start" gap={8} onPress={onPress}>
-      <Text width={40} size={26} maxLines={1}>
-        {item.id}
-      </Text>
-      <Row title={item.title} titleMaxLines={2} subtitle={item.subtitle} />
-    </Stack>
-  );
+const PureTrack = ({ item, onPress }: { item: Item; onPress: () => void }) => (
+  <Stack axis="horizontal" align="start" gap={8} onPress={onPress}>
+    <Text width={40} size={26} maxLines={1}>
+      {item.id}
+    </Text>
+    <Row title={item.title} titleMaxLines={2} subtitle={item.subtitle} />
+  </Stack>
+);
+
+function Track(props: { item: Item; onPress: () => void }) {
+  return <PureTrack {...props} />;
 }
 
 export default function App() {
   const [items, setItems] = useState<readonly Item[]>([]);
   const [compatibility, setCompatibility] = useState(false);
+  const [pure, setPure] = useState(false);
   const [selection, setSelection] = useState("none");
   useEffect(() => {
     const stop = onNativeMessage("benchmark", (message) => {
       if (message.command === "populate") {
         setItems(message.items as Item[]);
         setCompatibility(message.compatibility === true);
+        setPure(message.pure === true);
       }
       if (message.command === "edit")
         setItems((previous) =>
@@ -45,7 +49,10 @@ export default function App() {
   }, []);
   return (
     <Screen title={`Rows ${selection}`} wide>
-      {compatibility ? (
+      {pure ? (
+        <List items={items} gap={8} keyExtractor={(item) => item.id}
+          renderItem={(item) => <PureTrack item={item} onPress={() => setSelection(item.id)} />} />
+      ) : compatibility ? (
         <List
           items={items}
           gap={8}

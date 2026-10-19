@@ -311,8 +311,15 @@ fn row_change(command: &str, count: usize, samples: usize, warmup: usize) -> Val
         "anchor_preserved":command == "prepend", "reordered_callback_checked":command == "reorder"}})
 }
 
-fn row_scroll(compatibility: bool, samples: usize, warmup: usize) -> Value {
+fn row_scroll(mode: &str, samples: usize, warmup: usize) -> Value {
+    let compatibility = mode == "react";
+    let pure = mode == "pure";
     let mut app = rows(1000, compatibility);
+    if pure {
+        let revision = app.engine.scene().revision;
+        app.send(json!({"type":"benchmark", "command":"populate", "items":row_data(1000), "pure":true}));
+        app.wait_for(|app| app.engine.scene().revision > revision && app.has_label("Artist 00000 · 3:20"));
+    }
     let mut times = Vec::new();
     let mut window_events = 0;
     for step in 0..warmup + samples {
@@ -344,7 +351,7 @@ fn row_scroll(compatibility: bool, samples: usize, warmup: usize) -> Value {
             after < before
         });
         verify_rows(&app, 1000, false);
-        if !compatibility {
+        if !compatibility && !pure {
             assert_eq!(events, 0, "native row scrolling must not enter JS");
             assert!(app.events.try_recv().is_err());
         }
@@ -352,12 +359,18 @@ fn row_scroll(compatibility: bool, samples: usize, warmup: usize) -> Value {
             times.push(time);
         }
     }
-    assert_eq!(
-        window_events > 0,
-        compatibility,
-        "custom React rows must exercise the compatibility path"
-    );
-    json!({"name":if compatibility { "rows-react-scroll-1000" } else { "rows-native-scroll-1000" },
+    if !pure {
+        assert_eq!(
+            window_events > 0,
+            compatibility,
+            "custom React rows must exercise the compatibility path"
+        );
+    }
+    if pure {
+        let selected = row_ids(&app, true)[0];
+        app.press(&format!("R{selected:05}"), &format!("Rows {selected}"));
+    }
+    json!({"name":format!("rows-{mode}-scroll-1000"),
         "samples":times, "contracts":{"bounded_hosts":true, "window_events":window_events}})
 }
 
@@ -855,8 +868,9 @@ pub(super) fn run(samples: usize, warmup: usize) -> Vec<Value> {
         row_change("edit", 1000, samples, warmup),
         row_change("prepend", 1000, samples, warmup),
         row_change("reorder", 1000, samples, warmup),
-        row_scroll(false, samples, warmup),
-        row_scroll(true, samples, warmup),
+        row_scroll("native", samples, warmup),
+        row_scroll("react", samples, warmup),
+        row_scroll("pure", samples, warmup),
         image_arrival(samples, warmup),
         startup(samples, warmup),
         navigation("open", samples, warmup),
