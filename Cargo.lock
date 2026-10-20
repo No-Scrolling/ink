@@ -947,12 +947,14 @@ name = "ink-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "image",
  "ink-audio",
  "ink-core",
  "ink-data",
  "ink-protocol",
  "ink-renderer-vulkan",
  "ink-runtime",
+ "miniz_oxide 0.8.9",
  "rusqlite",
  "serde_json",
 ]

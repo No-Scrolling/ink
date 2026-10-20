@@ -125,3 +125,28 @@ Hidden screens stop using their resources. Periodic refreshes stop when no subsc
 The cache clears when the app restarts. Use [Store](/store) for data that must persist.
 
 Putting the app in the background does not unsubscribe its screen. Use [Background work](/background) for scheduled jobs; resource refreshes do not guarantee background execution.
+
+## Keep input responsive during computation
+
+Split CPU-heavy JavaScript work into small chunks and await `yieldToInput()` between them. This lets Ink process pending input before the next chunk. Choose a chunk size that finishes within your interaction budget on the target device.
+
+This function expects a synchronous `processRecord` callback:
+
+```ts
+import { yieldToInput } from "ink";
+
+async function processRecords<T>(
+  records: readonly T[],
+  processRecord: (record: T) => void,
+  signal?: AbortSignal,
+) {
+  for (let start = 0; start < records.length; start += 128) {
+    signal?.throwIfAborted();
+    const end = Math.min(records.length, start + 128);
+    for (let index = start; index < end; index++) processRecord(records[index]);
+    await yieldToInput(signal);
+  }
+}
+```
+
+An aborted signal rejects the pending yield with its reason. Yielding adds scheduling overhead and does not interrupt a running chunk. This API runs while the app is active; use [Background work](/background) for jobs that must run after it closes.

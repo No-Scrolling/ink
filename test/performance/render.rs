@@ -16,6 +16,9 @@ const WIDTH: u32 = 1080;
 const HEIGHT: u32 = 1240;
 const TIMEOUT: Duration = Duration::from_secs(10);
 
+#[path = "artwork.rs"]
+mod artwork;
+
 /// Pixels returned by `ImageAnimation::advance`.
 type FramePixels = Arc<[u8]>;
 
@@ -36,7 +39,7 @@ fn main() {
     let probe = Renderer::offscreen(WIDTH, HEIGHT).expect("offscreen Vulkan renderer");
     let device = probe.device_name();
     drop(probe);
-    let workloads = vec![
+    let mut workloads = vec![
         gif_frame("gif-frame-thumbnail", None, samples, warmup),
         gif_frame("gif-frame-full-width", Some((1080, 608)), samples, warmup),
         first_frame("first-frame-rows", samples.min(30), warmup.min(4), |_| rows_scene()),
@@ -47,6 +50,7 @@ fn main() {
         artwork_revisit(samples.min(12), warmup.min(2)),
         distant_text_edits(samples, warmup),
     ];
+    workloads.extend(artwork::run(samples.min(8), warmup.min(2)));
     println!("{}", json!({"version":1, "device":device, "workloads":workloads}));
 }
 
@@ -135,6 +139,8 @@ fn summary(name: &str, samples: Vec<Sample>, extra: Value) -> Value {
         "uploaded_bytes_median": median(&mut bytes),
         "cache_misses_median": median(&mut misses),
         "contracts": extra,
+        "raw_samples": samples.iter().map(|sample| json!({"cpu_ns":sample.cpu_ns,
+            "prepare_ns":sample.prepare_ns,"uploaded_bytes":sample.uploaded_bytes,"cache_misses":sample.cache_misses})).collect::<Vec<_>>(),
     })
 }
 

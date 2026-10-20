@@ -623,6 +623,11 @@ fn main() {
     let samples: usize = args[1].parse().unwrap();
     let warmup: usize = args[2].parse().unwrap();
     assert!(samples > 0 && samples.is_multiple_of(2) && warmup.is_multiple_of(2));
+    if let Ok(name) = std::env::var("INK_PERF_ONLY") {
+        assert_eq!(name, "conversation-input-cpu", "unknown focused workload");
+        println!("{}", json!({"version":1,"workloads":[patterns::cpu_input(samples, warmup)],"idle":idle()}));
+        return;
+    }
     let mut workloads = Vec::new();
     for command in ["small", "bulk", "resize"] {
         workloads.push(cells(command, samples, warmup));

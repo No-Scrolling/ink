@@ -9,6 +9,7 @@ import type { Destination } from "./navigation";
 import { pressHandler, type PressProps } from "./press";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
 export { resource, type ResourceSnapshot, type ResourceSource } from "./resource";
+export { yieldToInput } from "./scheduling";
 export { useAction, type Action } from "./action";
 export { NativeError } from "./native";
 export { Tabs, Slot, navigate, replace, back, useRouteParams, type Destination } from "./navigation";

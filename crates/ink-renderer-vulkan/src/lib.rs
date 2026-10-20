@@ -10,6 +10,7 @@ mod android_image {
     }
 }
 mod compact;
+mod merlin;
 mod system_glyph;
 
 #[cfg(feature = "perf")]

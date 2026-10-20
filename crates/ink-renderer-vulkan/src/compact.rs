@@ -252,9 +252,8 @@ struct CachedImage {
 struct ImageCache {
     images: HashMap<u64, CachedImage>,
     transient: HashSet<u64>,
-    arrivals: Vec<u64>,
-    frequencies: Box<[u8; 4096]>,
-    accesses: usize,
+    policy_changed: bool,
+    policy: crate::merlin::Merlin,
     frame: u64,
     #[cfg(feature = "perf")]
     cache_misses: u64,
@@ -267,9 +266,8 @@ impl ImageCache {
         Self {
             images: HashMap::new(),
             transient: HashSet::new(),
-            arrivals: Vec::new(),
-            frequencies: Box::new([0; 4096]),
-            accesses: 0,
+            policy_changed: false,
+            policy: crate::merlin::Merlin::new(IMAGE_CACHE_BYTES),
             frame: 0,
             #[cfg(feature = "perf")]
             cache_misses: 0,
@@ -286,9 +284,7 @@ impl ImageCache {
     ) -> Result<&CachedImage> {
         let id = image.id();
         let generation = image.generation();
-        if self.images.get(&id).is_none_or(|cached| cached.last_used != self.frame) {
-            self.record_access(id);
-        }
+        let mut first_access = self.images.get(&id).is_none_or(|cached| cached.last_used != self.frame);
         if let ImageData::Remote(image) = image
             && let Some(cached) = self.images.get_mut(&id)
             && cached.generation != generation
@@ -306,6 +302,8 @@ impl ImageCache {
         {
             self.images.remove(&id);
             self.transient.remove(&id);
+            self.policy.forget(id);
+            first_access = true;
         }
         if !self.images.contains_key(&id) {
             let (pixels, width, height) = match image {
@@ -356,12 +354,14 @@ impl ImageCache {
                     last_used: self.frame,
                 },
             );
-            self.arrivals.push(id);
             #[cfg(feature = "perf")]
             {
                 self.cache_misses += 1;
                 self.uploaded_bytes += expected_length as u64;
             }
+        }
+        if first_access && self.policy.access(id, self.images[&id].bytes) {
+            self.policy_changed = true;
         }
         self.images
             .get_mut(&id)
@@ -374,32 +374,6 @@ impl ImageCache {
 
     fn begin_frame(&mut self) {
         self.frame = self.frame.wrapping_add(1);
-    }
-
-    fn frequency_indices(id: u64) -> [usize; 4] {
-        let hash = id.wrapping_mul(0x9e3779b97f4a7c15);
-        std::array::from_fn(|index| index * 1024 + ((hash >> (index * 16)) as usize & 1023))
-    }
-
-    fn record_access(&mut self, id: u64) {
-        if self.accesses == 16_384 {
-            for frequency in self.frequencies.iter_mut() {
-                *frequency /= 2;
-            }
-            self.accesses = 0;
-        }
-        self.accesses += 1;
-        for index in Self::frequency_indices(id) {
-            self.frequencies[index] = self.frequencies[index].saturating_add(1);
-        }
-    }
-
-    fn frequency(&self, id: u64) -> u32 {
-        Self::frequency_indices(id)
-            .iter()
-            .map(|index| u32::from(self.frequencies[*index]))
-            .min()
-            .unwrap()
     }
 
     #[cfg(feature = "perf")]
@@ -415,44 +389,21 @@ impl ImageCache {
         for id in self.transient.extract_if(|id| !protected.contains(id)).collect::<Vec<_>>() {
             self.images.remove(&id);
         }
-        let arrivals = std::mem::take(&mut self.arrivals);
-        if arrivals.is_empty() {
+        if !std::mem::take(&mut self.policy_changed) {
             return;
         }
-        let incoming = arrivals.iter().copied().collect::<HashSet<_>>();
-        let mut bytes = self.images.iter().filter(|(id, _)| !self.transient.contains(id) && !incoming.contains(id))
-            .map(|(_, image)| image.bytes).sum::<usize>();
-        let mut victims = self.images.iter()
-            .filter(|(id, _)| !protected.contains(id) && !self.transient.contains(id) && !incoming.contains(id))
-            .map(|(id, image)| (image.last_used, *id)).collect::<Vec<_>>();
-        victims.sort_unstable();
-        for id in arrivals {
-            let size = self.images[&id].bytes;
-            let needed = (bytes + size).saturating_sub(IMAGE_CACHE_BYTES);
-            let candidate_frequency = self.frequency(id);
-            let mut reclaimed = 0;
-            let mut victim_frequency = 0;
-            let mut count = 0;
-            for (_, victim) in &victims {
-                if reclaimed >= needed {
-                    break;
-                }
-                reclaimed += self.images[victim].bytes;
-                victim_frequency += self.frequency(*victim);
-                count += 1;
-                if victim_frequency > candidate_frequency {
-                    break;
-                }
+        self.images.retain(|id, _| {
+            if self.policy.contains(*id) {
+                self.transient.remove(id);
+                true
+            } else if protected.contains(id) {
+                self.transient.insert(*id);
+                true
+            } else {
+                self.transient.remove(id);
+                false
             }
-            if reclaimed < needed || victim_frequency > candidate_frequency {
-                self.transient.insert(id);
-                continue;
-            }
-            for (_, victim) in victims.drain(..count) {
-                self.images.remove(&victim);
-            }
-            bytes = bytes + size - reclaimed;
-        }
+        });
     }
 }
 

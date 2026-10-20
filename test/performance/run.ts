@@ -28,6 +28,7 @@ const expectedWorkloads = [
   "conversation-input-under-load",
   "playback-native-clock",
   "playback-state-change",
+  "conversation-input-cpu",
 ];
 const { values } = parseArgs({
   options: {

@@ -1,8 +1,22 @@
 import { useEffect, useEffectEvent, useState } from "react";
+import * as Ink from "ink";
 import { ConversationScreen, Screen, Text, type ConversationMessage } from "ink";
 import { onNativeMessage } from "ink/native";
 
 declare const __inkPost: (source: string) => void;
+const yieldToInput: ((signal?: AbortSignal) => Promise<void>) | undefined = Reflect.get(Ink, "yieldToInput");
+
+async function buildIndex(count: number) {
+  __inkPost(JSON.stringify({ type: "cpu-start" }));
+  const started = performance.now();
+  let sum = 0;
+  for (let start = 0; start < count; start += 32768) {
+    const end = Math.min(count, start + 32768);
+    for (let index = start; index < end; index++) sum += index % 97;
+    if (yieldToInput && end < count) await yieldToInput();
+  }
+  __inkPost(JSON.stringify({ type: "cpu-done", sum, elapsedMs: performance.now() - started }));
+}
 
 export default function App() {
   const [messages, setMessages] = useState<readonly ConversationMessage[] | null>(null);
@@ -10,6 +24,7 @@ export default function App() {
   const [received, setReceived] = useState(0);
   const receive = useEffectEvent((message: Record<string, unknown>) => {
     if (message.command === "populate") setMessages(message.messages as ConversationMessage[]);
+    if (message.command === "cpu") void buildIndex(Number(message.count));
     if (message.command === "append") {
       const incoming = message.messages as ConversationMessage[];
       setMessages((previous) => [...(previous ?? []), ...incoming].slice(-512));

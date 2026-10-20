@@ -5,7 +5,7 @@ description: "Five production candidates grounded in published literature and In
 
 Prioritise explicit list changes, byte-aware image-cache admission and incremental layout. Cooperative background work and wider native-template compilation are additional candidates when app workloads justify them. The smallest isolated experiment is image-cache admission; explicit list changes offer the clearest opportunity to remove work that grows with the entire dataset.
 
-This brief records the research phase. Exa supplied discovery and primary-source retrieval; alphaXiv supplied literature discovery and full-text PDF reads. The review inspected Ink at `5a707a4` on 20 October 2026. No production implementation, benchmark or device run was performed during that phase. Ranking reflects the inspected code and implementation scope, rather than predicted percentage gains. See the subsequent [implementation results](../../test/performance/README.md#literature-follow-up-20-october-2026) for measured gains, costs and rejected trials.
+This brief records the research phase. Exa supplied discovery and primary-source retrieval; alphaXiv supplied literature discovery and full-text PDF reads. The review inspected Ink at `5a707a4` on 20 October 2026. No production implementation, benchmark or device run was performed during that phase. Ranking reflects the inspected code and implementation scope, rather than predicted percentage gains. See the subsequent [implementation results](https://github.com/No-Scrolling/ink/blob/main/test/performance/README.md#literature-follow-up-20-october-2026) for measured gains, costs and rejected trials.
 
 ## Candidate order
 

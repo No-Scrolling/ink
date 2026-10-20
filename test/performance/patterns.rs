@@ -793,6 +793,81 @@ fn under_load(samples: usize, warmup: usize, arrival_ms: u64) -> Value {
         "intended_arrival_to_ack":true, "all_arrivals_received":true, "newest_draft_preserved":true}})
 }
 
+pub(super) fn cpu_input(samples: usize, warmup: usize) -> Value {
+    let mut app = conversation();
+    let work = 16_000_000_u64;
+    app.send(json!({"type":"benchmark", "command":"cpu", "count":work}));
+    loop {
+        match app.next() {
+            Event::Message(message)
+                if serde_json::from_str::<Value>(&message).unwrap()["type"] == "cpu-start" =>
+            {
+                break;
+            }
+            Event::Commit(commit) => app.tree.apply(commit, &mut app.engine).unwrap(),
+            event => panic!("unexpected CPU start: {}", event_name(&event)),
+        }
+    }
+    let count = samples + warmup;
+    let interval = Duration::from_millis(2);
+    let started = Instant::now();
+    let deadline = started + TIMEOUT;
+    let mut sent = 0;
+    let mut acknowledged = 0;
+    let mut times = Vec::new();
+    let mut complete = None;
+    while acknowledged < count || complete.is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "CPU/input workload did not finish"
+        );
+        if sent < count && Instant::now() >= started + interval * sent as u32 {
+            app.edit(&format!("CPU draft {sent} 🙂"));
+            sent += 1;
+        }
+        match app.events.recv_timeout(Duration::from_micros(100)) {
+            Ok(Event::Commit(commit)) => {
+                let ack = input_value(&commit)
+                    .and_then(|value| value.strip_prefix("CPU draft "))
+                    .and_then(|value| value.split(' ').next())
+                    .map(|value| value.parse::<usize>().unwrap());
+                app.tree.apply(commit, &mut app.engine).unwrap();
+                app.refresh();
+                let completed = Instant::now();
+                if let Some(index) = ack {
+                    while acknowledged <= index {
+                        if acknowledged >= warmup {
+                            times.push(json!({"elapsed_ns":completed.duration_since(started + interval * acknowledged as u32).as_nanos() as u64}));
+                        }
+                        acknowledged += 1;
+                    }
+                }
+                let context: Value =
+                    serde_json::from_str(&app.engine.text_input_context()).unwrap();
+                assert_eq!(context["text"], format!("CPU draft {} 🙂", sent - 1));
+            }
+            Ok(Event::Message(message)) => {
+                let message: Value = serde_json::from_str(&message).unwrap();
+                assert_eq!(message["type"], "cpu-done");
+                let remainder = work % 97;
+                assert_eq!(
+                    message["sum"],
+                    work / 97 * 4656 + remainder * (remainder - 1) / 2
+                );
+                complete = Some(message["elapsedMs"].clone());
+            }
+            Ok(Event::Ready) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            result => panic!("CPU/input event failed: {:?}", result.err()),
+        }
+    }
+    assert_eq!(
+        app.observe()["draft"],
+        format!("CPU draft {} 🙂", count - 1)
+    );
+    json!({"name":"conversation-input-cpu", "samples":times,
+        "contracts":{"work_items":work,"background_elapsed_ms":complete,"input_interval_ms":2,"final_draft_preserved":true}})
+}
+
 fn playback(native_clock: bool, samples: usize, warmup: usize) -> Value {
     let mut app = App::new("playback");
     let nodes = app.host_nodes();
@@ -883,5 +958,6 @@ pub(super) fn run(samples: usize, warmup: usize) -> Vec<Value> {
         under_load(samples, warmup, 5),
         playback(true, samples, warmup),
         playback(false, samples, warmup),
+        cpu_input(samples, warmup),
     ]
 }
