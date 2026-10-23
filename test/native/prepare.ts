@@ -14,7 +14,7 @@ const root = resolve(import.meta.dir, "../..");
 const fixtures = {
   runtime: ["bridge", "split-web"],
   scene: ["lists", "input", "navigation", "images"],
-  performance: ["react", "list", "rows", "navigation", "conversation", "playback"],
+  performance: ["react", "list", "rows", "navigation", "conversation", "playback", "source", "automatic"],
 };
 for (const suite of suites) {
   for (const fixture of fixtures[suite as keyof typeof fixtures]) {

@@ -91,6 +91,8 @@ export function Button<const D extends Destination>(props: PressProps<D> & {
 }
 
 export { Row, Image, Avatar } from "./image";
+export { createSource, type Source, type SourceSnapshot, type SourceView, type SourceWhere } from "./source";
+export { SourceList } from "./source-list";
 export { Canvas, Rectangle, CanvasText, CanvasIcon } from "./canvas";
 
 export function Field<const D extends Destination>(props: PressProps<D> & {

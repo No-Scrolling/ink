@@ -127,6 +127,12 @@ export default function Items() {
 
 Replace arrays and changed items instead of mutating them. Rows outside the visible window unmount, so keep lasting state in the parent or a store. Ink preserves the visible position when earlier rows load or change height.
 
+Ink applies list optimisations automatically with the existing `items`, `keyExtractor` and `renderItem` props. Supported native rows share unchanged records between updates. Small edits stay synchronous. Large replacements with compiler-proven row and key functions can prepare in slices, allowing input between slices while the previous complete rows remain visible. Ink discards unfinished work when newer data arrives and publishes each complete replacement together.
+
+While a replacement is preparing, row actions use the latest committed item and its current index. Actions for deleted keys are ignored. The first population stays synchronous so `initialPosition="end"` can scroll the containing screen correctly. Unsupported row functions keep the React rendering path.
+
+This scheduling covers Ink's row preparation. Application work such as building, filtering or sorting the `items` array still runs in the application function that performs it.
+
 Use `onLoadOlder` and `hasOlder` to prepend history. Both `hasMore` and `hasOlder` default to false; set the matching flag to true when a page is available. [Conversations](/conversations) handle this for chats.
 
 Set `initialPosition="end"` to mount the last rows and scroll their containing `Screen` to the bottom when the list mounts. The default is `"start"`. This also works when the list appears after loading. Changing the prop later does not move the reader; use a new React `key` to start a different list. Use `followEnd` separately to follow subsequent additions.

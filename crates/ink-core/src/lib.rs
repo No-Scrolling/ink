@@ -622,7 +622,7 @@ enum NodeKind {
         children: Vec<Node>,
         start: usize,
         keys: Arc<[String]>,
-        content_versions: Arc<[u64]>,
+        content_versions: list::ListVersions,
         revision: u64,
         gap: f32,
         follow_end: bool,

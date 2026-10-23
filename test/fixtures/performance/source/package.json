@@ -1,0 +1,8 @@
+{
+  "name": "ink-performance-source",
+  "private": true,
+  "dependencies": {
+    "ink": "workspace:*",
+    "react": "19.2.8"
+  }
+}

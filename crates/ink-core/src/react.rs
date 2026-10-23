@@ -209,6 +209,7 @@ impl ReactTree {
         }
         json!({
             "host_nodes": self.nodes.len().saturating_sub(1),
+            "native_list_storage": self.native_list_storage_diagnostics(),
             "host_node_inline_bytes": self.nodes.len().saturating_sub(1) * size_of::<HostNode>(),
             "raw_text_nodes": raw_text_nodes,
             "raw_text_bytes": raw_text_bytes,
@@ -247,10 +248,10 @@ impl ReactTree {
         let operations = self.expand_native_lists(operations, engine)?;
         let structural = operations
             .iter()
-            .any(|operation| !matches!(operation, Operation::Update { .. } | Operation::Text { .. }));
+            .any(|operation| !matches!(operation, Operation::Update { .. } | Operation::Text { .. } | Operation::Source { .. }));
         let target_count = operations.iter().map(|operation| match operation {
             Operation::Text { ids, .. } => ids.len(),
-            Operation::Update { .. } => 1,
+            Operation::Update { .. } | Operation::Source { .. } => 1,
             _ => 0,
         }).sum();
         let mut targets = FxHashSet::with_capacity_and_hasher(target_count, Default::default());
@@ -313,6 +314,10 @@ impl ReactTree {
                         }
                         targets.insert(self.update_target(id)?);
                     }
+                }
+                Operation::Source { id, .. } => {
+                    ensure!(self.node(id)?.kind == HostKind::NativeList, "source operation requires a native list");
+                    targets.insert(self.update_target(id)?);
                 }
                 Operation::Hidden { id, value } => self.node_mut(id)?.hidden = value,
                 Operation::Insert { id, parent, before } => self.insert(id, parent, before)?,
@@ -733,7 +738,7 @@ impl ReactTree {
                 let HostProps::List(list) = props else { bail!("List requires metadata"); };
                 let keys = list.keys.clone();
                 let count = keys.len();
-                let content_versions = list.content_versions.clone();
+                let content_versions = super::list::ListVersions::Flat(list.content_versions.clone());
                 let start = props.get("start").and_then(Json::as_u64).context("List requires start")? as usize;
                 let revision = props.get("revision").and_then(Json::as_u64).context("List requires revision")?;
                 let gap = number(props, "gap")?.unwrap_or(0.0);

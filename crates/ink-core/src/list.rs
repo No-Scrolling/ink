@@ -1,4 +1,22 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
+
+use ink_protocol::source::ViewSnapshot;
+
+#[derive(Clone, Debug)]
+pub(super) enum ListVersions {
+    Flat(Arc<[u64]>),
+    Source(Arc<ViewSnapshot>),
+}
+
+impl PartialEq for ListVersions {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Flat(left), Self::Flat(right)) => left == right,
+            (Self::Source(left), Self::Source(right)) => Arc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+}
 
 #[derive(Clone, Default)]
 pub(super) struct ListMetrics {
@@ -12,6 +30,7 @@ pub(super) struct ListMetrics {
     initial_estimate: f32,
     pub revision: u64,
     pub follow_end: bool,
+    reset_versions: bool,
 }
 
 // Fenwick sums track measured heights and counts separately. Changing the estimate
@@ -88,8 +107,24 @@ impl HeightIndex {
 }
 
 impl ListMetrics {
+    pub fn reset_versions(&mut self) {
+        self.reset_versions = true;
+    }
+
+    pub fn patch_source(&mut self, previous_revision: u64, snapshot: &ViewSnapshot, rows: &[usize]) {
+        if self.reset_versions || self.revision != previous_revision { return; }
+        for &row in rows {
+            for (width, index) in &mut self.widths {
+                self.heights.remove(&(self.keys[row].clone(), *width, self.versions[row]));
+                index.invalidate(row);
+            }
+            self.versions[row] = snapshot.get(&self.keys[row]).expect("source patch key exists").revision;
+        }
+        self.revision = snapshot.revision;
+    }
+
     pub fn patch(&mut self, previous_revision: u64, revision: u64, rows: &[usize]) {
-        if self.revision != previous_revision { return; }
+        if self.reset_versions || self.revision != previous_revision { return; }
         for &row in rows {
             for (width, index) in &mut self.widths {
                 self.heights.remove(&(self.keys[row].clone(), *width, self.versions[row]));
@@ -103,21 +138,40 @@ impl ListMetrics {
     pub fn prepare(
         &mut self,
         keys: &[String],
-        versions: &[u64],
+        versions: &ListVersions,
         revision: u64,
         width: f32,
         gap: f32,
         initial_estimate: f32,
     ) {
-        if self.widths.is_empty() || self.revision != revision {
-            let current: HashMap<_, _> = keys.iter().zip(versions).collect();
+        match versions {
+            ListVersions::Flat(versions) => self.prepare_versions(keys, versions.iter().copied(), revision, width, gap, initial_estimate),
+            ListVersions::Source(snapshot) => self.prepare_versions(keys,
+                keys.iter().map(|key| snapshot.get(key).expect("source list key exists").revision),
+                revision, width, gap, initial_estimate),
+        }
+    }
+
+    fn prepare_versions(
+        &mut self,
+        keys: &[String],
+        versions: impl Iterator<Item = u64> + Clone,
+        revision: u64,
+        width: f32,
+        gap: f32,
+        initial_estimate: f32,
+    ) {
+        if self.widths.is_empty() || self.revision != revision || self.reset_versions {
+            if self.reset_versions { self.heights.clear(); self.reset_versions = false; }
+            let current: HashMap<_, _> = keys.iter().zip(versions.clone()).collect();
             self.heights.retain(|(key, _, version), _| {
                 current
                     .get(key)
-                    .is_some_and(|current| **current == *version)
+                    .is_some_and(|current| *current == *version)
             });
             keys.clone_into(&mut self.keys);
-            versions.clone_into(&mut self.versions);
+            self.versions.clear();
+            self.versions.extend(versions);
             for (width, index) in &mut self.widths {
                 let measured = self
                     .keys

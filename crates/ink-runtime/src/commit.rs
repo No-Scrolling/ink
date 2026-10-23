@@ -3,27 +3,54 @@ use std::{cell::RefCell, rc::Rc, sync::mpsc::TrySendError};
 use ink_protocol::{Operation, ReactCommit};
 use rquickjs::{Array, Ctx, Exception, FromJs, Function, Object, Result, Value};
 
-use crate::{Event, EventSink, MAX_MESSAGE_BYTES};
+use crate::{Event, EventSink, MAX_MESSAGE_BYTES, source};
 
-pub(crate) fn install(ctx: &Ctx<'_>, events: EventSink, failed: Rc<RefCell<bool>>) -> Result<()> {
+pub(crate) fn install(
+    ctx: &Ctx<'_>,
+    events: EventSink,
+    failed: Rc<RefCell<bool>>,
+    sources: source::Shared,
+) -> Result<()> {
     ctx.globals().set(
         "__inkCommit",
         Function::new(ctx.clone(), move |ctx: Ctx<'_>, batch: Array<'_>| {
-            let (commit, bytes) = read(batch)?;
-            events.try_send_sized(Event::Commit(commit), bytes).map_err(|error| {
-                *failed.borrow_mut() = true;
-                Exception::throw_message(
-                    &ctx,
-                    match error {
-                        TrySendError::Full(_) => "busy: native event queue is full",
-                        TrySendError::Disconnected(_) => {
-                            "unavailable: native event queue is closed"
-                        }
-                    },
-                )
-            })
+            ensure_open(&ctx, &failed)?;
+            let (mut commit, mut bytes) = read(batch)?;
+            sources.borrow_mut().commit(&ctx, &mut commit, &mut bytes)?;
+            send(&ctx, &events, &failed, commit, bytes)
         })?,
     )
+}
+
+pub(crate) fn ensure_open(ctx: &Ctx<'_>, failed: &Rc<RefCell<bool>>) -> Result<()> {
+    if *failed.borrow() {
+        return Err(Exception::throw_message(
+            ctx,
+            "native commit delivery failed; reload the runtime",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn send(
+    ctx: &Ctx<'_>,
+    events: &EventSink,
+    failed: &Rc<RefCell<bool>>,
+    commit: ReactCommit,
+    bytes: usize,
+) -> Result<()> {
+    events
+        .try_send_sized(Event::Commit(commit), bytes)
+        .map_err(|error| {
+            *failed.borrow_mut() = true;
+            Exception::throw_message(
+                ctx,
+                match error {
+                    TrySendError::Full(_) => "busy: native event queue is full",
+                    TrySendError::Disconnected(_) => "unavailable: native event queue is closed",
+                },
+            )
+        })
 }
 
 fn read(batch: Array<'_>) -> Result<(ReactCommit, usize)> {
@@ -107,7 +134,7 @@ fn json<'js, T: serde::de::DeserializeOwned>(
         .map_err(|error| Exception::throw_type(ctx, &error.to_string()))
 }
 
-fn check_size(ctx: &Ctx<'_>, bytes: usize) -> Result<()> {
+pub(crate) fn check_size(ctx: &Ctx<'_>, bytes: usize) -> Result<()> {
     if bytes > MAX_MESSAGE_BYTES {
         return Err(Exception::throw_range(ctx, "native message is too large"));
     }

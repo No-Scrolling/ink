@@ -48,6 +48,22 @@ Samples alternate values so no-op setters cannot win. Warm-up operations are dis
 
 Scrollbar samples start immediately before each `pointer_move`. `thumb_update_ns` ends when the native scene's thumb rectangle has been computed through the same method used by the renderer; `elapsed_ns` also includes native row window materialisation and viewport readiness. Pointer capture and release are outside timing. The pointer remains held across repeated full-track sweeps, with independent checks that the thumb follows its requested position and that both endpoints remain reachable. These CPU timings exclude Android event delivery, frame scheduling, GPU submission and display presentation.
 
+## Native source comparison
+
+The source fixture compares immutable arrays with `createSource`, an equality-filtered unread count and `SourceList`. Both versions run the same compiled JavaScript. A sparse update changes one visible subtitle and its unread membership; a full replacement changes every subtitle. Each sample waits for the correct row and count in the native scene.
+
+Prepare the fixture, build both versions, then measure after other compilation finishes:
+
+```sh
+bun test/native/prepare.ts performance --profile ink-dev
+bun test/performance/source-run.ts --phase build --output .test-output/source-comparison
+bun test/performance/source-run.ts --phase run --output .test-output/source-comparison
+```
+
+The build phase needs a clean archive of the baseline revision. Its defaults use `dfef70e` and `.test-output/native-source/2026-10-22/baseline-host-source`; override these with `--baseline-revision` and `--baseline-source`. The runner checks the archive against Git before adding the identical harness. It saves source snapshots, both executables, shared assets, hashes, raw samples and a report. Builds share the Cargo cache and finish before timing begins.
+
+One default block runs four fresh processes in baseline/candidate/candidate/baseline order, with 12 warm-ups and 64 samples per workload. `--counts 1000,5000` selects the supported main comparison. Larger array row payloads can exceed the existing 1 MiB commit input limit. Native-source contract probes cover immutable snapshots, rejected transaction atomicity, no-op notifications, filtered membership/order, released snapshots and current-key row events. These are host scene timings; Android and presentation need separate measurements.
+
 ## Renderer workloads
 
 Run the offscreen Vulkan workloads separately:
@@ -195,3 +211,11 @@ The [measured follow-up](../../docs/research/recent-performance-results.md) cove
 The host benchmark now includes native editor input during CPU work, with completion and checksum checks. Renderer workloads cover changing artwork reuse, mixed encodings and large covers, with saved raw samples and output-colour checks.
 
 The report separates host scene-application latency, renderer CPU submission time and emulator input-to-submission latency. It includes preparation time, CPU-job completion time, startup and APK size. Evidence, frozen binaries, source snapshots and chart source are saved under `.test-output/recent-experiments/2026-10-20/`.
+
+## Automatic list updates
+
+`test/fixtures/performance/automatic` uses ordinary `List`, `Row` and `TextInput` components. It has no source API or explicit yielding. Prepare it with `bun test/native/prepare.ts performance`, then build `cargo build --release -p ink-test --bin ink-automatic-performance`.
+
+`ink-automatic-performance SAMPLES WARMUP 1000,5000` measures one-row edits, complete replacements and input acknowledgements during a 5,000-row replacement. `INK_AUTOMATIC_ASSETS` selects the fixture's asset directory. Input arrives every two milliseconds; each job checks the final controlled value and current row content. The harness also checks current requested callbacks, supersession, unmount/remount and bounded native row windows.
+
+Build the same fixture and harness with both SDK versions before measuring. Each bundle must contain its executable and `assets/automatic`. Use `bun test/performance/automatic-run.ts --baseline BUNDLE --candidate BUNDLE --output DIRECTORY` for four fresh processes in baseline/candidate/candidate/baseline order. Add `--controls` to run the 30 existing workloads too; those bundles also need `ink-performance` and its six fixture assets. The runner refuses to measure while compiler processes are active and saves every raw run with a summary.

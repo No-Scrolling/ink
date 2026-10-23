@@ -3,7 +3,9 @@ pub mod cpu_affinity;
 mod bytecode;
 mod host;
 mod encoding;
+mod array;
 mod commit;
+mod source;
 mod binary;
 mod queue;
 pub type EventReceiver = queue::Receiver<Event>;
@@ -531,6 +533,7 @@ fn install(
     context
         .with(|ctx| {
             encoding::install(&ctx)?;
+            array::install(&ctx)?;
             binary::install(&ctx, binary, events.clone())?;
             ctx.eval::<(), _>(include_str!("encoding.js"))?;
             let global = ctx.globals();
@@ -552,7 +555,9 @@ fn install(
                 })?,
             )?;
 
-            commit::install(&ctx, events.clone(), transport_failed)?;
+            let sources = source::Shared::default();
+            source::install(&ctx, sources.clone(), events.clone(), transport_failed.clone())?;
+            commit::install(&ctx, events.clone(), transport_failed, sources)?;
             global.set(
                 "__inkPost",
                 Function::new(ctx.clone(), move |ctx: Ctx<'_>, message: String| {

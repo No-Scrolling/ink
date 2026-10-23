@@ -150,3 +150,53 @@ async function processRecords<T>(
 ```
 
 An aborted signal rejects the pending yield with its reason. Yielding adds scheduling overhead and does not interrupt a running chunk. This API runs while the app is active; use [Background work](/background) for jobs that must run after it closes.
+
+## Update keyed records
+
+Use `createSource` for a large collection that receives small changes. Ink stores the records natively and maintains equality-filtered views as records change. This is an in-memory collection; use [Store](/store) for persistence.
+
+Ordinary [`List`](/lists) components already apply native storage and cooperative row preparation automatically where eligible. A source is optional: use it when the application can provide keyed changes directly and needs native filtered views instead of rebuilding JavaScript arrays.
+
+```ts
+import { createSource } from "ink";
+
+type Message = { id: string; title: string; preview: string; read: boolean };
+const messages = createSource<Message>([
+  { id: "m1", title: "Alex", preview: "See you tomorrow", read: false },
+], { key: "id" });
+const unread = messages.view({ read: false });
+
+const before = messages.getSnapshot();
+messages.set({ ...before.get("m1")!, read: true });
+unread.getSnapshot().count; // 0
+before.get("m1")!.read; // false: snapshots retain their original values
+```
+
+Keys must be unique, non-empty strings. Records must contain plain JSON data: finite numbers, strings, booleans, `null`, arrays and plain objects. Snapshot records are frozen. `get(key)` and `at(index)` return `undefined` when no record matches. `useSnapshot(source)` subscribes a React component and returns the same snapshot until that view changes.
+
+`view({ read: false })` matches top-level fields by primitive equality. Multiple fields must all match; a missing field differs from `null`. Views retain source order. Arbitrary predicates, sorting, joins and nested-field filters are not supported.
+
+### Change several records together
+
+`transact` replaces existing records atomically. Pass the revision you read to reject a stale update. Duplicate or unknown keys and invalid data reject the whole transaction without changing the collection. `set` replaces one existing record using the current revision.
+
+```ts
+const snapshot = messages.getSnapshot();
+messages.transact([
+  { ...snapshot.get("m1")!, preview: "Updated preview" },
+], snapshot.revision);
+```
+
+Use `replace(records, revision?)` to replace the entire collection, including insertions, removals or a new order. This scans the collection. Identical values do not advance revisions or notify subscribers. Small stable-key changes update the relevant records and view membership; binding a filtered list whose membership changes can still rebuild its key order.
+
+### Bind native rows
+
+`SourceList` takes a source or view and record field names for `title`, optional `subtitle` and optional `image`. Each selected field must contain a string. It uses standard Ink rows, with `titleMaxLines={2}` and `gap={47}` by default. `onPress(key)` and `onLongPress(key)` identify the current record by key. Use `List` when rows need arbitrary React content or pagination callbacks.
+
+Inside a screen, a source list can use `view={messages}`, `title="title"` and `subtitle="preview"`. Read `messages.getSnapshot().get(key)` in the press handler to get the current record. Changing bound field names remounts the native list.
+
+### Release a collection
+
+Call `view.dispose()` when a derived view is no longer needed. Call `source.dispose()` when its owner finishes with the collection; this releases all its views. Unmount source lists first. Already returned snapshots remain readable, but disposed sources and views reject new reads, mutations and subscriptions. A list that remains mounted retains its last snapshot.
+
+A runtime supports 64 sources, 256 views including base sources, and one million current records across sources. Each record can encode at most 1 MiB, and current records can encode at most 256 MiB in total. These limits exclude allocation overhead and retained snapshots. Transport failure stops further source delivery and requires a runtime reload.

@@ -1,7 +1,12 @@
 pub use smol_str::SmolStr;
 
+pub mod source;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
+use std::sync::Arc;
+
+use source::ViewSnapshot;
 
 #[derive(Deserialize, Serialize)]
 #[serde(transparent)]
@@ -35,6 +40,14 @@ pub enum Operation {
     Hidden {
         id: usize,
         value: bool,
+    },
+    #[serde(skip_deserializing)]
+    Source {
+        id: usize,
+        snapshot: Arc<ViewSnapshot>,
+        previous_revision: u64,
+        changed_keys: Vec<String>,
+        structural: bool,
     },
 }
 
