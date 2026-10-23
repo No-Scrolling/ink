@@ -1,14 +1,14 @@
 {
   "name": "@ink/camera",
-  "version": "0.1.0-alpha.10",
+  "version": "0.1.0-alpha.11",
   "private": true,
   "exports": {
     ".": "./src/index.ts",
     "./internal": "./src/shared.ts"
   },
   "peerDependencies": {
-    "@ink/files": "0.1.0-alpha.10",
-    "ink": "0.1.0-alpha.10",
+    "@ink/files": "0.1.0-alpha.11",
+    "ink": "0.1.0-alpha.11",
     "react": "19.2.8"
   }
 }
