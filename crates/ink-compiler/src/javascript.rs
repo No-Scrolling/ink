@@ -59,6 +59,7 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
     let builder = project.work_path().join("build.js");
     write_if_changed(&builder, include_bytes!("bundle-javascript.js"))?;
     write_if_changed(&project.work_path().join("icon-usage.js"), include_bytes!("icon-usage.js"))?;
+    write_if_changed(&project.work_path().join("data-views.js"), include_bytes!("data-views.js"))?;
     write_if_changed(&project.work_path().join("native-lists.js"), include_bytes!("native-lists.js"))?;
     write_if_changed(&project.work_path().join("file-routes.js"), include_bytes!("file-routes.js"))?;
     run(Command::new("bun")

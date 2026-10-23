@@ -2,6 +2,7 @@ import { dirname, resolve, relative, extname } from "node:path";
 import { realpath } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { collectIconSizes } from "./icon-usage.js";
+import { compileDataViews } from "./data-views.js";
 import { compileNativeLists } from "./native-lists.js";
 const [root, entry, output, profile = "release", routing] = Bun.argv.slice(2);
 const development = profile === "development";
@@ -79,6 +80,13 @@ if (selectedSdk) {
   }
 }
 const frameworkDirectory = dirname(frameworkEntry);
+let dataViewsAvailable = false;
+try {
+  Bun.resolveSync("ink/internal/data", root);
+  dataViewsAvailable = true;
+} catch {
+  // Older SDKs do not export the internal helpers.
+}
 const toolingDirectory = process.env.INK_RELEASE_ROOT ?? frameworkDirectory;
 const oxc = await import(Bun.resolveSync("oxc-transform-react", toolingDirectory));
 const parser = development ? await import(Bun.resolveSync("oxc-parser", toolingDirectory)) : null;
@@ -171,7 +179,7 @@ function buildOptions(bootstrap = false) { return {
       return { path: resolved };
     });
     build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async ({ path }) => {
-      await inspect(path);
+      const packageName = await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
       if (!inspectedNativeModules.has(path)) {
@@ -211,8 +219,13 @@ function buildOptions(bootstrap = false) { return {
         for (const [reference, size] of sizes) iconSizes.set(reference, Math.max(iconSizes.get(reference) ?? 0, size));
       }
       let compilerMap;
-      contents = compileNativeLists(ts, path, contents);
       const appSource = path.startsWith(root + "/") && !path.includes("/node_modules/") && !path.includes("/.ink/");
+      if (dataViewsAvailable && appSource && !path.startsWith(frameworkDirectory + "/")
+        && packageName !== "ink" && !packageName?.startsWith("@ink/")
+        && packageName !== "ink-framework" && !packageName?.startsWith("ink-framework-")) {
+        contents = compileDataViews(ts, path, contents);
+      }
+      contents = compileNativeLists(ts, path, contents);
       const refresh = development && !bootstrap && !path.includes("/node_modules/");
       if (appSource || refresh) {
         const cacheKey = path + ":" + refresh;

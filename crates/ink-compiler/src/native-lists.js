@@ -57,7 +57,11 @@ export function compileNativeLists(ts, path, contents) {
       return result;
     }
     const parameters = new Set(callback.parameters.map(p => checker.getSymbolAtLocation(p.name)));
+    const indexParameter = callback.parameters[1] && checker.getSymbolAtLocation(callback.parameters[1].name);
+    let usesIndex = false;
     function capture(expression, caller = false) {
+      // Event arrows run through the latest projector at dispatch, not when
+      // preparing displayed values. Their bodies do not affect move reuse.
       if (ts.isArrowFunction(expression)) return;
       if (ts.isPropertyAccessExpression(expression)) return capture(expression.expression, caller);
       if (ts.isPropertyAssignment(expression)) return capture(expression.initializer, caller);
@@ -65,6 +69,7 @@ export function compileNativeLists(ts, path, contents) {
         const symbol = checker.getSymbolAtLocation(expression);
         const alias = aliases.get(symbol);
         if (alias) { if (alias.source) capture(alias.source, true); return; }
+        if (indexParameter && symbol === indexParameter) usesIndex = true;
         if (!parameters.has(symbol)) {
           if (wrappers.size && !caller) throw Error("wrapper captures need React");
           captures.add(text(expression));
@@ -202,7 +207,7 @@ export function compileNativeLists(ts, path, contents) {
         }
         projection = `{${statements.join("")}return [${values.join(",")}];}`;
       }
-      return `${prefix}Row(${text(callback)}, (${params}) => ${projection}, ${JSON.stringify(JSON.stringify(template))}, {identity:${JSON.stringify(identity)},values:() => [${[...captures].join(",")}]})`;
+      return `${prefix}Row(${text(callback)}, (${params}) => ${projection}, ${JSON.stringify(JSON.stringify(template))}, {identity:${JSON.stringify(identity)},values:() => [${[...captures].join(",")}],usesIndex:${usesIndex}})`;
     } catch { return; }
   }
   function visit(node) {

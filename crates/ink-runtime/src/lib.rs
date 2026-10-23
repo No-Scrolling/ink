@@ -4,6 +4,7 @@ mod bytecode;
 mod host;
 mod encoding;
 mod array;
+mod data_views;
 mod commit;
 mod source;
 mod binary;
@@ -602,7 +603,8 @@ fn install(
                 Function::new(ctx.clone(), move || start.elapsed().as_secs_f64() * 1000.0)?,
             )?;
             ctx.eval::<(), _>(include_str!("host.js"))?;
-            ctx.eval::<(), _>(include_str!("events.js"))
+            ctx.eval::<(), _>(include_str!("events.js"))?;
+            data_views::install(&ctx)
         })
         .map_err(|error| {
             context.with(|ctx| anyhow!("{}", rquickjs::CaughtError::from_error(&ctx, error)))

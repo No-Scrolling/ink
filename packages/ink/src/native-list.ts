@@ -114,8 +114,7 @@ type Request<T> = { items: readonly T[]; key: string | Function; plan: Plan<T>;
 type Prepared<T> = { request: Request<T>; generation: number } &
   ({ status: "ready"; value: Records<T> | null } | { status: "error"; error: unknown });
 
-function listItem<T>(items: readonly T[], index: number, dense = false): T {
-  if (dense) return items[index];
+function listItem<T>(items: readonly T[], index: number): T {
   const property = Object.getOwnPropertyDescriptor(items, index);
   if (!property || !("value" in property)) throw needsReact;
   return property.value;
@@ -131,7 +130,7 @@ function* replaceInPlace<T>(previous: Records<T>, items: readonly T[], plan: Pla
   const changes: NativeItem[] = [];
   const length = items.length;
   for (let index = 0; index < length; index++) {
-    const item = listItem(items, index, dense);
+    const item = dense ? items[index] : listItem(items, index);
     if (item === previous.items[index]) continue;
     const before = previous.data[index];
     if (!plainData(item)) throw needsReact;
@@ -148,17 +147,27 @@ function* replaceInPlace<T>(previous: Records<T>, items: readonly T[], plan: Pla
   return { ...previous, data: data ?? previous.data, items };
 }
 
-function captureValue(value: unknown, cache: WeakMap<object, Captured>): Captured {
+function captureValue(value: unknown, cache: WeakMap<object, Captured>, visiting = new Set<object>()): Captured {
   if (value === null || typeof value !== "object" && typeof value !== "function") return { value };
   const previous = cache.get(value);
-  if (previous) return previous;
+  if (previous && isProxy) return previous;
+  if (isProxy?.(value) || visiting.has(value) || visiting.size >= 64) throw needsReact;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== null && prototype !== Object.prototype && prototype !== Array.prototype
+    && !(typeof value === "function" && prototype === Function.prototype)) throw needsReact;
+  visiting.add(value);
   const properties: Record<PropertyKey, PropertyDescriptor> = Object.getOwnPropertyDescriptors(value);
-  const captured: Captured = { value, prototype: Object.getPrototypeOf(value), fields: Reflect.ownKeys(properties).map(key => {
+  const fields: NonNullable<Captured["fields"]> = [];
+  for (const key of Reflect.ownKeys(properties)) {
     const property = properties[key];
+    if (!("value" in property)) throw needsReact;
+    if (["toString", "valueOf", Symbol.toPrimitive].includes(key) && typeof property.value === "function") throw needsReact;
     const field = key === "prototype" && typeof value === "function" && bareFunctionPrototype(property.value, value)
-      ? { value: property.value } : captureValue(property.value, cache);
-    return [key, !!property.enumerable, field];
-  }) };
+      ? { value: property.value } : captureValue(property.value, cache, visiting);
+    fields.push([key, !!property.enumerable, field]);
+  }
+  visiting.delete(value);
+  const captured: Captured = { value, prototype, fields };
   cache.set(value, captured);
   return captured;
 }
@@ -183,13 +192,17 @@ function sameScopeValues(before: readonly Captured[], after: readonly Captured[]
 function captureScope<T>(plan: Plan<T>, items: readonly T[]): Scope | undefined {
   if (!plan.scope) return;
   const captured = items.length ? plan.scope.values() : [];
-  if (!captured.every(value => plainData(value, new WeakSet()))) throw needsReact;
-  const snapshots = new WeakMap<object, Captured>();
-  return { identity: plan.scope.identity, values: captured.map(value => captureValue(value, snapshots)) };
+  // Captures can mutate between slices; validate each fresh snapshot without the row cache.
+  return { identity: plan.scope.identity, values: captured.map(value => captureValue(value, new WeakMap())) };
 }
 
 function sameScope(before?: Scope, after?: Scope): boolean {
   return !!before && !!after && before.identity === after.identity && sameScopeValues(before.values, after.values);
+}
+
+function capturesMatch<T>(request: Request<T>, latestPlan: Plan<T> | null): boolean {
+  return !!latestPlan && sameScope(request.scope, captureScope(request.plan, request.items))
+    && (latestPlan === request.plan || sameScope(request.scope, captureScope(latestPlan, request.items)));
 }
 
 function* prepareRecords<T>(previous: Records<T> | null, items: readonly T[], plan: Plan<T>,
@@ -215,7 +228,7 @@ function* prepareRecords<T>(previous: Records<T> | null, items: readonly T[], pl
     let data: NativeItem[] = [];
     const itemKeys: string[] = [];
     for (let index = 0; index < length; index++) {
-      const item = listItem(items, index, dense);
+      const item = dense ? items[index] : listItem(items, index);
       if (!plainData(item)) throw needsReact;
       const key = typeof keyIdentity === "string" && previous?.key === keyIdentity && previous.items[index] === item
         ? previous.data[index].key : keyExtractor(item, index);
@@ -311,9 +324,7 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
     : request.synchronous ? request.synchronous.value : committed.current;
   if (outcome?.status === "ready" && !request.synchronous) {
     try {
-      const latestPlan = committedPlan.current;
-      if (!latestPlan || !sameScope(request.scope, captureScope(request.plan, request.items))
-        || !sameScope(request.scope, captureScope(latestPlan, request.items))) records = null;
+      if (!capturesMatch(request, committedPlan.current)) records = null;
     } catch (error) {
       if (error !== needsReact) throw error;
       records = null;
@@ -359,10 +370,8 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
     const run = () => {
       if (!current()) return;
       try {
-        const latestPlan = committedPlan.current;
-        const capturesMatch = !!latestPlan && sameScope(request.scope, captureScope(request.plan, request.items))
-          && sameScope(request.scope, captureScope(latestPlan, request.items));
-        const result = capturesMatch ? advancePreparation(request.preparation, true) : { value: null };
+        const result = capturesMatch(request, committedPlan.current)
+          ? advancePreparation(request.preparation, true) : { value: null };
         if (!current()) return;
         if (result) setPrepared({ request, generation: currentGeneration, status: "ready", value: result.value });
         else timer = setTimeout(run, 0);
