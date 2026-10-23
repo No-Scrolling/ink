@@ -1,4 +1,4 @@
-//! Host renderer workloads: the real engine and offscreen Vulkan renderer on this machine's GPU.
+//! Host renderer workloads on the selected offscreen Vulkan device.
 use ink_core::{
     Colour, Engine, ImageAnimation, ImageData, ImageFit, ImageRun, ReactTree, Rect, RemoteImage, Scene,
     TextAlign, TextRun,
@@ -18,6 +18,8 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[path = "artwork.rs"]
 mod artwork;
+#[path = "render-coverage.rs"]
+mod coverage;
 
 /// Pixels returned by `ImageAnimation::advance`.
 type FramePixels = Arc<[u8]>;
@@ -30,28 +32,73 @@ struct Sample {
     upload_ns: u64,
     uploaded_bytes: u64,
     cache_misses: u64,
+    completion_readback_ns: u64,
+    elapsed_ns: u64,
+    submit_present_ns: u64,
+    acquire_ns: u64,
+    encode_ns: u64,
+    frame_ns: u64,
+    instances: u64,
+    draw_calls: u64,
+    staging_allocations: u64,
+    staging_allocation_bytes: u64,
+    staging_upload_bytes: u64,
+    staging_buffer_capacity_bytes: u64,
 }
 
 fn main() {
-    let mut arguments = std::env::args().skip(1);
+    let mut arguments = std::env::args().skip(1).collect::<Vec<_>>();
+    let coverage_only = arguments
+        .first()
+        .is_some_and(|value| value == "--coverage-only");
+    if coverage_only {
+        arguments.remove(0);
+    }
+    let mut arguments = arguments.into_iter();
     let samples = arguments.next().map_or(60, |value| value.parse().unwrap());
     let warmup = arguments.next().map_or(10, |value| value.parse().unwrap());
+    assert!(samples > 0, "samples must be positive");
+    assert!(arguments.next().is_none(), "unexpected argument");
     let probe = Renderer::offscreen(WIDTH, HEIGHT).expect("offscreen Vulkan renderer");
     let device = probe.device_name();
     drop(probe);
-    let mut workloads = vec![
-        gif_frame("gif-frame-thumbnail", None, samples, warmup),
-        gif_frame("gif-frame-full-width", Some((1080, 608)), samples, warmup),
-        first_frame("first-frame-rows", samples.min(30), warmup.min(4), |_| rows_scene()),
-        first_frame("first-frame-dense-text", samples.min(30), warmup.min(4), dense_text_scene),
-        atlas_recovery("atlas-recovery-1-mib", 140.0, samples.min(40), warmup.min(4)),
-        atlas_recovery("atlas-recovery-4-mib", 280.0, samples.min(40), warmup.min(4)),
-        atlas_recovery("atlas-recovery-16-mib", 560.0, samples.min(40), warmup.min(4)),
-        artwork_revisit(samples.min(12), warmup.min(2)),
-        distant_text_edits(samples, warmup),
-    ];
-    workloads.extend(artwork::run(samples.min(8), warmup.min(2)));
-    println!("{}", json!({"version":1, "device":device, "workloads":workloads}));
+    let mut workloads = if coverage_only {
+        Vec::new()
+    } else {
+        vec![
+            gif_frame("gif-frame-thumbnail", None, samples, warmup),
+            gif_frame("gif-frame-full-width", Some((1080, 608)), samples, warmup),
+            first_frame("first-frame-rows", samples.min(30), warmup.min(4), |_| rows_scene()),
+            first_frame("first-frame-dense-text", samples.min(30), warmup.min(4), dense_text_scene),
+            atlas_recovery("atlas-recovery-1-mib", 140.0, samples.min(40), warmup.min(4)),
+            atlas_recovery("atlas-recovery-4-mib", 280.0, samples.min(40), warmup.min(4)),
+            atlas_recovery("atlas-recovery-16-mib", 560.0, samples.min(40), warmup.min(4)),
+            artwork_revisit(samples.min(12), warmup.min(2)),
+            distant_text_edits(samples, warmup),
+        ]
+    };
+    if !coverage_only {
+        workloads.extend(artwork::run(samples.min(8), warmup.min(2)));
+    }
+    workloads.extend(coverage::run(samples, warmup));
+    println!(
+        "{}",
+        json!({"version":1, "device":device, "offscreen":true,
+        "frame":[WIDTH, HEIGHT], "coverage_only":coverage_only,
+        "boundaries": {
+            "cpu_ns":"wall time inside Renderer::render: preparation, upload packaging, encoding and submission; excludes construction and completion wait",
+            "submit_present_ns":"CPU submit/present section; offscreen has no presentation",
+            "prepare_ns":"CPU scene preparation, glyph rasterisation and cache work, including queuing texture writes",
+            "upload_ns":"CPU upload packaging and staging writes, including the scroll/overlay writes",
+            "gpu_ns":"GPU render command timestamps, including offscreen image-to-buffer readback; excludes the preceding upload command buffer",
+            "completion_readback_ns":"wall time after render returns: fence wait plus copying mapped readback bytes into a host Vec",
+            "elapsed_ns":"render call plus completion/readback; excludes fixture generation, construction, correctness checks and file writes",
+            "staging_allocations":"actual staging buffer allocations at the upload allocation seam; excludes instance and readback buffers",
+            "staging_allocation_bytes":"Vulkan memory requirement bytes allocated for those staging buffers",
+            "staging_buffer_capacity_bytes":"maximum selected staging buffer capacity in the sample; a gauge, not allocated bytes",
+            "staging_upload_bytes":"used staging bytes including alignment padding"
+        }, "workloads":workloads})
+    );
 }
 
 fn artwork_revisit(samples: usize, warmup: usize) -> Value {
@@ -77,11 +124,7 @@ fn artwork_revisit(samples: usize, warmup: usize) -> Value {
                 ..Scene::default() };
             let sample = render(&mut renderer, &scene);
             peak_texture_bytes = peak_texture_bytes.max(renderer.memory_metrics().image_texture_bytes);
-            total.cpu_ns += sample.cpu_ns;
-            total.prepare_ns += sample.prepare_ns;
-            total.upload_ns += sample.upload_ns;
-            total.uploaded_bytes += sample.uploaded_bytes;
-            total.cache_misses += sample.cache_misses;
+            total.accumulate(sample);
             let pixels = renderer.pixels().unwrap();
             let offset = (128 * WIDTH as usize + 128) * 4;
             for channel in 0..3 {
@@ -119,16 +162,20 @@ fn distant_text_edits(samples: usize, warmup: usize) -> Value {
 fn summary(name: &str, samples: Vec<Sample>, extra: Value) -> Value {
     let median = |values: &mut Vec<u64>| {
         values.sort_unstable();
-        values.get(values.len() / 2).copied()
+        values.get(values.len().saturating_sub(1) / 2).copied()
     };
-    let p95 = |values: &[u64]| values.get(values.len() * 95 / 100).copied();
+    let p95 = |values: &[u64]| {
+        values
+            .get((values.len() * 95).div_ceil(100).saturating_sub(1))
+            .copied()
+    };
     let mut cpu = samples.iter().map(|sample| sample.cpu_ns).collect::<Vec<_>>();
     let mut gpu = samples.iter().filter_map(|sample| sample.gpu_ns).collect::<Vec<_>>();
     let mut prepare = samples.iter().map(|sample| sample.prepare_ns).collect::<Vec<_>>();
     let mut upload = samples.iter().map(|sample| sample.upload_ns).collect::<Vec<_>>();
     let mut bytes = samples.iter().map(|sample| sample.uploaded_bytes).collect::<Vec<_>>();
     let mut misses = samples.iter().map(|sample| sample.cache_misses).collect::<Vec<_>>();
-    json!({
+    let mut report = json!({
         "name": name,
         "samples": samples.len(),
         "cpu_ns_median": median(&mut cpu),
@@ -139,9 +186,77 @@ fn summary(name: &str, samples: Vec<Sample>, extra: Value) -> Value {
         "uploaded_bytes_median": median(&mut bytes),
         "cache_misses_median": median(&mut misses),
         "contracts": extra,
-        "raw_samples": samples.iter().map(|sample| json!({"cpu_ns":sample.cpu_ns,
-            "prepare_ns":sample.prepare_ns,"uploaded_bytes":sample.uploaded_bytes,"cache_misses":sample.cache_misses})).collect::<Vec<_>>(),
-    })
+        "raw_samples": samples.iter().map(Sample::json).collect::<Vec<_>>(),
+    });
+    for key in [
+        "gpu_ns",
+        "prepare_ns",
+        "upload_ns",
+        "uploaded_bytes",
+        "cache_misses",
+        "completion_readback_ns",
+        "elapsed_ns",
+        "submit_present_ns",
+        "acquire_ns",
+        "encode_ns",
+        "frame_ns",
+        "instances",
+        "draw_calls",
+        "staging_allocations",
+        "staging_allocation_bytes",
+        "staging_upload_bytes",
+        "staging_buffer_capacity_bytes",
+    ] {
+        let mut values = samples
+            .iter()
+            .filter_map(|sample| sample.json()[key].as_u64())
+            .collect();
+        report[format!("{key}_median")] = json!(median(&mut values));
+        report[format!("{key}_p95")] = json!(p95(&values));
+    }
+    report
+}
+
+impl Sample {
+    fn accumulate(&mut self, sample: Self) {
+        self.gpu_ns = match (self.gpu_ns, sample.gpu_ns) {
+            (None, Some(value)) if self.cpu_ns == 0 => Some(value),
+            (Some(total), Some(value)) => Some(total + value),
+            _ => None,
+        };
+        self.cpu_ns += sample.cpu_ns;
+        self.prepare_ns += sample.prepare_ns;
+        self.upload_ns += sample.upload_ns;
+        self.uploaded_bytes += sample.uploaded_bytes;
+        self.cache_misses += sample.cache_misses;
+        self.completion_readback_ns += sample.completion_readback_ns;
+        self.elapsed_ns += sample.elapsed_ns;
+        self.submit_present_ns += sample.submit_present_ns;
+        self.acquire_ns += sample.acquire_ns;
+        self.encode_ns += sample.encode_ns;
+        self.frame_ns += sample.frame_ns;
+        self.instances += sample.instances;
+        self.draw_calls += sample.draw_calls;
+        self.staging_allocations += sample.staging_allocations;
+        self.staging_allocation_bytes += sample.staging_allocation_bytes;
+        self.staging_upload_bytes += sample.staging_upload_bytes;
+        self.staging_buffer_capacity_bytes = self
+            .staging_buffer_capacity_bytes
+            .max(sample.staging_buffer_capacity_bytes);
+    }
+
+    fn json(&self) -> Value {
+        json!({"cpu_ns":self.cpu_ns, "gpu_ns":self.gpu_ns,
+            "prepare_ns":self.prepare_ns, "upload_ns":self.upload_ns,
+            "uploaded_bytes":self.uploaded_bytes, "cache_misses":self.cache_misses,
+            "completion_readback_ns":self.completion_readback_ns,"elapsed_ns":self.elapsed_ns,
+            "submit_present_ns":self.submit_present_ns,"acquire_ns":self.acquire_ns,
+            "encode_ns":self.encode_ns,"frame_ns":self.frame_ns,"instances":self.instances,
+            "draw_calls":self.draw_calls,"staging_allocations":self.staging_allocations,
+            "staging_allocation_bytes":self.staging_allocation_bytes,
+            "staging_upload_bytes":self.staging_upload_bytes,
+            "staging_buffer_capacity_bytes":self.staging_buffer_capacity_bytes})
+    }
 }
 
 /// Times one `render` call, then waits for the GPU so the frame's timestamps are available.
@@ -153,8 +268,14 @@ fn render(renderer: &mut Renderer, scene: &Scene) -> Sample {
     let start = Instant::now();
     let outcome = renderer.render(scene).expect("render");
     let cpu_ns = start.elapsed().as_nanos() as u64;
-    assert!(matches!(outcome, RenderOutcome::Presented), "unexpected outcome {outcome:?}");
+    assert!(
+        matches!(outcome, RenderOutcome::Presented),
+        "unexpected outcome {outcome:?}"
+    );
+    let completion = Instant::now();
     renderer.pixels().expect("frame completes");
+    let completion_readback_ns = completion.elapsed().as_nanos() as u64;
+    let elapsed_ns = start.elapsed().as_nanos() as u64;
     let perf = renderer.take_perf_metrics();
     Sample {
         cpu_ns,
@@ -163,6 +284,18 @@ fn render(renderer: &mut Renderer, scene: &Scene) -> Sample {
         upload_ns: perf.upload_ns,
         uploaded_bytes: perf.uploaded_bytes,
         cache_misses: perf.cache_misses,
+        completion_readback_ns,
+        elapsed_ns,
+        submit_present_ns: perf.submit_present_ns,
+        acquire_ns: perf.acquire_ns,
+        encode_ns: perf.encode_ns,
+        frame_ns: perf.frame_ns,
+        instances: perf.instances,
+        draw_calls: perf.draw_calls,
+        staging_allocations: perf.staging_allocations,
+        staging_allocation_bytes: perf.staging_allocation_bytes,
+        staging_upload_bytes: perf.staging_upload_bytes,
+        staging_buffer_capacity_bytes: perf.staging_buffer_capacity_bytes,
     }
 }
 

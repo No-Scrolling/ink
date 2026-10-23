@@ -2,34 +2,10 @@ import { parseArgs } from "node:util";
 import { chmod, copyFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { arch, cpus, platform, release } from "node:os";
+import { coreWorkloads as expectedWorkloads } from "./suites";
 
 const root = resolve(import.meta.dir, "../..");
 const fixtures = ["react", "list", "rows", "navigation", "conversation", "playback"];
-const expectedWorkloads = [
-  ...["small", "bulk", "resize"].map(command => `react-${command}`),
-  ...[100, 1000, 10000].flatMap((count) => [`list-edit-${count}`, `list-scroll-${count}`]),
-  "scrollbar-drag-10000",
-  "rows-edit-100",
-  "rows-edit-1000",
-  "rows-prepend-1000",
-  "rows-reorder-1000",
-  "rows-native-scroll-1000",
-  "rows-react-scroll-1000",
-  "rows-pure-scroll-1000",
-  "rows-decoded-image-arrival",
-  "startup-runtime-to-library",
-  "navigation-open",
-  "navigation-back",
-  "navigation-tab",
-  "conversation-controlled-input",
-  "conversation-append",
-  "conversation-prepend",
-  "conversation-input-background",
-  "conversation-input-under-load",
-  "playback-native-clock",
-  "playback-state-change",
-  "conversation-input-cpu",
-];
 const { values } = parseArgs({
   options: {
     rounds: { type: "string", default: "5" },
@@ -41,7 +17,7 @@ const { values } = parseArgs({
 });
 if (values.help) {
   console.log(
-    "Usage: bun run bench [--rounds 5] [--samples 100] [--warmup 20] [--baseline RUN_DIRECTORY]",
+    "Usage: bun run bench:core [--rounds 5] [--samples 100] [--warmup 20] [--baseline RUN_DIRECTORY]",
   );
   console.log(
     "Release QuickJS/scene benchmarks. Baseline runs alternate with the candidate; timings do not impose an automatic speed gate.",

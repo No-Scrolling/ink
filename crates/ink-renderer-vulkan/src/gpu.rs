@@ -8,6 +8,7 @@ use std::{
     ffi::c_void,
     ops::Range,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 // Release partially created Vulkan objects if initialisation fails.
@@ -28,6 +29,20 @@ impl<F: FnOnce()> Drop for Cleanup<F> {
 pub type TextureFormat = vk::Format;
 pub type Queue = Device;
 const MAX_RETAINED_UPLOAD_BYTES: usize = 256 * 1024;
+const MAX_RETAINED_STAGING_BYTES: usize = 8 * 1024 * 1024;
+const STAGING_UNDERUSED_FRAMES: u8 = 32;
+const STAGING_IDLE_RETENTION: Duration = Duration::from_secs(5);
+
+#[cfg(feature = "perf")]
+#[derive(Default)]
+pub struct UploadPerf {
+    pub staging_allocations: u64,
+    /// Vulkan memory requirements of newly allocated staging buffers.
+    pub staging_allocation_bytes: u64,
+    /// Bytes used in staging buffers, including alignment padding.
+    pub staging_upload_bytes: u64,
+    pub staging_buffer_capacity_bytes: u64,
+}
 
 pub fn surface_lost(error: &anyhow::Error) -> bool {
     error.downcast_ref::<vk::Result>() == Some(&vk::Result::ERROR_SURFACE_LOST_KHR)
@@ -49,6 +64,68 @@ struct Uploads {
 struct UploadBatch {
     _staging: Option<Buffer>,
     _commands: Vec<Upload>,
+}
+#[derive(Default)]
+struct UploadStaging {
+    buffer: Option<Buffer>,
+    previous_large: bool,
+    underused_frames: u8,
+    last_frame: Option<Instant>,
+}
+impl UploadStaging {
+    fn prepare(
+        &mut self,
+        device: &Device,
+        size: usize,
+        #[cfg(feature = "perf")] perf: &mut UploadPerf,
+    ) -> Option<Buffer> {
+        let now = Instant::now();
+        if self.last_frame.is_some_and(|last| now.duration_since(last) >= STAGING_IDLE_RETENTION) {
+            // Expire on existing work; trimming must never schedule an idle frame.
+            if self.buffer.as_ref().is_some_and(|buffer| buffer.0.size > MAX_RETAINED_UPLOAD_BYTES) {
+                self.buffer = None;
+            }
+            self.previous_large = false;
+            self.underused_frames = 0;
+        }
+        self.last_frame = Some(now);
+        let underused = self.buffer.as_ref().is_some_and(|buffer| {
+            buffer.0.size > MAX_RETAINED_UPLOAD_BYTES
+                && (size <= buffer.0.size / 4 || size > buffer.0.size)
+        });
+        self.underused_frames = if underused { self.underused_frames + 1 } else { 0 };
+        if self.underused_frames == STAGING_UNDERUSED_FRAMES {
+            self.buffer = None;
+            self.underused_frames = 0;
+        }
+        let repeated_large = self.previous_large;
+        self.previous_large = size > MAX_RETAINED_UPLOAD_BYTES && size <= MAX_RETAINED_STAGING_BYTES;
+        if size == 0 {
+            return None;
+        }
+        if let Some(buffer) = self.buffer.as_ref().filter(|buffer| buffer.0.size >= size) {
+            return Some(buffer.clone());
+        }
+        // Keep one slot. A one-off large upload stays transient; repeated demand can
+        // replace the slot, with exact large capacity rather than power-of-two growth.
+        let retain = size <= MAX_RETAINED_UPLOAD_BYTES
+            || (repeated_large && size <= MAX_RETAINED_STAGING_BYTES);
+        if retain {
+            self.buffer = None;
+        }
+        let capacity = if size <= MAX_RETAINED_UPLOAD_BYTES { size.next_power_of_two() } else { size };
+        let buffer = device.buffer(capacity, false);
+        #[cfg(feature = "perf")]
+        {
+            perf.staging_allocations += 1;
+            perf.staging_allocation_bytes += buffer.0.allocation_bytes;
+        }
+        // Memory requirements may exceed buffer capacity on some drivers.
+        if retain && buffer.0.allocation_bytes <= MAX_RETAINED_STAGING_BYTES as u64 {
+            self.buffer = Some(buffer.clone());
+        }
+        Some(buffer)
+    }
 }
 enum Upload {
     Clear(Texture),
@@ -166,6 +243,7 @@ struct BufferInner {
     memory: vk::DeviceMemory,
     mapped: *mut u8,
     size: usize,
+    allocation_bytes: u64,
     set: vk::DescriptorSet,
 }
 impl Drop for BufferInner {
@@ -370,6 +448,7 @@ impl Device {
                 mapped: d.map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty())
                     .expect("map buffer").cast(),
                 size,
+                allocation_bytes: req.size,
                 set,
             }))
         }
@@ -552,9 +631,20 @@ impl Device {
         }
     }
 
-    fn prepare_uploads(&self, reusable: &mut Option<Buffer>) -> Option<UploadBatch> {
+    fn prepare_uploads(
+        &self,
+        reusable: &mut UploadStaging,
+        #[cfg(feature = "perf")] perf: &mut UploadPerf,
+    ) -> Option<UploadBatch> {
         let mut pending = self.1.lock().unwrap();
         if pending.commands.is_empty() {
+            drop(pending);
+            let _ = reusable.prepare(
+                self,
+                0,
+                #[cfg(feature = "perf")]
+                perf,
+            );
             return None;
         }
         let mut uploads = std::mem::take(&mut *pending);
@@ -569,26 +659,26 @@ impl Device {
                 size += pixels.len();
             }
         }
-        let staging = if size == 0 {
-            None
-        } else {
-            let buffer = if size <= MAX_RETAINED_UPLOAD_BYTES {
-                if reusable.as_ref().is_none_or(|buffer| buffer.0.size < size) {
-                    *reusable = Some(self.buffer(size.next_power_of_two(), false));
-                }
-                reusable.as_ref().unwrap().clone()
-            } else {
-                self.buffer(size, false)
-            };
-            self.write_buffer(&buffer, 0, &uploads.bytes);
+        let staging = reusable.prepare(
+            self,
+            size,
+            #[cfg(feature = "perf")]
+            perf,
+        );
+        if let Some(buffer) = &staging {
+            #[cfg(feature = "perf")]
+            {
+                perf.staging_upload_bytes += size as u64;
+                perf.staging_buffer_capacity_bytes = perf.staging_buffer_capacity_bytes.max(buffer.0.size as u64);
+            }
+            self.write_buffer(buffer, 0, &uploads.bytes);
             let mut offsets = shared_offsets.iter();
             for upload in &uploads.commands {
                 if let Upload::Write { source: UploadSource::Shared(pixels), .. } = upload {
-                    self.write_buffer(&buffer, *offsets.next().unwrap() as u64, pixels);
+                    self.write_buffer(buffer, *offsets.next().unwrap() as u64, pixels);
                 }
             }
-            Some(buffer)
-        };
+        }
         // Group work by texture. A clear supersedes earlier operations on its texture, and
         // later copies run as one command unless regions overlap, which needs ordered steps.
         struct Steps {
@@ -985,13 +1075,15 @@ pub struct Surface {
     fence: vk::Fence,
     submitted: bool,
     uploads: Option<UploadBatch>,
-    upload_staging: Option<Buffer>,
+    upload_staging: UploadStaging,
     dirty: bool,
     requested: [u32; 2],
     #[cfg(feature = "perf")]
     timing: Option<GpuTiming>,
     #[cfg(feature = "perf")]
     pub gpu_ns: Option<u64>,
+    #[cfg(feature = "perf")]
+    pub upload_perf: UploadPerf,
     #[cfg(feature = "presentation-timing")]
     display_timing: Option<ash::google::display_timing::Device>,
     #[cfg(feature = "presentation-timing")]
@@ -1076,6 +1168,7 @@ impl Surface {
         self.surface = vk::SurfaceKHR::null();
         self.submitted = false;
         self.uploads = None;
+        self.upload_staging = UploadStaging::default();
         self.dirty = true;
     }
 
@@ -1383,13 +1476,15 @@ impl Surface {
                 fence,
                 submitted: false,
                 uploads: None,
-                upload_staging: None,
+                upload_staging: UploadStaging::default(),
                 dirty: true,
                 requested: [width, height],
                 #[cfg(feature = "perf")]
                 timing: None,
                 #[cfg(feature = "perf")]
                 gpu_ns: None,
+                #[cfg(feature = "perf")]
+                upload_perf: UploadPerf::default(),
                 #[cfg(feature = "presentation-timing")]
                 display_timing,
                 #[cfg(feature = "presentation-timing")]
@@ -1538,6 +1633,16 @@ impl Surface {
         Ok(!self.submitted || unsafe { self.core.device.get_fence_status(self.fence)? })
     }
 
+    #[cfg(feature = "perf")]
+    /// Cached and in-flight capacities can describe the same allocation.
+    pub fn staging_memory(&self) -> (usize, u64, usize) {
+        (
+            self.upload_staging.buffer.as_ref().map_or(0, |buffer| buffer.0.size),
+            self.upload_staging.buffer.as_ref().map_or(0, |buffer| buffer.0.allocation_bytes),
+            self.uploads.as_ref().and_then(|batch| batch._staging.as_ref()).map_or(0, |buffer| buffer.0.size),
+        )
+    }
+
     pub fn wait_for_frame(&mut self) -> Result<()> {
         if self.submitted {
             unsafe {
@@ -1659,7 +1764,11 @@ pub struct RenderPass<'a> {
 }
 impl RenderPass<'_> {
     pub fn upload(&mut self, queue: &Queue) {
-        self.surface.uploads = queue.prepare_uploads(&mut self.surface.upload_staging);
+        self.surface.uploads = queue.prepare_uploads(
+            &mut self.surface.upload_staging,
+            #[cfg(feature = "perf")]
+            &mut self.surface.upload_perf,
+        );
     }
     pub fn set_pipeline(&mut self, p: &RenderPipeline) {
         unsafe {

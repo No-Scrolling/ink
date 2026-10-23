@@ -8,7 +8,7 @@ use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jboolean, jlong};
 use jni::EnvUnowned;
 use serde::Deserialize;
-#[cfg(feature = "audio")]
+#[cfg(any(feature = "audio", feature = "memory-diagnostics"))]
 use serde_json::Value;
 
 use super::{ANDROID_LOG_ERROR, ANDROID_LOG_INFO, android_log, engine};

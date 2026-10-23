@@ -2518,11 +2518,7 @@ impl Engine {
         if self.focused_input.is_some() {
             return self.edit_text(TextEdit::Dismiss);
         }
-        if !self.pop_route() {
-            return false;
-        }
-        self.rebuild_scene();
-        true
+        self.pop_route()
     }
 
     pub const fn text_input_active(&self) -> bool {

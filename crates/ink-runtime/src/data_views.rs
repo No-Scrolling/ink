@@ -74,11 +74,17 @@ fn data_search<'js>(
     previous: Value<'js>,
     previous_text: Value<'js>,
     separator: Value<'js>,
+    selection: rquickjs::function::Rest<Value<'js>>,
 ) -> Result<Value<'js>> {
     let guard = Guard::new(ctx.clone())?;
-    let Some(search) = SearchPreparation::new(&guard, previous_text, separator)? else {
+    let Some(mut search) = SearchPreparation::new(&guard, previous_text, separator)? else {
         return Ok(Value::new_undefined(ctx));
     };
+    let query = selection.0.first().filter(|query| !query.is_undefined());
+    let query_lower = selection.0.get(1).and_then(Value::as_bool).unwrap_or(false);
+    if query.is_some() {
+        search.selection = Some(Vec::new());
+    }
     let Some(snapshot) = guard.snapshot(
         items.as_raw(),
         fields.as_raw(),
@@ -90,10 +96,29 @@ fn data_search<'js>(
     else {
         return Ok(Value::new_undefined(ctx));
     };
+    let mut needle = Value::new_undefined(ctx.clone());
+    let mut selected = Value::new_undefined(ctx.clone());
+    if let Some(text) = snapshot.selection.filter(|text| !text.is_empty()) {
+        // Rejected data and empty inputs must not evaluate a query in its TDZ.
+        let value = guard.call(query.unwrap(), qjs::JS_UNDEFINED, &mut [])?;
+        if value.is_string() {
+            needle = if query_lower {
+                let lower = guard.intrinsics.get("lower")?;
+                guard.call(&lower, value.as_raw(), &mut [])?
+            } else {
+                value
+            };
+            selected = guard
+                .select(items.as_raw(), &text, &needle)?
+                .unwrap_or_else(|| Value::new_undefined(ctx.clone()));
+        }
+    }
     let result = Object::new(ctx)?;
     // Define own properties, even when Object.prototype contains setters.
     result.prop("snapshot", snapshot.fields)?;
     result.prop("text", snapshot.text.unwrap())?;
+    result.prop("needle", needle)?;
+    result.prop("items", selected)?;
     Ok(result.into_value())
 }
 
@@ -203,6 +228,7 @@ struct Snapshot<'js> {
     text: Option<Value<'js>>,
     offset: u32,
     complete: bool,
+    selection: Option<Vec<Value<'js>>>,
 }
 
 struct WarmRange<'js> {
@@ -220,6 +246,7 @@ struct SearchPreparation<'js> {
     lower: Value<'js>,
     scratch: Option<Value<'js>>,
     output: Option<Value<'js>>,
+    selection: Option<Vec<Value<'js>>>,
 }
 
 impl<'js> SearchPreparation<'js> {
@@ -250,6 +277,7 @@ impl<'js> SearchPreparation<'js> {
             lower: guard.intrinsics.get("lower")?,
             scratch: None,
             output: None,
+            selection: None,
         }))
     }
 }
@@ -450,6 +478,37 @@ impl<'js> Guard<'js> {
         Ok(())
     }
 
+    fn select(
+        &self,
+        items: qjs::JSValue,
+        text: &[Value<'js>],
+        needle: &Value<'js>,
+    ) -> Result<Option<Value<'js>>> {
+        // Queries normally read a lexical binding, but can also invalidate the
+        // original guard. Let Array.filter observe changed species, holes and
+        // accessors rather than invoking any of them during this check.
+        if self.array_length(items)? != Some(text.len() as u32) || !self.methods(items, false)? {
+            return Ok(None);
+        }
+        let includes = self.intrinsics.get("includes")?;
+        let output = self.new_snapshot()?;
+        let mut offset = 0;
+        for (index, text) in text.iter().enumerate() {
+            let Some(row) = self.index(items, index as u32)? else {
+                return Ok(None);
+            };
+            if !row.is_data() {
+                return Ok(None);
+            }
+            let selected = self.call(&includes, text.as_raw(), &mut [needle.as_raw()])?;
+            if selected.as_bool() == Some(true) {
+                self.append(&output, offset, row.raw.value)?;
+                offset += 1;
+            }
+        }
+        Ok(Some(output))
+    }
+
     fn call(
         &self,
         function: &Value<'js>,
@@ -552,6 +611,9 @@ impl<'js> Guard<'js> {
         } else {
             (0, count)
         };
+        if let Some(selection) = search.as_mut().and_then(|search| search.selection.as_mut()) {
+            selection.reserve((end - start) as usize);
+        }
         let mut cell = start * width;
         for index in start..end {
             let old_text = if let Some(search) = &search {
@@ -663,6 +725,9 @@ impl<'js> Guard<'js> {
                         )?;
                         self.call(&search.lower, joined.as_raw(), &mut [])?
                     };
+                    if let Some(selection) = &mut search.selection {
+                        selection.push(text.clone());
+                    }
                     if search.output.is_none() {
                         let changed = self.new_snapshot()?;
                         for prefix in 0..index {
@@ -672,8 +737,19 @@ impl<'js> Guard<'js> {
                         search.output = Some(changed);
                     }
                     self.append(search.output.as_ref().unwrap(), index, text.as_raw())?;
-                } else if let Some(output) = &search.output {
-                    self.append(output, index, old_text.as_ref().unwrap().raw.value)?;
+                } else {
+                    let text = old_text.as_ref().unwrap().raw.value;
+                    if let Some(output) = &search.output {
+                        self.append(output, index, text)?;
+                    }
+                    if let Some(selection) = &mut search.selection {
+                        selection.push(unsafe {
+                            Value::from_raw(
+                                self.ctx.clone(),
+                                qjs::JS_DupValue(self.raw_ctx(), text),
+                            )
+                        });
+                    }
                 }
             }
         }
@@ -695,6 +771,7 @@ impl<'js> Guard<'js> {
         } else {
             previous.clone()
         };
+        let selection = search.as_mut().and_then(|search| search.selection.take());
         let text = if let Some(search) = search {
             for index in count..search.previous_length.unwrap_or(0) {
                 let Some(old) = self.index(search.previous.as_raw(), index)? else {
@@ -720,6 +797,7 @@ impl<'js> Guard<'js> {
             text,
             offset: end,
             complete,
+            selection,
         }))
     }
 }

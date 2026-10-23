@@ -25,7 +25,8 @@ declare const __inkDataIntrinsics: Intrinsics | undefined;
 declare const __inkDataFields: ((items: unknown, fields: readonly string[], previous: readonly unknown[] | undefined,
   mode: "search" | "sort") => readonly unknown[] | undefined) | undefined;
 declare const __inkDataSearch: ((items: unknown, fields: readonly string[], previousSnapshot: readonly unknown[] | undefined,
-  previousText: readonly string[] | undefined, separator: string | null) => SearchCache | undefined) | undefined;
+  previousText: readonly string[] | undefined, separator: string | null, query?: () => unknown,
+  queryLower?: boolean) => (SearchCache & { items?: unknown[]; needle?: string }) | undefined) | undefined;
 declare const __inkPrepareDataSearch: ((items: unknown, fields: readonly string[], separator: string | null,
   cursor: SearchCursor | undefined, limit: number) => SearchCursor | null | undefined) | undefined;
 
@@ -202,17 +203,21 @@ export function compiledSearch<T>(items: readonly T[], source: string, query: ()
     }
     return result;
   }
-  const prepared = prepareSearch(items, plan.fields, before.snapshot, before.text, plan.separator);
+  const prepared = prepareSearch(items, plan.fields, before.snapshot, before.text, plan.separator, query, plan.queryLower);
   if (!prepared) {
     disableSearch(plan, items);
     return fallback(items);
   }
-  if (items.length === 0) return fallback(items);
-  // A rejected guard or empty source must not evaluate a query (which may still be in its TDZ).
-  const value = query();
-  if (typeof value !== "string") return fallback(items);
-  const needle = plan.queryLower ? calls.lower(value) : value;
-  const result = calls.filter(items, (_item: T, index: number) => calls.includes(prepared.text[index], needle));
+  // The native guard leaves queries unevaluated for rejected or empty sources.
+  let result: T[];
+  // The guard returns current own row values without converting them.
+  if (prepared.items) result = prepared.items as T[];
+  else if (typeof prepared.needle === "string") {
+    // A query can change descriptors or species after preparation. Use the
+    // original filter operation with the already evaluated query in that case.
+    const needle = prepared.needle;
+    result = calls.filter(items, (_item: T, index: number) => calls.includes(prepared.text[index], needle));
+  } else return fallback(items);
   const changes = prepared.snapshot === before.snapshot ? 0 : before.changes + 1;
   if (changes >= 2) disableSearch(plan, items);
   else calls.weakMapSet(plan.cache, items, { snapshot: prepared.snapshot, text: prepared.text, changes });

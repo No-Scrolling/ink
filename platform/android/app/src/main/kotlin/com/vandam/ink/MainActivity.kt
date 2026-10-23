@@ -861,6 +861,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 nativeRequestStartedAt[requestId] = SystemClock.elapsedRealtime()
                 nativeRequestLabels[requestId] = label
                 logResource("start $requestId $label")
+                if (BuildConfig.INK_PRESENTATION_TIMING && kind == NATIVE_REQUEST_IMAGE) {
+                    val provenance = JSONObject(payload)
+                    Log.i("Ink", "InkImageRequest " + JSONObject().put("version", 1)
+                        .put("request_id", requestId).put("module", module).put("operation", operation)
+                        .put("source", provenance.optString("url", provenance.optString("source")))
+                        .put("ns", System.nanoTime()))
+                }
                 val lightAudioPermission = module == AUDIO_MODULE &&
                     controller < 0L &&
                     (operation == PERMISSION_STATUS_OPERATION ||

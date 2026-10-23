@@ -5,6 +5,7 @@ use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     ops::Range,
+    sync::Arc,
 };
 
 use ab_glyph::{Font, FontArc, FontRef, GlyphId, PxScale, ScaleFont};
@@ -27,6 +28,8 @@ const MAX_GLYPHS: usize = 512;
 const ATLAS_SIZE: u32 = 1024;
 const MAX_ATLAS_SIZE: u32 = 4096;
 const ATLAS_PADDING: u32 = 1;
+const GLYPH_RASTER_CACHE_BYTES: usize = 2 * 1024 * 1024;
+const MAX_GLYPH_RASTERS: usize = 4096;
 const IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
@@ -220,6 +223,24 @@ struct CachedGlyph {
     height: u32,
     offset_x: f32,
     offset_y: f32,
+}
+
+struct GlyphRaster {
+    width: u32,
+    height: u32,
+    offset_x: f32,
+    offset_y: f32,
+    pixels: Vec<u8>,
+}
+
+#[derive(Default)]
+struct GlyphRasterCache {
+    glyphs: HashMap<(usize, GlyphId, u16), Arc<GlyphRaster>>,
+    bytes: usize,
+    #[cfg(feature = "perf")]
+    rasterisations: u64,
+    #[cfg(feature = "perf")]
+    hits: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -453,6 +474,7 @@ struct GlyphAtlas {
     texture: gpu::Texture,
     bind_group: gpu::BindGroup,
     glyphs: HashMap<(usize, GlyphId, u16), CachedGlyph>,
+    rasters: GlyphRasterCache,
     characters: HashMap<(char, u16), CachedCharacter>,
     masks: HashMap<u64, CachedMask>,
     cursor_x: u32,
@@ -476,6 +498,7 @@ impl GlyphAtlas {
             texture,
             bind_group,
             glyphs: HashMap::new(),
+            rasters: GlyphRasterCache::default(),
             characters: HashMap::new(),
             masks: HashMap::new(),
             cursor_x: 0,
@@ -518,17 +541,51 @@ impl GlyphAtlas {
             return Ok(Some(*glyph));
         }
 
-        let Some(outlined) = font.outline_glyph(id.with_scale(size as f32)) else {
-            return Ok(None);
+        let key = (font_index, id, size);
+        let raster = if let Some(raster) = self.rasters.glyphs.get(&key) {
+            #[cfg(feature = "perf")]
+            { self.rasters.hits += 1; }
+            raster.clone()
+        } else {
+            let Some(outlined) = font.outline_glyph(id.with_scale(size as f32)) else {
+                return Ok(None);
+            };
+            let bounds = outlined.px_bounds();
+            let width = bounds.width() as u32;
+            let height = bounds.height() as u32;
+            if width == 0 || height == 0 {
+                return Ok(None);
+            }
+            if width + ATLAS_PADDING * 2 > self.size || height + ATLAS_PADDING * 2 > self.size {
+                return Err(AtlasFull.into());
+            }
+            let mut pixels = vec![0; (width * height) as usize];
+            outlined.draw(|x, y, coverage| {
+                pixels[(y * width + x) as usize] = (coverage * 255.0).round() as u8;
+            });
+            let raster = Arc::new(GlyphRaster {
+                width,
+                height,
+                offset_x: bounds.min.x - ATLAS_PADDING as f32,
+                offset_y: bounds.min.y - ATLAS_PADDING as f32,
+                pixels,
+            });
+            #[cfg(feature = "perf")]
+            { self.rasters.rasterisations += 1; }
+            if raster.pixels.len() <= GLYPH_RASTER_CACHE_BYTES {
+                if self.rasters.bytes + raster.pixels.len() > GLYPH_RASTER_CACHE_BYTES
+                    || self.rasters.glyphs.len() == MAX_GLYPH_RASTERS
+                {
+                    self.rasters.glyphs.clear();
+                    self.rasters.bytes = 0;
+                }
+                self.rasters.bytes += raster.pixels.len();
+                self.rasters.glyphs.insert(key, raster.clone());
+            }
+            raster
         };
-        let bounds = outlined.px_bounds();
-        let glyph_width = bounds.width() as u32;
-        let glyph_height = bounds.height() as u32;
-        if glyph_width == 0 || glyph_height == 0 {
-            return Ok(None);
-        }
-        let width = glyph_width + ATLAS_PADDING * 2;
-        let height = glyph_height + ATLAS_PADDING * 2;
+        let width = raster.width + ATLAS_PADDING * 2;
+        let height = raster.height + ATLAS_PADDING * 2;
         if width > self.size || height > self.size {
             return Err(AtlasFull.into());
         }
@@ -541,15 +598,11 @@ impl GlyphAtlas {
             return Err(AtlasFull.into());
         }
 
-        let mut pixels = vec![0; (glyph_width * glyph_height) as usize];
-        outlined.draw(|x, y, coverage| {
-            pixels[(y * glyph_width + x) as usize] = (coverage * 255.0).round() as u8;
-        });
         queue.write_texture(
             &self.texture,
             [self.cursor_x + ATLAS_PADDING, self.cursor_y + ATLAS_PADDING],
-            [glyph_width, glyph_height],
-            &pixels,
+            [raster.width, raster.height],
+            &raster.pixels,
         );
 
         let glyph = CachedGlyph {
@@ -557,8 +610,8 @@ impl GlyphAtlas {
             atlas_y: self.cursor_y,
             width,
             height,
-            offset_x: bounds.min.x - ATLAS_PADDING as f32,
-            offset_y: bounds.min.y - ATLAS_PADDING as f32,
+            offset_x: raster.offset_x,
+            offset_y: raster.offset_y,
         };
         self.cursor_x += width;
         self.row_height = self.row_height.max(height);
@@ -566,7 +619,7 @@ impl GlyphAtlas {
         #[cfg(feature = "perf")]
         {
             self.cache_misses += 1;
-            self.uploaded_bytes += pixels.len() as u64;
+            self.uploaded_bytes += raster.pixels.len() as u64;
         }
         Ok(Some(glyph))
     }
@@ -651,6 +704,12 @@ pub struct RenderPerfMetrics {
     pub uploaded_bytes: u64,
     pub draw_calls: u64,
     pub cache_misses: u64,
+    pub glyph_rasterisations: u64,
+    pub glyph_raster_cache_hits: u64,
+    pub staging_allocations: u64,
+    pub staging_allocation_bytes: u64,
+    pub staging_upload_bytes: u64,
+    pub staging_buffer_capacity_bytes: u64,
 }
 
 #[cfg(feature = "perf")]
@@ -658,8 +717,15 @@ pub struct RenderMemoryMetrics {
     pub instance_buffer_capacity_bytes: usize,
     pub instance_snapshot_capacity_bytes: usize,
     pub font_texture_bytes: usize,
+    pub glyph_raster_cache_bytes: usize,
     pub image_texture_bytes: usize,
     pub system_glyph_texture_bytes: usize,
+    pub font_cache_characters: usize,
+    pub font_cache_fallback_characters: usize,
+    pub font_cache_missing_characters: usize,
+    pub retained_staging_buffer_capacity_bytes: usize,
+    pub retained_staging_memory_bytes: u64,
+    pub in_flight_staging_buffer_capacity_bytes: usize,
 }
 
 pub struct Renderer {
@@ -1070,6 +1136,13 @@ impl Renderer {
     #[cfg(feature = "perf")]
     pub fn take_perf_metrics(&mut self) -> RenderPerfMetrics {
         self.perf.gpu_ns = self.surface.gpu_ns.take();
+        self.perf.glyph_rasterisations = std::mem::take(&mut self.glyph_atlas.rasters.rasterisations);
+        self.perf.glyph_raster_cache_hits = std::mem::take(&mut self.glyph_atlas.rasters.hits);
+        let uploads = std::mem::take(&mut self.surface.upload_perf);
+        self.perf.staging_allocations = uploads.staging_allocations;
+        self.perf.staging_allocation_bytes = uploads.staging_allocation_bytes;
+        self.perf.staging_upload_bytes = uploads.staging_upload_bytes;
+        self.perf.staging_buffer_capacity_bytes = uploads.staging_buffer_capacity_bytes;
         std::mem::take(&mut self.perf)
     }
 
@@ -1085,7 +1158,20 @@ impl Renderer {
 
     #[cfg(feature = "perf")]
     pub fn memory_metrics(&self) -> RenderMemoryMetrics {
+        let (retained_staging_buffer_capacity_bytes, retained_staging_memory_bytes,
+            in_flight_staging_buffer_capacity_bytes) = self.surface.staging_memory();
+        let (font_cache_fallback_characters, font_cache_missing_characters) = self.glyph_atlas.characters
+            .values().fold((0, 0), |(fallback, missing), character| {
+                (fallback + usize::from(character.font_index > 0), missing + usize::from(character.id.0 == 0))
+            });
         RenderMemoryMetrics {
+            retained_staging_buffer_capacity_bytes,
+            retained_staging_memory_bytes,
+            in_flight_staging_buffer_capacity_bytes,
+            font_cache_characters: self.glyph_atlas.characters.len(),
+            font_cache_fallback_characters,
+            font_cache_missing_characters,
+            glyph_raster_cache_bytes: self.glyph_atlas.rasters.bytes,
             instance_buffer_capacity_bytes: self.quad_buffer.capacity_bytes()
                 + self.overlay_buffer.capacity_bytes()
                 + self.text_buffer.capacity_bytes()
@@ -1134,7 +1220,10 @@ impl Renderer {
                         reclaimed = true;
                     } else if self.glyph_atlas.size < MAX_ATLAS_SIZE {
                         self.queue.discard_texture_uploads(&[&self.glyph_atlas.texture]);
-                        self.glyph_atlas = GlyphAtlas::new(&self.device, self.glyph_atlas.size * 2)?;
+                        let mut atlas = GlyphAtlas::new(&self.device, self.glyph_atlas.size * 2)?;
+                        // CPU masks contain no atlas coordinates and survive texture generations.
+                        std::mem::swap(&mut atlas.rasters, &mut self.glyph_atlas.rasters);
+                        self.glyph_atlas = atlas;
                     } else {
                         return Err(
                             error.context("current scene exceeds the 16 MiB glyph atlas limit")

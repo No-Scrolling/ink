@@ -14,7 +14,7 @@ const root = resolve(import.meta.dir, "../..");
 const fixtures = {
   runtime: ["bridge", "split-web"],
   scene: ["lists", "input", "navigation", "images"],
-  performance: ["react", "list", "rows", "navigation", "conversation", "playback", "source", "automatic"],
+  performance: ["react", "list", "rows", "navigation", "conversation", "playback", "source", "automatic", "journeys"],
 };
 for (const suite of suites) {
   for (const fixture of fixtures[suite as keyof typeof fixtures]) {
@@ -28,6 +28,10 @@ for (const suite of suites) {
     if (fixture === "split-web") {
       await mkdir(resolve(modules, "@ink"), { recursive: true });
       dependencies.push(["@ink/network", resolve(root, "packages/network")]);
+    }
+    if (fixture === "journeys") {
+      await mkdir(resolve(modules, "@ink"), { recursive: true });
+      dependencies.push(["@ink/store", resolve(root, "packages/store")]);
     }
     for (const [name, target] of dependencies) {
       const link = resolve(modules, name);

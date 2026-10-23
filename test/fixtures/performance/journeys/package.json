@@ -1,0 +1,9 @@
+{
+  "name": "performance-journeys",
+  "private": true,
+  "dependencies": {
+    "@ink/store": "workspace:*",
+    "ink": "workspace:*",
+    "react": "19.2.8"
+  }
+}

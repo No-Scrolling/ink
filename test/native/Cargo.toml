@@ -17,6 +17,7 @@ ink-audio = { path = "../../crates/ink-audio" }
 ink-renderer-vulkan = { path = "../../crates/ink-renderer-vulkan", features = ["offscreen", "perf"] }
 image.workspace = true
 miniz_oxide.workspace = true
+ab_glyph.workspace = true
 
 [[bin]]
 name = "ink-performance"
@@ -33,3 +34,7 @@ path = "../performance/source.rs"
 [[bin]]
 name = "ink-automatic-performance"
 path = "../performance/automatic.rs"
+
+[[bin]]
+name = "ink-journey-performance"
+path = "../performance/journeys.rs"

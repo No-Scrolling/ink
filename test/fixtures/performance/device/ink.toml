@@ -1,0 +1,11 @@
+name = "Ink device performance"
+package = "com.vandam.ink.deviceperformance"
+version = "0.1.0"
+version_code = 1
+
+[network]
+allow_cleartext = true
+
+[signing]
+keystore = ".ink/benchmark.jks"
+key_alias = "benchmark"

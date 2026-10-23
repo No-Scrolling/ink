@@ -523,10 +523,16 @@ impl ReactTree {
             let (mut items, keys) = if let Some(data) = props.get("items") {
                 let data = data.as_array().context("NativeList requires an items array")?;
                 ensure!(data.len() <= 100_000, "native list is too large");
-                let mut items = FxHashMap::default();
+                let mut items = FxHashMap::with_capacity_and_hasher(data.len(), Default::default());
                 let mut keys = Vec::with_capacity(data.len());
-                let shared: FxHashMap<_, _> = old.as_ref().and_then(|list| list.source.as_ref())
-                    .into_iter().flat_map(|snapshot| snapshot.iter()).map(|record| (&record.key, &record.value)).collect();
+                let source = old.as_ref().and_then(|list| list.source.as_ref());
+                let mut shared = FxHashMap::with_capacity_and_hasher(
+                    source.map_or(0, |snapshot| snapshot.len()),
+                    Default::default(),
+                );
+                if let Some(snapshot) = source {
+                    shared.extend(snapshot.iter().map(|record| (&record.key, &record.value)));
+                }
                 for item in data {
                     let key = item.get(key_field).and_then(Json::as_str).context("native list keys must be strings")?.to_owned();
                     let previous = shared.get(&key).copied().or_else(|| old.as_ref().and_then(|list| list.items.get(&key)));

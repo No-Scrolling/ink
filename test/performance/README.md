@@ -1,14 +1,48 @@
-# Headless performance
+# Performance benchmarks
 
 Run from the repository root:
 
 ```sh
 bun run bench
+bun run bench --serial emulator-5556
+bun run bench --list
 bun run bench --rounds 1 --samples 20 --warmup 4
-bun run bench --baseline .test-output/performance/<previous-run>
 ```
 
-This is opt-in and separate from `bun run test`. It builds release Rust and production-compiled JavaScript, then executes the real QuickJS runtime, commit transport, React tree and Rust layout engine. No Bun execution substitutes for QuickJS, and no emulator is required.
+`bun run bench` runs all 77 current-build host and renderer workloads. It prepares the fixtures, builds the five release binaries before measurement, runs suites serially and writes one report with raw per-suite results, sources and executable hashes under `.test-output/benchmarks/`.
+
+| Suite | Workloads | Focus |
+| --- | ---: | --- |
+| `core` | 30 | Existing React, lists, scrolling, input, navigation, playback and idle contracts |
+| `source` | 4 | Current native source edits and replacements at 1,000 and 5,000 rows |
+| `automatic` | 5 | Ordinary list edits, replacements and typing during refresh |
+| `journeys` | 21 | Search, structural changes, persisted startup and resource/navigation states |
+| `renderer` | 17 | All existing renderer cases and the five new text, upload and artwork cases |
+
+No emulator is needed for host workloads. Add `--serial SERIAL` to build and run Android media, lifecycle and sustained-usage coverage after the host suites. Start the LP3 emulator with `emulator -avd Light_Phone_III -writable-system` and use its actual serial. Without `--serial`, the report explicitly records Android as not requested. Physical energy requires eligible physical hardware.
+
+The renderer needs the Vulkan runtime from `scripts/setup-design-renderer`, or `INK_VULKAN_LIBRARY`. Core/source suites require even sample and warm-up counts. Renderer caps/floors and automatic typing job caps remain in force; reports preserve actual counts and distinguish CPU submission, list readiness and input acknowledgement endpoints.
+
+Use `--suite core|source|automatic|journeys|renderer|coverage|device` to focus a run. `coverage` retains the 26-workload [extended suite](COVERAGE.md); `device` requires `--serial` and runs only Android. Common focused commands are `bench:source`, `bench:automatic`, `bench:renderer` and `bench:coverage`.
+
+Build and measure separately when needed:
+
+```sh
+bun run bench --phase build --output .test-output/benchmarks/baseline --samples 20
+bun run bench --phase run --output .test-output/benchmarks/baseline --samples 20
+```
+
+Run mode verifies the saved binaries, assets, suite selection and Vulkan library. Builds never run between measured suites. A failed workload fails the command and records a failed result. Preserve an output directory before replaying it: run mode overwrites its measured results. Current-build runs cover each workload once per round; historical before/after comparisons require saved baseline inputs and keep the commands below.
+
+## Core regression and comparison suite
+
+```sh
+bun run bench:core
+bun run bench:core --rounds 1 --samples 20 --warmup 4
+bun run bench:core --baseline .test-output/performance/<previous-run>
+```
+
+This focused runner retains the original defaults and saved core baseline comparison. It is opt-in and separate from `bun run test`. It executes the real QuickJS runtime, commit transport, React tree and Rust layout engine. No Bun execution substitutes for QuickJS.
 
 ## Workloads
 
@@ -56,8 +90,8 @@ Prepare the fixture, build both versions, then measure after other compilation f
 
 ```sh
 bun test/native/prepare.ts performance --profile ink-dev
-bun test/performance/source-run.ts --phase build --output .test-output/source-comparison
-bun test/performance/source-run.ts --phase run --output .test-output/source-comparison
+bun run bench:compare:source --phase build --output .test-output/source-comparison
+bun run bench:compare:source --phase run --output .test-output/source-comparison
 ```
 
 The build phase needs a clean archive of the baseline revision. Its defaults use `dfef70e` and `.test-output/native-source/2026-10-22/baseline-host-source`; override these with `--baseline-revision` and `--baseline-source`. The runner checks the archive against Git before adding the identical harness. It saves source snapshots, both executables, shared assets, hashes, raw samples and a report. Builds share the Cargo cache and finish before timing begins.
@@ -66,13 +100,13 @@ One default block runs four fresh processes in baseline/candidate/candidate/base
 
 ## Renderer workloads
 
-Run the offscreen Vulkan workloads separately:
+The full offscreen Vulkan suite is included in `bun run bench`. To run it alone:
 
 ```sh
-cargo run --release -p ink-test --bin ink-render-performance -- 20 4
+bun run bench:renderer --samples 20 --warmup 4
 ```
 
-The arguments select measured samples and discarded warm-ups. The output identifies the Vulkan device. CPU timings stop at render submission; GPU completion and pixel readback happen outside that interval.
+The options select measured samples and discarded warm-ups. The output identifies the Vulkan device. CPU timings stop at render submission; GPU completion and pixel readback happen outside that interval.
 
 `artwork-revisit` alternates a six-image library with a scan of 42 other covers. The 48 decoded RGBA images occupy 12 MiB, exceeding the 8 MiB cache retention target. Each sample contains 66 draws; this workload caps samples at 12 and warm-ups at two. It checks source colours and reports cache misses, uploaded bytes and the peak image-texture byte count. Decoding, network access and whole-process memory are excluded.
 
@@ -80,11 +114,11 @@ The arguments select measured samples and discarded warm-ups. The output identif
 
 ## Baselines and optimisation
 
-Each successful run retains its release executable, exact compiled fixtures and hashes under ignored `.test-output/performance/`. `--baseline` reruns that saved executable with its own saved assets, alternating baseline/candidate order between rounds on the same host. Workload-source and machine mismatches reject comparisons; compiler or engine changes may produce different compiled assets. Raw per-round changes accompany aggregate percentages so noisy improvements remain visible.
+Each successful core comparison run retains its release executable, exact compiled fixtures and hashes under ignored `.test-output/performance/`. `--baseline` reruns that saved executable with its own saved assets, alternating baseline/candidate order between rounds on the same host. Workload-source and machine mismatches reject comparisons; compiler or engine changes may produce different compiled assets. Raw per-round changes accompany aggregate percentages so noisy improvements remain visible.
 
 Timing changes are reported without an automatic speed gate. Establish noise on the chosen host before introducing thresholds; a single fast run is not evidence of improvement. Structural contracts fail immediately. A dirty-tree source inventory and patch are recorded, but they are not a recoverable source snapshot. Commit source for reproducibility claims. Saved files do allow replaying the measured executable and fixtures.
 
-The suite excludes Android scheduling/Vulkan, artwork decoding, playback services, storage/network IO, whole-process memory/energy and APK size. It does not benchmark drag/fling frame pacing or Canvas input. Those need their own production-path workloads; headless CPU results do not establish LP3 frame latency or power consumption. Keep the existing correctness and reviewed pixel suites alongside performance work.
+The core suite excludes Android scheduling/Vulkan, artwork decoding, playback services, storage/network IO, whole-process memory/energy and APK size. It does not benchmark drag/fling frame pacing or Canvas input. Those need their own production-path workloads; headless CPU results do not establish LP3 frame latency or power consumption. Keep the existing correctness and reviewed pixel suites alongside performance work.
 
 Fixture bundles, release build caches and evidence remain ignored. Every runtime is stopped and joined when its workload finishes. No device packages, emulator processes or global device settings are created.
 
@@ -218,4 +252,4 @@ The report separates host scene-application latency, renderer CPU submission tim
 
 `ink-automatic-performance SAMPLES WARMUP 1000,5000` measures one-row edits, complete replacements and input acknowledgements during a 5,000-row replacement. `INK_AUTOMATIC_ASSETS` selects the fixture's asset directory. Input arrives every two milliseconds; each job checks the final controlled value and current row content. The harness also checks current requested callbacks, supersession, unmount/remount and bounded native row windows.
 
-Build the same fixture and harness with both SDK versions before measuring. Each bundle must contain its executable and `assets/automatic`. Use `bun test/performance/automatic-run.ts --baseline BUNDLE --candidate BUNDLE --output DIRECTORY` for four fresh processes in baseline/candidate/candidate/baseline order. Add `--controls` to run the 30 existing workloads too; those bundles also need `ink-performance` and its six fixture assets. The runner refuses to measure while compiler processes are active and saves every raw run with a summary.
+These current-build workloads run through `bun run bench` or `bun run bench:automatic`. For a historical comparison, build the same fixture and harness with both SDK versions before measuring. Each bundle must contain its executable and `assets/automatic`. Use `bun run bench:compare:automatic --baseline BUNDLE --candidate BUNDLE --output DIRECTORY` for four fresh processes in baseline/candidate/candidate/baseline order. Add `--controls` to run the 30 existing workloads too; those bundles also need `ink-performance` and its six fixture assets. The runner refuses to measure while compiler processes are active and saves every raw run with a summary.

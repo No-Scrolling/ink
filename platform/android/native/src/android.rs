@@ -373,6 +373,12 @@ impl AndroidEngine {
         match surface.renderer.render(self.engine.scene()) {
             Ok(RenderOutcome::Presented) => {
                 presented = true;
+                #[cfg(feature = "bridge-timing")]
+                android_log(ANDROID_LOG_INFO, &format!("InkImageFrame {}", serde_json::json!({
+                    "version": 1, "scene": self.engine.scene().revision,
+                    "image_revision": self.engine.scene().image_revision,
+                    "scroll_y": self.engine.scroll_offset(), "ns": benchmark_time_ns(),
+                })));
                 #[cfg(all(feature = "bridge-timing", not(feature = "presentation-timing")))]
                 android_log(
                     ANDROID_LOG_INFO,
@@ -441,6 +447,9 @@ impl AndroidEngine {
                             "font_texture_bytes": memory.font_texture_bytes,
                             "image_texture_bytes": memory.image_texture_bytes,
                             "system_glyph_texture_bytes": memory.system_glyph_texture_bytes,
+                            "font_cache_characters": memory.font_cache_characters,
+                            "font_cache_fallback_characters": memory.font_cache_fallback_characters,
+                            "font_cache_missing_characters": memory.font_cache_missing_characters,
                         },
                     })
                 ),
@@ -1048,6 +1057,14 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompletePixels(
 #[cfg(feature = "image")]
 // Returns 0 when unchanged, 1 when the screen changed and 2 when only offscreen images changed.
 fn complete_encoded_image(handle: jlong, request_id: jlong, source: image::Source<'_>) -> jint {
+    #[cfg(feature = "bridge-timing")]
+    let started_ns = benchmark_time_ns();
+    #[cfg(feature = "bridge-timing")]
+    let source_observation = match &source {
+        image::Source::File(path) => serde_json::json!({ "kind": "file", "path": path }),
+        image::Source::Asset(_, path) => serde_json::json!({ "kind": "asset", "path": path }),
+        image::Source::Bytes(bytes) => serde_json::json!({ "kind": "encoded", "encoded_bytes": bytes.len() }),
+    };
     let Some(engine) = engine(handle) else {
         return 0;
     };
@@ -1059,7 +1076,19 @@ fn complete_encoded_image(handle: jlong, request_id: jlong, source: image::Sourc
     let mut engine = engine.lock_arc();
     let update = match decoded {
         Ok((width, height, pixels, animation)) => {
-            engine.engine.complete_native_image(request_id as u64, width, height, pixels, animation)
+            #[cfg(feature = "bridge-timing")]
+            let (decoded_ns, decoded_bytes) = (benchmark_time_ns(), pixels.len());
+            let update = engine.engine.complete_native_image(request_id as u64, width, height, pixels, animation);
+            #[cfg(feature = "bridge-timing")]
+            android_log(ANDROID_LOG_INFO, &format!("InkImageCompletion {}", serde_json::json!({
+                "version": 1, "request_id": request_id, "source": source_observation,
+                "width": width, "height": height, "decoded_bytes": decoded_bytes,
+                "started_ns": started_ns, "decoded_ns": decoded_ns, "accepted_ns": benchmark_time_ns(),
+                "accepted": !matches!(update, ImageUpdate::Unchanged),
+                "update": match update { ImageUpdate::Visible => "visible", ImageUpdate::Offscreen => "offscreen", ImageUpdate::Unchanged => "unchanged" },
+                "scene": engine.engine.scene().revision, "image_revision": engine.engine.scene().image_revision,
+            })));
+            update
         }
         Err(message) => if engine.fail_native(
             request_id as u64,
