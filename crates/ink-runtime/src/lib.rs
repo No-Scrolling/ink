@@ -6,7 +6,6 @@ mod encoding;
 mod array;
 mod data_views;
 mod commit;
-mod source;
 mod binary;
 mod queue;
 pub type EventReceiver = queue::Receiver<Event>;
@@ -556,9 +555,7 @@ fn install(
                 })?,
             )?;
 
-            let sources = source::Shared::default();
-            source::install(&ctx, sources.clone(), events.clone(), transport_failed.clone())?;
-            commit::install(&ctx, events.clone(), transport_failed, sources)?;
+            commit::install(&ctx, events.clone(), transport_failed)?;
             global.set(
                 "__inkPost",
                 Function::new(ctx.clone(), move |ctx: Ctx<'_>, message: String| {

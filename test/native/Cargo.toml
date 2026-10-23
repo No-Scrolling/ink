@@ -28,10 +28,6 @@ name = "ink-render-performance"
 path = "../performance/render.rs"
 
 [[bin]]
-name = "ink-source-performance"
-path = "../performance/source.rs"
-
-[[bin]]
 name = "ink-automatic-performance"
 path = "../performance/automatic.rs"
 

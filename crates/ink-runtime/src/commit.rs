@@ -3,26 +3,24 @@ use std::{cell::RefCell, rc::Rc, sync::mpsc::TrySendError};
 use ink_protocol::{Operation, ReactCommit};
 use rquickjs::{Array, Ctx, Exception, FromJs, Function, Object, Result, Value};
 
-use crate::{Event, EventSink, MAX_MESSAGE_BYTES, source};
+use crate::{Event, EventSink, MAX_MESSAGE_BYTES};
 
 pub(crate) fn install(
     ctx: &Ctx<'_>,
     events: EventSink,
     failed: Rc<RefCell<bool>>,
-    sources: source::Shared,
 ) -> Result<()> {
     ctx.globals().set(
         "__inkCommit",
         Function::new(ctx.clone(), move |ctx: Ctx<'_>, batch: Array<'_>| {
             ensure_open(&ctx, &failed)?;
-            let (mut commit, mut bytes) = read(batch)?;
-            sources.borrow_mut().commit(&ctx, &mut commit, &mut bytes)?;
+            let (commit, bytes) = read(batch)?;
             send(&ctx, &events, &failed, commit, bytes)
         })?,
     )
 }
 
-pub(crate) fn ensure_open(ctx: &Ctx<'_>, failed: &Rc<RefCell<bool>>) -> Result<()> {
+fn ensure_open(ctx: &Ctx<'_>, failed: &Rc<RefCell<bool>>) -> Result<()> {
     if *failed.borrow() {
         return Err(Exception::throw_message(
             ctx,
@@ -32,7 +30,7 @@ pub(crate) fn ensure_open(ctx: &Ctx<'_>, failed: &Rc<RefCell<bool>>) -> Result<(
     Ok(())
 }
 
-pub(crate) fn send(
+fn send(
     ctx: &Ctx<'_>,
     events: &EventSink,
     failed: &Rc<RefCell<bool>>,
@@ -134,7 +132,7 @@ fn json<'js, T: serde::de::DeserializeOwned>(
         .map_err(|error| Exception::throw_type(ctx, &error.to_string()))
 }
 
-pub(crate) fn check_size(ctx: &Ctx<'_>, bytes: usize) -> Result<()> {
+fn check_size(ctx: &Ctx<'_>, bytes: usize) -> Result<()> {
     if bytes > MAX_MESSAGE_BYTES {
         return Err(Exception::throw_range(ctx, "native message is too large"));
     }

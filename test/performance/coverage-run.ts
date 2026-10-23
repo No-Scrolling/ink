@@ -18,9 +18,9 @@ const { values } = parseArgs({ options: {
   help: { type: "boolean" },
 } });
 if (values.help) {
-  console.log("Usage: bun run bench [--suite all|core|source|automatic|journeys|renderer|coverage|device] [--phase all|build|run] [--output DIRECTORY] [--rounds 3] [--samples 20] [--warmup 4] [--serial SERIAL] [--duration-seconds 120] [--list]");
-  console.log("Builds finish before serial release measurements. --serial adds Android; without it, Android is explicitly not requested. Core/source require even sample and warm-up counts.");
-  console.log("Use bench:core --baseline for saved core comparisons, or bench:compare:source / bench:compare:automatic for paired specialist comparisons.");
+  console.log("Usage: bun run bench [--suite all|core|automatic|journeys|renderer|coverage|device] [--phase all|build|run] [--output DIRECTORY] [--rounds 3] [--samples 20] [--warmup 4] [--serial SERIAL] [--duration-seconds 120] [--list]");
+  console.log("Builds finish before serial release measurements. --serial adds Android; without it, Android is explicitly not requested. Core requires even sample and warm-up counts.");
+  console.log("Use bench:core --baseline for saved core comparisons, or bench:compare:automatic for paired specialist comparisons.");
   process.exit(0);
 }
 if (values.list) {
@@ -64,7 +64,7 @@ const serial = values.serial ?? saved?.serial;
 if (serial && samples > 48) throw Error("Samples must be 2–48 when Android workloads are included");
 if (!selection.suites.length && !serial) throw Error("The device suite requires --serial SERIAL");
 if (saved && serial && !saved.serial) throw Error("The saved build has no Android APK; build a new output directory with --serial");
-if (selection.suites.some(suite => suite === "core" || suite === "source") && (samples % 2 || warmup % 2)) throw Error("Core/source suites require even sample and warm-up counts");
+if (selection.suites.includes("core") && (samples % 2 || warmup % 2)) throw Error("Core requires even sample and warm-up counts");
 await mkdir(output, { recursive: true });
 console.log(`Benchmark evidence: ${output}`);
 console.log(`Suites: ${selection.suites.join(", ") || "device only"}. Android: ${serial ?? "not requested (use --serial)"}`);
@@ -161,10 +161,9 @@ try {
       const env = { ...process.env,
         INK_VULKAN_LIBRARY: manifest.rendererLibrary?.path ?? process.env.INK_VULKAN_LIBRARY,
         INK_PERF_ASSETS: resolve(bundle, "assets"), INK_AUTOMATIC_ASSETS: resolve(bundle, "assets/automatic"),
-        INK_SOURCE_EXPECT_NATIVE: "true", INK_SOURCE_RENDER_DIR: "",
         INK_PERF_RENDER_ARTIFACTS: resolve(output, `renderer-${round}-pixels`) };
       const args = [String(samples), String(warmup)];
-      if (group === "source" || group === "automatic") args.push("1000,5000");
+      if (group === "automatic") args.push("1000,5000");
       if (group === "renderer" && selection.coverageOnly) args.unshift("--coverage-only");
       const stdout = await command(`${group}-${round}`, [resolve(bundle, suites[group].binary), ...args], env);
       noBuilds();
@@ -212,7 +211,7 @@ for (const group of selection.suites) {
 const result = { version: 2, status: "passed", selection, machine, rounds, samples, warmup,
   executionOrder: runs.map(({group, round, hostLoad}) => ({group, round, hostLoad})), summary,
   device: serial ? { directory: "device", serial, status: deviceResult!.status, energy: deviceResult!.energy } : { status: "not_requested", reason: "Supply --serial to run Android workloads" },
-  boundaries: { host: "Release QuickJS and native scene application; excludes Android presentation", source: "Current native source implementation; historical comparisons use bench:compare:source", renderer: "Offscreen Vulkan device named in raw results; CPU submission and readback are separate metrics", energy: "Requires genuine physical-device counters; emulator battery values are not measurements" }, completedAt: new Date().toISOString() };
+  boundaries: { host: "Release QuickJS and native scene application; excludes Android presentation", renderer: "Offscreen Vulkan device named in raw results; CPU submission and readback are separate metrics", energy: "Requires genuine physical-device counters; emulator battery values are not measurements" }, completedAt: new Date().toISOString() };
 await Bun.write(resolve(output, "result.json"), JSON.stringify(result, null, 2) + "\n");
 const rows = summary.map(({group, name, primaryMetric, metrics}) => {
   const metric = metrics[primaryMetric];
@@ -223,5 +222,5 @@ const typingRows = summary.filter(row => row.inputMetrics).map(row => {
   return `| ${row.name} | ${(metric.median / 1e6).toFixed(3)} | ${(metric.p95 / 1e6).toFixed(3)} | ${metric.n} | ${row.acknowledgementsBeforeListReady} |`;
 });
 const typing = typingRows.length ? `\n## Typing during automatic refresh\n\nInput acknowledgements and final list readiness have separate endpoints.\n\n| Workload | Arrival-to-ack median ms | p95 ms | Inputs | Acknowledged before list ready |\n| --- | ---: | ---: | ---: | ---: |\n${typingRows.join("\n")}\n` : "";
-await Bun.write(resolve(output, "report.md"), `# Performance benchmark run\n\n${rounds} fresh processes per host suite. Times are milliseconds; the metric column names each endpoint. Renderer CPU submission excludes completion/readback, which remains in the raw results. Automatic typing reports both list readiness and individual input acknowledgements. Raw workload contracts, caps and floors remain in each suite JSON.\n\n| Suite | Workload | Metric | Median ms | p95 ms | Samples |\n| --- | --- | --- | ---: | ---: | ---: |\n${rows.join("\n")}\n${typing}\n${serial ? "Android results and physical-energy availability are in device/result.json." : "Android workloads were not requested; use --serial."}\n\nPaired historical comparisons remain available through bench:core --baseline, bench:compare:source and bench:compare:automatic. This current-build run does not claim a before/after optimisation.\n`);
+await Bun.write(resolve(output, "report.md"), `# Performance benchmark run\n\n${rounds} fresh processes per host suite. Times are milliseconds; the metric column names each endpoint. Renderer CPU submission excludes completion/readback, which remains in the raw results. Automatic typing reports both list readiness and individual input acknowledgements. Raw workload contracts, caps and floors remain in each suite JSON.\n\n| Suite | Workload | Metric | Median ms | p95 ms | Samples |\n| --- | --- | --- | ---: | ---: | ---: |\n${rows.join("\n")}\n${typing}\n${serial ? "Android results and physical-energy availability are in device/result.json." : "Android workloads were not requested; use --serial."}\n\nPaired historical comparisons remain available through bench:core --baseline and bench:compare:automatic. This current-build run does not claim a before/after optimisation.\n`);
 console.log(`Completed ${summary.length} host/renderer workloads. Android: ${deviceResult?.status ?? "not requested"}. Evidence: ${output}`);

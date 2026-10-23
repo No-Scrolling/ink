@@ -9,21 +9,20 @@ bun run bench --list
 bun run bench --rounds 1 --samples 20 --warmup 4
 ```
 
-`bun run bench` runs all 77 current-build host and renderer workloads. It prepares the fixtures, builds the five release binaries before measurement, runs suites serially and writes one report with raw per-suite results, sources and executable hashes under `.test-output/benchmarks/`.
+`bun run bench` runs all 73 current-build host and renderer workloads. It prepares the fixtures, builds the four release binaries before measurement, runs suites serially and writes one report with raw per-suite results, sources and executable hashes under `.test-output/benchmarks/`.
 
 | Suite | Workloads | Focus |
 | --- | ---: | --- |
 | `core` | 30 | Existing React, lists, scrolling, input, navigation, playback and idle contracts |
-| `source` | 4 | Current native source edits and replacements at 1,000 and 5,000 rows |
 | `automatic` | 5 | Ordinary list edits, replacements and typing during refresh |
 | `journeys` | 21 | Search, structural changes, persisted startup and resource/navigation states |
 | `renderer` | 17 | All existing renderer cases and the five new text, upload and artwork cases |
 
 No emulator is needed for host workloads. Add `--serial SERIAL` to build and run Android media, lifecycle and sustained-usage coverage after the host suites. Start the LP3 emulator with `emulator -avd Light_Phone_III -writable-system` and use its actual serial. Without `--serial`, the report explicitly records Android as not requested. Physical energy requires eligible physical hardware.
 
-The renderer needs the Vulkan runtime from `scripts/setup-design-renderer`, or `INK_VULKAN_LIBRARY`. Core/source suites require even sample and warm-up counts. Renderer caps/floors and automatic typing job caps remain in force; reports preserve actual counts and distinguish CPU submission, list readiness and input acknowledgement endpoints.
+The renderer needs the Vulkan runtime from `scripts/setup-design-renderer`, or `INK_VULKAN_LIBRARY`. The core suite requires even sample and warm-up counts. Renderer caps/floors and automatic typing job caps remain in force; reports preserve actual counts and distinguish CPU submission, list readiness and input acknowledgement endpoints.
 
-Use `--suite core|source|automatic|journeys|renderer|coverage|device` to focus a run. `coverage` retains the 26-workload [extended suite](COVERAGE.md); `device` requires `--serial` and runs only Android. Common focused commands are `bench:source`, `bench:automatic`, `bench:renderer` and `bench:coverage`.
+Use `--suite core|automatic|journeys|renderer|coverage|device` to focus a run. `coverage` retains the 26-workload [extended suite](COVERAGE.md); `device` requires `--serial` and runs only Android. Common focused commands are `bench:automatic`, `bench:renderer` and `bench:coverage`.
 
 Build and measure separately when needed:
 
@@ -64,7 +63,7 @@ This focused runner retains the original defaults and saved core baseline compar
 | `conversation-controlled-input` | Edit the real multiline native editor and apply the resulting controlled React acknowledgement. Check the final draft, UTF-16 cursor and retained hosts. Android IME delivery is outside this measurement. |
 | `conversation-append/prepend` | Exercise `ConversationScreen`'s native message template, replies, author labels and reactions. Check new content, retained history, prepend anchor positions, receipt counts and bounded windows. |
 | `conversation-input-background`, `conversation-input-under-load` | Schedule an edit every 10 ms and four incoming linked messages every 50 ms (80 messages/s), or every 5 ms (800 messages/s saturation stress), without waiting for completion. Measure prescribed input arrival through scene-applied JS acknowledgement, including late dispatch and queueing. Also record dispatch lateness, dispatch-to-acknowledgement time and native edit/event-dispatch time. Check that stale commits cannot overwrite newer typing, all batches arrive and the retained history contains exactly the newest 512 messages in order. |
-| `conversation-input-cpu` | Schedule an edit every 2 ms while JavaScript computes 16 million items in chunks. Check an independent checksum, job completion and preservation of the newest editor draft. Record prescribed-arrival acknowledgement latency and total job duration. |
+| `conversation-input-cpu` | Schedule an edit every 2 ms while JavaScript synchronously computes 16 million items. Check an independent checksum, job completion and preservation of the newest editor draft. Record prescribed-arrival acknowledgement latency and total job duration. |
 | `playback-native-clock`, `playback-state-change` | Exercise the public `PlayingScreen`, native clock anchors and JS semantic track/state changes. Verify elapsed/duration labels and retained controls; native clock updates require no JS commit or layout measurement. An untimed real-clock observation checks a second boundary and that pausing stops animation work. Audio service/device response is outside this measurement. |
 | `idle` | Observe a settled React scene for 250 ms. It must produce no commits, animation, scene revisions or new measurements. This is a host scene/runtime contract, not an Android frame-callback or battery measurement. |
 
@@ -81,22 +80,6 @@ Load workloads begin with 128 messages and grow to a maximum of 512. Short trial
 Samples alternate values so no-op setters cannot win. Warm-up operations are discarded. Each round starts a new process and runtime instances; raw operation samples, per-round medians, combined median/p95/p99 and work probes are saved. Build/preparation time is excluded from measured execution time. Host nodes and queue high-water bytes describe only those resources, not total RSS or all allocation/GC costs.
 
 Scrollbar samples start immediately before each `pointer_move`. `thumb_update_ns` ends when the native scene's thumb rectangle has been computed through the same method used by the renderer; `elapsed_ns` also includes native row window materialisation and viewport readiness. Pointer capture and release are outside timing. The pointer remains held across repeated full-track sweeps, with independent checks that the thumb follows its requested position and that both endpoints remain reachable. These CPU timings exclude Android event delivery, frame scheduling, GPU submission and display presentation.
-
-## Native source comparison
-
-The source fixture compares immutable arrays with `createSource`, an equality-filtered unread count and `SourceList`. Both versions run the same compiled JavaScript. A sparse update changes one visible subtitle and its unread membership; a full replacement changes every subtitle. Each sample waits for the correct row and count in the native scene.
-
-Prepare the fixture, build both versions, then measure after other compilation finishes:
-
-```sh
-bun test/native/prepare.ts performance --profile ink-dev
-bun run bench:compare:source --phase build --output .test-output/source-comparison
-bun run bench:compare:source --phase run --output .test-output/source-comparison
-```
-
-The build phase needs a clean archive of the baseline revision. Its defaults use `dfef70e` and `.test-output/native-source/2026-10-22/baseline-host-source`; override these with `--baseline-revision` and `--baseline-source`. The runner checks the archive against Git before adding the identical harness. It saves source snapshots, both executables, shared assets, hashes, raw samples and a report. Builds share the Cargo cache and finish before timing begins.
-
-One default block runs four fresh processes in baseline/candidate/candidate/baseline order, with 12 warm-ups and 64 samples per workload. `--counts 1000,5000` selects the supported main comparison. Larger array row payloads can exceed the existing 1 MiB commit input limit. Native-source contract probes cover immutable snapshots, rejected transaction atomicity, no-op notifications, filtered membership/order, released snapshots and current-key row events. These are host scene timings; Android and presentation need separate measurements.
 
 ## Renderer workloads
 

@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "./react";
 import type { ResourceSnapshot, ResourceSource } from "./resource";
-import type { SourceSnapshot, SourceView } from "./source";
 
 export type Snapshot<T> =
   | { status: "loading" }
@@ -14,7 +13,6 @@ export interface SnapshotSource<T> {
 
 export function useSnapshot<T>(source: ResourceSource<T>): ResourceSnapshot<T>;
 export function useSnapshot<T>(source: SnapshotSource<T>): Snapshot<T>;
-export function useSnapshot<T>(source: SourceView<T>): SourceSnapshot<T>;
 export function useSnapshot(source: { subscribe(listener: () => void): () => void; getSnapshot(): unknown }): unknown {
   return useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
 }

@@ -23,11 +23,6 @@ export const suites = {
     assets: ["react", "list", "rows", "navigation", "conversation", "playback"],
     workloads: coreWorkloads,
   },
-  source: {
-    binary: "ink-source-performance",
-    assets: ["source"],
-    workloads: [1000, 5000].flatMap(count => ["edit", "replace"].map(command => `source-${command}-${count}`)),
-  },
   automatic: {
     binary: "ink-automatic-performance",
     assets: ["automatic"],
@@ -82,7 +77,7 @@ export function selectSuites(name: string): Selection {
   if (name === "coverage") return { suites: ["journeys", "renderer"], coverageOnly: true };
   if (name === "device") return { suites: [], coverageOnly: false };
   if (Object.hasOwn(suites, name)) return { suites: [name as Suite], coverageOnly: false };
-  throw Error("Suite must be all, core, source, automatic, journeys, renderer, coverage or device");
+  throw Error("Suite must be all, core, automatic, journeys, renderer, coverage or device");
 }
 
 export function workloadNames(suite: Suite, coverageOnly: boolean): string[] {
@@ -115,7 +110,7 @@ export function validateRun(suite: Suite, run: Run, samples: number, coverageOnl
   for (const work of run.workloads) {
     const rows = workloadSamples(work), field = primaryMetric(suite, work);
     if (rows.length !== sampleCount(work.name, samples) || rows.some(row => typeof row[field] !== "number" || !Number.isFinite(row[field]) || row[field] <= 0)) throw Error(`Invalid samples: ${work.name}`);
-    if ((suite === "journeys" || suite === "renderer" || suite === "source") && !work.contracts) throw Error(`Missing contracts: ${work.name}`);
+    if ((suite === "journeys" || suite === "renderer") && !work.contracts) throw Error(`Missing contracts: ${work.name}`);
     if (work.jobs?.some(job => job.inputs.length !== 16 || job.inputs.some(input => !["arrival_to_ack_ns", "dispatch_to_ack_ns"].every(key => typeof input[key] === "number" && Number.isFinite(input[key]) && input[key] > 0)))) throw Error(`Incomplete typing acknowledgements: ${work.name}`);
   }
 }

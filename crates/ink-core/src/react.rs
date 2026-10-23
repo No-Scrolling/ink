@@ -248,10 +248,10 @@ impl ReactTree {
         let operations = self.expand_native_lists(operations, engine)?;
         let structural = operations
             .iter()
-            .any(|operation| !matches!(operation, Operation::Update { .. } | Operation::Text { .. } | Operation::Source { .. }));
+            .any(|operation| !matches!(operation, Operation::Update { .. } | Operation::Text { .. }));
         let target_count = operations.iter().map(|operation| match operation {
             Operation::Text { ids, .. } => ids.len(),
-            Operation::Update { .. } | Operation::Source { .. } => 1,
+            Operation::Update { .. } => 1,
             _ => 0,
         }).sum();
         let mut targets = FxHashSet::with_capacity_and_hasher(target_count, Default::default());
@@ -314,10 +314,6 @@ impl ReactTree {
                         }
                         targets.insert(self.update_target(id)?);
                     }
-                }
-                Operation::Source { id, .. } => {
-                    ensure!(self.node(id)?.kind == HostKind::NativeList, "source operation requires a native list");
-                    targets.insert(self.update_target(id)?);
                 }
                 Operation::Hidden { id, value } => self.node_mut(id)?.hidden = value,
                 Operation::Insert { id, parent, before } => self.insert(id, parent, before)?,

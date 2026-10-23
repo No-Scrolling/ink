@@ -2,7 +2,7 @@
 
 `bench:coverage` measures app journeys, renderer work and Android media/lifecycle workloads through the production compiler, runtime and native engines.
 
-This focused suite also forms part of [`bun run bench`](README.md), which runs all 77 current-build host and renderer workloads. The full command includes existing renderer cases once, together with these new cases. Android is added with `--serial` in either command.
+This focused suite also forms part of [`bun run bench`](README.md), which runs all 73 current-build host and renderer workloads. The full command includes existing renderer cases once, together with these new cases. Android is added with `--serial` in either command.
 
 The [23 October 2026 baseline](coverage-results-2026-10-23.md) records the first complete run and its measurement limits.
 

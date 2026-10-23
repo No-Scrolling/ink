@@ -66,8 +66,8 @@
       "name": "@ink/audio",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.9",
-        "ink": "0.1.0-alpha.9",
+        "@ink/files": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -75,22 +75,22 @@
       "name": "@ink/auth",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/background": {
       "name": "@ink/background",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/barcode": {
       "name": "@ink/barcode",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "@ink/camera": "0.1.0-alpha.9",
-        "ink": "0.1.0-alpha.9",
+        "@ink/camera": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -98,8 +98,8 @@
       "name": "@ink/camera",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.9",
-        "ink": "0.1.0-alpha.9",
+        "@ink/files": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -107,24 +107,24 @@
       "name": "@ink/clipboard",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/crypto": {
       "name": "@ink/crypto",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/files": {
       "name": "@ink/files",
       "version": "0.1.0-alpha.10",
       "dependencies": {
-        "@ink/lightos": "0.1.0-alpha.9",
+        "@ink/lightos": "0.1.0-alpha.10",
       },
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -143,7 +143,7 @@
       "name": "@ink/lightos",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -151,14 +151,14 @@
       "name": "@ink/location",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/maps": {
       "name": "@ink/maps",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -171,22 +171,22 @@
         "whatwg-url": "14.2.0",
       },
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.9",
-        "ink": "0.1.0-alpha.9",
+        "@ink/files": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/nfc": {
       "name": "@ink/nfc",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/notifications": {
       "name": "@ink/notifications",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -194,21 +194,21 @@
       "name": "@ink/secure-store",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/store": {
       "name": "@ink/store",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
       },
     },
     "packages/video": {
       "name": "@ink/video",
       "version": "0.1.0-alpha.10",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.9",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },
@@ -219,8 +219,8 @@
         "valibot": "1.5.0",
       },
       "peerDependencies": {
-        "@ink/barcode": "0.1.0-alpha.9",
-        "ink": "0.1.0-alpha.9",
+        "@ink/barcode": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.10",
         "react": "19.2.8",
       },
     },

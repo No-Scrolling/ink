@@ -1,5 +1,5 @@
 use super::*;
-use ink_protocol::source::{Graph, ViewSnapshot};
+use ink_protocol::source::{Graph, ViewChange, ViewSnapshot};
 
 // Small lists keep their cheaper flat representation. Promotion and structural
 // updates build the persistent tree; subsequent stable-key edits copy its paths.
@@ -25,13 +25,6 @@ impl AutomaticSource {
         }
         source
     }
-}
-
-struct SourceUpdate {
-    snapshot: Arc<ViewSnapshot>,
-    previous_revision: u64,
-    changed_keys: Vec<String>,
-    structural: bool,
 }
 
 #[derive(Clone, Deserialize, PartialEq)]
@@ -64,7 +57,6 @@ pub(super) struct NativeList {
     event_list: Option<usize>,
     items: FxHashMap<String, Arc<Json>>,
     source: Option<Arc<ViewSnapshot>>,
-    source_view: Option<u64>,
     automatic: Option<AutomaticSource>,
     keys: Arc<[String]>,
     indices: FxHashMap<String, usize>,
@@ -130,7 +122,6 @@ impl ReactTree {
     pub(super) fn native_list_storage_diagnostics(&self) -> Json {
         let mut automatic = 0;
         let mut automatic_rows = 0;
-        let mut external = 0;
         let mut flat = 0;
         let mut flat_records = 0;
         let mut flat_versions = 0;
@@ -138,15 +129,13 @@ impl ReactTree {
             if list.automatic.is_some() {
                 automatic += 1;
                 automatic_rows += list.keys.len();
-            } else if list.source_view.is_some() {
-                external += 1;
             } else {
                 flat += 1;
             }
             flat_records += list.items.len();
             flat_versions += list.versions.len();
         }
-        json!({"automatic": automatic, "automatic_rows": automatic_rows, "external": external,
+        json!({"automatic": automatic, "automatic_rows": automatic_rows,
             "flat": flat, "flat_records": flat_records, "flat_versions": flat_versions})
     }
 
@@ -227,220 +216,37 @@ impl ReactTree {
         Ok(())
     }
 
-    fn source_list(&mut self, id: usize, props: &Map<String, Json>, update: Option<SourceUpdate>,
+    fn patch_source_list(&mut self, id: usize, list: &mut NativeList, change: ViewChange,
         engine: &mut Engine, operations: &mut Vec<Operation>,
     ) -> Result<()> {
-        let view = props.get("sourceView").and_then(Json::as_u64).context("NativeList requires a sourceView identifier")?;
-        ensure!(!props.contains_key("items") && !props.contains_key("itemChanges") && !props.contains_key("itemKeys"),
-            "source lists cannot contain copied row data");
-        let template: Option<Template> = props.get("template").map(|value| -> Result<Template> {
-            Ok(serde_json::from_str(value.as_str().context("invalid native list template")?)?)
-        }).transpose()?;
-        let gap = props.get("gap").and_then(Json::as_f64).unwrap_or(47.0) as f32;
-        ensure!(gap.is_finite() && gap >= 0.0, "native list gap must be finite and non-negative");
-        let mut list = if let Some(list) = self.native_lists.remove(&id) {
-            ensure!(template.as_ref().is_none_or(|template| list.template == *template),
-                "native list templates cannot change after mount");
-            ensure!(list.source_view == Some(view) || update.is_some(), "source binding requires a snapshot");
-            list
-        } else {
-            ensure!(update.is_some(), "source list requires an initial snapshot");
-            NativeList {
-                template: template.context("NativeList requires a template")?, event_list: None,
-                items: FxHashMap::default(), source: None, source_view: None, automatic: None, keys: Arc::from([]),
-                indices: FxHashMap::default(), versions: Arc::from([]), revision: 0, start: 0,
-                rows: FxHashMap::default(), gap, follow_end: false, older: false, more: false,
-                first_requested: None, last_requested: None,
+        let ViewChange { snapshot, previous_revision, changed_keys, .. } = change;
+        let rows = changed_keys.iter().map(|key| {
+            list.indices.get(key).copied().context("source patch has an unknown key")
+        }).collect::<Result<Vec<_>>>()?;
+        for key in &changed_keys {
+            if let Some(previous) = list.rows.get(key) {
+                let item = snapshot.get(key).context("source patch is missing a row")?.value.clone();
+                let mut nodes = Vec::new();
+                let root = self.row_operations(&list.template, &item, key, id, Some(previous), &mut 0,
+                    &mut nodes, operations, 0, list.event_list)?;
+                list.rows.insert(key.clone(), Row { root, nodes, item });
             }
-        };
-        list.event_list = (props.get("onRowEvent") == Some(&Json::Bool(true))).then_some(id);
-        list.gap = gap;
-        list.follow_end = props.get("followEnd") == Some(&Json::Bool(true));
-        list.more = props.get("onEndReached") == Some(&Json::Bool(true)) && props.get("hasMore") != Some(&Json::Bool(false));
-        list.older = props.get("onStartReached") == Some(&Json::Bool(true)) && props.get("hasOlder") == Some(&Json::Bool(true));
-        if list.source_view != Some(view) {
-            if let Some(metrics) = engine.list_metrics.get_mut(&id) { metrics.reset_versions(); }
-            list.source_view = Some(view);
-            list.automatic = None;
-            list.source = None;
-            list.items = FxHashMap::default();
-            list.versions = Arc::from([]);
         }
-        if let Some(update) = update {
-            if list.rows.is_empty() && props.get("initialEnd") == Some(&Json::Bool(true)) {
-                list.start = update.snapshot.len().saturating_sub(32);
-            }
-            self.update_source_list(id, &mut list, update, engine, operations)?;
-        }
-        self.native_lists.insert(id, list);
+        if let Some(metrics) = engine.list_metrics.get_mut(&id) { metrics.patch_source(previous_revision, &snapshot, &rows); }
+        list.revision = snapshot.revision;
+        list.source = Some(snapshot);
         Ok(())
-    }
-
-    fn update_source_list(&mut self, id: usize, list: &mut NativeList, update: SourceUpdate,
-        engine: &mut Engine, operations: &mut Vec<Operation>,
-    ) -> Result<()> {
-        let SourceUpdate { snapshot, previous_revision, changed_keys, structural } = update;
-        let recover = list.source.is_none() || list.revision != previous_revision;
-        if structural || recover {
-            let keys = snapshot.keys();
-            let indices: FxHashMap<_, _> = keys.iter().enumerate().map(|(index, key)| (key.clone(), index)).collect();
-            let visible = engine.list_metrics.get(&id).zip(engine.react_list_positions.get(&id)).zip(engine.scene.scroll_clip)
-                .map(|((metrics, top), clip)| metrics.index_at(engine.scroll_offset + clip.y - top)).unwrap_or(list.start);
-            let anchor = list.keys.get(visible).and_then(|key| indices.get(key)).copied();
-            list.start = anchor.map(|index| index.saturating_sub(visible.saturating_sub(list.start)))
-                .unwrap_or(list.start.min(keys.len().saturating_sub(1)));
-            list.keys = keys;
-            list.indices = indices;
-            list.revision = snapshot.revision;
-            list.source = Some(snapshot.clone());
-            if recover && let Some(metrics) = engine.list_metrics.get_mut(&id) { metrics.reset_versions(); }
-            let start = list.start;
-            let end = start + list.rows.len().max(32);
-            self.mount_window(id, list, start, end, operations)?;
-        } else {
-            ensure!(snapshot.len() == list.keys.len(), "nonstructural source change altered row count");
-            let rows = changed_keys.iter().map(|key| {
-                ensure!(snapshot.get(key).is_some(), "source patch is missing a row");
-                list.indices.get(key).copied().context("source patch has an unknown key")
-            }).collect::<Result<Vec<_>>>()?;
-            for key in &changed_keys {
-                if let Some(previous) = list.rows.get(key) {
-                    let item = snapshot.get(key).context("source patch is missing a row")?.value.clone();
-                    let mut nodes = Vec::new();
-                    let root = self.row_operations(&list.template, &item, key, id, Some(previous), &mut 0,
-                        &mut nodes, operations, 0, list.event_list)?;
-                    list.rows.insert(key.clone(), Row { root, nodes, item });
-                }
-            }
-            if let Some(metrics) = engine.list_metrics.get_mut(&id) { metrics.patch_source(previous_revision, &snapshot, &rows); }
-            list.revision = snapshot.revision;
-            list.source = Some(snapshot.clone());
-        }
-        operations.push(Operation::Source { id, snapshot, previous_revision, changed_keys, structural });
-        Ok(())
-    }
-
-    fn source_list_operations(&self, operations: &mut [Operation], sources: &mut FxHashMap<usize, SourceUpdate>)
-        -> FxHashMap<usize, Option<usize>> {
-        if operations.is_empty() { return FxHashMap::default(); }
-        let mut created = FxHashSet::default();
-        let mut source_hosts: FxHashSet<_> = sources.keys().copied().collect();
-        for operation in operations.iter() {
-            let (id, props) = match operation {
-                Operation::Create { id, r#type: HostKind::NativeList, props } => {
-                    created.insert(*id);
-                    (*id, props)
-                }
-                Operation::Update { id, props } if created.contains(id) || self.native_lists.contains_key(id) => (*id, props),
-                _ => continue,
-            };
-            if props.contains_key("sourceView") || self.native_lists.get(&id).is_some_and(|list| list.source_view.is_some()) {
-                source_hosts.insert(id);
-            }
-        }
-        let mut last = FxHashMap::default();
-        if source_hosts.is_empty() { return last; }
-        let mut templates = FxHashMap::default();
-        for (index, operation) in operations.iter().enumerate() {
-            if let Operation::Create { id, props, .. } | Operation::Update { id, props } = operation
-                && source_hosts.contains(id) {
-                last.insert(*id, Some(index));
-                if let Some(template) = props.get("template") { templates.entry(*id).or_insert_with(|| template.clone()); }
-            }
-        }
-        // Runtime retains only the final binding for surviving hosts, including
-        // when React corrects a mount synchronously before flushing its batch.
-        if operations.iter().any(|operation| matches!(operation, Operation::Remove { .. })) {
-            let mut parents = FxHashMap::default();
-            let mut children: FxHashMap<usize, Vec<usize>> = FxHashMap::default();
-            let mut created = FxHashSet::default();
-            let mut removed = FxHashSet::default();
-            for operation in operations.iter() {
-                match operation {
-                    Operation::Create { id, .. } => {
-                        created.insert(*id);
-                        removed.remove(id);
-                        parents.insert(*id, None);
-                        children.insert(*id, Vec::new());
-                    }
-                    Operation::Insert { id, parent, before } if *before != Some(*id) => {
-                        parents.insert(*id, Some(*parent));
-                        children.entry(*parent).or_default().push(*id);
-                    }
-                    Operation::Remove { id, .. } => {
-                        let mut pending = vec![*id];
-                        while let Some(id) = pending.pop() {
-                            if !removed.insert(id) { continue; }
-                            let existing = self.nodes.get(&id).filter(|_| !created.contains(&id));
-                            let descendants = existing.into_iter().flat_map(|node| &node.children)
-                                .chain(children.get(&id).into_iter().flatten());
-                            for &child in descendants {
-                                let parent = parents.get(&child).copied().unwrap_or_else(|| self.nodes.get(&child).and_then(|node| node.parent));
-                                if parent == Some(id) { pending.push(child); }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            for id in removed {
-                sources.remove(&id);
-                if let Some(operation) = last.get_mut(&id) { *operation = None; }
-            }
-        }
-        // A new list can supply its template on Create and its final binding on
-        // Update. Keep that template available without expanding the first view.
-        for (&id, &index) in &last {
-            if let Some(index) = index
-                && let Operation::Create { props, .. } | Operation::Update { props, .. } = &mut operations[index]
-                && !props.contains_key("template")
-                && let Some(template) = templates.remove(&id) {
-                props.insert("template".to_owned(), template);
-            }
-        }
-        last
     }
 
     pub(super) fn expand_native_lists(&mut self, operations: Vec<Operation>, engine: &mut Engine) -> Result<Vec<Operation>> {
         if !cfg!(feature = "ui-lists") { return Ok(operations); }
-        let mut sources = FxHashMap::default();
-        let mut operations = operations;
-        for operation in operations.extract_if(.., |operation| matches!(operation, Operation::Source { .. })) {
-            let Operation::Source { id, snapshot, previous_revision, changed_keys, structural } = operation else { unreachable!() };
-            ensure!(sources.insert(id, SourceUpdate { snapshot, previous_revision, changed_keys, structural }).is_none(),
-                "duplicate native list source operation");
-        }
-        let source_operations = self.source_list_operations(&mut operations, &mut sources);
         let mut expanded = Vec::with_capacity(operations.len());
-        for (index, mut operation) in operations.into_iter().enumerate() {
-            if let Operation::Create { id, props, .. } | Operation::Update { id, props } = &mut operation
-                && let Some(last) = source_operations.get(id)
-                && *last != Some(index) {
-                for field in ["items", "itemChanges", "itemKeys", "template"] { props.remove(field); }
-                expanded.push(operation);
-                continue;
-            }
+        for operation in operations {
             let (id, props) = match &operation {
                 Operation::Create { id, r#type: HostKind::NativeList, props } => (*id, props),
-                Operation::Update { id, props } if self.native_lists.contains_key(id) || source_operations.get(id) == Some(&Some(index)) => (*id, props),
+                Operation::Update { id, props } if self.native_lists.contains_key(id) => (*id, props),
                 _ => { expanded.push(operation); continue; }
             };
-            if props.contains_key("sourceView") {
-                let mut rows = Vec::new();
-                self.source_list(id, props, sources.remove(&id), engine, &mut rows)?;
-                let mut operation = operation;
-                if let Operation::Create { props, .. } | Operation::Update { props, .. } = &mut operation {
-                    props.remove("template");
-                }
-                expanded.push(operation);
-                expanded.extend(rows);
-                continue;
-            }
-            ensure!(!sources.contains_key(&id), "source operation requires a sourceView binding");
-            if self.native_lists.get(&id).is_some_and(|list| list.source_view.is_some()) {
-                ensure!(props.contains_key("items"), "switching from a source requires a full items array");
-                if let Some(metrics) = engine.list_metrics.get_mut(&id) { metrics.reset_versions(); }
-            }
             if !props.contains_key("items") && !props.contains_key("itemKeys") {
                 if let Some(mut list) = self.native_lists.remove(&id) {
                     let key_field = props.get("keyField").or_else(|| props.get("key")).and_then(Json::as_str).context("NativeList requires a key field")?;
@@ -471,10 +277,7 @@ impl ReactTree {
                         if let Ok(changes) = result {
                             backed = true;
                             for change in changes {
-                                self.update_source_list(id, &mut list, SourceUpdate {
-                                    snapshot: change.snapshot, previous_revision: change.previous_revision,
-                                    changed_keys: change.changed_keys, structural: change.structural,
-                                }, engine, &mut expanded)?;
+                                self.patch_source_list(id, &mut list, change, engine, &mut expanded)?;
                             }
                         } else {
                             // Existing array lists accept data beyond Graph's limits.
@@ -602,14 +405,14 @@ impl ReactTree {
                 old.start = anchor.map(|index| index.saturating_sub(visible.saturating_sub(old.start)))
                     .unwrap_or(old.start.min(keys.len().saturating_sub(1)));
                 old.indices = keys.iter().enumerate().map(|(index, key)| (key.clone(), index)).collect();
-                old.items = items; old.source = source; old.source_view = None; old.automatic = automatic;
+                old.items = items; old.source = source; old.automatic = automatic;
                 old.keys = old.source.as_ref().map_or_else(|| keys.into(), |snapshot| snapshot.keys());
                 old.versions = versions; old.revision = revision;
                 old
             } else {
                 let indices = keys.iter().enumerate().map(|(index, key)| (key.clone(), index)).collect();
                 let keys = source.as_ref().map_or_else(|| keys.into(), |snapshot| snapshot.keys());
-                NativeList { template: template.context("NativeList requires a template")?, event_list: (props.get("onRowEvent") == Some(&Json::Bool(true))).then_some(id), items, source, source_view: None, automatic, indices, keys, versions, revision, start: 0, rows: FxHashMap::default(), gap,
+                NativeList { template: template.context("NativeList requires a template")?, event_list: (props.get("onRowEvent") == Some(&Json::Bool(true))).then_some(id), items, source, automatic, indices, keys, versions, revision, start: 0, rows: FxHashMap::default(), gap,
                     follow_end: false, older: false, more: false, first_requested: None, last_requested: None }
             };
             list.gap = gap;
@@ -625,12 +428,6 @@ impl ReactTree {
             }
             expanded.push(operation);
             self.mount_window(id, &mut list, start, end, &mut expanded)?;
-            self.native_lists.insert(id, list);
-        }
-        for (id, update) in sources {
-            let mut list = self.native_lists.remove(&id).context("source operation requires a mounted native list")?;
-            ensure!(list.source_view.is_some(), "source operation requires a sourceView binding");
-            self.update_source_list(id, &mut list, update, engine, &mut expanded)?;
             self.native_lists.insert(id, list);
         }
         Ok(expanded)
