@@ -22,6 +22,7 @@ export interface PushRegistration {
   url: string;
   bearerToken?: string;
   encryptionKey?: string;
+  fetchOnWake?: boolean;
 }
 export interface PushOptions {
   foregroundGroup?: string | null;

@@ -119,6 +119,21 @@ Encrypt the [notification payload](#send-a-notification) using the [Ink cipher f
 
 When encryption is enabled, plaintext notifications are rejected.
 
+### Retrieve notifications after a wake-up
+
+Set `fetchOnWake: true` in registration to retrieve encrypted notifications when
+LightOS delivers an empty payload, `null` or `{}`. This option requires
+`encryptionKey` and is disabled by default.
+
+Your subscription server must support `GET {url}/{installationId}` and return
+`{ "messages": [{ "id": "…", "encrypted": "ink1.…" }] }`. Retain the encrypted
+envelopes sent through UnifiedPush until the receiver acknowledges them.
+
+After processing a notification, Ink sends `POST` to the same URL with
+`{ "ids": ["…"] }`. Each ID is the lowercase hexadecimal SHA-256 hash of the
+encrypted string's UTF-8 bytes. Remove only the acknowledged envelopes. Both
+requests use the registration's bearer token.
+
 ### Foreground notifications
 
 Use the notification's `groupKey` to identify the content on screen. For a conversation, this can be its ID:

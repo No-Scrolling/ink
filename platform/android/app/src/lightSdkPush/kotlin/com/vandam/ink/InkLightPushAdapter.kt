@@ -20,6 +20,7 @@ import java.lang.ref.WeakReference
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -151,12 +152,14 @@ private class InkLightPushAdapter(
         }
         val baseUrl = request.optString("url").trimEnd('/')
         val token = request.optString("bearerToken")
+        val fetchOnWake = request.optBoolean("fetchOnWake")
         val error = runCatching {
             validateBaseUrl(baseUrl)
             require(token.toByteArray().size <= MAX_TOKEN_BYTES && token.none { Character.isISOControl(it.code) }) {
                 "Bearer token is invalid"
             }
             val key = if (request.isNull("encryptionKey")) null else request.getString("encryptionKey")
+            require(!fetchOnWake || key != null) { "Fetching push notifications requires an encryption key" }
             val credentials = SecureValues(activity)
             if (key != null) {
                 InkCipher(key)
@@ -168,7 +171,7 @@ private class InkLightPushAdapter(
             store.fail("protocol", error.message ?: "Invalid Light push registration", false)
             return
         }
-        store.configure(baseUrl, token)
+        store.configure(baseUrl, token, fetchOnWake)
         registerConnector()
     }
 
@@ -316,14 +319,34 @@ class InkLightPushReceiver : MessagingReceiver() {
         LIGHT_PUSH_EXECUTOR.execute {
             try {
                 val store = InkLightPushStore(context)
+                val registration = store.registration()
+                var receipts = emptyList<String>()
                 val effects = runCatching {
                     require(message.content.size <= MAX_ENCRYPTED_PAYLOAD_BYTES) { "Push payload is too large" }
                     val key = SecureValues(context).get("ink.push.key")
-                    val content = if (key == null) message.content else {
-                        val encrypted = JSONObject(message.content.toString(Charsets.UTF_8)).getString("encrypted")
-                        InkCipher(key).decrypt(encrypted).toByteArray(Charsets.UTF_8)
+                    val events = if (key == null) parseEnvelope(message.content) else {
+                        val raw = message.content.toString(Charsets.UTF_8).trim()
+                        // Some LightOS gateways deliver only a wake-up, without the POST body.
+                        val encrypted = if (registration.fetchOnWake && (raw.isEmpty() || raw == "null" || raw == "{}")) {
+                            check(registration.desired) { "Push notifications are unregistered" }
+                            val inbox = InkLightPushRegistrar.receive(registration)
+                            require(inbox.length() <= MAX_INBOX_MESSAGES) { "Push inbox is too large" }
+                            List(inbox.length()) { inbox.getJSONObject(it).getString("encrypted") }
+                        } else listOf(JSONObject(raw).getString("encrypted"))
+                        if (registration.fetchOnWake) {
+                            receipts = encrypted.map { payload ->
+                                MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
+                                    .joinToString("") { "%02x".format(it) }
+                            }
+                        }
+                        val cipher = InkCipher(key)
+                        encrypted.flatMap { payload ->
+                            require(payload.toByteArray().size <= MAX_ENCRYPTED_PAYLOAD_BYTES) { "Push payload is too large" }
+                            parseEnvelope(cipher.decrypt(payload).toByteArray(Charsets.UTF_8))
+                        }
                     }
-                    store.apply(parseEnvelope(content))
+                    if (store.registration().generation != registration.generation) return@execute
+                    store.apply(events)
                 }.getOrElse { error ->
                     Log.w(TAG, "Rejected Light push payload: ${error.message}")
                     runCatching {
@@ -355,6 +378,10 @@ class InkLightPushReceiver : MessagingReceiver() {
                 }
 
                 notifyLightPushStateChanged(context)
+                if (receipts.isNotEmpty()) {
+                    runCatching { InkLightPushRegistrar.acknowledge(registration, receipts) }
+                        .onFailure { Log.w(TAG, "Could not acknowledge push delivery: ${it.message}") }
+                }
             } finally {
                 pending.finish()
             }
@@ -403,31 +430,57 @@ private fun presentPush(context: Context, message: LightPushRecord) {
 }
 
 private object InkLightPushRegistrar {
-    fun put(registration: PushRegistration): Result<Unit> = request(registration, "PUT")
-    fun delete(registration: PushRegistration): Result<Unit> = request(registration, "DELETE")
+    fun put(registration: PushRegistration): Result<Unit> = runCatching {
+        confirm(request(registration, "PUT", JSONObject().put("endpoint", registration.endpoint)))
+    }
+    fun delete(registration: PushRegistration): Result<Unit> = runCatching {
+        confirm(request(registration, "DELETE"))
+    }
 
-    private fun request(registration: PushRegistration, method: String): Result<Unit> = runCatching {
+    fun receive(registration: PushRegistration): JSONArray = request(registration, "GET").getJSONArray("messages")
+
+    fun acknowledge(registration: PushRegistration, ids: List<String>) {
+        confirm(request(registration, "POST", JSONObject().put("ids", JSONArray(ids))))
+    }
+
+    private fun confirm(response: JSONObject) {
+        require(response.optBoolean("success")) { "Subscription server did not confirm the request" }
+    }
+
+    private fun request(registration: PushRegistration, method: String, body: JSONObject? = null): JSONObject {
         val connection = URL("${registration.baseUrl}/${registration.installationId}")
             .openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
-            connection.connectTimeout = REGISTRATION_TIMEOUT_MS
-            connection.readTimeout = REGISTRATION_TIMEOUT_MS
+            connection.instanceFollowRedirects = false
+            val timeout = if (method == "GET" || method == "POST") DELIVERY_TIMEOUT_MS else REGISTRATION_TIMEOUT_MS
+            connection.connectTimeout = timeout
+            connection.readTimeout = timeout
             connection.setRequestProperty("Accept", "application/json")
             if (registration.bearerToken.isNotEmpty()) {
                 connection.setRequestProperty("Authorization", "Bearer ${registration.bearerToken}")
             }
-            if (method == "PUT") {
+            if (body != null) {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
-                val bytes = JSONObject().put("endpoint", registration.endpoint).toString().toByteArray()
+                val bytes = body.toString().toByteArray()
                 connection.setFixedLengthStreamingMode(bytes.size)
                 connection.outputStream.use { it.write(bytes) }
             }
             val code = connection.responseCode
             require(code in 200..299) { "Subscription server returned HTTP $code" }
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            require(JSONObject(response).optBoolean("success")) { "Subscription server did not confirm registration" }
+            val response = connection.inputStream.bufferedReader().use { reader ->
+                val result = StringBuilder()
+                val buffer = CharArray(4096)
+                while (true) {
+                    val count = reader.read(buffer)
+                    if (count == -1) break
+                    require(result.length + count <= MAX_INBOX_BYTES) { "Push response is too large" }
+                    result.append(buffer, 0, count)
+                }
+                result.toString()
+            }
+            return JSONObject(response)
         } finally {
             connection.disconnect()
         }
@@ -442,6 +495,7 @@ private data class PushRegistration(
     val generation: Long,
     val desired: Boolean,
     val status: String,
+    val fetchOnWake: Boolean,
 )
 
 private data class LightPushRecord(
@@ -494,11 +548,12 @@ private class InkLightPushStore(context: Context) {
 
     fun registration(): PushRegistration = locked { read().registration() }
 
-    fun configure(baseUrl: String, token: String) = mutate { state ->
+    fun configure(baseUrl: String, token: String, fetchOnWake: Boolean) = mutate { state ->
         state.generation += 1
         state.desired = true
         state.baseUrl = baseUrl
         state.bearerToken = token
+        state.fetchOnWake = fetchOnWake
         state.status = "registering"
         state.clearError()
     }
@@ -618,6 +673,10 @@ private class InkLightPushStore(context: Context) {
         while (state.recentIds.size > MAX_RECENT_IDS) state.recentIds.removeAt(0)
         val retainedIds = state.messages.mapTo(mutableSetOf()) { it.id }
         val finalShown = shown.filter { it.id in retainedIds }
+        if (state.desired && state.errorKind == "protocol") {
+            state.status = "ready"
+            state.clearError()
+        }
         PushEffects(finalShown, cancelled, cleared - finalShown.map { it.groupKey }.toSet())
     }
 
@@ -672,6 +731,7 @@ private data class PushState(
     var baseUrl: String = "",
     var bearerToken: String = "",
     var endpoint: String = "",
+    var fetchOnWake: Boolean = false,
     var registeredAtMs: Long = 0,
     var status: String = "idle",
     var errorKind: String = "",
@@ -689,6 +749,7 @@ private data class PushState(
         generation,
         desired,
         status,
+        fetchOnWake,
     )
 
     fun clearError() {
@@ -709,6 +770,7 @@ private data class PushState(
         baseUrl = ""
         bearerToken = ""
         endpoint = ""
+        fetchOnWake = false
         registeredAtMs = 0
         status = "idle"
         clearError()
@@ -729,6 +791,7 @@ private data class PushState(
         .put("desired", desired)
         .put("baseUrl", baseUrl)
         .put("bearerToken", bearerToken)
+        .put("fetchOnWake", fetchOnWake)
         .put("recentIds", JSONArray(recentIds))
 
     companion object {
@@ -743,6 +806,7 @@ private data class PushState(
                 baseUrl = root.optString("baseUrl"),
                 bearerToken = root.optString("bearerToken"),
                 endpoint = root.optString("endpoint"),
+                fetchOnWake = root.optBoolean("fetchOnWake"),
                 registeredAtMs = root.optLong("registeredAtMs"),
                 status = root.optString("status", "idle"),
                 errorKind = error?.optString("kind") ?: root.optString("errorKind"),
@@ -860,4 +924,7 @@ private const val MAX_ENDPOINT_BYTES = 4096
 private const val MAX_BASE_URL_BYTES = 2048
 private const val MAX_TOKEN_BYTES = 2048
 private const val REGISTRATION_TIMEOUT_MS = 10_000
+private const val DELIVERY_TIMEOUT_MS = 4_000
+private const val MAX_INBOX_MESSAGES = 128
+private const val MAX_INBOX_BYTES = 1024 * 1024
 private val LIGHT_PUSH_EXECUTOR: ExecutorService = Executors.newSingleThreadExecutor()
