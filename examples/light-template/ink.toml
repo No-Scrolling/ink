@@ -5,5 +5,9 @@ version_code = 1
 
 [background]
 entry = "./workers.ts"
+
+[overlays]
+entry = "./overlays.tsx"
+
 [auth]
 redirect_uri = "ink-template://oauth/callback"

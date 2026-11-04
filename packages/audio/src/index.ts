@@ -20,6 +20,10 @@ export interface PlayerOptions {
   usage?: "music" | "speech";
   /** Reuse HTTP(S) audio in a shared 256 MiB disc cache. Off by default. */
   cache?: boolean;
+  /** Milliseconds to buffer for the next queued item. Off by default. */
+  preloadNext?: number;
+  /** Milliseconds of audio to buffer before streaming starts. Defaults to 1000. */
+  startupBuffer?: number;
 }
 
 export interface PlayerState {
@@ -35,12 +39,14 @@ export interface PlayerState {
   position: number;
   duration: number;
   speed: number;
+  shuffle: boolean;
+  repeat: "off" | "queue" | "track";
   skipSilence: boolean;
   voiceBoost: boolean;
   silenceSaved: number;
   error: Error | null;
 }
-const initial: PlayerState = { ready: false, playing: false, playWhenReady: false, buffering: false, loading: false, ended: false, queue: [], current: null, index: -1, position: 0, duration: 0, speed: 1, skipSilence: false, voiceBoost: false, silenceSaved: 0, error: null };
+const initial: PlayerState = { ready: false, playing: false, playWhenReady: false, buffering: false, loading: false, ended: false, queue: [], current: null, index: -1, position: 0, duration: 0, speed: 1, shuffle: false, repeat: "off", skipSilence: false, voiceBoost: false, silenceSaved: 0, error: null };
 
 function decodeItem(value: unknown): AudioItem {
   if (typeof value !== "object" || value === null) throw new NativeError("protocol", "Invalid audio queue item");
@@ -102,6 +108,10 @@ function decode(value: unknown): PlayerState {
   }
   const duration = number("durationMs");
   const queue = field("queue");
+  const repeat = field("repeat");
+  if (repeat !== "off" && repeat !== "queue" && repeat !== "track") throw new NativeError("protocol", "Invalid repeat mode");
+  const shuffle = field("shuffle");
+  if (typeof shuffle !== "boolean") throw new NativeError("protocol", "Invalid shuffle mode");
   if (!Array.isArray(queue)) throw new NativeError("protocol", "Invalid audio queue");
   return {
     ready: field("ready") === true,
@@ -114,21 +124,24 @@ function decode(value: unknown): PlayerState {
     index,
     current: src ? { id: text("id"), src, title: text("title"), artist: text("artist"), album: text("album"), artwork: text("artwork"), duration } : null,
     position: number("positionMs"), duration, speed: number("speed"),
+    shuffle, repeat,
     skipSilence: field("skipSilence") === true, voiceBoost: field("voiceBoost") === true,
     silenceSaved: number("silenceSavedMs"), error,
   };
 }
 
 export function usePlayer(options: PlayerOptions = {}) {
-  const { session = "main", mode = "attached", usage = "music", cache = false } = options;
+  const { session = "main", mode = "attached", usage = "music", cache = false, preloadNext = 0, startupBuffer = 1000 } = options;
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(session)) throw new TypeError("Audio session names must be 1–64 letters, numbers, dots, underscores or hyphens");
+  if (!Number.isSafeInteger(preloadNext) || preloadNext < 0 || preloadNext > 30_000) throw new RangeError("Next-item preloading must be between 0 and 30000 milliseconds");
+  if (!Number.isSafeInteger(startupBuffer) || startupBuffer < 0 || startupBuffer > 30_000) throw new RangeError("Startup buffering must be between 0 and 30000 milliseconds");
   const [state, setState] = useState(initial);
   const current = useRef(initial);
   const controller = useRef<ReturnType<typeof attachNativeController> | null>(null);
   useEffect(() => {
     const publish = (next: PlayerState) => { current.current = next; setState(next); };
     publish(initial);
-    const attachment = attachNativeController("audio", { kind: "player", config: { session, playback: mode, usage, cache } }, value => {
+    const attachment = attachNativeController("audio", { kind: "player", config: { session, playback: mode, usage, cache, preloadNext, startupBuffer } }, value => {
       try { publish(decode(value)); }
       catch (error) { publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) }); }
     });
@@ -141,7 +154,7 @@ export function usePlayer(options: PlayerOptions = {}) {
       current.current = initial;
       void attachment.dispose().catch(error => console.error("Could not release audio player", error));
     };
-  }, [session, mode, usage, cache]);
+  }, [session, mode, usage, cache, preloadNext, startupBuffer]);
   const commands = useMemo(() => {
     const call = async (operation: string, payload: unknown = {}) => {
       if (!controller.current || !current.current.ready) throw new NativeError("unavailable", "Audio player is not ready");
@@ -192,9 +205,12 @@ export function usePlayer(options: PlayerOptions = {}) {
         if (id !== undefined) validateId(id);
         await call(id === undefined ? "play" : "playItem", { id });
       },
+      prepare: () => call("prepare"),
       pause: () => call("pause"),
       toggle: () => call("toggle"),
       stop: () => call("stop"),
+      setShuffle: (enabled: boolean) => call("setShuffle", { value: enabled }),
+      setRepeat: (mode: PlayerState["repeat"]) => call("setRepeat", { value: mode }),
       setSpeed(speed: number) {
         if (!Number.isFinite(speed) || speed < 0.25 || speed > 4) return Promise.reject(new RangeError("Playback speed must be between 0.25 and 4"));
         return call("setSpeed", { value: speed });

@@ -106,10 +106,12 @@ unsafe impl Send for DetachedRenderer {}
 
 /// Save new pipeline cache contents off the UI thread, replacing the file atomically.
 fn save_pipeline_cache(path: std::path::PathBuf, saved: Vec<u8>, data: Vec<u8>) {
+    static CACHE_WRITE: Mutex<()> = Mutex::new(());
     if data.is_empty() || data == saved {
         return;
     }
     std::thread::spawn(move || {
+        let Ok(_write) = CACHE_WRITE.lock() else { return; };
         let temporary = path.with_extension("partial");
         if std::fs::write(&temporary, &data).and_then(|()| std::fs::rename(&temporary, &path)).is_err() {
             let _ = std::fs::remove_file(&temporary);
@@ -234,10 +236,7 @@ impl AndroidEngine {
             1 => self.engine.pointer_up(id, x, y),
             2 => self.engine.pointer_move(id, x, y),
             4 => self.engine.pointer_long_press(id, x, y), // POINTER_LONG_PRESS in MainActivity.
-            3 => {
-                self.engine.pointer_cancel();
-                PointerOutcome::default()
-            }
+            3 => self.engine.pointer_cancel(),
             _ => PointerOutcome::default(),
         };
         if outcome.changed
@@ -515,7 +514,7 @@ impl AndroidEngine {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCreate(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     cache_directory: JString<'_>,
@@ -539,7 +538,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCreate(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePublicSans<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativePublicSans<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
 ) -> JByteBuffer<'local> {
@@ -550,7 +549,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePublicSans<'local>
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraReviewReady(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCameraReviewReady(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -562,7 +561,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraReviewReady(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCameraPortal<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -606,7 +605,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCameraPortal<'loca
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeMapPortal<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeMapPortal<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -637,7 +636,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeMapPortal<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeVideoPortal<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeVideoPortal<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -668,7 +667,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeVideoPortal<'local
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAttachSurface(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAttachSurface(
     env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -684,7 +683,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAttachSurface(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetKeyboardInset(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeSetKeyboardInset(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -702,7 +701,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeSetKeyboardInset(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeResize(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -717,7 +716,22 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeResize(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageWaitRemaining(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeSetViewportScale(
+    _env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    scale: jfloat,
+) {
+    if let Some(engine) = engine(handle) {
+        let mut engine = engine.lock_arc();
+        if engine.engine.set_viewport_scale(scale) {
+            engine.notify_layout_inputs();
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeImageWaitRemaining(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
 ) -> jlong {
     engine(handle).map(|engine| engine.lock_arc())
@@ -725,7 +739,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageWaitRemaining
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeHasSceneAnimations(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeHasSceneAnimations(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
 ) -> jboolean {
     engine(handle).map(|engine| engine.lock_arc())
@@ -733,7 +747,16 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeHasSceneAnimations
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAnimateScene(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeNextSceneFrame(
+    _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
+) -> jlong {
+    engine(handle).map(|engine| engine.lock_arc())
+        .and_then(|engine| engine.engine.next_scene_frame())
+        .map_or(-1, |delay| delay.as_millis().min(jlong::MAX as u128) as jlong)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAnimateScene(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong,
 ) -> jboolean {
     engine(handle).map(|engine| engine.lock_arc())
@@ -741,7 +764,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAnimateScene(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFrameReady(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeFrameReady(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -757,7 +780,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFrameReady(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCanPresentPointerMove(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCanPresentPointerMove(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -770,7 +793,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCanPresentPointerM
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePointer(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativePointer(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -785,7 +808,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePointer(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchBegin(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeImagePinchBegin(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -798,7 +821,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchBegin(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchUpdate(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeImagePinchUpdate(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -812,7 +835,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchUpdate(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchEnd(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeImagePinchEnd(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -825,7 +848,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImagePinchEnd(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageZoomTarget(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeImageZoomTarget(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -839,7 +862,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageZoomTarget(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageDoubleTap(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeImageDoubleTap(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -852,7 +875,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeImageDoubleTap(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollBy(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeScrollBy(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -864,7 +887,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeScrollBy(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeRender<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -891,7 +914,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRender<'local>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeInstallSystemGlyph(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeInstallSystemGlyph(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -918,7 +941,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeInstallSystemGlyph
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeBack(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -929,7 +952,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeBack(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputState(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTextInputState(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -952,7 +975,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputState(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputContext<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTextInputContext<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -970,7 +993,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInputContext<'
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTextInput(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -996,7 +1019,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTextInput(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeNextRequest<'local>(
     mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong,
 ) -> JString<'local> {
     let value = engine(handle).map(|engine| engine.lock_arc()).and_then(|mut engine| {
@@ -1032,7 +1055,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeNextRequest<'local
 
 #[cfg(feature = "image")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompletePixels(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCompletePixels(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1104,7 +1127,7 @@ fn complete_encoded_image(handle: jlong, request_id: jlong, source: image::Sourc
 
 #[cfg(feature = "image")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCompleteFile(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1119,7 +1142,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteFile(
 
 #[cfg(feature = "image")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAsset(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCompleteAsset(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1136,7 +1159,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAsset(
 
 #[cfg(feature = "image")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteEncoded(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCompleteEncoded(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1155,7 +1178,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteEncoded(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeFailRequest(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1189,7 +1212,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeFailRequest(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAction(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCompleteAction(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1203,7 +1226,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCompleteAction(
 
 #[cfg(feature = "audio")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioActivate(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAudioActivate(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1228,7 +1251,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioActivate(
 
 #[cfg(feature = "audio")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioDeactivate(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAudioDeactivate(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1243,7 +1266,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioDeactivate(
 
 #[cfg(feature = "audio")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSetEnabled(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAudioSetEnabled(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1261,7 +1284,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSetEnabled(
 
 #[cfg(feature = "audio")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioObserve(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAudioObserve(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1277,7 +1300,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioObserve(
 
 #[cfg(feature = "audio")]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSamples(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAudioSamples(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1298,7 +1321,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeAudioSamples(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDetachSurface(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeDetachSurface(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -1311,7 +1334,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDetachSurface(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDestroy(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeDestroy(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,

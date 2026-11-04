@@ -2,7 +2,6 @@ package com.vandam.ink
 
 import android.app.Activity
 import android.graphics.Color
-import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.fonts.Font
 import android.graphics.fonts.FontFamily
@@ -11,37 +10,26 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.view.Choreographer
 import android.view.KeyEvent
-import android.view.MotionEvent
-import android.view.ScaleGestureDetector
-import android.view.Surface
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import android.view.VelocityTracker
-import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.FrameLayout
-import android.widget.OverScroller
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import java.io.File
-import java.nio.ByteBuffer
 import java.util.concurrent.Executors
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import org.json.JSONObject
 
-class MainActivity : Activity(), SurfaceHolder.Callback {
+class MainActivity : Activity(), InkJavaScriptHost {
     internal val publicSansTypeface: Typeface by lazy(LazyThreadSafetyMode.NONE) {
         Typeface.CustomFallbackBuilder(
-            FontFamily.Builder(Font.Builder(nativePublicSans()).build()).build(),
+            FontFamily.Builder(Font.Builder(InkNative.nativePublicSans()).build()).build(),
         ).build()
     }
-    private lateinit var inkView: InkSurfaceView
+    private lateinit var host: InkHost
+    private val inkView get() = host.view
     private lateinit var root: FrameLayout
     private val permissionsAdapter by lazy { PermissionsAdapter(this, lightSdkAdapter) }
     private var usesPermissions = false
@@ -64,18 +52,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
     private val secureStoreAdapter by lazy { SecureStoreAdapter(this) }
     private val authAdapter by lazy { AuthAdapter(this) { message ->
-        runOnUiThread { if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, message) }
+        runOnUiThread { if (engineHandle != 0L) InkNative.nativeJavaScriptReceive(engineHandle, message) }
     } }
     private val externalAdapter by lazy { ExternalAdapter(this) }
+    private val overlaysAdapter by lazy { createOverlaysAdapter(this) { message ->
+        runOnUiThread { if (engineHandle != 0L) InkNative.nativeJavaScriptReceive(engineHandle, message) }
+    } }
     private val downloadsAdapter by lazy { createDownloadsAdapter(this, ::updateController) }
     private val connectivityAdapter by lazy { ConnectivityAdapter(this) { message ->
-        runOnUiThread { if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, message) }
+        runOnUiThread { if (engineHandle != 0L) InkNative.nativeJavaScriptReceive(engineHandle, message) }
     } }
     private lateinit var textInputAdapter: TextInputAdapter
     private lateinit var notificationsAdapter: NotificationsAdapter
-    private val systemGlyphRasterizer by lazy { SystemGlyphRasterizer() }
-    private var engineHandle = 0L
-    private var surfaceAttached = false
+    private val engineHandle get() = host.handle
+    private val surfaceAttached get() = host.surfaceAttached
     private val nativeRequestHandler = Handler(Looper.getMainLooper())
     private val nativeTimeouts = mutableMapOf<Long, Runnable>()
     private val nativeRequestStartedAt = mutableMapOf<Long, Long>()
@@ -102,7 +92,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (textInputAdapter.dismiss()) {
             return
         }
-        if (engineHandle == 0L || !nativeBack(engineHandle)) {
+        if (engineHandle == 0L || !InkNative.nativeBack(engineHandle)) {
             finish()
         } else {
             inkView.requestFrame()
@@ -122,12 +112,25 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 
-        engineHandle = nativeCreate(codeCacheDir.absolutePath)
-        check(engineHandle != 0L) { "Ink could not create the runtime" }
-        inkView = InkSurfaceView().apply {
-            holder.setFormat(PixelFormat.OPAQUE)
-            holder.addCallback(this@MainActivity)
-        }
+        host = InkHost(this, object : InkHost.Callbacks {
+            override fun beforeFrame() {
+                if (javascriptPending.get()) {
+                    nativeRequestHandler.removeCallbacks(drainJavaScript)
+                    drainJavaScript.run()
+                }
+            }
+            override fun changed() {
+                drainNativeRequests()
+                syncNativePortals()
+                syncTextInput()
+            }
+            override fun beforeRender() {
+                drainNativeRequests()
+                if (textInputAdapter.hasEditor) syncTextInput()
+            }
+            override fun presented() = textInputAdapter.framePresented()
+            override fun haptic(view: android.view.View) = lightSdkAdapter.performHaptic(view)
+        })
         root = FrameLayout(this).apply {
             addView(
                 inkView,
@@ -170,7 +173,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 runOnUiThread {
                     if (
                         engineHandle != 0L &&
-                        nativeAudioSamples(engineHandle, samples, sampleRate)
+                        InkNative.nativeAudioSamples(engineHandle, samples, sampleRate)
                     ) {
                         inkView.requestFrame()
                     }
@@ -181,16 +184,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             },
             { controller, kind, config ->
                 engineHandle != 0L &&
-                    nativeAudioActivate(engineHandle, controller, kind, config)
+                    InkNative.nativeAudioActivate(engineHandle, controller, kind, config)
             },
             { controller ->
                 if (engineHandle != 0L) {
-                    nativeAudioDeactivate(engineHandle, controller)
+                    InkNative.nativeAudioDeactivate(engineHandle, controller)
                 }
             },
             { controller, enabled ->
                 val changed = engineHandle != 0L &&
-                    nativeAudioSetEnabled(engineHandle, controller, enabled)
+                    InkNative.nativeAudioSetEnabled(engineHandle, controller, enabled)
                 if (changed) inkView.requestFrame()
                 changed
             },
@@ -240,7 +243,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val compatibility = JSONObject(java.io.File(directory, "ink-bundle-v1.json").readText())
                 .optString("refreshCompatibilityHash")
             if (compatibility.isNotEmpty() && compatibility == refreshCompatibility &&
-                developmentIcons?.contentEquals(icons) == true && nativeRefreshJavaScript(engineHandle, source)) {
+                developmentIcons?.contentEquals(icons) == true && InkNative.nativeRefreshJavaScript(engineHandle, source)) {
                 developmentBundle = directory
             } else startDevelopmentBundle(directory)
             if (developmentBundle == directory) {
@@ -299,8 +302,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             stopJavaScriptSession()
             nativeRequestHandler.removeCallbacks(drainJavaScript)
             javascriptPending.set(false)
-            check(nativeStartJavaScript(engineHandle, source, icons, assets,
-                getDatabasePath("ink-store.db").path, filesDir.path, this)) { "Ink could not start JavaScript; see ink logs" }
+            check(InkNative.nativeStartJavaScript(engineHandle, source, icons, assets,
+                getDatabasePath("ink-store.db").path, filesDir.path, this, "app")) { "Ink could not start JavaScript; see ink logs" }
             developmentBundle = directory
             inkView.requestFrame()
         } catch (error: Exception) {
@@ -333,8 +336,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         javascriptPending.set(false)
         if (engineHandle != 0L) {
             if (!drainJavaScriptCalls()) return@Runnable
-            if (nativeDrainJavaScript(engineHandle)) inkView.requestCommitFrame()
-            val error = nativeTakeJavaScriptError(engineHandle)
+            if (InkNative.nativeDrainJavaScript(engineHandle)) inkView.requestCommitFrame()
+            val error = InkNative.nativeTakeJavaScriptError(engineHandle)
             if (!error.isNullOrEmpty()) {
                 stopJavaScriptSession()
                 if (BuildConfig.DEBUG) {
@@ -354,7 +357,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 }
                 return@Runnable
             }
-            val light = nativeIsLightAppearance(engineHandle)
+            val light = InkNative.nativeIsLightAppearance(engineHandle)
             textInputAdapter.setLightAppearance(light)
             externalAdapter.setLightAppearance(light)
             val barColour = if (light) Color.WHITE else Color.BLACK
@@ -363,7 +366,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             syncTextInput()
             syncNativePortals()
             drainNativeRequests()
-            nativeTakeJavaScriptCalls(engineHandle)?.let { encoded ->
+            InkNative.nativeTakeJavaScriptCalls(engineHandle)?.let { encoded ->
                 pendingJavaScriptCalls = org.json.JSONArray(encoded)
                 javascriptCallIndex = 0
                 drainJavaScriptCalls()
@@ -407,6 +410,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         javascriptControllers.clear()
         networkAdapter.reset()
         connectivityAdapter.reset()
+        overlaysAdapter.stop()
         javascriptRequests = newJavaScriptRequests()
     }
 
@@ -420,7 +424,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             javascriptRequests.cancel(id)
             return
         }
-        val bytes = if (call.optBoolean("binary")) nativeTakeJavaScriptBytes(engineHandle, id) else null
+        val bytes = if (call.optBoolean("binary")) InkNative.nativeTakeJavaScriptBytes(engineHandle, id) else null
         if (call.optBoolean("binary") && bytes == null) {
             sendJavaScriptResult(id, NativeResult.Failure(NativeErrorKind.PROTOCOL, "Missing binary request data", false))
             return
@@ -439,6 +443,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             "secure-store" -> secureStoreAdapter
             "auth" -> authAdapter
             "external" -> externalAdapter
+            "overlays" -> overlaysAdapter
             "downloads" -> downloadsAdapter
             "video" -> videoAdapter
             "maps" -> mapsAdapter
@@ -491,22 +496,22 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     internal fun updatePlaybackClock(controller: Long, position: Long, duration: Long, playing: Boolean, speed: Float) {
-        if (engineHandle != 0L && nativePlaybackClock(engineHandle, controller, position / 1000f, duration / 1000f, playing, speed)) inkView.requestFrame()
+        if (engineHandle != 0L && InkNative.nativePlaybackClock(engineHandle, controller, position / 1000f, duration / 1000f, playing, speed)) inkView.requestFrame()
     }
 
     internal fun removePlaybackClock(controller: Long) {
-        if (engineHandle != 0L) nativeRemovePlaybackClock(engineHandle, controller)
+        if (engineHandle != 0L) InkNative.nativeRemovePlaybackClock(engineHandle, controller)
     }
 
     internal fun observeAudioMeasurements(controller: Long, enabled: Boolean): Boolean =
-        engineHandle != 0L && nativeAudioObserve(engineHandle, controller, enabled)
+        engineHandle != 0L && InkNative.nativeAudioObserve(engineHandle, controller, enabled)
 
     internal fun updateCaptureState(controller: Long, value: String) {
-        if (engineHandle != 0L && nativeCaptureState(engineHandle, -controller, value)) inkView.requestFrame()
+        if (engineHandle != 0L && InkNative.nativeCaptureState(engineHandle, -controller, value)) inkView.requestFrame()
     }
 
     internal fun removeCaptureState(controller: Long) {
-        if (engineHandle != 0L) nativeCaptureState(engineHandle, -controller, "")
+        if (engineHandle != 0L) InkNative.nativeCaptureState(engineHandle, -controller, "")
     }
 
     internal fun updateController(controller: Long, value: String) {
@@ -519,7 +524,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     message = event.put("value", JSONObject().put("status", "error")
                         .put("error", inkError("protocol", "Native controller state exceeds the message limit"))).toString()
                 }
-                nativeJavaScriptReceive(engineHandle, message)
+                InkNative.nativeJavaScriptReceive(engineHandle, message)
             }
         }
     }
@@ -528,11 +533,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (engineHandle == 0L) return
         val message = javascriptResult(id, result)
         if (result is NativeResult.Binary) {
-            if (!nativeJavaScriptReceiveBytes(engineHandle, message, result.bytes)) Log.e("Ink", "Could not deliver native binary result")
-        } else nativeJavaScriptReceive(engineHandle, message)
+            if (!InkNative.nativeJavaScriptReceiveBytes(engineHandle, message, result.bytes)) Log.e("Ink", "Could not deliver native binary result")
+        } else InkNative.nativeJavaScriptReceive(engineHandle, message)
     }
 
-    fun onJavaScriptReady() {
+    override fun onJavaScriptReady() {
         if (javascriptPending.compareAndSet(false, true)) {
             nativeRequestHandler.post(drainJavaScript)
         }
@@ -555,6 +560,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onResume() {
         super.onResume()
+        overlaysAdapter.resume()
         externalAdapter.onResume()
         connectivityAdapter.start()
         mapsAdapter.resume()
@@ -568,7 +574,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         nfcAdapter.resume()
         notificationsAdapter.refreshEvents()
         syncTextInput()
-        if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, "{\"type\":\"resume\"}")
+        if (engineHandle != 0L) InkNative.nativeJavaScriptReceive(engineHandle, "{\"type\":\"resume\"}")
     }
 
     @Deprecated("Android activity result callback")
@@ -588,46 +594,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder) {
-        if (engineHandle == 0L || surfaceAttached) {
-            return
-        }
-
-        val frame = holder.surfaceFrame
-        surfaceAttached = nativeAttachSurface(
-            engineHandle,
-            holder.surface,
-            frame.width().coerceAtLeast(1),
-            frame.height().coerceAtLeast(1),
-        )
-        if (!surfaceAttached) {
-            scheduleSurfaceRecovery()
-            return
-        }
-        surfaceRetryDelay = 16L
-        nativeRequestHandler.removeCallbacks(recoverSurface)
-        inkView.requestFrame()
-        syncNativePortals()
-    }
-
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        if (engineHandle == 0L || !surfaceAttached) {
-            return
-        }
-
-        logResource("Surface resized to ${width}x${height}")
-        nativeResize(engineHandle, width, height)
-        syncTextInput()
-        inkView.requestFrame()
-        syncNativePortals()
-    }
-
-    override fun surfaceDestroyed(holder: SurfaceHolder) {
-        detachSurface()
-    }
-
     override fun onDestroy() {
-        nativeRequestHandler.removeCallbacks(revealImages)
         nativeRequestHandler.removeCallbacks(drainNativeRequestsLater)
         textInputAdapter.close()
         onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
@@ -654,17 +621,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         nativeTimeouts.clear()
         nativeRequestStartedAt.clear()
         nativeRequestLabels.clear()
-        detachSurface()
-        if (engineHandle != 0L) {
-            nativeDestroy(engineHandle)
-            engineHandle = 0L
-        }
+        host.close()
         nativeRequestHandler.removeCallbacks(drainJavaScript)
         super.onDestroy()
     }
 
     override fun onPause() {
-        if (engineHandle != 0L) nativeJavaScriptReceive(engineHandle, "{\"type\":\"pause\"}")
+        if (engineHandle != 0L) InkNative.nativeJavaScriptReceive(engineHandle, "{\"type\":\"pause\"}")
         textInputAdapter.pause()
         externalAdapter.onPause()
         connectivityAdapter.stop()
@@ -675,16 +638,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         cameraAdapter.pause()
         locationAdapter.pause()
         super.onPause()
-    }
-
-    private fun detachSurface() {
-        nativeRequestHandler.removeCallbacks(recoverSurface)
-        nativeRequestHandler.removeCallbacks(retryRender)
-        inkView.stopScrolling()
-        if (engineHandle != 0L && surfaceAttached) {
-            nativeDetachSurface(engineHandle)
-            surfaceAttached = false
-        }
     }
 
     private fun enterFullscreen() {
@@ -704,7 +657,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             TextEdit.Submit -> TEXT_INPUT_SUBMIT to null
             TextEdit.Dismiss -> TEXT_INPUT_DISMISS to null
         }
-        if (nativeTextInput(engineHandle, action, value)) {
+        if (InkNative.nativeTextInput(engineHandle, action, value)) {
             inkView.requestFrame()
         }
         syncTextInput()
@@ -712,7 +665,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     internal fun setKeyboardInset(height: Int) {
         if (engineHandle == 0L) return
-        if (nativeSetKeyboardInset(engineHandle, height)) {
+        if (InkNative.nativeSetKeyboardInset(engineHandle, height)) {
             logResource("Keyboard inset=$height surface=${inkView.width}x${inkView.height}")
             syncTextInput()
             inkView.requestFrame()
@@ -721,9 +674,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun syncTextInput() {
         if (!BuildConfig.INK_TEXT_INPUT_ENABLED || engineHandle == 0L) return
-        val state = nativeTextInputState(engineHandle)
+        val state = InkNative.nativeTextInputState(engineHandle)
         textInputAdapter.sync(state and 1 != 0, state ushr 2, state and 2 != 0)
-        textInputAdapter.syncContext(nativeTextInputContext(engineHandle))
+        textInputAdapter.syncContext(InkNative.nativeTextInputContext(engineHandle))
     }
 
     private fun syncNativePortals() {
@@ -732,7 +685,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         // Null means unchanged; still sync adapters so recreated views can mount.
         if (BuildConfig.INK_CAMERA_ENABLED) {
-            val encoded = nativeCameraPortal(engineHandle)
+            val encoded = InkNative.nativeCameraPortal(engineHandle)
             if (encoded != null) cameraPortal = if (encoded.isEmpty()) {
                 null
             } else {
@@ -749,10 +702,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     )
                 }.getOrNull()
             }
-            cameraAdapter.syncPortal(cameraPortal, nativeCameraReviewReady(engineHandle))
+            cameraAdapter.syncPortal(cameraPortal, InkNative.nativeCameraReviewReady(engineHandle))
         }
         if (BuildConfig.INK_VIDEO_ENABLED) {
-            val video = nativeVideoPortal(engineHandle)
+            val video = InkNative.nativeVideoPortal(engineHandle)
             if (video != null) videoPortal = if (video.isEmpty()) null else {
                 val value = JSONObject(video)
                 VideoPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
@@ -760,7 +713,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             videoAdapter.syncPortal(videoPortal)
         }
         if (BuildConfig.INK_MAPS_ENABLED) {
-            val map = nativeMapPortal(engineHandle)
+            val map = InkNative.nativeMapPortal(engineHandle)
             if (map != null) mapPortal = if (map.isEmpty()) null else {
                 val value = JSONObject(map)
                 MapPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
@@ -840,7 +793,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val deadline = SystemClock.uptimeMillis() + 4
             var handled = 0
             while (engineHandle != 0L && handled++ < 32 && SystemClock.uptimeMillis() < deadline) {
-                val request = nativeNextRequest(engineHandle)?.let(::JSONObject) ?: return
+                val request = InkNative.nativeNextRequest(engineHandle)?.let(::JSONObject) ?: return
                 if (request.optBoolean("yield")) break
                 val requestId = request.getLong("id")
                 val kind = request.getInt("kind")
@@ -1032,7 +985,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     runCatching { JSONObject(params) }.getOrNull()?.let { message.put("params", it) }
                 }
             }
-            nativeJavaScriptReceive(engineHandle, message.toString())
+            InkNative.nativeJavaScriptReceive(engineHandle, message.toString())
         }
         intent?.removeExtra(EXTRA_NOTIFICATION_HREF)
         intent?.removeExtra(EXTRA_NOTIFICATION_PARAMS)
@@ -1055,8 +1008,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
         logResource("$outcome $requestId $label ${elapsed}ms")
         val changed = when (result) {
-            is NativeResult.Success, is NativeResult.Bytes, is NativeResult.Binary -> nativeCompleteAction(engineHandle, requestId)
-            is NativeResult.Pixels -> nativeCompletePixels(engineHandle, requestId, result.width, result.height, result.rgba)
+            is NativeResult.Success, is NativeResult.Bytes, is NativeResult.Binary -> InkNative.nativeCompleteAction(engineHandle, requestId)
+            is NativeResult.Pixels -> InkNative.nativeCompletePixels(engineHandle, requestId, result.width, result.height, result.rgba)
             is NativeResult.File, is NativeResult.Asset, is NativeResult.EncodedImage -> {
                 completeImage(requestId, result)
                 return
@@ -1064,7 +1017,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             is NativeResult.Failure -> if (
                 kind == NATIVE_REQUEST_IMAGE
             ) {
-                nativeFailRequest(
+                InkNative.nativeFailRequest(
                     engineHandle,
                     requestId,
                     result.kind.code,
@@ -1072,7 +1025,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     result.retryable,
                 )
             } else {
-                nativeCompleteAction(engineHandle, requestId)
+                InkNative.nativeCompleteAction(engineHandle, requestId)
             }
         }
         if (changed) inkView.requestFrame()
@@ -1084,10 +1037,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val handle = engineHandle
         imageExecutor.execute {
             val update = when (result) {
-                is NativeResult.Asset -> nativeCompleteAsset(handle, requestId, assets, result.path)
-                is NativeResult.EncodedImage -> nativeCompleteEncoded(handle, requestId, result.bytes, result.size)
+                is NativeResult.Asset -> InkNative.nativeCompleteAsset(handle, requestId, assets, result.path)
+                is NativeResult.EncodedImage -> InkNative.nativeCompleteEncoded(handle, requestId, result.bytes, result.size)
                 is NativeResult.File -> try {
-                    nativeCompleteFile(handle, requestId, result.path)
+                    InkNative.nativeCompleteFile(handle, requestId, result.path)
                 } finally {
                     if (result.deleteAfterRead) File(result.path).delete()
                 }
@@ -1104,496 +1057,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    private val revealImages = Runnable {
-        if (engineHandle != 0L && surfaceAttached) inkView.requestFrame()
-    }
-
-    private var surfaceRetryDelay = 16L
-    private val recoverSurface = Runnable {
-        if (engineHandle != 0L && inkView.holder.surface.isValid && !surfaceAttached) surfaceCreated(inkView.holder)
-    }
-    private fun scheduleSurfaceRecovery() {
-        nativeRequestHandler.removeCallbacks(recoverSurface)
-        nativeRequestHandler.postDelayed(recoverSurface, surfaceRetryDelay)
-        surfaceRetryDelay = (surfaceRetryDelay * 2).coerceAtMost(250L)
-    }
-    private val retryRender = Runnable {
-        if (engineHandle != 0L && surfaceAttached) inkView.requestFrame()
-    }
-
-    private fun renderFrame() {
-        nativeRequestHandler.removeCallbacks(revealImages)
-        val imageWait = nativeImageWaitRemaining(engineHandle)
-        if (imageWait > 0) nativeRequestHandler.postDelayed(revealImages, imageWait)
-        val glyphStarted = System.nanoTime()
-        var glyphs = 0
-        while (true) {
-            if (glyphs >= 4 || (glyphs > 0 && System.nanoTime() - glyphStarted >= 4_000_000L)) {
-                nativeRequestHandler.post(retryRender)
-                return
-            }
-            val request = nativeRender(engineHandle)
-            if (request == "presented") {
-                textInputAdapter.framePresented()
-                return
-            }
-            if (request.isEmpty()) return
-            if (request == "retry") {
-                nativeRequestHandler.removeCallbacks(retryRender)
-                nativeRequestHandler.postDelayed(retryRender, 16L)
-                return
-            }
-            if (request == "surface-lost") {
-                surfaceAttached = false
-                scheduleSurfaceRecovery()
-                return
-            }
-
-            val firstBreak = request.indexOf('\n')
-            val secondBreak = request.indexOf('\n', firstBreak + 1)
-            if (firstBreak < 1 || secondBreak <= firstBreak) {
-                Log.e(RESOURCE_LOG_TAG, "Invalid system glyph request")
-                return
-            }
-            val requestId = request.take(firstBreak).toLongOrNull()
-            val size = request.substring(firstBreak + 1, secondBreak).toIntOrNull()
-            if (requestId == null || size == null) {
-                Log.e(RESOURCE_LOG_TAG, "Invalid system glyph request")
-                return
-            }
-            val grapheme = request.substring(secondBreak + 1)
-            if (!nativeInstallSystemGlyph(
-                engineHandle,
-                requestId,
-                systemGlyphRasterizer.rasterise(grapheme, size) ?: IntArray(0),
-            )) return
-            glyphs++
-        }
-    }
-
     private fun logResource(message: String) {
         if (BuildConfig.DEBUG) Log.d(RESOURCE_LOG_TAG, message)
-    }
-
-    private inner class InkSurfaceView : SurfaceView(this@MainActivity) {
-        private val longPresses = mutableMapOf<Int, Runnable>()
-        private val touchStarts = mutableMapOf<Int, Pair<Float, Float>>()
-
-        override fun onDetachedFromWindow() {
-            cancelLongPresses()
-            removeCallbacks(commitFrame)
-            commitFramePosted = false
-            if (engineHandle != 0L) nativePointer(engineHandle, MotionEvent.ACTION_CANCEL, 0, 0f, 0f)
-            super.onDetachedFromWindow()
-        }
-
-        private val choreographer = Choreographer.getInstance()
-        private val viewConfiguration = ViewConfiguration.get(this@MainActivity)
-        private val minimumFlingVelocity = viewConfiguration.scaledMinimumFlingVelocity
-        private val maximumFlingVelocity = viewConfiguration.scaledMaximumFlingVelocity
-        private val touchSlop = viewConfiguration.scaledTouchSlop
-        private val doubleTapSlop = viewConfiguration.scaledDoubleTapSlop
-        private val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
-        private val scroller = OverScroller(this@MainActivity)
-        private val scaleGestureDetector = ScaleGestureDetector(
-            this@MainActivity,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                    if (!surfaceAttached || engineHandle == 0L) return false
-                    val result = nativeImagePinchBegin(
-                        engineHandle,
-                        detector.focusX,
-                        detector.focusY,
-                    )
-                    pinchActive = (result and POINTER_CAPTURED) != 0
-                    if (pinchActive) {
-                        pendingMoves.clear()
-                        nativePointer(engineHandle, MotionEvent.ACTION_CANCEL, 0, 0f, 0f)
-                        capturedGesture = true
-                        stopFling()
-                    }
-                    return pinchActive
-                }
-
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    if (!pinchActive) return false
-                    val changed = processPointerResult(
-                        nativeImagePinchUpdate(
-                            engineHandle,
-                            detector.scaleFactor,
-                            detector.focusX,
-                            detector.focusY,
-                        ),
-                    )
-                    if (changed) requestFrame()
-                    return true
-                }
-
-                override fun onScaleEnd(detector: ScaleGestureDetector) {
-                    if (pinchActive) nativeImagePinchEnd(engineHandle)
-                    pinchActive = false
-                }
-            },
-        ).apply {
-            isQuickScaleEnabled = false
-            isStylusScaleEnabled = false
-        }
-        private var downY = 0f
-        private var framePosted = false
-        private var renderPending = false
-        private var commitFramePosted = false
-        private var touchActive = false
-        private val commitFrame = Runnable {
-            commitFramePosted = false
-            if (engineHandle != 0L && surfaceAttached && renderPending) {
-                if (canPresentCommit() && nativeFrameReady(engineHandle)) {
-                    if (framePosted) {
-                        choreographer.removeFrameCallback(frameCallback)
-                        framePosted = false
-                    }
-                    renderPending = false
-                    presentFrame()
-                } else {
-                    postFrame()
-                }
-            }
-        }
-        private val pendingMoves = mutableMapOf<Int, Pair<Float, Float>>()
-        private val hasPendingMove: Boolean get() = pendingMoves.isNotEmpty()
-        private var lastFlingY = 0
-        private var capturedGesture = false
-        private var pinchActive = false
-        private var imageTapDownX = 0f
-        private var imageTapDownY = 0f
-        private var imageTapTarget = 0L
-        private var previousImageTapTime = 0L
-        private var previousImageTapTarget = 0L
-        private var previousImageTapX = 0f
-        private var previousImageTapY = 0f
-        private var velocityTracker: VelocityTracker? = null
-        private val frameCallback = Choreographer.FrameCallback {
-            if (BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FrameCallback ns=${System.nanoTime()}")
-            // Include completed React work even if its handler is queued behind this frame.
-            if (engineHandle != 0L && javascriptPending.get()) {
-                nativeRequestHandler.removeCallbacks(drainJavaScript)
-                drainJavaScript.run()
-            }
-            framePosted = false
-            if (!surfaceAttached || engineHandle == 0L) {
-                return@FrameCallback
-            }
-            // A second callback can arrive before the GPU finishes the previous frame.
-            // Keep pending work for the next vsync instead of blocking input dispatch.
-            if (!nativeFrameReady(engineHandle)) {
-                postFrame()
-                return@FrameCallback
-            }
-
-            // Use the latest movement when its rows are mounted. Otherwise show
-            // the completed window before moving beyond it and requesting more rows.
-            val pending = renderPending
-            renderPending = false
-            val presentBeforeMove = pending && hasPendingMove && pendingMoves.any { (id, position) ->
-                !nativeCanPresentPointerMove(engineHandle, id, position.second)
-            }
-            if (presentBeforeMove) presentFrame()
-            var changed = nativeAnimateScene(engineHandle) || (pending && !presentBeforeMove)
-            if (hasPendingMove) changed = flushPointerMoves() || changed
-            if (scroller.computeScrollOffset()) {
-                val y = scroller.currY
-                val delta = y - lastFlingY
-                lastFlingY = y
-                if (delta != 0) {
-                    if (nativeScrollBy(engineHandle, delta.toFloat())) {
-                        changed = true
-                    } else {
-                        scroller.abortAnimation()
-                    }
-                }
-            }
-            if (changed) {
-                if (presentBeforeMove) renderPending = true else presentFrame()
-            }
-            postFrame()
-        }
-
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            val action = event.actionMasked
-            val index = event.actionIndex
-            val id = event.getPointerId(index)
-            val x = event.getX(index)
-            val y = event.getY(index)
-            when (action) {
-                MotionEvent.ACTION_DOWN -> touchActive = true
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touchActive = false
-            }
-            val wasPinching = pinchActive
-            scaleGestureDetector.onTouchEvent(event)
-            if (event.pointerCount > 1) {
-                resetImageTap()
-                velocityTracker?.recycle()
-                velocityTracker = null
-            }
-            if (wasPinching || pinchActive) {
-                cancelLongPresses()
-                pendingMoves.clear()
-                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) capturedGesture = false
-                postFrame()
-                return true
-            }
-            var flingVelocity = 0
-            var imageDoubleTap = 0
-            when (action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                    if (action == MotionEvent.ACTION_DOWN) {
-                        cancelLongPresses()
-                        stopFling()
-                        downY = y
-                        imageTapDownX = x
-                        imageTapDownY = y
-                        imageTapTarget = if (engineHandle != 0L && surfaceAttached) {
-                            nativeImageZoomTarget(engineHandle, x, y)
-                        } else {
-                            0L
-                        }
-                        if (imageTapTarget == 0L) resetImageTap()
-                        velocityTracker?.recycle()
-                        velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
-                    }
-                    touchStarts[id] = x to y
-                    val longPress = Runnable {
-                        if (engineHandle != 0L && surfaceAttached) {
-                            if (processPointerResult(nativePointer(engineHandle, POINTER_LONG_PRESS, id, x, y))) requestFrame()
-                            postFrame()
-                        }
-                    }
-                    longPresses[id] = longPress
-                    postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    velocityTracker?.addMovement(event)
-                    for (pointerIndex in 0 until event.pointerCount) {
-                        val pointerId = event.getPointerId(pointerIndex)
-                        val start = touchStarts[pointerId] ?: continue
-                        if (movedBeyond(event.getX(pointerIndex), event.getY(pointerIndex), start.first, start.second, touchSlop)) {
-                            longPresses.remove(pointerId)?.let(::removeCallbacks)
-                            resetImageTap()
-                        }
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                    longPresses.remove(id)?.let(::removeCallbacks)
-                    touchStarts.remove(id)
-                    if (action == MotionEvent.ACTION_UP) {
-                        if (imageTapTarget != 0L) {
-                            val isSecondTap = previousImageTapTime != 0L &&
-                                previousImageTapTarget == imageTapTarget &&
-                                event.eventTime - previousImageTapTime <= doubleTapTimeout &&
-                                !movedBeyond(x, y, previousImageTapX, previousImageTapY, doubleTapSlop)
-                            if (isSecondTap) {
-                                imageDoubleTap = nativeImageDoubleTap(engineHandle, x, y)
-                                resetImageTap()
-                            } else {
-                                previousImageTapTime = event.eventTime
-                                previousImageTapTarget = imageTapTarget
-                                previousImageTapX = x
-                                previousImageTapY = y
-                                imageTapTarget = 0L
-                            }
-                        } else {
-                            resetImageTap()
-                        }
-                        velocityTracker?.apply {
-                            addMovement(event)
-                            computeCurrentVelocity(1000, maximumFlingVelocity.toFloat())
-                            if (abs(y - downY) > touchSlop && abs(yVelocity) >= minimumFlingVelocity) {
-                                flingVelocity = -yVelocity.toInt()
-                            }
-                            recycle()
-                        }
-                        velocityTracker = null
-                    }
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    cancelLongPresses()
-                    resetImageTap()
-                    velocityTracker?.recycle()
-                    velocityTracker = null
-                }
-            }
-            if (engineHandle != 0L && surfaceAttached) {
-                val changed = if ((imageDoubleTap and POINTER_CAPTURED) != 0) {
-                    pendingMoves.clear()
-                    processPointerResult(imageDoubleTap)
-                } else if (action == MotionEvent.ACTION_MOVE) {
-                    for (pointerIndex in 0 until event.pointerCount) {
-                        pendingMoves[event.getPointerId(pointerIndex)] = event.getX(pointerIndex) to event.getY(pointerIndex)
-                    }
-                    false
-                } else {
-                    val moved = flushPointerMoves()
-                    val nativeAction = when (action) {
-                        MotionEvent.ACTION_POINTER_DOWN -> MotionEvent.ACTION_DOWN
-                        MotionEvent.ACTION_POINTER_UP -> MotionEvent.ACTION_UP
-                        else -> action
-                    }
-                    processPointerResult(nativePointer(engineHandle, nativeAction, id, x, y)) || moved
-                }
-                if (changed) requestFrame()
-                postFrame()
-            }
-            if (flingVelocity != 0 && !capturedGesture) startFling(flingVelocity)
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                capturedGesture = false
-            }
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) performClick()
-            return true
-        }
-
-        private fun flushPointerMoves(): Boolean {
-            var changed = false
-            val moves = pendingMoves.toList()
-            pendingMoves.clear()
-            for ((id, position) in moves) {
-                changed = processPointerResult(nativePointer(
-                    engineHandle, MotionEvent.ACTION_MOVE, id, position.first, position.second,
-                )) || changed
-            }
-            return changed
-        }
-
-        private fun cancelLongPresses() {
-            longPresses.values.forEach(::removeCallbacks)
-            longPresses.clear()
-            touchStarts.clear()
-        }
-
-        private fun movedBeyond(
-            x: Float,
-            y: Float,
-            originX: Float,
-            originY: Float,
-            slop: Int,
-        ): Boolean {
-            val deltaX = x - originX
-            val deltaY = y - originY
-            return deltaX * deltaX + deltaY * deltaY > slop * slop
-        }
-
-        private fun resetImageTap() {
-            imageTapTarget = 0L
-            previousImageTapTime = 0L
-            previousImageTapTarget = 0L
-        }
-
-        private fun processPointerResult(result: Int): Boolean {
-            capturedGesture = capturedGesture || (result and POINTER_CAPTURED) != 0
-            if ((result and POINTER_HAPTIC) != 0) {
-                lightSdkAdapter.performHaptic(this)
-            }
-            if ((result and POINTER_ACTIVATED) != 0 ||
-                ((result and POINTER_CHANGED) != 0 && !capturedGesture)) {
-                drainNativeRequests()
-                syncNativePortals()
-                syncTextInput()
-            }
-            return (result and POINTER_CHANGED) != 0
-        }
-
-        fun requestFrame() {
-            if (Looper.myLooper() != Looper.getMainLooper()) {
-                post(::requestFrame)
-                return
-            }
-            renderPending = true
-            postFrame()
-        }
-
-        fun requestCommitFrame() {
-            if (BuildConfig.INK_PRESENTATION_TIMING) {
-                Log.i("Ink", "CommitRequested ns=${System.nanoTime()} frame_posted=${if (framePosted) 1 else 0} touch_active=${if (touchActive) 1 else 0}")
-            }
-            renderPending = true
-            if (commitFramePosted) return
-            // A completed commit can replace the queued frame once the GPU is ready.
-            if (surfaceAttached && canPresentCommit()) {
-                commitFramePosted = true
-                post(commitFrame)
-            } else {
-                postFrame()
-            }
-        }
-
-        private fun canPresentCommit(): Boolean =
-            !touchActive && !pinchActive && !hasPendingMove && scroller.isFinished &&
-                !nativeHasSceneAnimations(engineHandle)
-
-        private fun presentFrame() {
-            // Native-only scrolling can queue image loads without a touch or React commit.
-            drainNativeRequests()
-            if (textInputAdapter.hasEditor) syncTextInput()
-            if (BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FrameStart ns=${System.nanoTime()}")
-            renderFrame()
-            postFrame()
-        }
-
-        fun stopScrolling() {
-            stopFling()
-            velocityTracker?.recycle()
-            velocityTracker = null
-        }
-
-        private fun startFling(velocityY: Int) {
-            // Prepending rows shifts content coordinates; clamp travel against the live layout.
-            lastFlingY = 0
-            scroller.fling(
-                0,
-                0,
-                0,
-                velocityY,
-                0,
-                0,
-                Int.MIN_VALUE,
-                Int.MAX_VALUE,
-            )
-            postFrame()
-        }
-
-        private fun postFrame() {
-            if (
-                !framePosted &&
-                (renderPending || hasPendingMove || !scroller.isFinished ||
-                    (surfaceAttached && engineHandle != 0L && nativeHasSceneAnimations(engineHandle)))
-            ) {
-                framePosted = true
-                choreographer.postFrameCallback(frameCallback)
-            }
-        }
-
-        private fun stopFling() {
-            scroller.abortAnimation()
-            pendingMoves.clear()
-            if (framePosted) {
-                choreographer.removeFrameCallback(frameCallback)
-                framePosted = false
-            }
-        }
-
-        override fun performClick(): Boolean {
-            super.performClick()
-            return true
-        }
     }
 
     private companion object {
         private const val TEXT_INPUT_SUBMIT = 2
         private const val TEXT_INPUT_DISMISS = 3
         private const val TEXT_INPUT_UPDATE = 4
-        private const val POINTER_LONG_PRESS = 4
-        private const val POINTER_CHANGED = 1
-        private const val POINTER_ACTIVATED = 1 shl 1
-        private const val POINTER_CAPTURED = 1 shl 2
-        private const val POINTER_HAPTIC = 1 shl 3
         private const val RESOURCE_LOG_TAG = "InkResource"
         private const val LIGHT_SDK_MODULE = "light-sdk"
         private const val NETWORK_MODULE = "network"
@@ -1616,222 +1087,5 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         private const val IMAGE_VISIBLE = 1
         private const val IMAGE_OFFSCREEN = 2
 
-        init {
-            System.loadLibrary("ink_android")
-        }
-
-        @JvmStatic
-        private external fun nativeCreate(cacheDirectory: String): Long
-
-        @JvmStatic
-        private external fun nativeTakeJavaScriptError(handle: Long): String?
-
-        @JvmStatic
-        private external fun nativeRefreshJavaScript(handle: Long, source: String): Boolean
-
-        @JvmStatic
-        private external fun nativeStartJavaScript(
-            handle: Long, source: String?, icons: ByteArray?, assets: android.content.res.AssetManager,
-            storePath: String, filesPath: String, activity: MainActivity,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeDrainJavaScript(handle: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeIsLightAppearance(handle: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeTakeJavaScriptCalls(handle: Long): String?
-
-        @JvmStatic
-        private external fun nativeTakeJavaScriptBytes(handle: Long, id: Long): ByteArray?
-
-        @JvmStatic
-        private external fun nativeJavaScriptReceiveBytes(handle: Long, message: String, bytes: ByteArray): Boolean
-
-        @JvmStatic
-        private external fun nativePlaybackClock(handle: Long, controller: Long, position: Float, duration: Float, playing: Boolean, speed: Float): Boolean
-        @JvmStatic
-        private external fun nativeCaptureState(handle: Long, controller: Long, value: String): Boolean
-        @JvmStatic
-        private external fun nativeRemovePlaybackClock(handle: Long, controller: Long)
-
-        @JvmStatic
-        private external fun nativeJavaScriptReceive(handle: Long, message: String)
-
-        @JvmStatic
-        private external fun nativePublicSans(): ByteBuffer
-
-        @JvmStatic
-        private external fun nativeAttachSurface(
-            handle: Long,
-            surface: Surface,
-            width: Int,
-            height: Int,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeSetKeyboardInset(handle: Long, height: Int): Boolean
-
-        @JvmStatic
-        private external fun nativeResize(handle: Long, width: Int, height: Int)
-
-        @JvmStatic
-        private external fun nativeImageWaitRemaining(handle: Long): Long
-
-        @JvmStatic
-        private external fun nativeHasSceneAnimations(handle: Long): Boolean
-        @JvmStatic
-        private external fun nativeAnimateScene(handle: Long): Boolean
-        @JvmStatic
-        private external fun nativeFrameReady(handle: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeCanPresentPointerMove(handle: Long, id: Int, y: Float): Boolean
-
-        @JvmStatic
-        private external fun nativePointer(
-            handle: Long,
-            action: Int,
-            id: Int,
-            x: Float,
-            y: Float,
-        ): Int
-
-        @JvmStatic
-        private external fun nativeImagePinchBegin(handle: Long, x: Float, y: Float): Int
-
-        @JvmStatic
-        private external fun nativeImagePinchUpdate(
-            handle: Long,
-            scale: Float,
-            x: Float,
-            y: Float,
-        ): Int
-
-        @JvmStatic
-        private external fun nativeImagePinchEnd(handle: Long)
-
-        @JvmStatic
-        private external fun nativeImageZoomTarget(handle: Long, x: Float, y: Float): Long
-
-        @JvmStatic
-        private external fun nativeImageDoubleTap(
-            handle: Long,
-            x: Float,
-            y: Float,
-        ): Int
-
-        @JvmStatic
-        private external fun nativeScrollBy(handle: Long, delta: Float): Boolean
-
-        @JvmStatic
-        private external fun nativeRender(handle: Long): String
-
-        @JvmStatic
-        private external fun nativeInstallSystemGlyph(
-            handle: Long,
-            requestId: Long,
-            pixels: IntArray,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeBack(handle: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeCameraPortal(handle: Long): String?
-
-        @JvmStatic
-        private external fun nativeCompletePixels(handle: Long, requestId: Long, width: Int, height: Int, rgba: ByteArray): Boolean
-
-        @JvmStatic
-        private external fun nativeCameraReviewReady(handle: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeVideoPortal(handle: Long): String?
-        @JvmStatic
-        private external fun nativeMapPortal(handle: Long): String?
-
-        @JvmStatic
-        private external fun nativeTextInputState(handle: Long): Int
-
-        @JvmStatic
-        private external fun nativeTextInputContext(handle: Long): String
-
-        @JvmStatic
-        private external fun nativeTextInput(handle: Long, action: Int, value: String?): Boolean
-
-        @JvmStatic
-        private external fun nativeNextRequest(handle: Long): String?
-
-        @JvmStatic
-        private external fun nativeCompleteFile(
-            handle: Long,
-            requestId: Long,
-            path: String,
-        ): Int
-
-        @JvmStatic
-        private external fun nativeCompleteAsset(
-            handle: Long,
-            requestId: Long,
-            assets: android.content.res.AssetManager,
-            path: String,
-        ): Int
-
-        @JvmStatic
-        private external fun nativeCompleteEncoded(
-            handle: Long,
-            requestId: Long,
-            bytes: ByteArray,
-            size: Int,
-        ): Int
-
-        @JvmStatic
-        private external fun nativeFailRequest(
-            handle: Long,
-            requestId: Long,
-            kind: Int,
-            message: String,
-            retryable: Boolean,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeCompleteAction(handle: Long, requestId: Long): Boolean
-
-        @JvmStatic
-        private external fun nativeAudioActivate(
-            handle: Long,
-            controller: Long,
-            kind: String,
-            config: String,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeAudioDeactivate(handle: Long, controller: Long)
-
-        @JvmStatic
-        private external fun nativeAudioSetEnabled(
-            handle: Long,
-            controller: Long,
-            enabled: Boolean,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeAudioObserve(handle: Long, controller: Long, observed: Boolean): Boolean
-
-        @JvmStatic
-        private external fun nativeAudioSamples(
-            handle: Long,
-            samples: ShortArray,
-            sampleRate: Int,
-        ): Boolean
-
-        @JvmStatic
-        private external fun nativeDetachSurface(handle: Long)
-
-        @JvmStatic
-        private external fun nativeDestroy(handle: Long)
     }
 }

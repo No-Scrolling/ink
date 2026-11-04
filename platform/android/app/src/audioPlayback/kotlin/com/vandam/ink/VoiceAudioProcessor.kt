@@ -63,8 +63,21 @@ internal class VoiceAudioProcessor(private val enabled: () -> Boolean) : BaseAud
         audio = FloatArray((delay + 1) * channels)
         peaks = FloatArray(delay + 1)
         deque = LongArray(delay + 1)
-        filters = Array(channels) { arrayOf(Filter.shelf(rate), Filter.highPass(rate)) }
         energies = DoubleArray((rate * .4).roundToInt())
+        mix = 0.0
+        gainRise = coefficient(3.0)
+        gainFall = coefficient(.3)
+        attack = coefficient(.02)
+        release = coefficient(.05)
+        limiterRelease = coefficient(.08)
+        restart()
+    }
+
+    private fun coefficient(seconds: Double) = 1 - exp(-1 / (seconds * rate))
+
+    private fun restart() {
+        filters = Array(channels) { arrayOf(Filter.shelf(rate), Filter.highPass(rate)) }
+        energies.fill(0.0)
         energyIndex = 0
         energyCount = 0
         energySum = 0.0
@@ -77,21 +90,24 @@ internal class VoiceAudioProcessor(private val enabled: () -> Boolean) : BaseAud
         targetGain = 1.0
         envelope = 0.0
         limiter = 1.0
-        mix = 0.0
-        gainRise = coefficient(3.0)
-        gainFall = coefficient(.3)
-        attack = coefficient(.02)
-        release = coefficient(.05)
-        limiterRelease = coefficient(.08)
     }
-
-    private fun coefficient(seconds: Double) = 1 - exp(-1 / (seconds * rate))
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val count = inputBuffer.remaining() / (channels * 2)
         if (count == 0) return
-        val output = replaceOutputBuffer(count * channels * 2)
         val active = enabled()
+        if (!active && mix == 0.0) {
+            // Levelling is off and faded out: drain the lookahead, then pass PCM through untouched.
+            val output = replaceOutputBuffer(((write - read) * channels * 2).toInt() + inputBuffer.remaining())
+            if (write > read) {
+                while (read < write) emit(output)
+                restart()
+            }
+            output.put(inputBuffer)
+            output.flip()
+            return
+        }
+        val output = replaceOutputBuffer(count * channels * 2)
         repeat(count) {
             mix = (mix + (if (active) 1 else -1) / (rate * .02)).coerceIn(0.0, 1.0)
             val slot = (write % peaks.size).toInt()

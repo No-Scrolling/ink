@@ -287,6 +287,19 @@
         "disabled": "noNotifications"
       }
     },
+    "overlays": {
+      "cost": "service-owned overlay window",
+      "dependencies": [],
+      "permissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+      ],
+      "androidSourceGroup": {
+        "enabled": "overlays",
+        "disabled": "noOverlays"
+      }
+    },
     "photo-capture": {
       "cost": "camera session and photo capture",
       "dependencies": [

@@ -16,6 +16,7 @@ export default function Modules() {
       <Button href="/modules/nfc">NFC</Button>
       <Button href="/modules/network">Network</Button>
       <Button href="/modules/notifications">Notifications</Button>
+      <Button href="/modules/overlays">Overlays</Button>
       <Button href="/modules/secure-store">Secure store</Button>
     </Screen>
   );

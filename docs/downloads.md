@@ -38,6 +38,14 @@ const download = useSnapshot(downloads.observe(downloadId));
 
 Ink shares observation for each download ID and releases the native subscription when no screen uses it.
 
+To show the whole queue, including jobs added or removed elsewhere in the app:
+
+```ts
+const queue = useSnapshot(downloads.observeAll());
+```
+
+Ready data is an array of download states. Ink uses one shared native subscription and applies individual job updates to the array. Closing the last screen observing the queue releases that subscription.
+
 ### Read transfer state
 
 The snapshot is `loading`, `ready` or `error`. Ready data includes:
@@ -92,7 +100,9 @@ Ink saves transfer state across app restarts. It resumes partial files when the 
 
 Network constraints and storage failures appear in state. Handle missing files when reopening downloads.
 
-Android schedules transfers and restores pending work after reboot. Force-stopping the app prevents background work until it opens again.
+Ink retries I/O failures up to three times, after delays of 1, 3 and 10 seconds. The download stays queued between attempts and keeps its partial file. Resuming a failed download resets this retry limit. Native media providers can request their own retry delay for temporary failures.
+
+Android schedules transfers and restores pending work after reboot. Ink runs up to two transfers at a time, subject to Android's scheduling and network constraints. Force-stopping the app prevents background work until it opens again.
 
 ## Download URLs
 
@@ -105,5 +115,7 @@ Downloads do not add authentication headers. Use an authorised URL that remains 
 If a signed URL expires, obtain a replacement and enqueue a new request. Do not put permanent bearer tokens in saved URLs.
 
 Protected offline media may require a provider’s own download and playback integration.
+
+The development SDK also accepts registered `ink-source://` addresses. [Native media sources](/media-sources) supply provider-specific byte streams while Ink manages scheduling, progress and partial files.
 
 Use `fetch` for short foreground requests and [Files](/files) for uploads. Background jobs can check download state; they should not run a continuous download loop.

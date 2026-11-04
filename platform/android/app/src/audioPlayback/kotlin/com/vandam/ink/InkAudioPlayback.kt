@@ -28,14 +28,17 @@ import org.json.JSONObject
 internal fun createAudioPlayback(
     activity: MainActivity,
     updateController: (Long, String) -> Unit,
-): AudioPlayback = InkAudioPlayback(activity, updateController)
+): AudioPlayback {
+    AudioDecoderCache.warm()
+    return InkAudioPlayback(activity, updateController)
+}
 
 @UnstableApi
 private class InkAudioPlayback(
     private val activity: MainActivity,
     private val updateController: (Long, String) -> Unit,
 ) : AudioPlayback {
-    private data class Entry(val mode: String, val usage: String, val cache: Boolean, val playback: AudioSessionPlayback)
+    private data class Entry(val mode: String, val usage: String, val cache: Boolean, val preloadNext: Long, val startupBuffer: Int, val playback: AudioSessionPlayback)
     private val sessions = mutableMapOf<String, Entry>()
     private val controllers = mutableMapOf<Long, String>()
 
@@ -46,17 +49,21 @@ private class InkAudioPlayback(
         val mode = options.optString("playback", "attached")
         val usage = options.optString("usage", "music")
         val cache = options.optBoolean("cache", false)
+        val preloadNext = options.optLong("preloadNext", 0)
+        val startupBuffer = options.optInt("startupBuffer", 1000)
+        if (startupBuffer !in 0..30_000) return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio startup buffer", false)
+        if (preloadNext !in 0..30_000) return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio preload duration", false)
         if (!Regex("[A-Za-z0-9._-]{1,64}").matches(name)) {
             return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio session name", false)
         }
         val existing = sessions[name]
-        if (existing != null && (existing.mode != mode || existing.usage != usage || existing.cache != cache)) {
+        if (existing != null && (existing.mode != mode || existing.usage != usage || existing.cache != cache || existing.preloadNext != preloadNext || existing.startupBuffer != startupBuffer)) {
             return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio session options must agree", false)
         }
         if (existing == null && sessions.size >= 8) {
             return NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Too many audio sessions", false)
         }
-        val entry = existing ?: Entry(mode, usage, cache, AudioSessionPlayback(activity, updateController, name, cache) {
+        val entry = existing ?: Entry(mode, usage, cache, preloadNext, startupBuffer, AudioSessionPlayback(activity, updateController, name, cache, preloadNext, startupBuffer) {
             sessions.filterKeys { it != name }.values.forEach { it.playback.pauseForFocus() }
         }).also { sessions[name] = it }
         controllers[controller] = name
@@ -94,6 +101,8 @@ private class AudioSessionPlayback(
     private val updateController: (Long, String) -> Unit,
     private val name: String,
     private val cache: Boolean,
+    private val preloadNext: Long,
+    private val startupBuffer: Int,
     private val takeFocus: () -> Unit,
 ) : AudioPlayback, Player.Listener {
     private val handler = Handler(Looper.getMainLooper())
@@ -204,6 +213,7 @@ private class AudioSessionPlayback(
                     body.optJSONObject("item")?.let { setQueue(listOf(Item.from(it)), 0) }
                     dispatch(::startPlayback)
                 }
+                "prepare" -> dispatch { if (it.mediaItemCount > 0 && it.playbackState == Player.STATE_IDLE) it.prepare() }
                 "setQueue" -> setQueue(
                     Item.list(body.getJSONArray("items")),
                     body.optInt("startIndex"),
@@ -221,6 +231,16 @@ private class AudioSessionPlayback(
                 "skipForward" -> seekBy(SKIP_INTERVAL_MS)
                 "previous" -> dispatch(Player::seekToPreviousMediaItem)
                 "next" -> dispatch(Player::seekToNextMediaItem)
+                "setShuffle" -> dispatch { it.shuffleModeEnabled = body.getBoolean("value") }
+                "setRepeat" -> {
+                    val mode = when (body.getString("value")) {
+                        "off" -> Player.REPEAT_MODE_OFF
+                        "queue" -> Player.REPEAT_MODE_ALL
+                        "track" -> Player.REPEAT_MODE_ONE
+                        else -> error("Invalid repeat mode")
+                    }
+                    dispatch { it.repeatMode = mode }
+                }
                 "setSkipSilence", "setVoiceBoost" -> {
                     val enabled = body.getBoolean("value")
                     val voice = operation == "setVoiceBoost"
@@ -346,10 +366,12 @@ private class AudioSessionPlayback(
     private fun attachedPlayer(): Player {
         player?.let { return it }
         val created = ExoPlayer.Builder(activity, InkAudioRenderersFactory(activity, effects))
+            .setLoadControl(audioLoadControl(startupBuffer))
             .setMediaSourceFactory(audioMediaSourceFactory(activity, cache))
             .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
+                preloadConfiguration = ExoPlayer.PreloadConfiguration(preloadNext * 1000)
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
@@ -393,6 +415,8 @@ private class AudioSessionPlayback(
                 putString("ink.session", name)
                 putInt(CONTENT_TYPE_HINT, contentType)
                 putBoolean(CACHE_HINT, cache)
+                putLong(PRELOAD_NEXT_HINT, preloadNext)
+                putInt(STARTUP_BUFFER_HINT, startupBuffer)
             })
             .buildAsync()
         connection = future
@@ -541,6 +565,8 @@ private class AudioSessionPlayback(
             .put("durationMs", player?.duration?.validTime()?.takeIf { it > 0 } ?: metadata?.durationMs ?: 0)
             .put("bufferedMs", player?.bufferedPosition?.coerceAtLeast(0) ?: 0)
             .put("speed", player?.playbackParameters?.speed ?: 1f)
+            .put("shuffle", player?.shuffleModeEnabled == true)
+            .put("repeat", when (player?.repeatMode) { Player.REPEAT_MODE_ALL -> "queue"; Player.REPEAT_MODE_ONE -> "track"; else -> "off" })
             .put("silenceSavedMs", effects.silenceSavedMs)
             .put("voiceBoost", if (player is MediaController) player.sessionExtras.getBoolean(VOICE_BOOST_EXTRA) else effects.voiceBoost)
             .put("skipSilence", when (player) {
@@ -601,6 +627,7 @@ private class AudioSessionPlayback(
     ) {
         fun mediaItem(activity: MainActivity): MediaItem {
             val uri = when {
+                src.startsWith("ink-source://") -> Uri.parse(src).also { InkMediaSources.source(activity, it) }
                 src.startsWith("https://") -> Uri.parse(src)
                 src.startsWith("http://") -> {
                     require(BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED) {
@@ -666,6 +693,8 @@ private class AudioSessionPlayback(
         private const val CONTROLLER_HINT = "ink.controller"
         private const val CONTENT_TYPE_HINT = "ink.contentType"
         private const val CACHE_HINT = "ink.cache"
+        private const val PRELOAD_NEXT_HINT = "ink.preloadNext"
+        private const val STARTUP_BUFFER_HINT = "ink.startupBuffer"
         private val RECORDING_ID = Regex("[0-9a-f-]{36}")
 
         private fun Long.validTime() = takeIf { it != C.TIME_UNSET && it >= 0 } ?: 0

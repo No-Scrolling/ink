@@ -162,9 +162,9 @@ fn run() -> Result<()> {
             );
             Ok(())
         }
-        InkCommand::Dev { device, once, logs } => {
+        InkCommand::Dev { device, once, logs, no_open } => {
             let project = load_project(cli.directory.as_deref())?;
-            develop(project, device.as_deref(), once, logs, cli.verbose)
+            develop(project, device.as_deref(), once, logs, no_open, cli.verbose)
         }
         InkCommand::Logs { device, resources } => {
             let project = load_project(cli.directory.as_deref())?;
@@ -187,8 +187,8 @@ fn run() -> Result<()> {
     }
 }
 
-fn develop(project: Project, requested_device: Option<&str>, once: bool, logs: bool, verbose: bool) -> Result<()> {
-    development::run(project, requested_device, once, logs, verbose)
+fn develop(project: Project, requested_device: Option<&str>, once: bool, logs: bool, no_open: bool, verbose: bool) -> Result<()> {
+    development::run(project, requested_device, once, logs, no_open, verbose)
 }
 
 fn list_devices() -> Result<()> {

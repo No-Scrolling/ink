@@ -691,6 +691,30 @@ impl ReactTree {
                             mask: self.icon(string(props, "name").context("CanvasIcon requires a name")?)?,
                             colour: canvas_colour(props, "colour")?.unwrap_or(super::Colour::WHITE),
                         },
+                        HostKind::CanvasRectangle if props.get("range").is_some() => {
+                            let range = props.get("range").context("CanvasRange requires range")?;
+                            let spec: super::canvas::RangeSpec = serde_json::from_value(range.clone())?;
+                            ensure!(bounds.width > 0.0 && bounds.height > 0.0
+                                && spec.total.is_finite() && spec.total > 0.0
+                                && spec.span.is_finite() && spec.span > 0.0 && spec.span <= spec.total
+                                && spec.initial_start.is_finite() && spec.step.is_finite() && spec.step > 0.0
+                                && [spec.snap_distance, spec.tap_snap_distance, spec.hit_slop, spec.min_drag_width, spec.inset].iter().all(|n| n.is_finite() && *n >= 0.0)
+                                && spec.progress.is_finite() && (0.0..=1.0).contains(&spec.progress)
+                                && spec.progress_duration_ms.is_finite() && spec.progress_duration_ms >= 0.0
+                                && spec.progress_duration_ms <= f64::from(f32::MAX)
+                                && spec.snap_points.iter().all(|n| n.is_finite()), "Invalid CanvasRange");
+                            let range_props = HostProps::Other(range.as_object().context("CanvasRange requires an object")?.clone());
+                            super::canvas::Drawing::Range {
+                                id: NodeIdentity(*child_id), bounds, spec,
+                                fill: canvas_colour(props, "fill")?.unwrap_or(super::Colour::WHITE),
+                                inner_fill: canvas_colour(&range_props, "innerFill")?.unwrap_or(super::Colour::WHITE),
+                                progress_fill: canvas_colour(&range_props, "progressFill")?.unwrap_or(super::Colour::WHITE),
+                                seek_event: props.get("onRangeSeek") == Some(&Json::Bool(true)),
+                                start_event: props.get("onRangeStart") == Some(&Json::Bool(true)),
+                                commit_event: props.get("onRangeCommit") == Some(&Json::Bool(true)),
+                                snapshot_event: props.get("onRangeSnapshot") == Some(&Json::Bool(true)),
+                            }
+                        },
                         HostKind::CanvasRectangle => super::canvas::Drawing::Rectangle {
                             bounds,
                             fill: canvas_colour(props, "fill")?,
@@ -702,6 +726,11 @@ impl ReactTree {
                                 .then(|| event(*child_id, "onLongPress", vec![])),
                             drag_action: (props.get("onDragEnter") == Some(&Json::Bool(true)))
                                 .then(|| event(*child_id, "onDragEnter", vec![])),
+                            drag_start: (props.get("onDragStart") == Some(&Json::Bool(true)))
+                                .then(|| event(*child_id, "onDragStart", vec![])),
+                            drag_end: (props.get("onDragEnd") == Some(&Json::Bool(true)))
+                                .then(|| event(*child_id, "onDragEnd", vec![])),
+                            haptic: props.get("haptic") != Some(&Json::Bool(false)),
                         },
                         HostKind::CanvasText => super::canvas::Drawing::Text {
                             bounds,
@@ -1089,7 +1118,38 @@ impl ReactTree {
                     height,
                     fit,
                 );
-                if let NodeKind::Image { preload, retain_while_loading, looping, fill_width, avatar: image_avatar, .. } = &mut node.kind {
+                if let NodeKind::Image { preload, retain_while_loading, looping, fill_width, avatar: image_avatar, rotation, background, crop, crop_events, horizontal_guides, overlay, .. } = &mut node.kind {
+                    if let Some(value) = props.get("overlay") {
+                        let props = value.as_object().context("Image overlay requires an object")?;
+                        let source = image_source(props.get("src").and_then(Json::as_str).context("Image overlay requires a source")?)?;
+                        let coordinate = |key| -> Result<f32> {
+                            let value = props.get(key).and_then(Json::as_f64).context("Image overlay requires bounds")? as f32;
+                            ensure!((0.0..=1.0).contains(&value), "Image overlay bounds must be between 0 and 1");
+                            Ok(value)
+                        };
+                        let bounds = super::Rect { x: coordinate("x")?, y: coordinate("y")?, width: coordinate("width")?, height: coordinate("height")? };
+                        ensure!(bounds.width > 0.0 && bounds.height > 0.0 && bounds.x + bounds.width <= 1.0001 && bounds.y + bounds.height <= 1.0001, "Image overlay must fit inside the frame");
+                        *overlay = Some((source, bounds));
+                    }
+                    if let Some(value) = props.get("horizontalGuides") {
+                        *horizontal_guides = serde_json::from_value(value.clone()).context("Image guides require an array of numbers")?;
+                        ensure!(horizontal_guides.iter().all(|position| (0.0..=1.0).contains(position)), "Image guide positions must be between 0 and 1");
+                    }
+                    *crop_events = props.get("onCropChange") == Some(&Json::Bool(true));
+                    if let Some(value) = props.get("crop") {
+                        let value = value.as_object().context("Image crop requires an object")?;
+                        let zoom = value.get("zoom").and_then(Json::as_f64).context("Image crop requires zoom")? as f32;
+                        let x = value.get("x").and_then(Json::as_f64).context("Image crop requires x")? as f32;
+                        let y = value.get("y").and_then(Json::as_f64).context("Image crop requires y")? as f32;
+                        ensure!((1.0..=4.0).contains(&zoom) && (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y), "Invalid image crop");
+                        ensure!(fit == ImageFit::Cover && props.get("zoomable") == Some(&Json::Bool(true)), "Image crop requires zoomable cover");
+                        *crop = Some(super::ImageCrop { zoom, x, y });
+                    }
+                    *rotation = number(props, "rotation")?.map(|value| {
+                        ensure!([0.0, 90.0, 180.0, 270.0].contains(&value), "Image rotation must be 0, 90, 180 or 270");
+                        Ok(value as u16)
+                    }).transpose()?;
+                    *background = canvas_colour(props, "background")?.map(super::Colour::to_linear);
                     *image_avatar = avatar;
                     *fill_width = props.get("fillWidth") == Some(&Json::Bool(true));
                     *looping = props.get("loop") == Some(&Json::Bool(true));
@@ -1153,11 +1213,15 @@ impl ReactTree {
                     && props.get("disabled") != Some(&Json::Bool(true)))
                 .then(|| event(id, "onPress", vec![]));
                 if host.kind == HostKind::Field {
-                    Node::field(
+                    let mut field = Node::field(
                         string(props, "label").context("Field requires a label")?,
                         label,
                         action,
-                    )
+                    );
+                    if let NodeKind::Field { disabled, .. } = &mut field.kind {
+                        *disabled = props.get("disabled") == Some(&Json::Bool(true));
+                    }
+                    field
                 } else {
                     let mut button = Node::button(
                         label,

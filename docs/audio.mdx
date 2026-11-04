@@ -87,8 +87,16 @@ Detached playback continues after leaving the screen.
 | `usage: "music"` (default) | Music playback. |
 | `usage: "speech"` | Spoken audio. |
 | `cache: true` | Reuses cached HTTP(S) audio. Off by default. |
+| `preloadNext: 1500` | Targets 1,500 ms of buffered audio for the next queued item when the current item is not loading. Off by default; accepts 0–30,000 ms. |
+| `startupBuffer: 300` | Buffers 300 ms before streamed audio starts. Defaults to 1,000 ms; accepts 0–30,000 ms. Smaller values can start sooner but provide less protection against a slow connection. Does not change normal buffering or buffering after an interruption. |
 
 Android can stop a detached session. Ink restores its queue, index, speed and progress in a paused state when you reconnect.
+
+Call `prepare()` after `state.ready` to buffer the current item without starting playback or changing its position. For a remote source, this can fetch audio before the user presses Play. Calling it on an already prepared player has no effect.
+
+```ts
+await player.prepare();
+```
 
 Queue changes, seeks and pauses save immediately; progress saves every 30 seconds. `stop()` clears the queue and saved position.
 
@@ -210,7 +218,7 @@ const silence = useAction((enabled: boolean) => player.setSkipSilence(enabled));
 
 ### Sessions
 
-Players with the same `session` name share playback. They must use the same `mode`, `usage` and `cache` values while the session exists. This includes detached playback after you leave a screen.
+Players with the same `session` name share playback. They must use the same `mode`, `usage`, `cache`, `preloadNext` and `startupBuffer` values while the session exists. This includes detached playback after you leave a screen.
 
 Different session names keep separate queues. Starting one session pauses the others.
 
@@ -320,6 +328,19 @@ await player.seek(30_000);
 ```
 
 Player commands return promises.
+
+### Shuffle and repeat
+
+```ts
+await player.setShuffle(true);
+await player.setRepeat("queue");
+```
+
+Repeat accepts `"off"`, `"queue"` or `"track"`. Read `state.shuffle` and `state.repeat` for the current settings. Both settings are saved with the queue.
+
+### App-specific media protocols
+
+The development SDK supports `ink-source://` addresses supplied by an Android extension. See [Native media sources](/media-sources) for authentication, seekable playback and encrypted downloads.
 
 ### Playback state
 

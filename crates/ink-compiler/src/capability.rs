@@ -38,6 +38,7 @@ pub enum Capability {
     Nfc,
     NotificationPermission,
     Notifications,
+    Overlays,
     PhotoCapture,
     Store,
     TextInput,

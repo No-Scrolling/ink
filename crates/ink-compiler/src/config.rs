@@ -16,6 +16,7 @@ struct AppConfig {
     lightos: Option<LightOsConfig>,
     network: Option<NetworkConfig>,
     background: Option<BackgroundConfig>,
+    overlays: Option<BackgroundConfig>,
     auth: Option<AuthConfig>,
     #[serde(default)]
     capabilities: Vec<crate::Capability>,
@@ -72,6 +73,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) light_server: String,
     pub(crate) capabilities: Vec<crate::Capability>,
     pub(crate) worker_entry: Option<PathBuf>,
+    pub(crate) overlay_entry: Option<PathBuf>,
     pub(crate) auth_redirect_uri: Option<String>,
 }
 
@@ -98,6 +100,7 @@ impl ResolvedConfig {
             worker_entry: config
                 .background
                 .map(|background| directory.join(background.entry)),
+            overlay_entry: config.overlays.map(|overlays| directory.join(overlays.entry)),
             source: directory.join("app"),
             android_resources: directory.join(".ink/android/res"),
             signing: config.signing.map(|signing| ReleaseSigning {

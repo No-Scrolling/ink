@@ -59,8 +59,9 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
             if (queue.isNotEmpty()) {
                 player.setMediaItems(queue, state.optInt("index", 0).coerceIn(queue.indices), state.optLong("position", 0L).coerceAtLeast(0))
                 player.playbackParameters = PlaybackParameters(state.optDouble("speed", 1.0).toFloat().coerceIn(0.25f, 4f))
+                player.shuffleModeEnabled = state.optBoolean("shuffle", false)
+                player.repeatMode = state.optInt("repeat", Player.REPEAT_MODE_OFF).takeIf { it in 0..2 } ?: Player.REPEAT_MODE_OFF
                 player.playWhenReady = false
-                player.prepare()
             }
         }.onFailure { preferences.edit().remove(name).apply() }
         restoring = false
@@ -75,7 +76,8 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
         if (events.contains(Player.EVENT_TIMELINE_CHANGED)) saveQueue()
         if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION,
                 Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED,
-                Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED)) save()
+                Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_PLAYBACK_STATE_CHANGED,
+                Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED, Player.EVENT_REPEAT_MODE_CHANGED)) save()
         scheduleCheckpoint()
     }
 
@@ -106,6 +108,8 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
             .put("index", player.currentMediaItemIndex.coerceAtLeast(0))
             .put("position", player.currentPosition.takeIf { it != C.TIME_UNSET && it >= 0 } ?: 0)
             .put("speed", player.playbackParameters.speed)
+            .put("shuffle", player.shuffleModeEnabled)
+            .put("repeat", player.repeatMode)
         positions.edit().putString(name, state.toString()).apply()
     }
     private fun saveQueue() {

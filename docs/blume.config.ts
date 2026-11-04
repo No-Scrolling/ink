@@ -90,6 +90,7 @@ export default defineConfig({
           },
           "/nfc",
           "/notifications",
+          "/overlays",
           "/secure-store",
           "/store",
         ],

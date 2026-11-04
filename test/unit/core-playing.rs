@@ -33,6 +33,32 @@ fn native_clock_updates_time_speed_pause_and_seek_without_a_commit() {
 }
 
 #[test]
+fn playing_progress_waits_for_its_next_visible_step() {
+    let mut engine = Engine::new();
+    engine.set_viewport(1080, 1240);
+    let mut tree = ReactTree::default();
+    tree.apply(ReactCommit(vec![
+        Operation::Create { id: 1, r#type: HostKind::Screen, props: Map::new() },
+        Operation::Create { id: 2, r#type: HostKind::PlayingProgress, props: json!({
+            "position":0,"duration":186,"playing":false,"showTimes":true,"clock":7,"onSeek":true
+        }).as_object().unwrap().clone() },
+        Operation::Insert { id:2,parent:1,before:None }, Operation::Insert { id:1,parent:0,before:None },
+    ]), &mut engine).unwrap();
+    assert!(engine.update_playback_clock(7, 10.0, 186.0, true, 1.0));
+    engine.animate_scene();
+    let progress = &engine.playback_progress[&NodeIdentity(2)];
+    let step = progress.duration / progress.width / crate::PROGRESS_EDGE_STEPS;
+    let alpha = engine.scene.quads[progress.quad + 1].colour.alpha;
+    assert_eq!((alpha * crate::PROGRESS_EDGE_STEPS).fract(), 0.0);
+    let delay = engine.next_scene_frame().unwrap();
+    assert!(delay > std::time::Duration::ZERO && delay.as_secs_f32() <= step + 0.002);
+    assert!(!engine.update_playback_clock(7, 10.05, 186.0, true, 1.0));
+    assert!(engine.update_playback_clock(7, 60.0, 186.0, true, 1.0));
+    assert!(engine.update_playback_clock(7, 60.0, 186.0, false, 1.0));
+    assert_eq!(engine.next_scene_frame(), None);
+}
+
+#[test]
 fn playback_times_are_not_layout_dimensions() {
     for (milliseconds, seconds) in [(213_000, 213.0), (180_000_000, 180_000.0), (0, 0.0)] {
         let props = HostProps::Other(Map::from_iter([("duration".into(), json!(milliseconds))]));

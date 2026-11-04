@@ -21,6 +21,7 @@ pub fn run(
     requested: Option<&str>,
     once: bool,
     logs: bool,
+    no_open: bool,
     verbose: bool,
 ) -> Result<()> {
     let device = android::select_device(requested)?;
@@ -51,9 +52,11 @@ pub fn run(
                 stage("Install", false, "complete", Instant::now(), || {
                     android::install(&device, &artifact.apk, verbose)
                 })?;
-                stage("Open", once, "complete", Instant::now(), || {
-                    android::launch(&device, &project, verbose)
-                })?;
+                if !no_open {
+                    stage("Open", once, "complete", Instant::now(), || {
+                        android::launch(&device, &project, verbose)
+                    })?;
+                }
                 installed = Some(fingerprint);
             } else {
                 activate(&project, &device)?;
@@ -245,6 +248,7 @@ fn native_fingerprint(project: &Project) -> Result<Vec<u8>> {
     for path in [
         framework.join("platform/android"),
         framework.join("crates"),
+        project.root().join("android"),
         project.android_resources_path().to_path_buf(),
     ] {
         fingerprint_files(&path, &mut result)?;

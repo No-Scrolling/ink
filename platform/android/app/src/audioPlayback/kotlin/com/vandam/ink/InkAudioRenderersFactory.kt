@@ -1,7 +1,7 @@
 package com.vandam.ink
 
 import android.content.Context
-import kotlin.math.roundToLong
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessorChain
@@ -10,6 +10,23 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
+import kotlin.math.roundToLong
+
+@UnstableApi
+internal object AudioDecoderCache {
+    private val started = AtomicBoolean(false)
+    fun warm() {
+        if (!started.compareAndSet(false, true)) return
+        thread(name = "InkAudioCodecs", isDaemon = true) {
+            for (mime in arrayOf(MimeTypes.AUDIO_VORBIS, MimeTypes.AUDIO_MPEG, MimeTypes.AUDIO_AAC, MimeTypes.AUDIO_OPUS, MimeTypes.AUDIO_FLAC)) {
+                MediaCodecUtil.warmDecoderInfoCache(mime, false, false)
+            }
+        }
+    }
+}
 
 @UnstableApi
 internal class InkAudioRenderersFactory(context: Context, private val effects: AudioEffects) : DefaultRenderersFactory(context) {

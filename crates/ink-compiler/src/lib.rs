@@ -207,6 +207,12 @@ fn install_bundle(
     } else {
         remove_obsolete_output(&worker_path)?;
     }
+    let overlay_path = project.android_assets_path().join("overlay.js");
+    if let Some(overlay) = &bundle.overlay {
+        write_if_changed(&overlay_path, overlay)?;
+    } else {
+        remove_obsolete_output(&overlay_path)?;
+    }
     write_if_changed(
         &project.android_assets_path().join("app.js"),
         &bundle.source,

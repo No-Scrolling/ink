@@ -14,7 +14,7 @@ use serde_json::Value;
 use super::{ANDROID_LOG_ERROR, ANDROID_LOG_INFO, android_log, engine};
 
 jni::bind_java_type! {
-    InkActivity => com.vandam.ink.MainActivity,
+    InkActivity => com.vandam.ink.InkJavaScriptHost,
     methods {
         fn on_javascript_ready {
             sig = (),
@@ -195,7 +195,7 @@ pub(super) fn state_json(value: StateValue) -> Value {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeStartJavaScript(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -205,7 +205,9 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
     store_path: JString<'_>,
     files_path: JString<'_>,
     activity: JObject<'_>,
+    bundle: JString<'_>,
 ) -> jboolean {
+    let bundle = env.with_env(|env| bundle.try_to_string(env)).resolve::<jni::errors::LogErrorAndDefault>();
     let result = env
         .with_env(|env| -> jni::errors::Result<_> {
             let assets = super::assets::BundleAssets::new(env, &assets)?;
@@ -250,7 +252,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
         Some(source) => Script::Source(source),
         None => {
             let assets = assets.clone();
-            Script::Load(Box::new(move || assets.script("app")))
+            Script::Load(Box::new(move || assets.script(&bundle)))
         }
     };
     let runtime = AppRuntime::spawn_script(
@@ -305,7 +307,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeStartJavaScript(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDrainJavaScript(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeDrainJavaScript(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -339,7 +341,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeDrainJavaScript(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptCalls<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTakeJavaScriptCalls<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -361,7 +363,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptCall
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceive(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeJavaScriptReceive(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -380,7 +382,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceive(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeIsLightAppearance(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeIsLightAppearance(
     _env: EnvUnowned<'_>,
     _class: JClass<'_>,
     handle: jlong,
@@ -391,7 +393,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeIsLightAppearance(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptError<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTakeJavaScriptError<'local>(
     mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong,
 ) -> JString<'local> {
     let Some(error) = engine(handle).map(|engine| engine.lock_arc())
@@ -404,7 +406,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptErro
 
 #[cfg(debug_assertions)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRefreshJavaScript(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeRefreshJavaScript(
     mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, source: JString<'_>,
 ) -> jboolean {
     let source = env.with_env(|env| source.try_to_string(env))
@@ -415,7 +417,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRefreshJavaScript(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptBytes<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTakeJavaScriptBytes<'local>(
     mut env: EnvUnowned<'local>, _class: JClass<'local>, handle: jlong, id: jlong,
 ) -> JByteArray<'local> {
     let bytes = engine(handle).map(|engine| engine.lock_arc()).and_then(|engine| engine.script.as_ref().and_then(|script| script.runtime.take_bytes(id as u64)));
@@ -426,7 +428,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeTakeJavaScriptByte
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceiveBytes(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeJavaScriptReceiveBytes(
     mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, message: JString<'_>, bytes: JByteArray<'_>,
 ) -> jboolean {
     let (message, bytes) = env.with_env(|env| -> jni::errors::Result<_> {
@@ -436,7 +438,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeJavaScriptReceiveB
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCaptureState(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCaptureState(
     mut env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong, value: JString<'_>,
 ) -> jboolean {
     let value = env.with_env(|env| value.try_to_string(env)).resolve::<jni::errors::LogErrorAndDefault>();
@@ -447,7 +449,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeCaptureState(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePlaybackClock(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativePlaybackClock(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong,
     position: f32, duration: f32, playing: jboolean, speed: f32,
 ) -> jboolean {
@@ -456,7 +458,7 @@ pub extern "system" fn Java_com_vandam_ink_MainActivity_nativePlaybackClock(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_MainActivity_nativeRemovePlaybackClock(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeRemovePlaybackClock(
     _env: EnvUnowned<'_>, _class: JClass<'_>, handle: jlong, controller: jlong,
 ) {
     if let Some(mut engine) = engine(handle).map(|engine| engine.lock_arc()) {

@@ -1787,10 +1787,24 @@ fn push_image_quad(
     if rect.width <= 0.0 || rect.height <= 0.0 {
         return;
     }
-    let image_aspect = image_width as f32 / image_height as f32;
+    let image_aspect = if run.transform.rotation == 90 || run.transform.rotation == 270 {
+        image_height as f32 / image_width as f32
+    } else {
+        image_width as f32 / image_height as f32
+    };
     let rect_aspect = rect.width / rect.height;
     let (mut u0, mut v0, mut u1, mut v1) = (0.0, 0.0, 1.0, 1.0);
     match run.fit {
+        ImageFit::Cover if run.zoom_id.is_some() && image_aspect > rect_aspect => {
+            let width = rect.height * image_aspect;
+            rect.x += (rect.width - width) / 2.0;
+            rect.width = width;
+        }
+        ImageFit::Cover if run.zoom_id.is_some() => {
+            let height = rect.width / image_aspect;
+            rect.y += (rect.height - height) / 2.0;
+            rect.height = height;
+        }
         ImageFit::Cover if image_aspect > rect_aspect => {
             let visible = rect_aspect / image_aspect;
             u0 = (1.0 - visible) / 2.0;
@@ -1837,6 +1851,9 @@ fn push_image_quad(
     let colour = if let Some(unread) = run.avatar {
         let [cx, cy] = position(scene, rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
         [cx, cy, rect.width / scene.width as f32 * if unread { -1.0 } else { 1.0 }, -rect.height / scene.height as f32]
+    } else if run.transform.rotation != 0 {
+        // Negative blue selects UV rotation; negative alpha remains avatar-only.
+        [run.transform.rotation as f32, 0.0, -1.0, 1.0]
     } else { [1.0; 4] };
     instances.push(TextInstance {
         rect: [left, top, right, bottom],

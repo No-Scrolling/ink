@@ -260,7 +260,7 @@ fn compile(project: &Project, profile: Profile) -> Result<()> {
     Ok(())
 }
 
-const BYTECODE_BUNDLES: [&str; 3] = ["app.js", "worker.js", "ink-assets/ink-web.js"];
+const BYTECODE_BUNDLES: [&str; 4] = ["app.js", "worker.js", "overlay.js", "ink-assets/ink-web.js"];
 
 fn release_assets_path(project: &Project) -> PathBuf {
     project.work_path().join("android/release-assets")

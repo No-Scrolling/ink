@@ -8,6 +8,7 @@ use crate::{Capability, Project, write_if_changed};
 pub(super) struct Bundle {
     pub source: Vec<u8>,
     pub worker: Option<Vec<u8>>,
+    pub overlay: Option<Vec<u8>>,
     pub icons: Vec<u8>,
     pub capabilities: crate::Capabilities,
     pub assets: Vec<Asset>,
@@ -108,6 +109,31 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
     } else {
         None
     };
+    let overlay = if let Some(overlay_source) = &project.config.overlay_entry {
+        let entry = project.work_path().join("overlay-entry.ts");
+        let output = project.work_path().join("bundle/overlay.js");
+        let source = format!(
+            "import {};\nimport {{ startOverlays }} from '@ink/overlays/runtime';\nstartOverlays();\n",
+            serde_json::to_string(overlay_source)?,
+        );
+        write_if_changed(&entry, source.as_bytes())?;
+        run(Command::new("bun")
+            .current_dir(project.root())
+            .arg(&builder)
+            .arg(project.root())
+            .arg(&entry)
+            .arg(&output)
+            .arg("release"))?;
+        let overlay: Metadata =
+            serde_json::from_slice(&fs::read(output.with_extension("js.metadata.json"))?)?;
+        uses.inputs.extend(overlay.inputs);
+        uses.assets.extend(overlay.assets);
+        uses.capabilities.extend(overlay.capabilities);
+        uses.icons.extend(overlay.icons);
+        Some(fs::read(output)?)
+    } else {
+        None
+    };
     let mut capabilities = crate::Capabilities::default();
     for capability in &project.config.capabilities {
         capabilities.insert(*capability);
@@ -117,6 +143,11 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
     }
     if worker.is_some() {
         capabilities.insert(Capability::Background);
+    }
+    if overlay.is_some() {
+        capabilities.insert(Capability::Overlays);
+    } else if capabilities.iter().any(|capability| capability == Capability::Overlays) {
+        anyhow::bail!("Overlay support requires an [overlays] entry in ink.toml");
     }
     let compiler = project
         .root()
@@ -199,6 +230,7 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
         source,
         manifest,
         worker,
+        overlay,
         icons: ink_core::ReactIcon::encode(&icons)?,
         capabilities,
         assets: uses.assets,

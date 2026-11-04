@@ -19,6 +19,8 @@ type MediaPage = { items: MediaItem[]; nextCursor: string | null };
 export type MediaPickerProps = {
   kind?: "image" | "video" | "all";
   title?: string;
+  selectionOrder?: "library" | "selection";
+  multiple?: boolean;
   onSelect: (files: FileRef[]) => void | Promise<void>;
 };
 
@@ -33,9 +35,14 @@ function decodePage(value: string): MediaPage {
   return page as MediaPage;
 }
 
-export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" : kind === "video" ? "Videos" : "Photos and videos", onSelect }: MediaPickerProps) {
+export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" : kind === "video" ? "Videos" : "Photos and videos", selectionOrder = "library", multiple = true, onSelect }: MediaPickerProps) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggleSelected = useCallback((id: string) => setSelected(previous => {
+    const next = new Set(multiple ? previous : []);
+    if (previous.has(id)) next.delete(id); else next.add(id);
+    return next;
+  }), [multiple]);
   const [permission, setPermission] = useState<PermissionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -102,8 +109,9 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
     const imported: FileRef[] = [];
     let delivered = false;
     try {
-      for (const item of items.filter(item => selected.has(item.id))) {
-        const file = decodeFileRef(await callNative("files", "media-import", { id: item.id }, { signal, timeoutMs: 600_000 }));
+      const orderedIds = selectionOrder === "selection" ? [...selected] : items.filter(item => selected.has(item.id)).map(item => item.id);
+      for (const id of orderedIds) {
+        const file = decodeFileRef(await callNative("files", "media-import", { id }, { signal, timeoutMs: 600_000 }));
         if (!file) throw new NativeError("protocol", "Media import returned no file");
         imported.push(file);
       }
@@ -141,13 +149,11 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
         onLoadMore: async () => { if (active.current) await loadPage(active.current.signal); },
         renderItem: nativeListRow((row: MediaItem[]) => createElement("MediaGridRow", null, row.map(item => createElement("MediaCell", {
           key: item.id, src: item.src, selected: selected.has(item.id), video: item.mimeType.startsWith("video/"), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
-          onPress: () => setSelected(previous => { const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; }),
+          onPress: () => toggleSelected(item.id),
         }))), row => [Array.from({ length: 3 }, (_, index) => {
           const item = row[index];
           return { hidden: !item, src: item?.src ?? row[0].src, selected: !!item && selected.has(item.id),
-            video: !!item?.mimeType.startsWith("video/"), onPress: item && (() => setSelected(previous => {
-              const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next;
-            })) };
+            video: !!item?.mimeType.startsWith("video/"), onPress: item && (() => toggleSelected(item.id)) };
         })], mediaTemplate),
       }));
 }

@@ -62,6 +62,17 @@ fn text_vertex(
     output.uv = uv_rect.xy + corner * (uv_rect.zw - uv_rect.xy);
     output.colour = colour;
     output.circle = vec2<f32>(0.0);
+    if colour.z < 0.0 && colour.w > 0.0 {
+        let uv = output.uv;
+        if colour.x == 90.0 {
+            output.uv = vec2<f32>(uv.y, 1.0 - uv.x);
+        } else if colour.x == 180.0 {
+            output.uv = vec2<f32>(1.0 - uv.x, 1.0 - uv.y);
+        } else if colour.x == 270.0 {
+            output.uv = vec2<f32>(1.0 - uv.y, uv.x);
+        }
+        output.colour = vec4<f32>(1.0);
+    }
     if colour.w < 0.0 {
         output.circle = (position - colour.xy) / abs(colour.zw);
     }

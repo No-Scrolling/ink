@@ -90,10 +90,11 @@ export function Button<const D extends Destination>(props: PressProps<D> & {
 }
 
 export { Row, Image, Avatar } from "./image";
-export { Canvas, Rectangle, CanvasText, CanvasIcon } from "./canvas";
+export { Canvas, Rectangle, CanvasRange, CanvasText, CanvasIcon } from "./canvas";
 
 export function Field<const D extends Destination>(props: PressProps<D> & {
   label: string;
+  disabled?: boolean;
   children?: ReactNode;
 }) {
   const { href, url, onPress, ...rest } = props;

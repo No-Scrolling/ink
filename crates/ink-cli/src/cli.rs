@@ -85,6 +85,10 @@ pub enum InkCommand {
         /// Stream application and crash logs
         #[arg(long)]
         logs: bool,
+
+        /// Build and watch without opening the app automatically
+        #[arg(long)]
+        no_open: bool,
     },
 
     /// List connected Android devices

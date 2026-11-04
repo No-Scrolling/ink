@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     fmt,
@@ -340,6 +340,7 @@ pub enum TextInputAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
+    CanvasRange { id: usize },
     Seek { id: usize, left: f32, width: f32, duration: f32 },
     ClearInput {
         state: StateId,
@@ -358,7 +359,7 @@ impl Action {
     fn changes_layout(&self) -> bool {
         match self {
             Self::ClearInput { .. } | Self::FocusTextInput { .. } => true,
-            Self::Native { .. } | Self::Back | Self::Seek { .. } => false,
+            Self::Native { .. } | Self::Back | Self::Seek { .. } | Self::CanvasRange { .. } => false,
         }
     }
 }
@@ -532,14 +533,27 @@ fn pending_image_on_screen(scene: &Scene, image: &PendingImage) -> bool {
     visible.width > 0.0 && visible.height > 0.0
 }
 
-fn image_content_rect(image: &ImageData, mut rect: Rect, fit: ImageFit) -> Rect {
+fn image_content_rect(image: &ImageData, mut rect: Rect, fit: ImageFit, rotation: u16) -> Rect {
     if rect.width <= 0.0 || rect.height <= 0.0 || image.height() == 0 {
         return rect;
     }
-    let image_aspect = image.width() as f32 / image.height() as f32;
+    let image_aspect = if rotation == 90 || rotation == 270 {
+        image.height() as f32 / image.width() as f32
+    } else { image.width() as f32 / image.height() as f32 };
     let rect_aspect = rect.width / rect.height;
     match fit {
-        ImageFit::Cover => rect,
+        ImageFit::Cover if image_aspect > rect_aspect => {
+            let width = rect.height * image_aspect;
+            rect.x += (rect.width - width) / 2.0;
+            rect.width = width;
+            rect
+        }
+        ImageFit::Cover => {
+            let height = rect.width / image_aspect;
+            rect.y += (rect.height - height) / 2.0;
+            rect.height = height;
+            rect
+        }
         ImageFit::Contain if image_aspect > rect_aspect => {
             let height = rect.width / image_aspect;
             rect.y += (rect.height - height) / 2.0;
@@ -665,6 +679,7 @@ enum NodeKind {
         label: String,
         value: String,
         action: Option<Action>,
+        disabled: bool,
     },
     Icon {
         mask: Mask,
@@ -674,6 +689,12 @@ enum NodeKind {
     },
     Image {
         avatar: Option<bool>,
+        rotation: Option<u16>,
+        background: Option<Colour>,
+        crop: Option<ImageCrop>,
+        crop_events: bool,
+        horizontal_guides: Vec<f32>,
+        overlay: Option<(ImageSource, Rect)>,
         looping: bool,
         source: ImageSource,
         preload: Vec<ImageSource>,
@@ -835,6 +856,7 @@ impl Node {
                 label: label.into(),
                 value,
                 action,
+                disabled: false,
             },
         }
     }
@@ -859,6 +881,12 @@ impl Node {
             identity: NodeIdentity(0),
             kind: NodeKind::Image {
                 avatar: None,
+                rotation: None,
+                background: None,
+                crop: None,
+                crop_events: false,
+                horizontal_guides: Vec::new(),
+                overlay: None,
                 looping: false,
                 preload: Vec::new(),
                 retain_while_loading: false,
@@ -1015,14 +1043,23 @@ pub struct ImageRun {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImageTransform {
+    pub rotation: u16,
     pub scale: f32,
     pub translation_x: f32,
     pub translation_y: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageCrop {
+    pub zoom: f32,
+    pub x: f32,
+    pub y: f32,
+}
+
 impl Default for ImageTransform {
     fn default() -> Self {
         Self {
+            rotation: 0,
             scale: 1.0,
             translation_x: 0.0,
             translation_y: 0.0,
@@ -1127,6 +1164,8 @@ struct HitRegion {
     long_action: Option<Action>,
     drag_group: Option<NodeIdentity>,
     drag_action: Option<Action>,
+    drag_start: Option<Action>,
+    drag_end: Option<Action>,
     scrolling: bool,
     preserve_input: bool,
     haptic: bool,
@@ -1141,6 +1180,7 @@ struct PressTarget {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PressRole {
+    CanvasRange,
     Event(&'static str),
     Native,
     Seek,
@@ -1242,6 +1282,7 @@ struct ImagePanPointer {
 
 #[derive(Clone, Copy, Debug)]
 enum Pointer {
+    CanvasRange(canvas::RangePointer),
     CanvasDrag { group: NodeIdentity, previous: (f32, f32), target: Option<PressTarget> },
     Content(ContentPointer),
     TextInput(TextInputPointer),
@@ -1263,6 +1304,8 @@ struct ImageZoomState {
     content: Rect,
     scrolling: bool,
     transform: ImageTransform,
+    crop: Option<ImageCrop>,
+    crop_events: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1360,6 +1403,7 @@ struct PlaybackProgress {
     position: f32,
     duration: f32,
     playing: bool,
+    looping: bool,
     started: Instant,
     quad: usize,
     width: f32,
@@ -1370,13 +1414,40 @@ struct PlaybackProgress {
 impl PlaybackProgress {
     fn current(&self) -> f32 {
         let elapsed = if self.playing { self.started.elapsed().as_secs_f32() * self.speed } else { 0.0 };
-        (self.position + elapsed).min(self.duration)
+        let position = self.position + elapsed;
+        if self.looping && self.playing && self.duration > 0.0 {
+            position.rem_euclid(self.duration)
+        } else {
+            position.min(self.duration)
+        }
     }
 
     fn animating(&self) -> bool {
-        self.visible && self.playing && self.current() < self.duration
+        self.visible && self.playing && self.duration > 0.0
+            && (self.looping || self.current() < self.duration)
+    }
+
+    /// Time until the bar's shaded edge, the elapsed label or the loop point next changes.
+    fn next_change(&self, left: f32) -> Duration {
+        let current = self.current();
+        let mut media = self.duration - current;
+        if self.elapsed_label.is_some() {
+            media = media.min(current.max(0.0).floor() + 1.0 - current);
+        }
+        if self.width > 0.0 {
+            let right = left + self.width * (current / self.duration).clamp(0.0, 1.0);
+            let next = ((right * PROGRESS_EDGE_STEPS).floor() + 1.0) / PROGRESS_EDGE_STEPS;
+            media = media.min((next - right) * self.duration / self.width);
+        }
+        // Land just past the boundary so the frame sees the change.
+        Duration::from_secs_f32(media.max(0.0) / self.speed) + Duration::from_millis(1)
     }
 }
+
+/// Shading steps for the progress bar's partially covered pixel.
+const PROGRESS_EDGE_STEPS: f32 = 4.0;
+/// Clock corrections larger than this, in seconds, are seeks that should draw at once.
+const PLAYBACK_CLOCK_JUMP: f32 = 0.25;
 
 pub struct Engine {
     root: Node,
@@ -1421,6 +1492,7 @@ pub struct Engine {
     image_screens: HashMap<NodeIdentity, Option<Instant>>,
     visible_image_screens: BTreeSet<NodeIdentity>,
     image_zooms: HashMap<NodeIdentity, ImageZoomState>,
+    canvas_ranges: HashMap<NodeIdentity, canvas::RangeState>,
     visible_zoom_images: BTreeSet<NodeIdentity>,
     image_pinch: Option<ImagePinch>,
     last_native_request: Option<NativeRequest>,
@@ -1512,6 +1584,7 @@ impl Engine {
             playback_clocks: HashMap::new(),
             capture_readings: capture::CaptureReadings::default(),
             image_zooms: HashMap::new(),
+            canvas_ranges: HashMap::new(),
             visible_zoom_images: BTreeSet::new(),
             image_pinch: None,
             last_native_request: None,
@@ -1833,6 +1906,15 @@ impl Engine {
         true
     }
 
+    pub fn set_viewport_scale(&mut self, scale: f32) -> bool {
+        if !scale.is_finite() || scale <= 0.0 || self.viewport.scale == scale {
+            return false;
+        }
+        self.viewport.scale = scale;
+        self.rebuild_viewport();
+        true
+    }
+
     pub fn set_keyboard_inset(&mut self, inset: u32) -> bool {
         if self.keyboard_inset == inset {
             return false;
@@ -1873,6 +1955,17 @@ impl Engine {
     }
 
     pub fn tap(&mut self, x: f32, y: f32) -> bool {
+        self.snapshot_canvas_ranges();
+        if let Some(Action::CanvasRange { id }) = self.hit_region_at(x, y).map(|region| &region.action) {
+            let range = NodeIdentity(*id);
+            self.begin_canvas_range(-1, range, x, y);
+            let outcome = self.pointer_up(-1, x, y);
+            return outcome.changed || outcome.activated;
+        }
+        // Snapshot gestures into the same FIFO as the following press event. The
+        // confirmation handler therefore always sees the latest native crop.
+        let crops: Vec<_> = self.image_zooms.keys().copied().collect();
+        for image in crops { self.emit_image_crop(image); }
         let action = self.hit_region_at(x, y)
             .map(|region| (match region.action.clone() {
                 Action::Seek { id, left, width, duration } => react::event(id, "onSeek", vec![serde_json::json!(((x - left) / width).clamp(0.0, 1.0) * duration)]),
@@ -1945,9 +2038,23 @@ impl Engine {
             return PointerOutcome::default();
         }
 
+        if let Some(Action::CanvasRange { id: range }) = self.hit_region_at(x, y).map(|region| &region.action) {
+            return self.begin_canvas_range(id, NodeIdentity(*range), x, y);
+        }
+
+        if let Some(region) = self.hit_region_at(x, y).cloned()
+            && let Some(group) = region.drag_group
+            && let Some(action) = region.drag_start
+        {
+            self.pointers.insert(id, Pointer::CanvasDrag { group, previous: (x, y), target: Some(region.target) });
+            self.claim_pointer(id);
+            let activated = self.apply(action);
+            return PointerOutcome { activated, haptic: activated && region.haptic, ..PointerOutcome::default().captured() };
+        }
+
         if let Some(image) = self.zoomable_image_at(x, y)
             && let Some(zoom) = self.image_zooms.get(&image).copied()
-            && zoom.transform.scale > 1.0
+            && (zoom.transform.scale > 1.0 || zoom.crop.is_some())
         {
             self.pointers.insert(id, Pointer::ImagePan(ImagePanPointer {
                 image,
@@ -1988,6 +2095,7 @@ impl Engine {
         };
 
         match pointer {
+            Pointer::CanvasRange(pointer) => self.move_canvas_range(id, pointer, x, y),
             Pointer::CanvasDrag { group, previous, target } =>
                 self.move_canvas_pointer(id, group, previous, target, x, y),
             Pointer::Content(pointer) => self.move_content_pointer(id, pointer, x, y, tap_slop),
@@ -2035,8 +2143,10 @@ impl Engine {
         let Some(pointer) = self.pointers.remove(&id) else {
             return PointerOutcome::default().captured();
         };
+        if let Pointer::ImagePan(pointer) = pointer { self.emit_image_crop(pointer.image); }
 
         match pointer {
+            Pointer::CanvasRange(pointer) => self.end_canvas_range(id, pointer, x, y),
             Pointer::Content(ContentPointer {
                 dragging: false,
                 cancelled: false,
@@ -2081,8 +2191,14 @@ impl Engine {
                     }) && self.focus_text_input(input, x, y)
                 }))
             }
-            Pointer::CanvasDrag { .. }
-            | Pointer::ScrollThumb { .. }
+            Pointer::CanvasDrag { target, .. } => {
+                let action = self.hit_regions.iter().find(|region| Some(region.target) == target)
+                    .and_then(|region| region.drag_end.clone().map(|action| (action, region.haptic)));
+                let haptic = action.as_ref().is_some_and(|(_, haptic)| *haptic);
+                let activated = action.is_some_and(|(action, _)| self.apply(action));
+                PointerOutcome { activated, haptic: activated && haptic, ..PointerOutcome::default().captured() }
+            }
+            Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
             | Pointer::TextInput(_)
             | Pointer::ImagePan(_)
@@ -2122,9 +2238,23 @@ impl Engine {
         PointerOutcome { changed: changes_layout && activated, activated, haptic: activated, captured: true }
     }
 
-    pub fn pointer_cancel(&mut self) {
+    pub fn pointer_cancel(&mut self) -> PointerOutcome {
+        let ranges: Vec<_> = self.pointers.values().filter_map(|pointer| match pointer {
+            Pointer::CanvasRange(pointer) => Some(*pointer),
+            _ => None,
+        }).collect();
+        let mut activated = false;
+        for pointer in ranges { activated |= self.cancel_canvas_range(pointer); }
+        let endings: Vec<_> = self.pointers.values().filter_map(|pointer| match pointer {
+            Pointer::CanvasDrag { target, .. } => self.hit_regions.iter()
+                .find(|region| Some(region.target) == *target)
+                .and_then(|region| region.drag_end.clone()),
+            _ => None,
+        }).collect();
         self.pointers.clear();
         self.gesture_owner = None;
+        for action in endings { activated |= self.apply(action); }
+        PointerOutcome { activated, ..PointerOutcome::default().captured() }
     }
 
     fn claim_pointer(&mut self, id: i32) {
@@ -2200,6 +2330,7 @@ impl Engine {
     }
 
     pub fn image_pinch_end(&mut self) {
+        if let Some(pinch) = self.image_pinch { self.emit_image_crop(pinch.image); }
         self.image_pinch = None;
     }
 
@@ -2218,7 +2349,7 @@ impl Engine {
             (zoom.transform.scale.floor() + 1.0).clamp(2.0, IMAGE_MAX_SCALE)
         };
         let target = if next_scale == 1.0 {
-            ImageTransform::default()
+            ImageTransform { rotation: zoom.transform.rotation, ..ImageTransform::default() }
         } else {
             let scroll = if zoom.scrolling {
                 self.scroll_offset - self.scroll_origin
@@ -2228,6 +2359,7 @@ impl Engine {
             constrain_image_transform(
                 zoom,
                 ImageTransform {
+                    rotation: zoom.transform.rotation,
                     scale: next_scale,
                     translation_x: x
                         - (x - zoom.transform.translation_x) * next_scale / zoom.transform.scale,
@@ -2237,7 +2369,9 @@ impl Engine {
                 },
             )
         };
-        PointerOutcome::changed(self.set_image_transform(image, target)).captured()
+        let changed = self.set_image_transform(image, target);
+        self.emit_image_crop(image);
+        PointerOutcome::changed(changed).captured()
     }
 
     fn zoomable_image_at(&self, x: f32, y: f32) -> Option<NodeIdentity> {
@@ -2284,6 +2418,14 @@ impl Engine {
         }
         self.scene.image_revision = self.scene.image_revision.wrapping_add(1);
         true
+    }
+
+    fn emit_image_crop(&mut self, image: NodeIdentity) {
+        let Some(zoom) = self.image_zooms.get(&image).copied().filter(|zoom| zoom.crop_events) else { return; };
+        let transform = zoom.transform;
+        let x = (((zoom.viewport.x + zoom.viewport.width / 2.0 - transform.translation_x) / transform.scale - zoom.content.x) / zoom.content.width).clamp(0.0, 1.0);
+        let y = (((zoom.viewport.y + zoom.viewport.height / 2.0 - transform.translation_y) / transform.scale - zoom.content.y) / zoom.content.height).clamp(0.0, 1.0);
+        self.apply(react::event(image.0, "onCropChange", vec![serde_json::json!({ "zoom": transform.scale, "x": x, "y": y })]));
     }
 
     fn text_input_at(&self, x: f32, y: f32) -> Option<TextInputLayout> {
@@ -2595,6 +2737,19 @@ impl Engine {
             || self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
     }
 
+    /// How long until the scene changes on its own: zero for continuous animations, or the next
+    /// visible step of slow playback progress.
+    pub fn next_scene_frame(&self) -> Option<Duration> {
+        if self.marquees.values().any(|marquee| marquee.visible)
+            || self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
+        {
+            return Some(Duration::ZERO);
+        }
+        self.playback_progress.values().filter(|progress| progress.animating())
+            .map(|progress| progress.next_change(self.scene.quads[progress.quad].rect.x))
+            .min()
+    }
+
     pub fn update_playback_clock(&mut self, controller: u64, position: f32, duration: f32, playing: bool, speed: f32) -> bool {
         if controller == 0 || !position.is_finite() || !duration.is_finite() || !speed.is_finite()
             || position < 0.0 || duration < 0.0 || speed <= 0.0 { return false; }
@@ -2602,14 +2757,19 @@ impl Engine {
         self.playback_clocks.insert(controller, PlaybackClock { position, duration, playing, speed, started });
         let mut visible = false;
         let mut duration_changed = false;
+        let mut changed = false;
         for progress in self.playback_progress.values_mut().filter(|progress| progress.clock == Some(controller)) {
             visible |= progress.visible;
             duration_changed |= progress.duration != duration;
+            // Routine updates while playing only correct drift, which the next scheduled frame shows.
+            changed |= progress.visible && (!playing || progress.playing != playing
+                || progress.speed != speed || progress.duration != duration
+                || (progress.current() - position).abs() > PLAYBACK_CLOCK_JUMP);
             progress.position = position; progress.duration = duration; progress.playing = playing;
             progress.speed = speed; progress.started = started;
         }
         if visible && duration_changed { self.rebuild_scene(); }
-        visible
+        changed
     }
 
     pub fn remove_playback_clock(&mut self, controller: u64) {
@@ -2677,8 +2837,9 @@ impl Engine {
             changed |= quad.rect.width != solid_width;
             quad.rect.width = solid_width;
             // Shade the partially covered pixel so slow progress doesn't jump pixel by pixel.
+            // Quarter steps look the same while letting idle frames wait for the next step.
             let edge = &mut self.scene.quads[progress.quad + 1];
-            let alpha = right.fract().min(width);
+            let alpha = ((right.fract() * PROGRESS_EDGE_STEPS).floor() / PROGRESS_EDGE_STEPS).min(width);
             changed |= edge.rect.x != right.floor() || edge.colour.alpha != alpha;
             edge.rect.x = right.floor();
             edge.colour.alpha = alpha;
@@ -2692,6 +2853,7 @@ impl Engine {
     }
 
     pub fn can_present_pointer_move(&self, id: i32, y: f32) -> bool {
+        if matches!(self.pointers.get(&id), Some(Pointer::CanvasRange(_))) { return true; }
         let Some(Pointer::Content(pointer)) = self.pointers.get(&id) else { return false; };
         // Before dragging starts this includes touch slop, so checking both
         // endpoints conservatively covers the viewport the move can produce.
@@ -2724,6 +2886,7 @@ impl Engine {
 
     fn apply(&mut self, action: Action) -> bool {
         match action {
+            Action::CanvasRange { .. } => false,
             Action::Seek { .. } => false,
             Action::ClearInput { state } => {
                 self.state[state.0] = StateValue::String(String::new());
@@ -2743,6 +2906,7 @@ impl Engine {
     }
 
     fn pop_route(&mut self) -> bool {
+        self.snapshot_canvas_ranges();
         if let Some((_, operation)) = &self.navigation_handler {
             return self.queue_native_action(operation.clone());
         }
@@ -2835,6 +2999,7 @@ impl Engine {
                 input.is_some()
             },
             Pointer::CanvasDrag { group, .. } => self.hit_regions.iter().any(|region| region.drag_group == Some(*group)),
+            Pointer::CanvasRange(pointer) => self.canvas_ranges.contains_key(&pointer.range),
             Pointer::ImagePan(pointer) => self.visible_zoom_images.contains(&pointer.image),
             Pointer::ScrollThumb { .. } | Pointer::ScrollTrack { .. } => self.scene.scroll_bar.is_some(),
             _ => true,
@@ -2884,6 +3049,7 @@ impl Engine {
         self.text_inputs.clear();
         self.visible_images.clear();
         self.visible_zoom_images.clear();
+        self.reset_canvas_range_layout();
         self.scroll_max = 0.0;
         self.scene.scroll_max = 0.0;
         self.scrolling = false;
@@ -2931,6 +3097,7 @@ impl Engine {
         self.sync_visible_images();
         self.image_zooms
             .retain(|identity, _| self.visible_zoom_images.contains(identity));
+        self.retain_canvas_ranges();
         if self
             .image_pinch
             .is_some_and(|pinch| !self.visible_zoom_images.contains(&pinch.image))
@@ -3308,7 +3475,7 @@ impl Engine {
                 }
             }
             NodeKind::MediaCell { source, selected, video, check, play, action } => {
-                self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, false, None, rect);
+                self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, false, None, None, None, false, rect);
                 if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
                 if *selected {
                     self.scene.masks.push(MaskRun {
@@ -3548,7 +3715,7 @@ impl Engine {
                 edge.colour.alpha = 0.0;
                 self.scene.quads.push(edge);
                 let progress = self.playback_progress.entry(node.identity).or_insert_with(|| PlaybackProgress {
-                    position: *position, duration: *duration, playing: *playing, clock: *clock, speed,
+                    position: *position, duration: *duration, playing: *playing, looping: false, clock: *clock, speed,
                     started: Instant::now(), quad, width: rect.width, visible: true,
                     elapsed_label: None,
                 });
@@ -3724,7 +3891,8 @@ impl Engine {
                 label,
                 value,
                 action,
-            } => self.layout_field(label, value, action, rect),
+                disabled,
+            } => self.layout_field(label, value, action, *disabled, rect),
             NodeKind::Icon { mask, tone, bounds, .. } => self.scene.masks.push(MaskRun {
                 mask: mask.clone(),
                 rect: bounds.map_or(rect, |bounds| {
@@ -3736,8 +3904,20 @@ impl Engine {
                 colour: self.scene.colour(tone_colour(*tone)),
                 scrolling: self.scrolling,
             }),
-            NodeKind::Image { source, fallback, fit, zoomable, looping, preload, retain_while_loading, avatar, .. } => {
-                self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, *looping, *avatar, rect);
+            NodeKind::Image { source, fallback, fit, zoomable, looping, preload, retain_while_loading, avatar, rotation, background, crop, crop_events, horizontal_guides, overlay, .. } => {
+                if let Some(colour) = background {
+                    self.scene.quads.push(Quad { rect, clip: self.clip, colour: self.scene.colour(*colour), scrolling: self.scrolling });
+                }
+                self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, *looping, *avatar, *rotation, *crop, *crop_events, rect);
+                self.layout_image_guides(horizontal_guides, rect);
+                if let Some((source, bounds)) = overlay {
+                    let overlay_rect = Rect { x: rect.x + bounds.x * rect.width, y: rect.y + bounds.y * rect.height,
+                        width: bounds.width * rect.width, height: bounds.height * rect.height };
+                    let clip = self.clip;
+                    self.clip = self.clip.intersection(rect);
+                    self.layout_image(node.identity, source, None, ImageFit::Contain, false, false, false, None, None, None, false, overlay_rect);
+                    self.clip = clip;
+                }
                 let visible = rect.intersection(self.clip);
                 if visible.width > 0.0 && visible.height > 0.0 {
                     for source in preload {
@@ -3813,7 +3993,7 @@ impl Engine {
         bottom_inset: bool,
         rect: Rect,
     ) {
-        let left_action = left_action.filter(|_| self.back_icon.is_none());
+        let automatic_back = left_action.is_none();
         let has_header = title.is_some() || self.back_icon.is_some() || left_action.is_some() || right_action.is_some();
         let header_height = if has_header {
             self.scaled(HEADER_HEIGHT)
@@ -3822,7 +4002,7 @@ impl Engine {
         };
         let header_inset = self.scaled(HEADER_HORIZONTAL_INSET);
         let header_button_size = self.scaled(HEADER_BUTTON_SIZE);
-        if self.back_icon.is_some() {
+        if self.back_icon.is_some() && automatic_back {
             self.push_hit_region(
                 Rect {
                     x: rect.x + header_inset,
@@ -4095,7 +4275,7 @@ impl Engine {
             });
         }
 
-        if let Some(back) = &self.back_icon {
+        if let Some(back) = self.back_icon.as_ref().filter(|_| automatic_back) {
             let icon_size = self.scaled(HEADER_BACK_ICON_SIZE);
             self.scene.masks.push(MaskRun {
                 mask: back.clone(),
@@ -4109,6 +4289,29 @@ impl Engine {
                 colour: self.scene.colour(Colour::WHITE),
                 scrolling: self.scrolling,
             });
+        }
+    }
+
+    fn layout_image_guides(&mut self, guides: &[f32], rect: Rect) {
+        if guides.is_empty() { return; }
+        let dash = self.scaled(6.0).round().max(1.0);
+        let step = dash + self.scaled(4.0).round().max(1.0);
+        let thickness = self.scaled(0.75).round().max(1.0);
+        let clip = rect.intersection(self.clip);
+        for position in guides {
+            let y = (rect.y + rect.height * position).round();
+            for index in 0..(rect.width / step).ceil() as usize {
+                let x = rect.x.round() + index as f32 * step;
+                let width = dash.min(rect.x + rect.width - x);
+                // Masks render above the photo and do not participate in crop gestures.
+                for (height, colour) in [(thickness + 2.0, Colour::BLACK), (thickness, Colour::WHITE)] {
+                    self.scene.masks.push(MaskRun {
+                        mask: Mask::solid(),
+                        rect: Rect { x, y: y - (height / 2.0).floor(), width, height },
+                        clip, colour: self.scene.colour(colour), scrolling: self.scrolling,
+                    });
+                }
+            }
         }
     }
 
@@ -4371,7 +4574,8 @@ impl Engine {
         }
     }
 
-    fn layout_field(&mut self, label: &str, value: &str, action: &Option<Action>, rect: Rect) {
+    fn layout_field(&mut self, label: &str, value: &str, action: &Option<Action>, disabled: bool, rect: Rect) {
+        let start = self.scene.text.len();
         let label_height = self.scaled(FIELD_LABEL_HEIGHT).min(rect.height);
         let label_font_size = self.scaled_font(FIELD_LABEL_SIZE);
         self.scene.text.push(TextRun {
@@ -4399,7 +4603,12 @@ impl Engine {
                 ..rect
             },
         );
-        if let Some(action) = action {
+        if disabled {
+            let colour = self.scene.colour(Colour::MUTED);
+            for run in &mut self.scene.text[start..] {
+                run.colour = colour;
+            }
+        } else if let Some(action) = action {
             self.push_hit_region(rect, action.clone());
         }
     }
@@ -4826,6 +5035,9 @@ impl Engine {
         retain_while_loading: bool,
         looping: bool,
         avatar: Option<bool>,
+        rotation: Option<u16>,
+        crop: Option<ImageCrop>,
+        crop_events: bool,
         rect: Rect,
     ) {
         let visible = rect.intersection(self.clip);
@@ -4847,13 +5059,16 @@ impl Engine {
                 if source.is_empty() {
                     fallback.cloned().map(ImageData::Asset)
                 } else {
+                    // Editing uses one bounded, orientation-independent decode. Fit and
+                    // quarter turns only change the draw, never the source or texture ID.
+                    let editing_size = (rect.width.max(rect.height).ceil().max(1.0) as u32 * 2).min(2048);
                     let key = RemoteImageKey {
                         looping,
                         module: module.clone(),
                         url: source.clone(),
-                        width: rect.width.ceil().max(1.0) as u32,
-                        height: if module == "barcode" { rect.width.ceil().max(1.0) as u32 } else { rect.height.ceil().max(1.0) as u32 },
-                        fit,
+                        width: if rotation.is_some() { editing_size } else { rect.width.ceil().max(1.0) as u32 },
+                        height: if rotation.is_some() { editing_size } else if module == "barcode" { rect.width.ceil().max(1.0) as u32 } else { rect.height.ceil().max(1.0) as u32 },
+                        fit: if rotation.is_some() { ImageFit::Contain } else { fit },
                     };
                     self.visible_images.insert(key.clone());
                     let loaded = match self.remote_images.get(&key) {
@@ -4873,7 +5088,7 @@ impl Engine {
                                 clip: self.clip,
                                 fit,
                                 scrolling: self.scrolling,
-                                needs_layout: zoomable || fallback.is_some() || retain_while_loading,
+                                needs_layout: zoomable || fallback.is_some() || retain_while_loading || rotation.is_some(),
                             });
                         }
                         self.queue_remote_image(key);
@@ -4893,22 +5108,38 @@ impl Engine {
             image.or_else(|| self.retained_images.get(&identity).cloned())
         } else { image };
         if let Some(image) = image {
+            let rotation = rotation.unwrap_or(0);
             let transform = if zoomable {
-                let content = image_content_rect(&image, rect, fit);
+                let content = image_content_rect(&image, rect, fit, rotation);
                 let zoom = self.image_zooms.entry(identity).or_insert(ImageZoomState {
                     viewport: rect,
                     content,
                     scrolling: self.scrolling,
                     transform: ImageTransform::default(),
+                    crop: None,
+                    crop_events,
                 });
                 zoom.viewport = rect;
                 zoom.content = content;
                 zoom.scrolling = self.scrolling;
+                zoom.crop_events = crop_events;
+                if crop != zoom.crop {
+                    if let Some(crop) = crop {
+                        zoom.transform = ImageTransform {
+                            scale: crop.zoom,
+                            translation_x: rect.x + rect.width / 2.0 - (content.x + crop.x * content.width) * crop.zoom,
+                            translation_y: rect.y + rect.height / 2.0 - (content.y + crop.y * content.height) * crop.zoom,
+                            ..zoom.transform
+                        };
+                    }
+                    zoom.crop = crop;
+                }
+                zoom.transform.rotation = rotation;
                 zoom.transform = constrain_image_transform(*zoom, zoom.transform);
                 self.visible_zoom_images.insert(identity);
                 zoom.transform
             } else {
-                ImageTransform::default()
+                ImageTransform { rotation, ..ImageTransform::default() }
             };
             self.scene.images.push(ImageRun {
                 avatar,
@@ -4920,7 +5151,7 @@ impl Engine {
                 scrolling: self.scrolling,
                 transform,
             });
-        } else if zoomable {
+        } else if zoomable && crop.is_none() {
             let height = self.text_line_height(18.0);
             self.layout_text(
                 if failed { "Could not load photo" } else { "Loading…" },
@@ -5205,6 +5436,7 @@ impl Engine {
 
     fn press_target(&self, action: &Action) -> PressTarget {
         let (node, role) = match action {
+            Action::CanvasRange { id } => (NodeIdentity(*id), PressRole::CanvasRange),
             Action::Native { operation } => match operation.event_target {
                 Some((id, name)) => (NodeIdentity(id), PressRole::Event(name)),
                 None => (self.layout_owner, PressRole::Native),
@@ -5241,6 +5473,8 @@ impl Engine {
                 long_action,
                 drag_group: None,
                 drag_action: None,
+                drag_start: None,
+                drag_end: None,
                 scrolling: self.scrolling,
                 preserve_input: false,
                 haptic: true,

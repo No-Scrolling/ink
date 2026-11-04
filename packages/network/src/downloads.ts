@@ -96,6 +96,60 @@ function observe(id: string): SnapshotSource<DownloadState> {
 const command = async (operation: string, id: string): Promise<void> => {
   await callNative("downloads", operation, { id });
 };
+const allDownloads: SnapshotSource<readonly DownloadState[]> = (() => {
+  let snapshot: Snapshot<readonly DownloadState[]> = { status: "loading" };
+  const items = new Map<string, DownloadState>();
+  const listeners = new Set<() => void>();
+  let attachment: ReturnType<typeof attachNativeController> | undefined;
+  const publish = (value: Snapshot<readonly DownloadState[]>) => {
+    snapshot = value;
+    for (const listener of listeners) listener();
+  };
+  return {
+    getSnapshot: () => snapshot,
+    subscribe(listener) {
+      listeners.add(listener);
+      if (!attachment) {
+        const current = attachNativeController("downloads", { all: true }, value => {
+          if (attachment !== current) return;
+          try {
+            if (typeof value !== "object" || value === null) throw new Error("Invalid download update");
+            if ("items" in value && Array.isArray(value.items)) {
+              const decoded = value.items.map(decode);
+              if ("reset" in value && value.reset === true) items.clear();
+              for (const item of decoded) items.set(item.id, item);
+              if (!("complete" in value) || value.complete !== true) return;
+            } else if ("id" in value && typeof value.id === "string" && "item" in value) {
+              if (value.item === null) items.delete(value.id);
+              else {
+                const item = decode(value.item);
+                if (item.id !== value.id) throw new Error("Download update ID does not match");
+                items.set(item.id, item);
+              }
+            } else throw new Error("Invalid download update");
+            publish({ status: "ready", data: Array.from(items.values()) });
+          } catch (error) {
+            publish({ status: "error", error: error instanceof Error ? error : new Error(String(error)) });
+          }
+        });
+        attachment = current;
+        void current.ready.catch(error => {
+          if (attachment === current) publish({ status: "error", error });
+        });
+      }
+      return () => {
+        listeners.delete(listener);
+        if (!listeners.size) {
+          const current = attachment;
+          attachment = undefined;
+          snapshot = { status: "loading" };
+          items.clear();
+          void current?.dispose().catch(error => console.error("Could not stop observing downloads", error));
+        }
+      };
+    },
+  };
+})();
 export const downloads = {
   async enqueue(options: { key: string; url: string; name: string; network?: "connected" | "unmetered" }): Promise<DownloadState> {
     return decode(JSON.parse(await callNative("downloads", "enqueue", options)));
@@ -104,6 +158,8 @@ export const downloads = {
     return decode(JSON.parse(await callNative("downloads", "get", { id })));
   },
   observe,
+  /** Observe the download queue with one native subscription, including additions and removals. */
+  observeAll: () => allDownloads,
   pause: (id: string) => command("pause", id),
   resume: (id: string) => command("resume", id),
   cancel: (id: string) => command("cancel", id),

@@ -18,6 +18,7 @@
     "@ink/network": "workspace:*",
     "@ink/nfc": "workspace:*",
     "@ink/notifications": "workspace:*",
+    "@ink/overlays": "workspace:*",
     "@ink/secure-store": "workspace:*",
     "@ink/store": "workspace:*",
     "@ink/video": "workspace:*",

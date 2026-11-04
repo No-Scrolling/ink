@@ -87,6 +87,7 @@ val inkUsesLocation = inkUses("location")
 val inkUsesNfc = inkUses("nfc")
 val inkUsesBackground = inkUses("background")
 val inkUsesNotifications = inkUses("notifications")
+val inkUsesOverlays = inkUses("overlays")
 val inkUsesNotificationPermission = inkUses("notification-permission")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
 val inkUsesDownloads = inkUses("downloads")
@@ -143,6 +144,7 @@ val generateInkPermissionManifest by tasks.registering {
                 )
             }
             val hasInkComponents = inkUsesDetachedAudio.get() || inkUsesBackground.get() ||
+                inkUsesOverlays.get() ||
                 inkUsesNotifications.get() ||
                 inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get() ||
                 inkUsesLocation.get() || inkUsesNfc.get() || inkUsesNetwork.get() ||
@@ -179,6 +181,11 @@ val generateInkPermissionManifest by tasks.registering {
             if (inkUsesDetachedAudio.get()) {
                 appendLine("        <service android:name=\".InkAudioService\" android:exported=\"true\" android:foregroundServiceType=\"mediaPlayback\">")
                 appendLine("            <intent-filter><action android:name=\"androidx.media3.session.MediaSessionService\" /></intent-filter>")
+                appendLine("        </service>")
+            }
+            if (inkUsesOverlays.get()) {
+                appendLine("        <service android:name=\".InkOverlayService\" android:exported=\"false\" android:foregroundServiceType=\"specialUse\">")
+                appendLine("            <property android:name=\"android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE\" android:value=\"Display an interactive window over other apps at the user's request\" />")
                 appendLine("        </service>")
             }
             if (inkUsesLocation.get()) {

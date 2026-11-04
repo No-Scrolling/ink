@@ -19,7 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture
 
 @UnstableApi
 internal class InkAudioService : MediaSessionService() {
-    private data class Session(val player: ExoPlayer, val session: MediaSession, val persistence: AudioQueuePersistence, val cache: Boolean)
+    private data class Session(val player: ExoPlayer, val session: MediaSession, val persistence: AudioQueuePersistence, val cache: Boolean, val preloadNext: Long, val startupBuffer: Int)
     private val sessions = mutableMapOf<String, Session>()
     private val handler = Handler(Looper.getMainLooper())
     private val controllers = mutableSetOf<MediaSession.ControllerInfo>()
@@ -40,15 +40,21 @@ internal class InkAudioService : MediaSessionService() {
         if (!Regex("[A-Za-z0-9._-]{1,64}").matches(name)) return null
         val contentType = controllerInfo.connectionHints.getInt(CONTENT_TYPE_HINT, C.AUDIO_CONTENT_TYPE_MUSIC)
         val cache = controllerInfo.connectionHints.getBoolean(CACHE_HINT, false)
+        val preloadNext = controllerInfo.connectionHints.getLong(PRELOAD_NEXT_HINT, 0)
+        val startupBuffer = controllerInfo.connectionHints.getInt(STARTUP_BUFFER_HINT, 1000)
+        if (startupBuffer !in 0..30_000) return null
+        if (preloadNext !in 0..30_000) return null
         sessions[name]?.let {
-            return if (it.cache == cache && it.player.audioAttributes.contentType == contentType) it.session else null
+            return if (it.cache == cache && it.preloadNext == preloadNext && it.startupBuffer == startupBuffer && it.player.audioAttributes.contentType == contentType) it.session else null
         }
         if (sessions.size >= 8) return null
         val effects = AudioEffects.get(this, name)
         val player = ExoPlayer.Builder(this, InkAudioRenderersFactory(this, effects))
+            .setLoadControl(audioLoadControl(startupBuffer))
             .setMediaSourceFactory(audioMediaSourceFactory(this, cache))
             .setHandleAudioBecomingNoisy(true)
             .build().apply {
+                preloadConfiguration = ExoPlayer.PreloadConfiguration(preloadNext * 1000)
                 setAudioAttributes(AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(contentType)
@@ -123,7 +129,7 @@ internal class InkAudioService : MediaSessionService() {
             override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) = publishEffects(session)
         })
         publishEffects(session)
-        sessions[name] = Session(player, session, persistence, cache)
+        sessions[name] = Session(player, session, persistence, cache, preloadNext, startupBuffer)
         addSession(session)
         return session
     }
@@ -150,6 +156,8 @@ internal class InkAudioService : MediaSessionService() {
         private const val CONTROLLER_HINT = "ink.controller"
         private const val CONTENT_TYPE_HINT = "ink.contentType"
         private const val CACHE_HINT = "ink.cache"
+        private const val PRELOAD_NEXT_HINT = "ink.preloadNext"
+        private const val STARTUP_BUFFER_HINT = "ink.startupBuffer"
         private const val IDLE_STOP_MS = 15 * 60_000L
     }
 }
