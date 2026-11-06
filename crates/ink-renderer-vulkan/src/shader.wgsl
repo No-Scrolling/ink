@@ -104,3 +104,53 @@ fn text_fragment(input: TextOutput) -> @location(0) vec4<f32> {
     }
     return textureSample(glyph_atlas, glyph_sampler, input.uv) * input.colour;
 }
+
+struct LineOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) pixel: vec2<f32>,
+    @location(1) @interpolate(flat) ends: vec4<f32>,
+    @location(2) @interpolate(flat) clip: vec4<f32>,
+    @location(3) @interpolate(flat) colour: vec4<f32>,
+    @location(4) @interpolate(flat) radius: f32,
+}
+
+// Covers the segment and its round ends, plus a pixel for the antialiased edge.
+@vertex
+fn line_vertex(
+    @builtin(vertex_index) vertex_index: u32,
+    @location(0) ends: vec4<f32>,
+    @location(1) clip: vec4<f32>,
+    @location(2) colour: vec4<f32>,
+    @location(3) shape: vec4<f32>,
+) -> LineOutput {
+    let corner = unit_corner(vertex_index);
+    let start = ends.xy;
+    let span = ends.zw - start;
+    let span_length = length(span);
+    let along = select(vec2<f32>(1.0, 0.0), span / span_length, span_length > 0.0);
+    let across = vec2<f32>(-along.y, along.x);
+    let reach = shape.x + 1.0;
+    let pixel = start + along * (corner.x * (span_length + reach * 2.0) - reach) + across * (corner.y * 2.0 - 1.0) * reach;
+    var output: LineOutput;
+    output.position = vec4<f32>(pixel.x * shape.y - 1.0, 1.0 - pixel.y * shape.z, 0.0, 1.0)
+        + vec4<f32>(transform.translation.xy, 0.0, 0.0);
+    output.pixel = pixel;
+    output.ends = ends;
+    output.clip = clip;
+    output.colour = colour;
+    output.radius = shape.x;
+    return output;
+}
+
+@fragment
+fn line_fragment(input: LineOutput) -> @location(0) vec4<f32> {
+    let pixel = input.pixel;
+    if any(pixel < input.clip.xy) || any(pixel >= input.clip.zw) {
+        discard;
+    }
+    let span = input.ends.zw - input.ends.xy;
+    let along = clamp(dot(pixel - input.ends.xy, span) / max(dot(span, span), 0.0001), 0.0, 1.0);
+    let distance = length(pixel - input.ends.xy - span * along);
+    let coverage = clamp(input.radius + 0.5 - distance, 0.0, 1.0);
+    return vec4<f32>(input.colour.rgb, input.colour.a * coverage);
+}

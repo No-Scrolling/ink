@@ -97,7 +97,22 @@ import { Canvas, CanvasText } from "ink";
 </Canvas>
 ```
 
-Canvas accepts `Rectangle`, `CanvasText` and `CanvasIcon` children. Use `Stack` and `Text` for layouts that need wrapping or automatic spacing.
+Canvas accepts `Rectangle`, `CanvasPath`, `CanvasText` and `CanvasIcon` children. Use `Stack` and `Text` for layouts that need wrapping or automatic spacing.
+
+## Paths
+
+`CanvasPath` draws a line through its points, with round ends and joins. Points use canvas coordinates. A single point draws a dot as wide as the stroke. Use an opaque `stroke`; partly transparent lines appear darker where segments meet.
+
+Paths appear above rectangles and text.
+
+```tsx
+import { Canvas, CanvasPath } from "ink";
+
+<Canvas width={200} height={100}>
+  <CanvasPath points={[[10, 90], [60, 20], [120, 70], [190, 10]]}
+    stroke="#FFFFFF" strokeWidth={4} />
+</Canvas>
+```
 
 ## Icons
 

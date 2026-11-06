@@ -69,6 +69,15 @@ export function CanvasRange({
   });
 }
 
+/** A line through points in canvas units, with round ends and joins. Paths draw above the canvas's rectangles and text. */
+export function CanvasPath({ points, ...props }: {
+  points: readonly (readonly [x: number, y: number])[];
+  stroke?: string;
+  strokeWidth?: number;
+}) {
+  return createElement("CanvasPath", { ...props, points: points.flat() });
+}
+
 export function CanvasText({ children, ...props }: Bounds & {
   children: string | number;
   size?: number;

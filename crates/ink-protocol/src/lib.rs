@@ -59,6 +59,7 @@ pub enum HostKind {
     Stack,
     Canvas,
     CanvasRectangle,
+    CanvasPath,
     CanvasText,
     CanvasIcon,
     Text,

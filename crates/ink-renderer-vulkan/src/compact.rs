@@ -41,6 +41,16 @@ struct QuadInstance {
 
 #[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C)]
+struct LineInstance {
+    ends: [f32; 4],
+    clip: [f32; 4],
+    colour: [f32; 4],
+    /// Radius in pixels, then the pixel-to-clip-space scale.
+    shape: [f32; 4],
+}
+
+#[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
+#[repr(C)]
 struct TextInstance {
     rect: [f32; 4],
     uv: [f32; 4],
@@ -138,11 +148,14 @@ struct PreparedScene {
     height: u32,
     ready: bool,
     quads: Vec<ink_core::Quad>,
+    lines: Vec<ink_core::Line>,
     masks: Vec<PreparedMaskRun>,
     images: Vec<PreparedImageRun>,
     preloaded_images: Vec<(u64, u64)>,
     quad_fixed: Range<u32>,
     quad_scroll: Range<u32>,
+    line_fixed: Range<u32>,
+    line_scroll: Range<u32>,
     text_fixed: Range<u32>,
     text_scroll: Range<u32>,
     image_draws: Vec<ImageDraw>,
@@ -740,6 +753,9 @@ pub struct Renderer {
     quad_buffer: InstanceBuffer<QuadInstance>,
     overlay_buffer: InstanceBuffer<QuadInstance>,
     overlay_instances: Vec<QuadInstance>,
+    /// Created when a scene first draws a path.
+    line_pipeline: Option<gpu::RenderPipeline>,
+    line_buffer: InstanceBuffer<LineInstance>,
     text_pipeline: gpu::RenderPipeline,
     text_buffer: InstanceBuffer<TextInstance>,
     image_buffer: InstanceBuffer<TextInstance>,
@@ -815,8 +831,8 @@ impl Renderer {
             height,
             format: surface.format(),
         };
-        let quad_pipeline = device.pipeline(config.format, false)?;
-        let text_pipeline = device.pipeline(config.format, true)?;
+        let quad_pipeline = device.pipeline(config.format, gpu::PipelineKind::Quad)?;
+        let text_pipeline = device.pipeline(config.format, gpu::PipelineKind::Text)?;
         let fixed_transform_buffer = transform_buffer(&device, "Ink fixed transform");
         let scroll_transform_buffer = transform_buffer(&device, "Ink scroll transform");
         let fixed_transform = fixed_transform_buffer.bind_group();
@@ -849,6 +865,8 @@ impl Renderer {
             quad_buffer,
             overlay_buffer,
             overlay_instances: Vec::with_capacity(2),
+            line_pipeline: None,
+            line_buffer: InstanceBuffer::lazy("Ink line instances"),
             text_pipeline,
             text_buffer,
             image_buffer,
@@ -1074,6 +1092,22 @@ impl Renderer {
                 pass.draw(0..6, self.prepared.text_scroll.clone());
                 reset_scissor(&mut pass, scene);
             }
+            if let Some(pipeline) = &self.line_pipeline {
+                if !self.prepared.line_fixed.is_empty() {
+                    pass.set_pipeline(pipeline);
+                    pass.set_bind_group(0, &self.fixed_transform);
+                    pass.set_vertex_buffer(0, self.line_buffer.buffer());
+                    pass.draw(0..6, self.prepared.line_fixed.clone());
+                }
+                if !self.prepared.line_scroll.is_empty() {
+                    pass.set_pipeline(pipeline);
+                    pass.set_bind_group(0, &self.scroll_transform);
+                    pass.set_vertex_buffer(0, self.line_buffer.buffer());
+                    set_scroll_scissor(&mut pass, scene);
+                    pass.draw(0..6, self.prepared.line_scroll.clone());
+                    reset_scissor(&mut pass, scene);
+                }
+            }
             if overlay_end > 0 {
                 pass.set_pipeline(&self.quad_pipeline);
                 pass.set_bind_group(0, &self.fixed_transform);
@@ -1089,6 +1123,8 @@ impl Renderer {
             let range_length = |range: &Range<u32>| u64::from(range.end - range.start);
             let mut instances = range_length(&self.prepared.quad_fixed)
                 + range_length(&self.prepared.quad_scroll)
+                + range_length(&self.prepared.line_fixed)
+                + range_length(&self.prepared.line_scroll)
                 + range_length(&self.prepared.text_fixed)
                 + range_length(&self.prepared.text_scroll)
                 + u64::from(overlay_end);
@@ -1253,6 +1289,22 @@ impl Renderer {
             self.prepared.quad_fixed = 0..fixed_end;
             self.prepared.quad_scroll = fixed_end..quads.len() as u32;
             self.prepared.quads.clone_from(&scene.quads);
+        }
+        if !self.prepared.ready || viewport_changed || self.prepared.lines != scene.lines {
+            if !scene.lines.is_empty() && self.line_pipeline.is_none() {
+                self.line_pipeline = Some(self.device.pipeline(self.config.format, gpu::PipelineKind::Line)?);
+            }
+            let mut lines = line_instances(scene, false);
+            let fixed_end = lines.len() as u32;
+            lines.extend(line_instances(scene, true));
+            let _uploaded_bytes = self.line_buffer.write(&self.device, &self.queue, &lines);
+            #[cfg(feature = "perf")]
+            {
+                self.perf.uploaded_bytes += _uploaded_bytes as u64;
+            }
+            self.prepared.line_fixed = 0..fixed_end;
+            self.prepared.line_scroll = fixed_end..lines.len() as u32;
+            self.prepared.lines.clone_from(&scene.lines);
         }
 
         let text_changed = self.prepared.text_runs.len() != scene.text.len()
@@ -1655,6 +1707,21 @@ fn push_quad_instance(instances: &mut Vec<QuadInstance>, scene: &Scene, quad: &i
         rect: [left, top, right, bottom],
         colour,
     });
+}
+
+fn line_instances(scene: &Scene, scrolling: bool) -> Vec<LineInstance> {
+    let scale = [2.0 / scene.width as f32, 2.0 / scene.height as f32];
+    scene
+        .lines
+        .iter()
+        .filter(|line| line.scrolling == scrolling)
+        .map(|line| LineInstance {
+            ends: [line.from[0], line.from[1], line.to[0], line.to[1]],
+            clip: [line.clip.x, line.clip.y, line.clip.x + line.clip.width, line.clip.y + line.clip.height],
+            colour: colour(line.colour),
+            shape: [line.width / 2.0, scale[0], scale[1], 0.0],
+        })
+        .collect()
 }
 
 fn push_scrollbar_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {

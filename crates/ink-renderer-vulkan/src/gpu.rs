@@ -304,6 +304,14 @@ impl Texture {
         BindGroup::Texture(self.clone())
     }
 }
+
+#[derive(Clone, Copy)]
+pub enum PipelineKind {
+    Quad,
+    Text,
+    Line,
+}
+
 pub struct RenderPipeline {
     core: Arc<Core>,
     pipeline: vk::Pipeline,
@@ -837,23 +845,34 @@ impl Device {
     pub fn pipeline_cache_data(&self) -> Result<Vec<u8>> {
         Ok(unsafe { self.0.device.get_pipeline_cache_data(self.0.pipeline_cache)? })
     }
-    pub fn pipeline(&self, format: TextureFormat, text: bool) -> Result<RenderPipeline> {
+    pub fn pipeline(&self, format: TextureFormat, kind: PipelineKind) -> Result<RenderPipeline> {
         unsafe {
             let d = &self.0.device;
-            let (vs, fs, vname, fname) = if !text {
-                (
+            let (vs, fs, vname, fname) = match kind {
+                PipelineKind::Quad => (
                     include_bytes!(concat!(env!("OUT_DIR"), "/quad_vertex.spv")).as_slice(),
                     include_bytes!(concat!(env!("OUT_DIR"), "/quad_fragment.spv")).as_slice(),
                     c"quad_vertex",
                     c"quad_fragment",
-                )
-            } else {
-                (
+                ),
+                PipelineKind::Text => (
                     include_bytes!(concat!(env!("OUT_DIR"), "/text_vertex.spv")).as_slice(),
                     include_bytes!(concat!(env!("OUT_DIR"), "/text_fragment.spv")).as_slice(),
                     c"text_vertex",
                     c"text_fragment",
-                )
+                ),
+                PipelineKind::Line => (
+                    include_bytes!(concat!(env!("OUT_DIR"), "/line_vertex.spv")).as_slice(),
+                    include_bytes!(concat!(env!("OUT_DIR"), "/line_fragment.spv")).as_slice(),
+                    c"line_vertex",
+                    c"line_fragment",
+                ),
+            };
+            // Every instance attribute is a vec4.
+            let attributes = match kind {
+                PipelineKind::Quad => 2,
+                PipelineKind::Text => 3,
+                PipelineKind::Line => 4,
             };
             let words = |bytes: &[u8]| {
                 bytes
@@ -885,10 +904,10 @@ impl Device {
             ];
             let binding = [vk::VertexInputBindingDescription {
                 binding: 0,
-                stride: if text { 48 } else { 32 },
+                stride: attributes * 16,
                 input_rate: vk::VertexInputRate::INSTANCE,
             }];
-            let attrs = (0..if text { 3 } else { 2 })
+            let attrs = (0..attributes)
                 .map(|i| vk::VertexInputAttributeDescription {
                     location: i,
                     binding: 0,

@@ -431,7 +431,7 @@ impl ReactTree {
 
     fn update_target(&self, mut id: usize) -> Result<usize> {
         let mut node = self.node(id)?;
-        if matches!(node.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon) {
+        if matches!(node.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon | HostKind::CanvasPath) {
             id = node.parent.context("Canvas item requires a Canvas parent")?;
             node = self.node(id)?;
         }
@@ -679,6 +679,18 @@ impl ReactTree {
                     let child = self.node(*child_id)?;
                     if child.hidden { continue; }
                     let props = &child.props;
+                    if child.kind == HostKind::CanvasPath {
+                        let coordinates = props.get("points").and_then(Json::as_array).context("CanvasPath requires points")?
+                            .iter().map(|value| value.as_f64().filter(|n| n.is_finite()).map(|n| n as f32))
+                            .collect::<Option<Vec<_>>>().context("CanvasPath points must be finite numbers")?;
+                        ensure!(coordinates.len() % 2 == 0, "CanvasPath points must be x, y pairs");
+                        drawings.push(super::canvas::Drawing::Path {
+                            points: coordinates.chunks_exact(2).map(|pair| [pair[0], pair[1]]).collect(),
+                            width: number(props, "strokeWidth")?.unwrap_or(1.0),
+                            colour: canvas_colour(props, "stroke")?.unwrap_or(super::Colour::WHITE),
+                        });
+                        continue;
+                    }
                     let bounds = super::Rect {
                         x: number(props, "x")?.context("Canvas item requires x")?,
                         y: number(props, "y")?.context("Canvas item requires y")?,
@@ -745,7 +757,7 @@ impl ReactTree {
                                 _ => bail!("unsupported CanvasText alignment"),
                             },
                         },
-                        _ => bail!("Canvas accepts only Rectangle, CanvasText and CanvasIcon children"),
+                        _ => bail!("Canvas accepts only Rectangle, CanvasPath, CanvasText and CanvasIcon children"),
                     };
                     drawings.push(drawing);
                 }
@@ -1407,7 +1419,7 @@ fn playback_speed(props: &HostProps) -> Result<f32> {
 
 fn host_enabled(kind: HostKind) -> bool {
     match kind {
-        HostKind::Canvas | HostKind::CanvasIcon | HostKind::CanvasRectangle | HostKind::CanvasText => cfg!(feature = "ui-canvas"),
+        HostKind::Canvas | HostKind::CanvasIcon | HostKind::CanvasPath | HostKind::CanvasRectangle | HostKind::CanvasText => cfg!(feature = "ui-canvas"),
         HostKind::TextInput => cfg!(feature = "text-input"),
         HostKind::CameraPreview => cfg!(feature = "camera"),
         HostKind::MapView => cfg!(feature = "maps"),

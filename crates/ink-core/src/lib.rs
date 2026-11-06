@@ -1008,6 +1008,17 @@ pub struct Quad {
     pub scrolling: bool,
 }
 
+/// A straight stroke with round ends; consecutive lines form a path.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Line {
+    pub from: [f32; 2],
+    pub to: [f32; 2],
+    pub width: f32,
+    pub clip: Rect,
+    pub colour: Colour,
+    pub scrolling: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextRun {
     pub text: SmolStr,
@@ -1133,6 +1144,7 @@ pub struct Scene {
     pub width: u32,
     pub height: u32,
     pub quads: Vec<Quad>,
+    pub lines: Vec<Line>,
     pub text: Vec<TextRun>,
     pub masks: Vec<MaskRun>,
     pub images: Vec<ImageRun>,
@@ -3021,6 +3033,7 @@ impl Engine {
         self.scene.height = self.viewport.height;
         self.react_list_positions.clear();
         self.scene.quads.clear();
+        self.scene.lines.clear();
         self.scene.text.clear();
         self.fixed_text_runs.clear();
         self.clear_capture_runs();

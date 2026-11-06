@@ -1,5 +1,5 @@
 use super::{
-    Action, Colour, Engine, Mask, MaskRun, NodeIdentity, Pointer, PointerOutcome,
+    Action, Colour, Engine, Line, Mask, MaskRun, NodeIdentity, Pointer, PointerOutcome,
     PlaybackProgress, PressTarget, Quad, Rect, TextAlign, TextRun,
 };
 use std::time::Instant;
@@ -11,6 +11,7 @@ pub(super) enum Drawing {
         start_event: bool, commit_event: bool, snapshot_event: bool, seek_event: bool,
     },
     Icon { bounds: Rect, mask: Mask, colour: Colour },
+    Path { points: Vec<[f32; 2]>, colour: Colour, width: f32 },
     Rectangle {
         bounds: Rect,
         fill: Option<Colour>,
@@ -169,6 +170,19 @@ impl Engine {
                     self.push_hit_region(Rect { y: area.y - spec.hit_slop * scale,
                         height: area.height + spec.hit_slop * scale * 2.0, ..area }, Action::CanvasRange { id: id.0 });
                     if let Some(region) = self.hit_regions.get_mut(region) { region.haptic = false; }
+                }
+                Drawing::Path { points, colour, width } => {
+                    let colour = self.canvas_colour(*colour);
+                    let width = width * scale;
+                    let point = |[x, y]: [f32; 2]| [rect.x + x * scale, rect.y + y * scale];
+                    // A single point draws a dot.
+                    let segments = points.windows(2).map(|pair| (pair[0], pair[1]))
+                        .chain((points.len() == 1).then(|| (points[0], points[0])));
+                    for (from, to) in segments {
+                        self.scene.lines.push(Line {
+                            from: point(from), to: point(to), width, clip: self.clip, colour, scrolling: self.scrolling,
+                        });
+                    }
                 }
                 Drawing::Icon { bounds: area, mask, colour } => {
                     self.scene.masks.push(MaskRun {
