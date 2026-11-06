@@ -34,6 +34,15 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
     val view = InkSurfaceView(context).apply {
         holder.setFormat(PixelFormat.OPAQUE)
         holder.addCallback(this@InkHost)
+        setOnApplyWindowInsetsListener { _, insets ->
+            val bounds = insets.displayCutout?.boundingRects.orEmpty()
+                .flatMap { listOf(it.left, it.top, it.right, it.bottom) }.toIntArray()
+            if (handle != 0L && InkNative.nativeSetDisplayCutouts(handle, bounds)) {
+                requestFrame()
+                callbacks.changed()
+            }
+            insets
+        }
     }
 
     init { check(handle != 0L) { "Ink could not create the runtime" } }

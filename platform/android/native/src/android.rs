@@ -8,7 +8,7 @@ use std::time::Instant;
 use ink_core::PerfTraceSection;
 use ink_core::{
     CameraPortal, CameraPreviewKind, ControllerId, Engine, ImageUpdate, MapPortal, NativeRequestKind, PUBLIC_SANS,
-    PointerOutcome, ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
+    PointerOutcome, Rect, ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
 };
 use ink_renderer_vulkan::{RenderOutcome, Renderer};
 use jni::EnvUnowned;
@@ -694,6 +694,34 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeSetKeyboardInset(
     };
     let mut engine = engine.lock_arc();
     let changed = engine.engine.set_keyboard_inset(height.max(0) as u32);
+    if changed {
+        engine.notify_layout_inputs();
+    }
+    changed
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeSetDisplayCutouts(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    bounds: JIntArray<'_>,
+) -> jboolean {
+    let cutouts = env.with_env(|env| -> jni::errors::Result<Vec<Rect>> {
+        let mut bounds_data = vec![0; env.get_array_length(&bounds)? as usize];
+        env.get_int_array_region(&bounds, 0, &mut bounds_data)?;
+        Ok(bounds_data.chunks_exact(4).map(|bounds| Rect {
+            x: bounds[0] as f32,
+            y: bounds[1] as f32,
+            width: (bounds[2] - bounds[0]).max(0) as f32,
+            height: (bounds[3] - bounds[1]).max(0) as f32,
+        }).collect())
+    }).resolve::<jni::errors::LogErrorAndDefault>();
+    let Some(engine) = engine(handle) else {
+        return false;
+    };
+    let mut engine = engine.lock_arc();
+    let changed = engine.engine.set_display_cutouts(cutouts);
     if changed {
         engine.notify_layout_inputs();
     }

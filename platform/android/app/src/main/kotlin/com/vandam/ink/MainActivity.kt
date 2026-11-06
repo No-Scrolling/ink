@@ -14,6 +14,7 @@ import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
@@ -109,6 +110,9 @@ class MainActivity : Activity(), InkJavaScriptHost {
 
         window.setWindowAnimations(0)
         window.setDecorFitsSystemWindows(false)
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 

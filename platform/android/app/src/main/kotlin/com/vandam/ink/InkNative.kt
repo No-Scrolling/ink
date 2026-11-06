@@ -70,6 +70,9 @@ internal object InkNative {
     external fun nativeSetKeyboardInset(handle: Long, height: Int): Boolean
 
     @JvmStatic
+    external fun nativeSetDisplayCutouts(handle: Long, bounds: IntArray): Boolean
+
+    @JvmStatic
     external fun nativeResize(handle: Long, width: Int, height: Int)
 
     @JvmStatic

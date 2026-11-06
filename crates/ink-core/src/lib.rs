@@ -1470,6 +1470,7 @@ pub struct Engine {
     state: Vec<StateValue>,
     viewport: Viewport,
     keyboard_inset: u32,
+    display_cutouts: Vec<Rect>,
     native_editor_state: Option<StateId>,
     native_editor_lines: Option<(StateId, String, usize)>,
     scene: Scene,
@@ -1539,12 +1540,14 @@ struct Viewport {
 impl Engine {
     pub fn reset_session(&mut self) {
         let viewport = self.viewport;
+        let display_cutouts = self.display_cutouts.clone();
         let light = self.scene.light;
         let revision = self.scene.revision.wrapping_add(1);
         let requests = self.next_request_id;
         let images = self.next_image_generation;
         *self = Self::new();
         self.viewport = viewport;
+        self.display_cutouts = display_cutouts;
         self.scene.light = light;
         self.scene.revision = revision;
         self.next_request_id = requests;
@@ -1558,6 +1561,7 @@ impl Engine {
             state: Vec::new(),
             viewport: Viewport::default(),
             keyboard_inset: 0,
+            display_cutouts: Vec::new(),
             native_editor_state: None,
             native_editor_lines: None,
             scene: Scene::default(),
@@ -1932,6 +1936,16 @@ impl Engine {
             return false;
         }
         self.keyboard_inset = inset;
+        self.rebuild_viewport();
+        true
+    }
+
+    /// Non-functional display areas, in surface pixels.
+    pub fn set_display_cutouts(&mut self, cutouts: Vec<Rect>) -> bool {
+        if self.display_cutouts == cutouts {
+            return false;
+        }
+        self.display_cutouts = cutouts;
         self.rebuild_viewport();
         true
     }
@@ -3991,6 +4005,28 @@ impl Engine {
         }
     }
 
+    fn unobstructed_header(&self, rect: Rect) -> Rect {
+        let mut cutouts: Vec<_> = self.display_cutouts.iter()
+            .map(|cutout| cutout.intersection(rect))
+            .filter(|cutout| cutout.width > 0.0 && cutout.height > 0.0)
+            .collect();
+        cutouts.sort_by(|a, b| a.x.total_cmp(&b.x));
+        let mut start = rect.x;
+        let mut best = Rect { width: 0.0, ..rect };
+        for cutout in cutouts {
+            let width = cutout.x - start;
+            if width > best.width {
+                best = Rect { x: start, width, ..rect };
+            }
+            start = start.max(cutout.x + cutout.width);
+        }
+        let width = rect.x + rect.width - start;
+        if width > best.width {
+            best = Rect { x: start, width, ..rect };
+        }
+        best
+    }
+
     fn layout_screen(
         &mut self,
         children: &[Node],
@@ -4015,10 +4051,11 @@ impl Engine {
         };
         let header_inset = self.scaled(HEADER_HORIZONTAL_INSET);
         let header_button_size = self.scaled(HEADER_BUTTON_SIZE);
+        let header = self.unobstructed_header(Rect { height: header_height, ..rect });
         if self.back_icon.is_some() && automatic_back {
             self.push_hit_region(
                 Rect {
-                    x: rect.x + header_inset,
+                    x: header.x + header_inset,
                     y: rect.y + (header_height - header_button_size) / 2.0,
                     width: header_button_size,
                     height: header_button_size,
@@ -4029,7 +4066,7 @@ impl Engine {
         for (is_left, action) in [(true, left_action), (false, right_action)] {
             let Some((icon, action)) = action else { continue };
             let action_rect = Rect {
-                x: if is_left { rect.x + header_inset } else { rect.x + rect.width - header_inset - header_button_size },
+                x: if is_left { header.x + header_inset } else { header.x + header.width - header_inset - header_button_size },
                 y: rect.y + (header_height - header_button_size) / 2.0,
                 width: header_button_size,
                 height: header_button_size,
@@ -4053,9 +4090,9 @@ impl Engine {
                 };
             let title_height = self.scaled(32.0);
             let title_rect = Rect {
-                x: rect.x + title_inset,
+                x: header.x + title_inset,
                 y: rect.y + (header_height - title_height) / 2.0,
-                width: (rect.width - title_inset * 2.0).max(0.0),
+                width: (header.width - title_inset * 2.0).max(0.0),
                 height: title_height,
             };
             let font_size = self.scaled_font(HEADER_TEXT_SIZE);
@@ -4293,7 +4330,7 @@ impl Engine {
             self.scene.masks.push(MaskRun {
                 mask: back.clone(),
                 rect: Rect {
-                    x: rect.x + header_inset + self.scaled(HEADER_BACK_OFFSET_X),
+                    x: header.x + header_inset + self.scaled(HEADER_BACK_OFFSET_X),
                     y: rect.y + self.scaled(HEADER_BACK_OFFSET_Y),
                     width: icon_size,
                     height: icon_size,
