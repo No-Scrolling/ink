@@ -245,6 +245,14 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeStartJavaScript(
             return false as jboolean;
         }
     };
+    // The theme is optional; apps without theme.ts have no theme asset.
+    let theme = match assets.read(c"ink-theme-v1.bin").ok().map(|bytes| ink_core::ThemeBundle::decode(&bytes)).transpose() {
+        Ok(theme) => theme,
+        Err(error) => {
+            android_log(ANDROID_LOG_ERROR, &format!("invalid theme asset: {error:#}"));
+            return false as jboolean;
+        }
+    };
     let activity = std::sync::Arc::new(activity);
     #[cfg(feature = "audio")]
     let (audio_vm, audio_activity) = (vm.clone(), activity.clone());
@@ -278,6 +286,12 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeStartJavaScript(
             let mut engine = engine.lock_arc();
             engine.javascript_error = None;
             engine.engine.reset_session();
+            if let Some(theme) = theme {
+                if let Err(error) = ink_core::set_theme_fonts(theme.fonts) {
+                    android_log(ANDROID_LOG_ERROR, &format!("invalid theme font: {error:#}"));
+                }
+                engine.engine.set_theme(theme.theme);
+            }
             engine.sent_camera_portal = None;
             engine.sent_map_portal = None;
             engine.sent_video_portal = None;

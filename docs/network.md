@@ -7,6 +7,14 @@ Use `@ink/network` for `fetch`, response streams, `Blob`, `File`, `FormData` and
 
 Import it in each module that uses these APIs.
 
+Local images, audio and video do not include network permissions. To load remote media without importing the web APIs, add this top-level setting to `ink.toml`:
+
+```toml
+capabilities = ["network"]
+```
+
+Imports that require networking, such as `@ink/network`, downloads and authentication, still include it automatically.
+
 For services that require unencrypted HTTP, opt in explicitly in `ink.toml`:
 
 ```toml

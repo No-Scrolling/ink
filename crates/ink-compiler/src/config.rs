@@ -18,6 +18,8 @@ struct AppConfig {
     background: Option<BackgroundConfig>,
     overlays: Option<BackgroundConfig>,
     auth: Option<AuthConfig>,
+    /// Theme module, relative to ink.toml. Defaults to `theme.ts` when it exists.
+    theme: Option<PathBuf>,
     #[serde(default)]
     capabilities: Vec<crate::Capability>,
 }
@@ -75,6 +77,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) worker_entry: Option<PathBuf>,
     pub(crate) overlay_entry: Option<PathBuf>,
     pub(crate) auth_redirect_uri: Option<String>,
+    pub(crate) theme: Option<PathBuf>,
 }
 
 impl ResolvedConfig {
@@ -97,6 +100,14 @@ impl ResolvedConfig {
             version_code: config.version_code,
             capabilities,
             auth_redirect_uri: config.auth.map(|auth| auth.redirect_uri),
+            theme: match config.theme {
+                Some(theme) => {
+                    let path = directory.join(&theme);
+                    anyhow::ensure!(path.is_file(), "theme: could not find {}", theme.display());
+                    Some(path)
+                }
+                None => Some(directory.join("theme.ts")).filter(|path| path.is_file()),
+            },
             worker_entry: config
                 .background
                 .map(|background| directory.join(background.entry)),

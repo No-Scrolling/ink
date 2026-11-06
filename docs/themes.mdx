@@ -1,0 +1,240 @@
+---
+title: "Themes"
+description: "Change fonts, colours, spacing and control styles for every screen in an app."
+---
+
+A theme changes how Ink's components look without changing app code. Ink evaluates the theme when it builds the app, so no theme code runs on the phone.
+
+## Add a theme
+
+To start from a file with every setting commented out at its default, run:
+
+```sh
+ink theme init
+```
+
+
+<div className="pattern-example">
+<div>
+
+<p>Create <code>theme.ts</code> next to <code>ink.toml</code>. Sizes are pixels in a 1080-pixel-wide frame, so values measured from an <code>ink export</code> screenshot or a mockup at that width can be used directly.</p>
+
+```ts theme.ts
+import { defineTheme, defineToggle } from "ink/theme";
+
+export default defineTheme({
+  fonts: {
+    body: "./assets/fonts/Inter-Regular.otf",
+    display: "./assets/fonts/Inter-Medium.otf",
+  },
+  colours: { background: "#000000", foreground: "#ffffff", muted: "#7f7f84" },
+  text: { size: 45 },
+  spacing: { inset: 92, gap: 69 },
+  header: { layout: "large", size: 74 },
+  section: { size: 31, gap: 48 },
+  field: "inline",
+  selection: "check",
+  toggle: "switch",
+});
+```
+
+<p>The same <code>Screen</code>, <code>Section</code>, <code>Field</code> and <code>Toggle</code> code renders with Ink's default look when the app has no theme.</p>
+
+</div>
+<div className="pattern-preview">
+<Tabs inline>
+<Tab title="Theme">
+<img src="/images/patterns/theme-atlas.png" alt="A settings screen with a large left-aligned title, small capital section titles and values at the end of each row." width="1080" height="1240" />
+</Tab>
+<Tab title="Default">
+<img src="/images/patterns/theme-default.png" alt="The same settings screen in Ink's default look." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+To use a different file, set `theme` in `ink.toml`:
+
+```toml ink.toml
+theme = "themes/atlas.ts"
+```
+
+To preview a theme without changing `ink.toml`, export with `--theme`:
+
+```sh
+ink export /settings --theme themes/atlas.ts
+```
+
+## Sizes
+
+`text.size` sets the body text size in pixels. Every size in the app scales with it, including `Text` `size`, `Stack` `gap`, `Icon` `size` and Canvas coordinates. Body text is 30 Ink units, so `<Text size={40}>` stays four-thirds of body text under any theme.
+
+`spacing.inset` sets the horizontal screen padding and `spacing.gap` sets the gap between screen items and between rows in a section.
+
+## Colours
+
+`colours` sets three roles for dark mode:
+
+| Role | Used for |
+| --- | --- |
+| `background` | Screen background |
+| `foreground` | Text, icons and controls |
+| `muted` | Secondary text, field values, section titles and inactive controls |
+
+Light mode uses the inverse of each dark colour. Muted text is inverted in sRGB, so `#898989` becomes `#767676` and keeps its contrast against the light background. Set `colours.light` to choose light colours instead.
+
+Themes replace Ink's own colours. Colours an app chooses, such as a Canvas `fill` or a `Screen` `background`, stay as written.
+
+## Headers
+
+<div className="pattern-example">
+<div>
+
+<p><code>header.layout</code> is <code>"centred"</code> by default. <code>"large"</code> aligns a large title with the content and shows the <code>Screen</code> <code>subtitle</code> under it.</p>
+
+```ts
+header: {
+  layout: "large",
+  size: 74,
+  top: 51,
+  bottom: 51,
+  back: { position: "end", icon: "arrow" },
+  iconSize: 60,
+},
+```
+
+<p><code>top</code> and <code>bottom</code> set the space above and below the title row. <code>back.position: "end"</code> moves Back to the end of the header, and <code>iconSize</code> sets the size of Back and header action icons.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/theme-atlas-lift.png" alt="A selection screen with a large title and a Back arrow at the end of the header." width="1080" height="1240" />
+</div>
+</div>
+
+### Camera cutouts
+
+<div className="pattern-example">
+<div>
+
+<p>By default, the header fits in the widest space beside a camera cutout. Set <code>header.cutout</code> to <code>"below"</code> to start the screen below the cutout instead. <code>header.top</code> is then measured from the bottom of the cutout.</p>
+
+```ts
+header: { layout: "large", cutout: "below" },
+```
+
+<p>To preview a cutout, export with <code>--cutout</code>:</p>
+
+```sh
+ink export / --cutout 50,40,110,110
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/theme-atlas-cutout.png" alt="A settings screen starting below a cutout in the top-left corner." width="1080" height="1240" />
+</div>
+</div>
+
+## Sections and fields
+
+Use `Section` to group rows under a title:
+
+```tsx
+import { Field, Section } from "ink";
+
+<Section title="Typing">
+  <Field label="Spelling" href="/spelling">British</Field>
+</Section>
+```
+
+`section.uppercase` shows titles in capitals and defaults to `true`. `section.gap` sets the space between a title and its first row; the rest of `spacing.gap` goes above the title, so titles group with the rows below them.
+
+`field: "inline"` shows the label and value on one row, with a chevron when the field is pressable. A value that does not fit on the row wraps under the label.
+
+## Toggles and selection
+
+`toggle` is `"line"` by default. `"switch"` shows a sliding switch at the end of the row.
+
+To draw your own control, return SVG for each state from `defineToggle`. Ink renders the off, on and disabled states for light and dark mode when it builds the app:
+
+```ts
+toggle: defineToggle({
+  width: 130,
+  height: 76,
+  render: ({ on, disabled, colours }) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 76">
+    <g opacity="${disabled ? 0.4 : 1}">
+      <rect width="130" height="76" rx="38" fill="${on ? "#8e8e93" : "#3a3a3c"}"/>
+      <circle cx="${on ? 92 : 38}" cy="38" r="33" fill="${colours.foreground}"/>
+    </g>
+  </svg>`,
+}),
+```
+
+`selection: "check"` marks the selected `Button` with a tick at the end of the row instead of an underline. With ticks, each option in `SettingsChoices` fills the row, so the whole width is pressable. With underlines, options are as wide as their text.
+
+## Subtitles
+
+`subtitle` sets the size and tone of secondary lines: the large header's subtitle, and `Toggle` and `Row` subtitles.
+
+```ts
+subtitle: { size: 32, tone: "muted" },
+```
+
+## Scroll bar
+
+By default, the scroll bar is always shown on screens that scroll. To show a thin line by the screen edge only while the screen scrolls:
+
+```ts
+scrollBar: { colour: "#8e8e93", visibility: "scrolling", track: false, width: 8, inset: 30 },
+```
+
+The bar fades out shortly after scrolling stops. `colour` sets its colour in dark mode, and light mode uses the inverse; it defaults to the foreground. `track: false` hides the full-height line the thumb moves along, `width` sets the thumb width and `inset` sets its distance from the screen edge. Setting `inset` keeps the content's own end padding.
+
+## Themes for individual screens
+
+Add named `variants` to give some screens a different theme, such as a reading screen with larger text and warmer colours. A variant changes only the settings it sets; everything else comes from the app theme.
+
+```ts theme.ts
+export default defineTheme({
+  fonts: { body: "./assets/fonts/Inter-Regular.otf" },
+  text: { size: 45 },
+  variants: {
+    reader: {
+      fonts: { body: "./assets/fonts/CommitMono-400-Regular.otf" },
+      colours: { background: "#14110d", foreground: "#efe6d6", muted: "#9c907c" },
+      text: { size: 50 },
+    },
+  },
+});
+```
+
+Set `theme` on a `Screen` to use a variant:
+
+```tsx
+<Screen title="Learning notes" theme="reader">
+  <Text>Atlas learns the words you choose.</Text>
+</Screen>
+```
+
+The build fails if a `Screen` names a variant that theme.ts does not define. Ink prepares every variant when it builds the app and loads all their fonts at startup, so a theme can use at most 16 font files in total. Variants cannot have their own variants.
+
+## Check a theme
+
+```sh
+ink theme check
+```
+
+Ink builds the theme, checks that foreground and muted text have a contrast of at least 4.5:1 against the background in dark and light mode, for the app theme and each variant, and renders every themed component to `.ink/theme/dark/frame.png` and `.ink/theme/light/frame.png`, and each variant to `.ink/theme/<variant>/`. Add `--json` for machine-readable results, `--size` for a different screen width and `--cutout` to simulate a camera cutout. The command fails when it finds a problem.
+
+## Errors
+
+Ink checks the theme when it builds the app. Unknown keys and invalid values fail the build with the setting's name:
+
+```txt
+theme.ts: unknown key `colours.foregrund`; did you mean `colours.foreground`?
+theme.ts: `header.layout` must be "centred" or "large", got "left"
+```
+
+## Limitations
+
+- Fonts are loaded once when the app starts. During `ink dev`, changing the theme reinstalls the app instead of reloading it.
+- Custom toggles are rendered at twice their pixel size, so they stay sharp on screens up to 2,160 pixels wide.

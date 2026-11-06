@@ -43,7 +43,7 @@ const materialIcons = new Map(Array.from(
   iconSource.matchAll(/export const (\w+) = "((?:outlined|filled):[a-z0-9_]+)"/g),
   ([, name, reference]) => [name, reference],
 ));
-ts.getParsedCommandLineOfConfigFile(resolve(root, "tsconfig.json"), {}, {
+const tsconfig = ts.getParsedCommandLineOfConfigFile(resolve(root, "tsconfig.json"), {}, {
   ...ts.sys,
   readFile(path) {
     const contents = ts.sys.readFile(path);
@@ -80,6 +80,47 @@ if (selectedSdk) {
   }
 }
 const frameworkDirectory = dirname(frameworkEntry);
+let rowProgram;
+function rowUsesImages(path) {
+  const options = { ...tsconfig.options, allowJs: true };
+  rowProgram ??= ts.createProgram([...new Set([...tsconfig.fileNames, entry, path])], options);
+  if (!rowProgram.getSourceFile(path)) {
+    rowProgram = ts.createProgram([...rowProgram.getRootFileNames(), path], options, undefined, rowProgram);
+  }
+  const source = rowProgram.getSourceFile(path);
+  const checker = rowProgram.getTypeChecker();
+  function mayHaveImage(type) {
+    if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) return true;
+    if (type.isUnionOrIntersection()) return type.types.some(mayHaveImage);
+    return !!(type.getProperty("image") || type.getStringIndexType());
+  }
+  function visit(node) {
+    if (ts.isImportDeclaration(node) || ts.isTypeNode(node)) return false;
+    if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) {
+      let symbol = checker.getSymbolAtLocation(node);
+      if (symbol?.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+      const row = symbol?.declarations?.some(declaration =>
+        declaration.getSourceFile().fileName === resolve(frameworkDirectory, "row.ts")
+        && ts.isVariableDeclaration(declaration) && declaration.name.getText() === "Row");
+      if (row) {
+        const parent = node.parent;
+        if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+        if ((ts.isJsxSelfClosingElement(parent) || ts.isJsxOpeningElement(parent)) && parent.tagName === node) {
+          return parent.attributes.properties.some(attribute => ts.isJsxSpreadAttribute(attribute)
+            ? mayHaveImage(checker.getTypeAtLocation(attribute.expression)) : attribute.name.text === "image");
+        }
+        if (ts.isJsxClosingElement(parent)) return false;
+        if (ts.isCallExpression(parent) && parent.arguments[0] === node) {
+          return !!parent.arguments[1] && mayHaveImage(checker.getTypeAtLocation(parent.arguments[1]));
+        }
+        // A component passed around as a value can receive image props elsewhere.
+        return true;
+      }
+    }
+    return ts.forEachChild(node, visit) ?? false;
+  }
+  return visit(source);
+}
 let dataViewsAvailable = false;
 try {
   Bun.resolveSync("ink/internal/data", root);
@@ -196,19 +237,23 @@ function buildOptions(bootstrap = false) { return {
               if (ts.isStringLiteral(kind)) {
                 if (Object.hasOwn(families, kind.text)) requirements.add(families[kind.text]);
                 if (kind.text === "TextInput") requirements.add("text-input");
-                if (["Image", "Avatar", "RowContent", "PlayingScreen"].includes(kind.text)) {
-                  requirements.add("image"); requirements.add("network");
+                if (["Image", "Avatar", "PlayingScreen"].includes(kind.text)
+                  || kind.text === "RowContent" && path !== resolve(frameworkDirectory, "row.ts")) {
+                  requirements.add("image");
                 }
               } else if (!path.startsWith(frameworkDirectory + "/") && !path.includes("/.ink/")) {
                 // Dynamic host descriptions need every optional family.
                 for (const feature of Object.values(families)) requirements.add(feature);
-                requirements.add("image"); requirements.add("network"); requirements.add("text-input");
+                requirements.add("image"); requirements.add("text-input");
               }
             }
           }
           ts.forEachChild(node, visit);
         }
         visit(source);
+        if (!path.startsWith(frameworkDirectory + "/") && rowUsesImages(path)) {
+          requirements.add("image");
+        }
         moduleCapabilities.set(path, [...requirements]);
         if (development) for (const name of requirements) capabilities.add(name);
       }

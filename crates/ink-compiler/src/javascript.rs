@@ -175,6 +175,10 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
     };
     add("arrow_back_ios".into(), 52.0, false)?;
     add("close".into(), 52.0, false)?;
+    if project.config.theme.is_some() {
+        // Themes can choose an arrow for Back.
+        add("arrow_back".into(), 52.0, false)?;
+    }
     let mut svg_icons = BTreeMap::new();
     for icon in uses.icons {
         if let Some(path) = icon.svg {
@@ -203,6 +207,10 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
         })
         .collect::<Result<Vec<_>>>()?;
     uses.inputs.push(project.config_path().to_path_buf());
+    // `ink dev` watches inputs, including a theme outside the app directory.
+    if let Some(theme) = &project.config.theme {
+        uses.inputs.push(theme.clone());
+    }
     for name in ["tsconfig.json", "package.json", "bun.lock", "bun.lockb"] {
         let path = project.root().join(name);
         if path.is_file() {

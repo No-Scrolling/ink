@@ -71,6 +71,12 @@ impl SceneApp {
         let (runtime, events) = compiled_runtime("scene", fixture);
         let mut engine = Engine::new();
         engine.set_viewport(1080, 1240);
+        // Install the compiled theme as the Android host does.
+        if let Ok(bytes) = std::fs::read(assets.join("ink-theme-v1.bin")) {
+            let theme = ink_core::ThemeBundle::decode(&bytes).unwrap();
+            ink_core::set_theme_fonts(theme.fonts).unwrap();
+            engine.set_theme(theme.theme);
+        }
         Self {
             runtime,
             events,

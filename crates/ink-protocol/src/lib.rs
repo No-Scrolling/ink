@@ -92,4 +92,5 @@ pub enum HostKind {
     PlayingLabel,
     PitchIndicator,
     CaptureReadout,
+    SectionTitle,
 }

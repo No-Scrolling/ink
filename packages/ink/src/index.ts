@@ -17,6 +17,12 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   children?: ReactNode;
   header?: ReactNode;
   title?: string;
+  /** Shown under the title when the theme uses the large header layout. */
+  subtitle?: string;
+  /** Small muted text pinned to the bottom of the screen, such as a hint or privacy note. */
+  note?: string;
+  /** A named variant from `variants` in theme.ts. The build fails if theme.ts does not define it. */
+  theme?: string;
   background?: string;
   centered?: boolean;
   wide?: boolean;
@@ -89,7 +95,8 @@ export function Button<const D extends Destination>(props: PressProps<D> & {
   return createElement("Button", { ...rest, onPress: pressHandler({ href, url, onPress }) });
 }
 
-export { Row, Image, Avatar } from "./image";
+export { Row } from "./row";
+export { Image, Avatar } from "./image";
 export { Canvas, Rectangle, CanvasPath, CanvasRange, CanvasText, CanvasIcon } from "./canvas";
 
 export function Field<const D extends Destination>(props: PressProps<D> & {
@@ -109,6 +116,13 @@ export function Toggle(props: {
   onChange: (value: boolean) => void;
 }) {
   return createElement("Toggle", props);
+}
+
+/** A titled group of rows, spaced with the theme's section and content gaps. */
+export function Section({ title, children }: { title: string; children?: ReactNode }) {
+  return createElement(Stack, { gap: "section" },
+    createElement("SectionTitle", { title }),
+    createElement(Stack, { gap: "content" }, children));
 }
 
 export function Icon(props: {

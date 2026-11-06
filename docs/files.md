@@ -15,6 +15,14 @@ Import `Image` from `ink` to display images. Basic file operations omit image re
 
 ## Permissions
 
+Choose library access at the top level of `ink.toml`:
+
+```toml
+capabilities = ["media-library-images", "media-library-videos"]
+```
+
+For an image-only picker, include only `media-library-images`. For a video-only picker, include only `media-library-videos`. The default picker shows both and requires both capabilities. Importing `MediaPicker` alone adds neither permission.
+
 | Permission | Required for |
 | --- | --- |
 | `photos` | `MediaPicker` with `kind="image"`. |

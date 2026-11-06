@@ -7,7 +7,7 @@ use std::time::Instant;
 #[cfg(feature = "benchmark")]
 use ink_core::PerfTraceSection;
 use ink_core::{
-    CameraPortal, CameraPreviewKind, ControllerId, Engine, ImageUpdate, MapPortal, NativeRequestKind, PUBLIC_SANS,
+    CameraPortal, CameraPreviewKind, ControllerId, Engine, ImageUpdate, MapPortal, NativeRequestKind,
     PointerOutcome, Rect, ResourceError, ResourceErrorKind, TextEdit, TextInputAction,
 };
 use ink_renderer_vulkan::{RenderOutcome, Renderer};
@@ -538,12 +538,30 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCreate(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vandam_ink_InkNative_nativePublicSans<'local>(
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeFont<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
+    assets: JObject<'local>,
+    slot: jint,
 ) -> JByteBuffer<'local> {
+    // The text editor can be created before JavaScript starts, so install the theme's fonts here
+    // too. Theme fonts live for the process; Public Sans is used without a theme.
+    env.with_env(|env| -> jni::errors::Result<()> {
+        let assets = assets::BundleAssets::new(env, &assets)?;
+        if let Ok(bytes) = assets.read(c"ink-theme-v1.bin") {
+            match ink_core::ThemeBundle::decode(&bytes)
+                .and_then(|theme| ink_core::set_theme_fonts(theme.fonts))
+            {
+                Ok(()) => {}
+                Err(error) => android_log(ANDROID_LOG_ERROR, &format!("invalid theme asset: {error:#}")),
+            }
+        }
+        Ok(())
+    }).resolve::<jni::errors::LogErrorAndDefault>();
+    let role = u8::try_from(slot).map_or(ink_core::FontRole::DEFAULT, ink_core::FontRole::slot);
+    let font = ink_core::font_bytes(role);
     env.with_env(|env| unsafe {
-        env.new_direct_byte_buffer(PUBLIC_SANS.as_ptr().cast_mut(), PUBLIC_SANS.len())
+        env.new_direct_byte_buffer(font.as_ptr().cast_mut(), font.len())
     })
     .resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }

@@ -42,6 +42,8 @@ import { Video } from "@ink/video";
 <Video src="https://example.com/video.mp4" />
 ```
 
+Remote sources require `"network"` in the top-level `capabilities` list in `ink.toml`. Local playback does not add internet permission.
+
 Local file and content URIs are also supported. Development builds allow localhost HTTP URLs.
 
 Format support depends on the device's codecs.

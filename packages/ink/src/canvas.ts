@@ -26,7 +26,7 @@ export function Rectangle(props: Bounds & {
 export function CanvasRange({
   total, span, initialStart, step = 1, snapPoints = [], snapDistance = 6, tapSnapDistance = 10, hitSlop = 10,
   minDragWidth = 0, inset = 4, innerFill = "#666666", dragOnly = false, snapOnTap = false, progress = 0,
-  progressDurationMs = 0, progressPlaying = false, progressLoop = false, progressFill = "#FFFFFF", ...props
+  progressDurationMs = 0, progressPlaying = false, progressLoop = false, progressFill, ...props
 }: Bounds & {
   total: number;
   span: number;

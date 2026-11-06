@@ -16,8 +16,18 @@ Use `@ink/audio` to play audio and manage queues.
 | Permission | Required for |
 | --- | --- |
 | `microphone` | Recording, sound levels and pitch detection. |
+| `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | Detached playback, enabled with `audio-detached`. |
+| `INTERNET` and `ACCESS_NETWORK_STATE` | Remote audio and artwork, enabled with `network`. |
 
 Playback does not require microphone access.
+
+Attached playback of local files adds no Android permissions. For detached playback or remote sources, add the capabilities you use at the top level of `ink.toml`:
+
+```toml
+capabilities = ["audio-detached", "network"]
+```
+
+`audio-detached` adds the foreground media service and its permissions. `network` permits remote audio and artwork.
 
 ```ts
 import { lightos } from "@ink/lightos";

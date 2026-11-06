@@ -118,8 +118,14 @@ pub enum InkCommand {
         out: PathBuf,
     },
 
-    /// Export a page or TSX composition as a 1080 × 1240 design frame
+    /// Export a page or TSX composition as a design frame (1080 × 1240 by default)
     Export(crate::export::ExportArgs),
+
+    /// Create or check the app's theme.ts
+    Theme {
+        #[command(subcommand)]
+        command: crate::theme::ThemeCommand,
+    },
 
     /// Check the local Ink and Android development environment
     Doctor,

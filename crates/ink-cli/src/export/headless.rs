@@ -36,9 +36,17 @@ pub(super) fn capture(project: &Project, marker: &str, args: &ExportArgs) -> Res
         move || fs::read_to_string(&web).with_context(|| format!("read {}", web.display())),
     )?;
     let mut engine = Engine::new();
-    engine.set_viewport(WIDTH, HEIGHT);
+    let FrameSize { width, height } = args.size;
+    engine.set_viewport(width, height);
+    if let Ok(bytes) = fs::read(assets.join("ink-theme-v1.bin")) {
+        let theme = ink_core::ThemeBundle::decode(&bytes)?;
+        ink_core::set_theme_fonts(theme.fonts)?;
+        engine.set_theme(theme.theme);
+    }
+    engine.set_colour_scheme(args.light);
+    engine.set_display_cutouts(args.cutout.clone());
     let mut tree = ReactTree::with_icons(&fs::read(assets.join("ink-icons-v1.bin"))?)?;
-    let mut renderer = Renderer::offscreen(WIDTH, HEIGHT)?;
+    let mut renderer = Renderer::offscreen(width, height)?;
     let mut store = HashMap::<String, Value>::new();
     let deadline = Instant::now() + Duration::from_secs(args.timeout);
     let mut mounted = false;
@@ -163,7 +171,7 @@ pub(super) fn capture(project: &Project, marker: &str, args: &ExportArgs) -> Res
                     .filter(|character| !character.is_whitespace() && !character.is_control())
                 {
                     ensure!(
-                        ink_core::font_for_character(character)
+                        ink_core::font_for_character_in(character, run.font)
                             .1
                             .glyph_id(character)
                             .0
@@ -211,7 +219,7 @@ pub(super) fn capture(project: &Project, marker: &str, args: &ExportArgs) -> Res
             continue;
         }
         let mut png = Cursor::new(Vec::new());
-        image::RgbaImage::from_raw(WIDTH, HEIGHT, previous.clone())
+        image::RgbaImage::from_raw(width, height, previous.clone())
             .context("invalid offscreen pixel buffer")?
             .write_to(&mut png, image::ImageFormat::Png)?;
         runtime.stop();

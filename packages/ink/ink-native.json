@@ -2,15 +2,13 @@
   "version": 1,
   "modules": {
     "src/image.ts": [
-      "image",
-      "network"
+      "image"
     ],
     "src/input.ts": [
       "text-input"
     ],
     "src/playing.ts": [
       "image",
-      "network",
       "ui-playing"
     ],
     "src/external.ts": [

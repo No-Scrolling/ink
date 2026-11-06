@@ -84,9 +84,12 @@ val inkUsesBarcodeGenerate = inkUses("barcode-generate")
 val inkUsesImage = inkUses("image")
 val inkUsesMicrophonePermission = inkUses("microphone-permission")
 val inkUsesLocation = inkUses("location")
+val inkUsesLocationTracking = inkUses("location-tracking")
 val inkUsesNfc = inkUses("nfc")
 val inkUsesBackground = inkUses("background")
 val inkUsesNotifications = inkUses("notifications")
+val inkUsesNotificationScheduling = inkUses("notification-scheduling")
+val inkUsesNotificationExact = inkUses("notification-exact")
 val inkUsesOverlays = inkUses("overlays")
 val inkUsesNotificationPermission = inkUses("notification-permission")
 val inkLightServerPackage = providers.gradleProperty("inkLightServerPackage").orElse("com.lightos")
@@ -100,6 +103,16 @@ val inkPermissions = inkCapabilities.get().flatMap { name ->
     val declaration = inkCapabilityCatalogue[name] as Map<*, *>
     (declaration["permissions"] as List<*>).map { it as String }
 }.distinct().sorted()
+val inkAppNativeManifest = rootProject.findProject(":app-native")
+    ?.file("src/main/AndroidManifest.xml")?.takeIf { it.isFile }
+val inkAppNativePermissions = inkAppNativeManifest?.let { manifest ->
+    val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+    val declarations = factory.newDocumentBuilder().parse(manifest).getElementsByTagName("uses-permission")
+    (0 until declarations.length).map { index ->
+        (declarations.item(index) as org.w3c.dom.Element)
+            .getAttributeNS("http://schemas.android.com/apk/res/android", "name")
+    }.toSet()
+}.orEmpty()
 val inkFeatures = buildList {
     if (inkUsesCameraPermission.get()) {
         add("android.hardware.camera")
@@ -110,6 +123,7 @@ val generateInkPermissionManifest by tasks.registering {
     inputs.property("inkApplicationId", inkApplicationId)
     inputs.file(inkCapabilitiesFile)
     inputs.file(inkCapabilityCatalogueFile)
+    inkAppNativeManifest?.let { inputs.file(it) }
     inputs.property("permissions", inkPermissions.joinToString())
     inputs.property("features", inkFeatures.joinToString())
     inputs.property("nfc", inkUsesNfc)
@@ -125,15 +139,35 @@ val generateInkPermissionManifest by tasks.registering {
     outputs.file(inkPermissionManifest)
     inputs.property("external", inkUsesExternal)
     inputs.property("detachedAudio", inkUsesDetachedAudio)
+    inputs.property("audioPlayback", inkUsesAudioPlayback)
+    inputs.property("maps", inkUsesMaps)
+    inputs.property("locationTracking", inkUsesLocationTracking)
+    inputs.property("notificationScheduling", inkUsesNotificationScheduling)
+    inputs.property("notificationExact", inkUsesNotificationExact)
     inputs.property("authRedirectUri", inkAuthRedirectUri)
     doLast {
         val output = inkPermissionManifest.get().asFile
         output.parentFile.mkdirs()
         output.writeText(buildString {
             appendLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
-            appendLine("<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">")
+            appendLine("<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\" xmlns:tools=\"http://schemas.android.com/tools\">")
             inkPermissions.forEach { permission ->
                 appendLine("    <uses-permission android:name=\"$permission\" />")
+            }
+            // Libraries also declare permissions for features Ink does not enable.
+            val libraryPermissions = buildList {
+                if (inkUsesMaps.get()) {
+                    add("android.permission.ACCESS_WIFI_STATE")
+                    add("android.permission.ACCESS_COARSE_LOCATION")
+                    add("android.permission.ACCESS_FINE_LOCATION")
+                }
+                if (inkUsesAudioPlayback.get() || inkUsesDetachedAudio.get()) {
+                    add("android.permission.ACCESS_NETWORK_STATE")
+                    add("android.permission.WAKE_LOCK")
+                }
+            }
+            libraryPermissions.filterNot { it in inkPermissions || it in inkAppNativePermissions }.forEach { permission ->
+                appendLine("    <uses-permission android:name=\"$permission\" tools:node=\"remove\" />")
             }
             inkFeatures.forEach { feature ->
                 appendLine("    <uses-feature android:name=\"$feature\" android:required=\"false\" />")
@@ -188,7 +222,7 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine("            <property android:name=\"android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE\" android:value=\"Display an interactive window over other apps at the user's request\" />")
                 appendLine("        </service>")
             }
-            if (inkUsesLocation.get()) {
+            if (inkUsesLocationTracking.get()) {
                 appendLine("        <service android:name=\"com.vandam.ink.InkLocationService\" android:exported=\"false\" android:foregroundServiceType=\"location\" />")
             }
             if (inkUsesNfc.get()) {
@@ -198,8 +232,10 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine("        </service>")
             }
             if (inkUsesNotifications.get()) {
-                appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationAlarmReceiver\" android:exported=\"false\" />")
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationDismissReceiver\" android:exported=\"false\" />")
+            }
+            if (inkUsesNotificationScheduling.get()) {
+                appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationAlarmReceiver\" android:exported=\"false\" />")
                 appendLine("        <receiver android:name=\"com.vandam.ink.InkNotificationBootReceiver\" android:exported=\"true\">")
                 appendLine("            <intent-filter>")
                 appendLine("                <action android:name=\"android.intent.action.BOOT_COMPLETED\" />")
@@ -247,6 +283,10 @@ android {
         buildConfigField("boolean", "INK_VIDEO_ENABLED", inkUses("video").get().toString())
         buildConfigField("boolean", "INK_MAPS_ENABLED", inkUsesMaps.get().toString())
         buildConfigField("boolean", "INK_MEDIA_LIBRARY_ENABLED", inkUses("media-library").get().toString())
+        buildConfigField("boolean", "INK_DETACHED_AUDIO_ENABLED", inkUsesDetachedAudio.get().toString())
+        buildConfigField("boolean", "INK_LOCATION_TRACKING_ENABLED", inkUsesLocationTracking.get().toString())
+        buildConfigField("boolean", "INK_NOTIFICATION_SCHEDULING_ENABLED", inkUsesNotificationScheduling.get().toString())
+        buildConfigField("boolean", "INK_NOTIFICATION_EXACT_ENABLED", inkUsesNotificationExact.get().toString())
         buildConfigField("boolean", "INK_PRESENTATION_TIMING", (inkBridgeTiming.get() || inkPresentationTiming.get()).toString())
         buildConfigField("boolean", "INK_CLEARTEXT_NETWORK_ENABLED", inkUsesCleartextNetwork.get().toString())
         buildConfigField("boolean", "INK_FILE_IMAGES_ENABLED", inkUses("file-images").get().toString())

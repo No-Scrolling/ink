@@ -47,6 +47,9 @@ private class InkAudioPlayback(
             ?: return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio configuration", false)
         val name = options.optString("session", "main")
         val mode = options.optString("playback", "attached")
+        if (mode == "detached" && !BuildConfig.INK_DETACHED_AUDIO_ENABLED) {
+            return NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Enable the audio-detached capability for detached playback", false)
+        }
         val usage = options.optString("usage", "music")
         val cache = options.optBoolean("cache", false)
         val preloadNext = options.optLong("preloadNext", 0)

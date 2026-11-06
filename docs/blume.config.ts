@@ -39,7 +39,7 @@ export default defineConfig({
       "/project-structure",
       {
         label: "Guides",
-        items: ["/build-app", "/design-export", "/permissions-guide"],
+        items: ["/build-app", "/themes", "/design-export", "/permissions-guide"],
       },
       {
         label: "Ink Components",

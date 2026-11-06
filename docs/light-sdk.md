@@ -20,6 +20,7 @@ Importing `@ink/lightos` includes the integration and registers the app’s requ
 | `photos` | Photo library. |
 | `videos` | Video library. |
 | `photos-and-videos` | Photos and videos. |
+| `WAKE_LOCK` | UnifiedPush delivery, included by `@ink/lightos/push`. No runtime prompt. |
 
 ```ts
 import { lightos } from "@ink/lightos";

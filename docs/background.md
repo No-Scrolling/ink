@@ -75,6 +75,8 @@ Workers can use:
 
 Import `"@ink/network"` in workers that use web globals. Workers do not inherit the foreground app’s imports.
 
+Offline tasks do not include network permissions. Importing `@ink/network` adds them when needed. For a network constraint without web requests, add `"connectivity"` to the top-level `capabilities` list in `ink.toml`; this permits reading network state without internet access.
+
 Permission prompts, UI controllers, camera, microphone and NFC are unavailable. Native calls have their own timeouts and are cancelled when the worker stops.
 
 ## Persist before scheduling

@@ -445,6 +445,7 @@ fn dense_text_scene(_: usize) -> Scene {
     for (index, size) in [14.0, 18.0, 24.0, 32.0, 40.0, 56.0].into_iter().enumerate() {
         for (line, chunk) in characters.chars().collect::<Vec<_>>().chunks(48).enumerate() {
             text.push(TextRun {
+                font: ink_core::FontRole::DEFAULT,
                 text: chunk.iter().collect::<String>().into(),
                 rect: Rect { x: 8.0, y: 8.0 + (index * 3 + line) as f32 * 64.0, width: 1064.0, height: size * 1.4 },
                 clip: Rect { x: 0.0, y: 0.0, width: WIDTH as f32, height: HEIGHT as f32 },
@@ -483,6 +484,7 @@ fn atlas_scene(size: f32, lower: bool, revision: u64) -> Scene {
         .enumerate()
         .flat_map(|(index, size)| {
             letters.chunks(12).enumerate().map(move |(line, chunk)| TextRun {
+                font: ink_core::FontRole::DEFAULT,
                 text: chunk.iter().collect::<String>().into(),
                 rect: Rect { x: 0.0, y: (index * 3 + line) as f32 * 40.0, width: WIDTH as f32, height: size * 1.3 },
                 clip: Rect { x: 0.0, y: 0.0, width: WIDTH as f32, height: HEIGHT as f32 },

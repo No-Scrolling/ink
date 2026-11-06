@@ -90,6 +90,10 @@ internal class InkLocationService : Service() {
         private var lastError: String? = null
 
         fun start(activity: MainActivity, id: Long, options: JSONObject, complete: NativeResultHandler) {
+            if (!BuildConfig.INK_LOCATION_TRACKING_ENABLED) {
+                complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Enable the location-tracking capability to track in the background", false))
+                return
+            }
             check(activity.hasWindowFocus() && !activity.isFinishing) { "Start location tracking while the app is visible" }
             check(instance?.updates == null && pending == null) { "Location tracking is already running or starting" }
             if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {

@@ -38,6 +38,7 @@ pub(super) fn run(samples: usize, warmup: usize) -> Vec<Value> {
 
 fn text_run(text: &str, y: f32, size: f32) -> TextRun {
     TextRun {
+        font: ink_core::FontRole::DEFAULT,
         text: text.into(),
         rect: Rect {
             x: 24.0,
@@ -78,7 +79,7 @@ fn font_coverage(lines: &[(&str, &str)]) -> Value {
         // Inspect shaped text too: Arabic presentation forms can differ from source code points.
         let describe = |text: &str| text.chars().filter(|ch| !ch.is_whitespace())
             .collect::<BTreeSet<_>>().into_iter().map(|character| {
-                let (font_index, font) = ink_core::font_for_character(character);
+                let (font_index, font) = ink_core::font_for_character_in(character, ink_core::FontRole::DEFAULT);
                 let glyph_id = font.glyph_id(character).0;
                 json!({"character":character.to_string(), "code_point":format!("U+{:04X}", character as u32),
                     "font_index":font_index, "glyph_id":glyph_id,

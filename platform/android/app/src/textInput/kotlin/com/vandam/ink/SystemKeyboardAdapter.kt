@@ -55,6 +55,8 @@ private class SystemKeyboardAdapter(
     private var pending = false
     private var imeVisible = false
     private var lightAppearance: Boolean? = null
+    // The visible screen's body font slot; -1 is Public Sans.
+    private var fontSlot = -1
     private var lineMeasurement: Triple<String, Int, Float>? = null
     private var measuredLineCount = 1
     private var awaitingEditorDraw = false
@@ -129,7 +131,7 @@ private class SystemKeyboardAdapter(
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
         editor.visibility = View.GONE
         editor.background = null
-        editor.typeface = activity.publicSansTypeface
+        editor.typeface = activity.typeface(fontSlot)
         // Match Ink's unhinted glyph metrics rather than Android's font shaping defaults.
         editor.fontFeatureSettings = "'kern' 0, 'liga' 0"
         editor.paint.hinting = android.graphics.Paint.HINTING_OFF
@@ -248,7 +250,7 @@ private class SystemKeyboardAdapter(
             syncing = true
             editor.inputType = inputType()
             editor.setSingleLine(action != 0)
-            editor.typeface = activity.publicSansTypeface
+            editor.typeface = activity.typeface(fontSlot)
             editor.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or when (action) {
                 0 -> EditorInfo.IME_FLAG_NO_ENTER_ACTION
                 2 -> EditorInfo.IME_ACTION_DONE
@@ -302,6 +304,13 @@ private class SystemKeyboardAdapter(
         if (editor.hint?.toString() != placeholder) editor.hint = placeholder
         val hintColour = data.getInt("hintColour")
         if (editor.currentHintTextColor != hintColour) editor.setHintTextColor(hintColour)
+        val textColour = data.getInt("textColour")
+        if (editor.currentTextColor != textColour) editor.setTextColor(textColour)
+        val slot = data.optInt("fontSlot", -1)
+        if (slot != fontSlot) {
+            fontSlot = slot
+            editor.typeface = activity.typeface(slot)
+        }
         val cursor = data.getInt("cursor").coerceIn(0, text.length)
         syncing = true
         val changed = inputId != id
@@ -310,7 +319,7 @@ private class SystemKeyboardAdapter(
         val typeChanged = editor.inputType != type
         if (typeChanged) {
             editor.inputType = type
-            editor.typeface = activity.publicSansTypeface
+            editor.typeface = activity.typeface(fontSlot)
         }
         if (changed || textChanged) editor.setText(text)
         if (changed || textChanged) editor.setSelection(cursor)

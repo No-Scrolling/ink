@@ -17,8 +17,7 @@
     "audio-detached": {
       "cost": "foreground playback service",
       "dependencies": [
-        "audio-playback",
-        "network"
+        "audio-playback"
       ],
       "permissions": [
         "android.permission.FOREGROUND_SERVICE",
@@ -64,10 +63,8 @@
       }
     },
     "background": {
-      "cost": "background job service and network access",
-      "dependencies": [
-        "network"
-      ],
+      "cost": "background job service",
+      "dependencies": [],
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED"
       ],
@@ -172,7 +169,9 @@
         "network",
         "crypto"
       ],
-      "permissions": [],
+      "permissions": [
+        "android.permission.WAKE_LOCK"
+      ],
       "androidSourceGroup": {
         "enabled": "lightSdkPush",
         "disabled": "noLightSdkPush"
@@ -190,21 +189,44 @@
       }
     },
     "location": {
-      "cost": "location adapter and coarse/fine permissions",
+      "cost": "location adapter",
       "dependencies": [
-        "light-sdk",
-        "notification-permission"
+        "light-sdk"
       ],
-      "permissions": [
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
-      ],
+      "permissions": [],
       "androidSourceGroup": {
         "enabled": "location",
         "disabled": "noLocation"
       }
+    },
+    "location-approximate": {
+      "cost": "approximate position access",
+      "dependencies": [
+        "location"
+      ],
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "location-precise": {
+      "cost": "precise position access",
+      "dependencies": [
+        "location-approximate"
+      ],
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "location-tracking": {
+      "cost": "foreground location tracking service",
+      "dependencies": [
+        "location-approximate",
+        "notification-permission"
+      ],
+      "permissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "maps": {
       "cost": "MapLibre native map",
@@ -224,8 +246,23 @@
         "files",
         "image"
       ],
+      "permissions": []
+    },
+    "media-library-images": {
+      "cost": "photo library access",
+      "dependencies": [
+        "media-library"
+      ],
       "permissions": [
-        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
+    },
+    "media-library-videos": {
+      "cost": "video library access",
+      "dependencies": [
+        "media-library"
+      ],
+      "permissions": [
         "android.permission.READ_MEDIA_VIDEO"
       ]
     },
@@ -266,6 +303,15 @@
         "disabled": "noNfc"
       }
     },
+    "notification-exact": {
+      "cost": "exact reminder alarms",
+      "dependencies": [
+        "notification-scheduling"
+      ],
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ]
+    },
     "notification-permission": {
       "cost": "Android notification permission",
       "dependencies": [],
@@ -273,15 +319,21 @@
         "android.permission.POST_NOTIFICATIONS"
       ]
     },
+    "notification-scheduling": {
+      "cost": "scheduled reminders and restoration after reboot",
+      "dependencies": [
+        "notifications"
+      ],
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ]
+    },
     "notifications": {
-      "cost": "alarm store and notification receivers",
+      "cost": "notification store and presentation",
       "dependencies": [
         "notification-permission"
       ],
-      "permissions": [
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.SCHEDULE_EXACT_ALARM"
-      ],
+      "permissions": [],
       "androidSourceGroup": {
         "enabled": "notifications",
         "disabled": "noNotifications"
@@ -330,9 +382,7 @@
     "video": {
       "cost": "Android video playback",
       "dependencies": [],
-      "permissions": [
-        "android.permission.INTERNET"
-      ],
+      "permissions": [],
       "androidSourceGroup": {
         "enabled": "video",
         "disabled": "noVideo"

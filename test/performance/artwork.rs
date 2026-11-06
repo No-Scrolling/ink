@@ -122,7 +122,7 @@ pub(super) fn scroll_arrivals(samples: usize, warmup: usize) -> Value {
                     visible_ids.push(id);
                     unique.insert(id);
                 }
-                scene.text.push(TextRun {
+                scene.text.push(TextRun { font: ink_core::FontRole::DEFAULT,
                     text: format!("Cover {id:02}").into(),
                     rect: Rect {
                         x,

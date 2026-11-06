@@ -382,7 +382,7 @@ impl ReactTree {
                     && self.node(*id)?.props.get("onBack") == Some(&Json::Bool(true)) =>
             {
                 Some((
-                    self.icon("arrow_back_ios")?,
+                    self.icon(if engine.theme.back_arrow { "arrow_back" } else { "arrow_back_ios" })?,
                     event_operation(*id, "onBack", vec![]),
                 ))
             }
@@ -687,7 +687,7 @@ impl ReactTree {
                         drawings.push(super::canvas::Drawing::Path {
                             points: coordinates.chunks_exact(2).map(|pair| [pair[0], pair[1]]).collect(),
                             width: number(props, "strokeWidth")?.unwrap_or(1.0),
-                            colour: canvas_colour(props, "stroke")?.unwrap_or(super::Colour::WHITE),
+                            colour: canvas_colour(props, "stroke")?.map_or(super::canvas::CanvasColour::Foreground, super::canvas::CanvasColour::Srgb),
                         });
                         continue;
                     }
@@ -701,7 +701,7 @@ impl ReactTree {
                         HostKind::CanvasIcon => super::canvas::Drawing::Icon {
                             bounds,
                             mask: self.icon(string(props, "name").context("CanvasIcon requires a name")?)?,
-                            colour: canvas_colour(props, "colour")?.unwrap_or(super::Colour::WHITE),
+                            colour: canvas_colour(props, "colour")?.map_or(super::canvas::CanvasColour::Foreground, super::canvas::CanvasColour::Srgb),
                         },
                         HostKind::CanvasRectangle if props.get("range").is_some() => {
                             let range = props.get("range").context("CanvasRange requires range")?;
@@ -718,9 +718,9 @@ impl ReactTree {
                             let range_props = HostProps::Other(range.as_object().context("CanvasRange requires an object")?.clone());
                             super::canvas::Drawing::Range {
                                 id: NodeIdentity(*child_id), bounds, spec,
-                                fill: canvas_colour(props, "fill")?.unwrap_or(super::Colour::WHITE),
-                                inner_fill: canvas_colour(&range_props, "innerFill")?.unwrap_or(super::Colour::WHITE),
-                                progress_fill: canvas_colour(&range_props, "progressFill")?.unwrap_or(super::Colour::WHITE),
+                                fill: canvas_colour(props, "fill")?.map_or(super::canvas::CanvasColour::Foreground, super::canvas::CanvasColour::Srgb),
+                                inner_fill: canvas_colour(&range_props, "innerFill")?.map_or(super::canvas::CanvasColour::Foreground, super::canvas::CanvasColour::Srgb),
+                                progress_fill: canvas_colour(&range_props, "progressFill")?.map_or(super::canvas::CanvasColour::Foreground, super::canvas::CanvasColour::Srgb),
                                 seek_event: props.get("onRangeSeek") == Some(&Json::Bool(true)),
                                 start_event: props.get("onRangeStart") == Some(&Json::Bool(true)),
                                 commit_event: props.get("onRangeCommit") == Some(&Json::Bool(true)),
@@ -749,7 +749,7 @@ impl ReactTree {
                             text: string(props, "text").unwrap_or_default().to_owned(),
                             size: number(props, "size")?.unwrap_or(26.0),
                             tabular_numbers: props.get("tabularNumbers") == Some(&Json::Bool(true)),
-                            colour: canvas_colour(props, "colour")?.unwrap_or(super::Colour::WHITE),
+                            colour: canvas_colour(props, "colour")?.map_or(super::canvas::CanvasColour::Foreground, super::canvas::CanvasColour::Srgb),
                             align: match string(props, "align").unwrap_or("center") {
                                 "start" => TextAlign::Start,
                                 "center" => TextAlign::Centre,
@@ -900,6 +900,7 @@ impl ReactTree {
             HostKind::Row => Node {
                 identity: NodeIdentity(id),
                 kind: NodeKind::Row {
+                    end: None,
                     children: self.children(host, depth)?,
                     has_image: props.get("hasImage") == Some(&Json::Bool(true)),
                     long_action: (props.get("onLongPress") == Some(&Json::Bool(true)))
@@ -968,6 +969,9 @@ impl ReactTree {
                 };
                 if let NodeKind::Screen(screen) = &mut screen.kind {
                     screen.background = background;
+                    screen.subtitle = props.subtitle;
+                    screen.note = props.note;
+                    screen.theme = props.theme;
                     screen.wide = props.wide;
                     screen.bottom_inset = props.bottom_inset.unwrap_or(true);
                     screen.pinned_header = state.is_none() && props.pinned_header;
@@ -999,13 +1003,21 @@ impl ReactTree {
                     "space-between" => Justification::SpaceBetween,
                     value => bail!("unsupported stack justification {value}"),
                 };
-                let stack = Node::stack(
+                let theme_gap = match string(props, "gap") {
+                    Some("content") => Some(super::ThemeGap::Content),
+                    Some("section") => Some(super::ThemeGap::Section),
+                    _ => None,
+                };
+                let mut stack = Node::stack(
                     self.children(host, depth)?,
                     axis,
-                    number(props, "gap")?,
+                    if theme_gap.is_some() { None } else { number(props, "gap")? },
                     align,
                     justify,
                 );
+                if let NodeKind::Stack { theme_gap: value, .. } = &mut stack.kind {
+                    *value = theme_gap;
+                }
                 if props.get("onPress") == Some(&Json::Bool(true)) {
                     Node { identity: NodeIdentity(id), kind: NodeKind::Pressable {
                         haptic: props.get("haptic") != Some(&Json::Bool(false)),
@@ -1192,6 +1204,10 @@ impl ReactTree {
                     mask, size: number(props, "size")?.unwrap_or(28.0), tone, bounds,
                 } }
             }
+            HostKind::SectionTitle => {
+                let title = string(props, "title").context("Section requires a title")?.to_owned();
+                Node { identity: NodeIdentity(id), kind: NodeKind::SectionTitle { upper: title.to_uppercase(), title } }
+            }
             HostKind::Toggle => {
                 let value = props
                     .get("value")
@@ -1243,7 +1259,8 @@ impl ReactTree {
                         props.get("selected") == Some(&Json::Bool(true)),
                         action,
                     );
-                    if let NodeKind::Button { action, long_action, .. } = &mut button.kind {
+                    if let NodeKind::Button { action, long_action, selectable, .. } = &mut button.kind {
+                        *selectable = props.get("selected").is_some_and(Json::is_boolean);
                         *long_action = (action.is_some() && props.get("onLongPress") == Some(&Json::Bool(true)))
                             .then(|| event(id, "onLongPress", vec![]));
                     }
@@ -1277,7 +1294,7 @@ impl Engine {
                 || previous.align != *align || previous.tabular_numbers != *tabular_numbers { return None; }
             let run = previous.run;
             let rect = self.scene.text[run].rect;
-            let lines = Self::wrap_lines(text, self.scaled_font(font_size.unwrap_or(super::DEFAULT_TEXT_SIZE)), rect.width, Some(1), *tabular_numbers, &[], 0.0);
+            let lines = Self::wrap_lines(text, self.scaled_font(font_size.unwrap_or(super::DEFAULT_TEXT_SIZE)), rect.width, Some(1), *tabular_numbers, &[], 0.0, self.theme.body_font);
             if lines.len() != 1 { return None; }
             result.push((run, lines[0].text.clone()));
         }
@@ -1290,6 +1307,9 @@ struct ScreenProps {
     #[serde(rename = "bottomInset")]
     bottom_inset: Option<bool>,
     title: Option<String>,
+    subtitle: Option<String>,
+    note: Option<String>,
+    theme: Option<String>,
     #[serde(default)]
     wide: bool,
     #[serde(default)]

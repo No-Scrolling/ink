@@ -48,7 +48,7 @@ test("explicit recording and detached-playback capabilities include their transi
     await writeFile(resolve(root, "ink.toml"), 'name = "Compiler contract"\npackage = "dev.ink.compilercontract"\ncapabilities = ["audio-recording", "audio-detached", "audio-recording"]\n');
     expect(await compile(root)).toMatchObject({ exitCode: 0 });
     expect(await manifest(root)).toEqual({ version: 1, capabilities: [
-      "audio", "audio-capture", "audio-detached", "audio-playback", "audio-recording", "external", "files", "microphone-permission", "network",
+      "audio", "audio-capture", "audio-detached", "audio-playback", "audio-recording", "external", "files", "microphone-permission",
     ] });
   });
 }, 60_000);

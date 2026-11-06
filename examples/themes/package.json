@@ -1,0 +1,11 @@
+{
+  "name": "ink-themes-example",
+  "private": true,
+  "scripts": {
+    "check": "ink check"
+  },
+  "dependencies": {
+    "ink": "workspace:*",
+    "react": "19.2.8"
+  }
+}

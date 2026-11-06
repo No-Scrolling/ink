@@ -89,3 +89,44 @@ fn hash(name: &str, dimension: u32) -> u64 {
     }
     value
 }
+
+pub(crate) fn hash_bytes(bytes: &[u8]) -> u64 {
+    let mut value = 0xcbf29ce484222325_u64;
+    for byte in bytes {
+        value ^= u64::from(*byte);
+        value = value.wrapping_mul(0x100000001b3);
+    }
+    value
+}
+
+/// A rounded rectangle mask at device resolution, for themed switch controls.
+pub(crate) fn rounded_rect(width: u32, height: u32, radius: f32) -> Mask {
+    const SAMPLES: u32 = 4;
+    let width = width.max(1);
+    let height = height.max(1);
+    let radius = radius.min(width.min(height) as f32 / 2.0);
+    let mut pixels = vec![0; (width * height) as usize];
+    for y in 0..height {
+        for x in 0..width {
+            let mut covered = 0;
+            for sample_y in 0..SAMPLES {
+                for sample_x in 0..SAMPLES {
+                    let px = x as f32 + (sample_x as f32 + 0.5) / SAMPLES as f32;
+                    let py = y as f32 + (sample_y as f32 + 0.5) / SAMPLES as f32;
+                    let dx = (radius - px).max(px - (width as f32 - radius)).max(0.0);
+                    let dy = (radius - py).max(py - (height as f32 - radius)).max(0.0);
+                    if dx * dx + dy * dy <= radius * radius {
+                        covered += 1;
+                    }
+                }
+            }
+            pixels[(y * width + x) as usize] = (covered * 255 / (SAMPLES * SAMPLES)) as u8;
+        }
+    }
+    Mask {
+        id: hash(&format!("ink_rounded_{height}_{radius}"), width),
+        width: width as u16,
+        height: height as u16,
+        pixels: crate::AssetBytes::Owned(pixels.into()),
+    }
+}

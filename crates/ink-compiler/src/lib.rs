@@ -3,6 +3,7 @@ mod config;
 mod icon;
 mod icons;
 mod javascript;
+mod theme;
 
 pub use icon::generate_image as generate_icon_image;
 
@@ -45,6 +46,13 @@ impl Project {
             config,
             preview: false,
         })
+    }
+
+    /// Use a different theme module, or `None` for Ink's default theme.
+    pub fn with_theme(&self, theme: Option<PathBuf>) -> Self {
+        let mut project = self.clone();
+        project.config.theme = theme;
+        project
     }
 
     /// Compile design exports separately, without background workers.
@@ -221,12 +229,29 @@ fn install_bundle(
         &project.android_assets_path().join("ink-icons-v1.bin"),
         &bundle.icons,
     )?;
+    let theme_path = project.android_assets_path().join("ink-theme-v1.bin");
+    let variants = match theme::compile(project)? {
+        Some((theme, variants)) => {
+            write_if_changed(&theme_path, &theme)?;
+            variants
+        }
+        None => {
+            remove_obsolete_output(&theme_path)?;
+            Vec::new()
+        }
+    };
+    theme::check_screen_themes(project, &bundle.manifest, &variants)?;
     remove_obsolete_output(&project.android_assets_path().join("ink-icons-v1.json"))?;
     write_if_changed(&project.capability_manifest_path(), &capabilities.encode()?)?;
     if !project.preview {
         generate_icon(project)?;
     }
     Ok(capabilities)
+}
+
+/// Evaluate and check the app's theme, returning the encoded theme file, or `None` without one.
+pub fn compile_theme(project: &Project) -> Result<Option<Vec<u8>>> {
+    Ok(theme::compile(project)?.map(|(theme, _)| theme))
 }
 
 pub fn generate_icon(project: &Project) -> Result<()> {

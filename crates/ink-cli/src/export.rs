@@ -15,8 +15,35 @@ use crate::output;
 
 mod headless;
 
-const WIDTH: u32 = 1080;
-const HEIGHT: u32 = 1240;
+/// Frame size in pixels. Defaults to the Light Phone III screen.
+#[derive(Clone, Copy, Debug)]
+pub struct FrameSize {
+    width: u32,
+    height: u32,
+}
+
+impl std::str::FromStr for FrameSize {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let error = || format!("expected WIDTHxHEIGHT in pixels, such as 1080x1200; got {value:?}");
+        let (width, height) = value.split_once(['x', '×']).ok_or_else(error)?;
+        let parse = |text: &str| text.trim().parse::<u32>().ok().filter(|size| (1..=4096).contains(size));
+        Ok(Self { width: parse(width).ok_or_else(error)?, height: parse(height).ok_or_else(error)? })
+    }
+}
+
+/// Export arguments for other commands, parsed exactly as `ink export` parses them.
+pub(crate) fn arguments<I: AsRef<std::ffi::OsStr>>(arguments: impl IntoIterator<Item = I>) -> Result<ExportArgs> {
+    #[derive(clap::Parser)]
+    struct Export {
+        #[command(flatten)]
+        arguments: ExportArgs,
+    }
+    let arguments = std::iter::once(std::ffi::OsString::from("export"))
+        .chain(arguments.into_iter().map(|argument| argument.as_ref().to_owned()));
+    Ok(<Export as clap::Parser>::try_parse_from(arguments)?.arguments)
+}
 
 struct Capture {
     png: Vec<u8>,
@@ -56,13 +83,28 @@ pub struct ExportArgs {
     /// Minimum settling time after mount/readiness, in milliseconds
     #[arg(long, default_value = "500", value_parser = clap::value_parser!(u64).range(0..=60000))]
     wait: u64,
+    /// Theme module to preview instead of the app's theme.ts
+    #[arg(long, value_name = "FILE")]
+    theme: Option<PathBuf>,
+    /// Render in light mode
+    #[arg(long)]
+    light: bool,
+    /// Simulate a display cutout, as X,Y,WIDTH,HEIGHT in pixels; repeat for several
+    #[arg(long, value_name = "X,Y,WIDTH,HEIGHT", value_parser = parse_cutout)]
+    cutout: Vec<ink_core::Rect>,
+    /// Frame size in pixels, as WIDTHxHEIGHT
+    #[arg(long, default_value = "1080x1240", value_name = "WIDTHxHEIGHT")]
+    size: FrameSize,
     /// Maximum wait for readiness and stable pixels, in seconds
     #[arg(long, default_value = "30", value_parser = clap::value_parser!(u64).range(1..=300))]
     timeout: u64,
 }
 
 pub fn run(app: &Project, args: ExportArgs) -> Result<()> {
-    let project = app.for_preview();
+    let project = match &args.theme {
+        Some(theme) => app.with_theme(Some(resolve_file(app, theme)?)).for_preview(),
+        None => app.for_preview(),
+    };
     fs::create_dir_all(project.work_path())?;
     let project_lock = fs::OpenOptions::new()
         .create(true)
@@ -117,7 +159,8 @@ pub fn run(app: &Project, args: ExportArgs) -> Result<()> {
         .context("another Ink export is writing this directory")?;
 
     println!("{} · export", app.name());
-    output::tree_root_field("Frame", format!("{name} · {WIDTH} × {HEIGHT}"), false);
+    let FrameSize { width, height } = args.size;
+    output::tree_root_field("Frame", format!("{name} · {width} × {height}"), false);
     let marker = format!(
         "INK_EXPORT_{}",
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
@@ -150,14 +193,25 @@ pub fn run(app: &Project, args: ExportArgs) -> Result<()> {
         ("setup".into(), json!(setup)),
         ("props".into(), props),
         ("fixtures".into(), json!(args.fixtures)),
+        ("theme".into(), json!(args.theme)),
+        ("light".into(), json!(args.light)),
+        ("cutouts".into(), json!(args.cutout.iter().map(|cutout| [cutout.x, cutout.y, cutout.width, cutout.height]).collect::<Vec<_>>())),
         ("stableCaptures".into(), json!(3)),
         ("rgbaSha256".into(), json!(hash(&pixels))),
         ("pngSha256".into(), json!(hash(&png))),
     ]);
-    write_artifacts(&directory, app, &name, &png, Value::Object(metadata))?;
+    write_artifacts(&directory, app, &name, &png, args.size, Value::Object(metadata))?;
     output::tree_root_field("Pixels", "three identical decoded RGBA frames", false);
     output::tree_root_field("Export", directory.to_string_lossy(), true);
     Ok(())
+}
+
+fn parse_cutout(value: &str) -> Result<ink_core::Rect, String> {
+    let parts = value.split(',').map(|part| part.trim().parse::<f32>()).collect::<Result<Vec<_>, _>>();
+    match parts.as_deref() {
+        Ok([x, y, width, height]) if *width > 0.0 && *height > 0.0 => Ok(ink_core::Rect { x: *x, y: *y, width: *width, height: *height }),
+        _ => Err(format!("expected X,Y,WIDTH,HEIGHT in pixels, such as 480,0,120,90; got {value:?}")),
+    }
 }
 
 fn resolve_file(project: &Project, path: &Path) -> Result<PathBuf> {
@@ -208,6 +262,7 @@ fn write_artifacts(
     project: &Project,
     name: &str,
     png: &[u8],
+    size: FrameSize,
     evidence: Value,
 ) -> Result<()> {
     let path = directory.join("frame.png");
@@ -217,9 +272,11 @@ fn write_artifacts(
     let script = include_str!("export-tldraw.js")
         .replace("__INK_ID__", &identity[..24])
         .replace("__INK_NAME__", &serde_json::to_string(name)?)
+        .replace("__INK_WIDTH__", &size.width.to_string())
+        .replace("__INK_HEIGHT__", &size.height.to_string())
         .replace("__INK_IMAGE__", &serde_json::to_string(&data_url)?);
     fs::write(directory.join("tldraw.js"), script)?;
-    let manifest = json!({ "version": 1, "name": name, "width": WIDTH, "height": HEIGHT,
+    let manifest = json!({ "version": 1, "name": name, "width": size.width, "height": size.height,
         "image": path, "evidence": evidence,
         "tldraw": { "script": directory.join("tldraw.js") },
     });

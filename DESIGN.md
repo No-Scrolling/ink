@@ -17,6 +17,13 @@ Use Ink’s components and defaults to build Light Phone III apps.
 - Do not add padding on top of padding Ink already supplies. Use shared bottom actions and footers rather than positioning your own against the screen edge.
 - Use Ink's icons, muted tones and selected states. Avoid decorative containers, borders and status labels.
 
+## Themes
+
+- Put visual changes in `theme.ts`, not in screens. Screens keep using Ink's components; the theme sets fonts, colours, sizes and control styles. See [Themes](docs/themes.mdx).
+- Measure sizes in pixels from a 1080-pixel-wide mockup or `ink export` frame, and enter them unchanged.
+- Check a theme with `ink export --theme <file>`, including `--light`, `--size` and `--cutout` for the target screens, and compare the saved pixels with the mockup.
+- Themes cannot change layout behaviour, scrolling, the keyboard or navigation.
+
 ## Inputs and navigation
 
 - Place inputs on a separate page, with only hints or errors underneath. Do not mix them with lists, results or other content.

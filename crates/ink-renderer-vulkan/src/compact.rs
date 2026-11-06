@@ -8,13 +8,13 @@ use std::{
     sync::Arc,
 };
 
-use ab_glyph::{Font, FontArc, FontRef, GlyphId, PxScale, ScaleFont};
+use ab_glyph::{Font, FontArc, GlyphId, PxScale, ScaleFont};
 use anyhow::{Context, Result, anyhow};
 use bytemuck::{Pod, Zeroable};
 use ink_core::{
-    Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, PUBLIC_SANS, Rect, Scene, SmolStr,
-    TextAlign, TextRun, font_for_character, is_emoji_grapheme, tabular_digit_width,
-    visual_text_width_with_numbers as text_width_with_numbers,
+    Colour, ImageAssetEncoding, ImageData, ImageFit, ImageRun, Mask, Rect, Scene, SmolStr,
+    FontRole, TextAlign, TextRun, font_for_character_in, is_emoji_grapheme, primary_font, tabular_digit_width_in,
+    visual_text_width_in,
 };
 #[cfg(feature = "perf")]
 use ink_core::{PerfTraceSection, perf_trace_counter};
@@ -483,12 +483,11 @@ impl std::error::Error for AtlasFull {}
 
 struct GlyphAtlas {
     size: u32,
-    font: FontRef<'static>,
     texture: gpu::Texture,
     bind_group: gpu::BindGroup,
     glyphs: HashMap<(usize, GlyphId, u16), CachedGlyph>,
     rasters: GlyphRasterCache,
-    characters: HashMap<(char, u16), CachedCharacter>,
+    characters: HashMap<(char, u16, FontRole), CachedCharacter>,
     masks: HashMap<u64, CachedMask>,
     cursor_x: u32,
     cursor_y: u32,
@@ -501,13 +500,11 @@ struct GlyphAtlas {
 
 impl GlyphAtlas {
     fn new(device: &gpu::Device, size: u32) -> Result<Self> {
-        let font = FontRef::try_from_slice(PUBLIC_SANS).context("Public Sans is invalid")?;
         let texture = device.texture(size, size, true);
         let bind_group = texture.bind_group();
 
         Ok(Self {
             size,
-            font,
             texture,
             bind_group,
             glyphs: HashMap::new(),
@@ -524,11 +521,11 @@ impl GlyphAtlas {
         })
     }
 
-    fn character(&mut self, queue: &gpu::Queue, character: char, size: u16) -> Result<CachedCharacter> {
-        if let Some(cached) = self.characters.get(&(character, size)) {
+    fn character(&mut self, queue: &gpu::Queue, character: char, size: u16, role: FontRole) -> Result<CachedCharacter> {
+        if let Some(cached) = self.characters.get(&(character, size, role)) {
             return Ok(*cached);
         }
-        let (font_index, font) = font_for_character(character);
+        let (font_index, font) = font_for_character_in(character, role);
         let id = font.glyph_id(character);
         let cached = CachedCharacter {
             font_index,
@@ -538,7 +535,7 @@ impl GlyphAtlas {
             bitmap: self.glyph(queue, font_index, font, id, size)?,
         };
         if self.characters.len() == 4096 { self.characters.clear(); }
-        self.characters.insert((character, size), cached);
+        self.characters.insert((character, size, role), cached);
         Ok(cached)
     }
 
@@ -990,7 +987,7 @@ impl Renderer {
         let acquire_started = Instant::now();
         #[cfg(feature = "perf")]
         let acquire_trace = PerfTraceSection::new(b"Ink acquire\0");
-        let Some(mut pass) = self.surface.begin(scene.light)? else {
+        let Some(mut pass) = self.surface.begin(scene.background())? else {
             return Ok(RenderOutcome::Deferred);
         };
         #[cfg(feature = "perf")]
@@ -1460,6 +1457,7 @@ impl Renderer {
                         let old = &prepared.run;
                         old == run
                             || (old.font_size == run.font_size
+                                && old.font == run.font
                                 && old.colour == run.colour
                                 && old.align == run.align
                                 && old.tabular_numbers == run.tabular_numbers
@@ -1492,9 +1490,11 @@ impl Renderer {
     }
 
     fn prepare_text_run(&mut self, scene: &Scene, run: &TextRun) -> Result<PreparedTextRun> {
-        let font = self.glyph_atlas.font.clone();
+        let font = primary_font(run.font);
         let visual_text = ink_core::visual_text(&run.text);
         let mut instances = Vec::new();
+        let text_width_with_numbers = |text: &str, size: f32, tabular: bool| visual_text_width_in(text, size, tabular, run.font);
+        let tabular_digit_width = |size: f32| tabular_digit_width_in(size, run.font);
         let mut system_glyphs = HashMap::<usize, Vec<TextInstance>>::new();
         let clip = intersect(run.rect, run.clip);
         if clip.width > 0.0 && clip.height > 0.0 {
@@ -1550,7 +1550,7 @@ impl Renderer {
                     continue;
                 }
                 for character in grapheme.chars() {
-                    let cached = self.glyph_atlas.character(&self.queue, character, size)?;
+                    let cached = self.glyph_atlas.character(&self.queue, character, size, run.font)?;
                     let font_index = cached.font_index;
                     let scaled = cached.font.as_scaled(PxScale::from(size as f32));
                     let id = cached.id;
@@ -1728,23 +1728,15 @@ fn push_scrollbar_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {
     let Some(scrollbar) = scene.scroll_bar else {
         return;
     };
+    if scrollbar.opacity <= 0.0 {
+        return;
+    }
     let thumb = scrollbar.thumb_rect(scene.scroll_offset, scene.scroll_max);
     let clip = scene.scroll_clip.unwrap_or(scrollbar.track);
-    for quad in [
-        ink_core::Quad {
-            rect: scrollbar.track,
-            clip,
-            colour: scene.colour(Colour::WHITE),
-            scrolling: false,
-        },
-        ink_core::Quad {
-            rect: thumb,
-            clip,
-            colour: scene.colour(Colour::WHITE),
-            scrolling: false,
-        },
-    ] {
-        push_quad_instance(instances, scene, &quad);
+    let colour = scene.scroll_bar_colour(scrollbar.opacity);
+    let track = scrollbar.track_visible.then_some(scrollbar.track);
+    for rect in track.into_iter().chain([thumb]) {
+        push_quad_instance(instances, scene, &ink_core::Quad { rect, clip, colour, scrolling: false });
     }
 }
 

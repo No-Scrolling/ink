@@ -51,19 +51,27 @@ pub fn create_default(name: &str, root: &Path) -> Result<()> {
 
 fn compose(name: &str, root: &Path, paths: &[PathBuf], output: &Path) -> Result<()> {
     let mut header = RgbaImage::from_pixel(WIDTH, HEIGHT, BACKGROUND);
+    let mut size = None;
     for (index, path) in paths.iter().enumerate() {
         let path = root.join(path);
         ensure!(path != output, "output must not overwrite a screenshot");
         let screenshot = image::open(&path)
             .with_context(|| format!("could not read {}", path.display()))?
             .to_rgba8();
+        let dimensions = screenshot.dimensions();
         ensure!(
-            screenshot.dimensions() == (1080, 1240),
-            "{} must be a 1080 × 1240 LP3 screenshot",
-            path.display()
+            *size.get_or_insert(dimensions) == dimensions,
+            "{} is {} × {}; all four screenshots must be the same size",
+            path.display(),
+            dimensions.0,
+            dimensions.1
         );
-        let thumbnail = resize(&screenshot, 573, 658, FilterType::Lanczos3);
-        overlay(&mut header, &thumbnail, 80 + index as i64 * 613, 310);
+        // Fit each screenshot in a 573 × 658 slot, the size of an LP3 screenshot.
+        let scale = (573.0 / dimensions.0 as f32).min(658.0 / dimensions.1 as f32);
+        let width = (dimensions.0 as f32 * scale).round() as u32;
+        let height = (dimensions.1 as f32 * scale).round() as u32;
+        let thumbnail = resize(&screenshot, width, height, FilterType::Lanczos3);
+        overlay(&mut header, &thumbnail, 80 + index as i64 * 613 + (573 - width as i64) / 2, 310);
     }
 
     draw_title(&mut header, name)?;

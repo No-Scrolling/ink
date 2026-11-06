@@ -1,7 +1,7 @@
 import { createElement, Fragment, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "./react";
 import { ListLoadError, ReactList, type ListProps } from "./list";
 import { useAction } from "./action";
-import type { Row } from "./image";
+import type { Row } from "./row";
 import { pressHandler } from "./press";
 import { rememberListPatch, type NativeListItem } from "./list-patch";
 

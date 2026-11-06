@@ -53,6 +53,24 @@ import spotify from "./assets/spotify.svg";
 </div>
 </div>
 
+## End icons and actions
+
+<div className="pattern-example">
+<div>
+
+<p>Use <code>endIcon</code> to show a muted icon at the end of a row, such as an arrow for a link. Pressing it presses the row. Use <code>endAction</code> for a separate button, such as one that removes the item.</p>
+
+```tsx
+import { Row } from "ink";
+import { arrowOutward, close } from "ink/icons";
+
+<Row title="Ink" subtitle="MIT" url="https://github.com/No-Scrolling/ink" endIcon={arrowOutward} />
+<Row title="Atlas" endAction={{ icon: close, onPress: () => removeWord("Atlas") }} />
+```
+
+</div>
+</div>
+
 ## Long titles
 
 <div className="pattern-example">

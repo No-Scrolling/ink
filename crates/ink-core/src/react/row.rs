@@ -15,13 +15,15 @@ impl ReactTree {
         } else { Node::text(title.into(), Some(26.0), TextAlign::Start, max_lines, false) }];
         let mut subtitle = Vec::new();
         if let Some(name) = string(props, "subtitleIcon") { subtitle.push(icon(name, 16.0)?); }
-        if let Some(text) = string(props, "subtitle") { subtitle.push(Node::text(text.into(), Some(16.0), TextAlign::Start, Some(1), true)); }
+        if let Some(text) = string(props, "subtitle") { subtitle.push(Node { identity: NodeIdentity(0), kind: NodeKind::RowSubtitle { text: text.into() } }); }
         if !subtitle.is_empty() { content.push(Node::stack(subtitle, Axis::Horizontal, Some(6.0), Alignment::Centre, Justification::Start)); }
         let mut children = Vec::new();
         let image = string(props, "image");
         if let Some(src) = image { children.push(Node::image(image_source(src)?, None, false, false, 50.0, 50.0, ImageFit::Cover)); }
         children.push(Node::stack(content, Axis::Vertical, Some(0.0), Alignment::Start, Justification::Start));
-        Ok(Node { identity: NodeIdentity(id), kind: NodeKind::Row { children, has_image: image.is_some(),
+        let end_action = (props.get("onEndPress") == Some(&Json::Bool(true))).then(|| event(id, "onEndPress", vec![]));
+        let end = string(props, "endIcon").map(|name| Ok::<_, anyhow::Error>((self.icon(name)?, end_action))).transpose()?;
+        Ok(Node { identity: NodeIdentity(id), kind: NodeKind::Row { children, has_image: image.is_some(), end,
             action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
             long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
         } })

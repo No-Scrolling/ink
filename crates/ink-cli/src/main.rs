@@ -6,6 +6,7 @@ mod cli;
 mod create;
 mod export;
 mod header;
+mod theme;
 mod output;
 mod process;
 mod quality;
@@ -37,7 +38,7 @@ fn run() -> Result<()> {
         return Ok(());
     };
 
-    if matches!(&command, InkCommand::Install | InkCommand::Add { .. } | InkCommand::Check | InkCommand::Format | InkCommand::Lint | InkCommand::Build { .. } | InkCommand::Dev { .. } | InkCommand::Export(_)) {
+    if matches!(&command, InkCommand::Install | InkCommand::Add { .. } | InkCommand::Check | InkCommand::Format | InkCommand::Lint | InkCommand::Build { .. } | InkCommand::Dev { .. } | InkCommand::Export(_) | InkCommand::Theme { .. }) {
         let config = find_config(cli.directory.as_deref())?;
         let root = config.parent().expect("config has a parent");
         if distribution::installed_root().is_some() {
@@ -183,6 +184,10 @@ fn run() -> Result<()> {
         InkCommand::Export(args) => {
             let project = load_project(cli.directory.as_deref())?;
             export::run(&project, args)
+        }
+        InkCommand::Theme { command } => {
+            let project = load_project(cli.directory.as_deref())?;
+            theme::run(&project, command)
         }
     }
 }

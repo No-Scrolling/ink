@@ -8,7 +8,7 @@ const imageId = 'shape:ink-__INK_ID__-image';
 const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), c => c.charCodeAt(0));
 const asset = {
   id: assetId, type: 'image', typeName: 'asset', meta: {},
-  props: { name, src: dataUrl, w: 1080, h: 1240, mimeType: 'image/png', isAnimated: false },
+  props: { name, src: dataUrl, w: __INK_WIDTH__, h: __INK_HEIGHT__, mimeType: 'image/png', isAnimated: false },
 };
 const uploaded = await editor.uploadAsset(asset, new File([bytes], `${name}.png`, { type: 'image/png' }), signal);
 asset.props.src = uploaded.src;
@@ -18,16 +18,16 @@ else editor.createAssets([asset]);
 const frame = editor.getShape(frameId);
 if (frame) {
   editor.setCurrentPage(editor.getAncestorPageId(frame));
-  editor.updateShape({ id: frameId, type: 'frame', props: { w: 1080, h: 1240, name } });
+  editor.updateShape({ id: frameId, type: 'frame', props: { w: __INK_WIDTH__, h: __INK_HEIGHT__, name } });
 } else {
   const bounds = editor.getCurrentPageBounds();
   editor.createShapes([{ id: frameId, type: 'frame', x: bounds ? bounds.maxX + 80 : 0, y: bounds ? bounds.minY : 0,
-    props: { w: 1080, h: 1240, name } }]);
+    props: { w: __INK_WIDTH__, h: __INK_HEIGHT__, name } }]);
 }
 const image = { id: imageId, type: 'image', parentId: frameId, x: 0, y: 0,
-  props: { assetId, w: 1080, h: 1240, altText: name } };
+  props: { assetId, w: __INK_WIDTH__, h: __INK_HEIGHT__, altText: name } };
 if (editor.getShape(imageId)) editor.updateShape(image);
 else editor.createShape(image);
 editor.select(frameId);
 editor.zoomToSelection();
-return { name, pageId: editor.getCurrentPageId(), width: 1080, height: 1240, updated: !!frame };
+return { name, pageId: editor.getCurrentPageId(), width: __INK_WIDTH__, height: __INK_HEIGHT__, updated: !!frame };

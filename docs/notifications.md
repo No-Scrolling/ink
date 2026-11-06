@@ -11,6 +11,7 @@ Use `@ink/notifications` to show a notification or schedule a local reminder. Ta
 | --- | --- |
 | `notifications` | Showing notifications and scheduling reminders. |
 | [Exact alarm access](#exact-reminders) | Reminders with `exact: true`, in addition to notification access. |
+| `RECEIVE_BOOT_COMPLETED` | Restoring scheduled reminders after reboot, enabled with `notification-scheduling` or `notification-exact`. |
 
 ```ts
 import { lightos } from "@ink/lightos";
@@ -21,6 +22,8 @@ const permission = await lightos.requestPermission("notifications");
 Use `lightos.getPermission("notifications")` to check without a prompt. See [Request a permission](/permissions-guide) for the returned statuses.
 
 ### Exact reminders
+
+Add `notification-exact` to the top-level `capabilities` list in `ink.toml`. It includes scheduled reminders, restoration after reboot and exact-alarm access.
 
 Android requires separate access to schedule reminders at an exact time:
 
@@ -55,6 +58,14 @@ await notifications.show({
 Reuse an `id` to update or replace a notification. `href` names a registered screen; `data` is a string.
 
 ## Schedule a reminder
+
+Enable scheduled reminders at the top level of `ink.toml`:
+
+```toml
+capabilities = ["notification-scheduling"]
+```
+
+This adds alarm and boot receivers so reminders survive a reboot. Immediate notifications and LightOS push do not include these receivers or exact-alarm access. Use `notification-exact` instead when you need exact delivery times.
 
 Schedule a reminder for ten minutes from now:
 

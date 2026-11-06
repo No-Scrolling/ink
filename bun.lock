@@ -63,12 +63,19 @@
         "typescript": "5.9.3",
       },
     },
+    "examples/themes": {
+      "name": "ink-themes-example",
+      "dependencies": {
+        "ink": "workspace:*",
+        "react": "19.2.8",
+      },
+    },
     "packages/audio": {
       "name": "@ink/audio",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.10",
-        "ink": "0.1.0-alpha.10",
+        "@ink/files": "0.1.0-alpha.11",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -76,22 +83,22 @@
       "name": "@ink/auth",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/background": {
       "name": "@ink/background",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/barcode": {
       "name": "@ink/barcode",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "@ink/camera": "0.1.0-alpha.10",
-        "ink": "0.1.0-alpha.10",
+        "@ink/camera": "0.1.0-alpha.11",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -99,8 +106,8 @@
       "name": "@ink/camera",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.10",
-        "ink": "0.1.0-alpha.10",
+        "@ink/files": "0.1.0-alpha.11",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -108,24 +115,24 @@
       "name": "@ink/clipboard",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/crypto": {
       "name": "@ink/crypto",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/files": {
       "name": "@ink/files",
       "version": "0.1.0-alpha.11",
       "dependencies": {
-        "@ink/lightos": "0.1.0-alpha.10",
+        "@ink/lightos": "0.1.0-alpha.11",
       },
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -144,7 +151,7 @@
       "name": "@ink/lightos",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -152,14 +159,14 @@
       "name": "@ink/location",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/maps": {
       "name": "@ink/maps",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -172,22 +179,22 @@
         "whatwg-url": "14.2.0",
       },
       "peerDependencies": {
-        "@ink/files": "0.1.0-alpha.10",
-        "ink": "0.1.0-alpha.10",
+        "@ink/files": "0.1.0-alpha.11",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/nfc": {
       "name": "@ink/nfc",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/notifications": {
       "name": "@ink/notifications",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -195,7 +202,7 @@
       "name": "@ink/overlays",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -203,21 +210,21 @@
       "name": "@ink/secure-store",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/store": {
       "name": "@ink/store",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
       },
     },
     "packages/video": {
       "name": "@ink/video",
       "version": "0.1.0-alpha.11",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.10",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -228,8 +235,8 @@
         "valibot": "1.5.0",
       },
       "peerDependencies": {
-        "@ink/barcode": "0.1.0-alpha.10",
-        "ink": "0.1.0-alpha.10",
+        "@ink/barcode": "0.1.0-alpha.11",
+        "ink": "0.1.0-alpha.11",
         "react": "19.2.8",
       },
     },
@@ -1441,6 +1448,8 @@
 
     "ink-light-template-example": ["ink-light-template-example@workspace:examples/light-template"],
 
+    "ink-themes-example": ["ink-themes-example@workspace:examples/themes"],
+
     "internmap": ["internmap@2.0.3", "", {}, "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg=="],
 
     "ip-address": ["ip-address@10.7.3", "", {}, "sha512-A1kdq/tSb5QjvKvAMgIoEvDBIgL7qaqVP/jkvSwYYRZ9iEzvPpopxp2wQfu3SuZRHtpHNxMn8Fs0bS+gf5Xmwg=="],
@@ -2175,6 +2184,8 @@
 
     "blume/react": ["react@19.3.0", "", {}, "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog=="],
 
+    "blume/react-dom": ["react-dom@19.3.0", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q=="],
+
     "blume/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "body-parser/content-type": ["content-type@2.1.0", "", {}, "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag=="],
@@ -2318,6 +2329,8 @@
     "blume/oxc-transform-react/@oxc-transform-react/binding-win32-ia32-msvc": ["@oxc-transform-react/binding-win32-ia32-msvc@0.145.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-ERpriVJY5S8hXd3BJi4UtzsIVsEQnntmpqTgRqh0XCaflLRLTQnPWpkO8rgtI7xye5MRhfhA+qsxKg2olJs4qA=="],
 
     "blume/oxc-transform-react/@oxc-transform-react/binding-win32-x64-msvc": ["@oxc-transform-react/binding-win32-x64-msvc@0.145.0", "", { "os": "win32", "cpu": "x64" }, "sha512-sa781BGPLDw8+7ATrgUpLr0f4t0Q14O+zk3fOuQbUpjW5jERc9a3k1xIYKX1JkTG/sszoFhi8LzyCoMC49tkWA=="],
+
+    "blume/react-dom/scheduler": ["scheduler@0.28.0", "", {}, "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw=="],
 
     "csso/css-tree/mdn-data": ["mdn-data@2.0.28", "", {}, "sha512-aylIc7Z9y4yzHYAJNuESG3hfhC+0Ibp/MAMiaOZgNv4pmEdFyfZhhhny4MNiAfWdBQ1RQ2mfDWmM1x8SvGyp8g=="],
 

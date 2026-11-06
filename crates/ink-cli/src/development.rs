@@ -239,6 +239,8 @@ fn native_fingerprint(project: &Project) -> Result<Vec<u8>> {
     if let Some(hash) = manifest["devRuntimeHash"].as_str() {
         result.extend(hash.as_bytes());
     }
+    // Themes are read from APK assets, so a theme change reinstalls rather than hot reloads.
+    fingerprint_files(&project.android_assets_path().join("ink-theme-v1.bin"), &mut result)?;
 
     let framework = android::project_framework_root(&project)?;
     for name in ["Cargo.toml", "Cargo.lock", "sdk.json"] {

@@ -1679,7 +1679,7 @@ impl Surface {
         Ok(())
     }
 
-    pub fn begin(&mut self, light: bool) -> Result<Option<RenderPass<'_>>> {
+    pub fn begin(&mut self, clear: ink_core::Colour) -> Result<Option<RenderPass<'_>>> {
         unsafe {
             if self.dirty {
                 self.recreate()?
@@ -1709,7 +1709,6 @@ impl Surface {
                 &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
-            let clear = if light { 1. } else { 0. };
             #[cfg(feature = "perf")]
             if let Some(timing) = &self.timing {
                 d.cmd_reset_query_pool(self.command, timing.pool, 0, 2);
@@ -1731,7 +1730,7 @@ impl Surface {
                     })
                     .clear_values(&[vk::ClearValue {
                         color: vk::ClearColorValue {
-                            float32: [clear, clear, clear, 1.],
+                            float32: [clear.red, clear.green, clear.blue, 1.],
                         },
                     }]),
                 vk::SubpassContents::INLINE,

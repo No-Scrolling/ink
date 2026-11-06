@@ -4,14 +4,21 @@ use super::{
 };
 use std::time::Instant;
 
+/// A canvas colour: the theme's foreground when the app sets none, or an sRGB colour it chose.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum CanvasColour {
+    Foreground,
+    Srgb(Colour),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Drawing {
     Range {
-        id: NodeIdentity, bounds: Rect, spec: RangeSpec, fill: Colour, inner_fill: Colour, progress_fill: Colour,
+        id: NodeIdentity, bounds: Rect, spec: RangeSpec, fill: CanvasColour, inner_fill: CanvasColour, progress_fill: CanvasColour,
         start_event: bool, commit_event: bool, snapshot_event: bool, seek_event: bool,
     },
-    Icon { bounds: Rect, mask: Mask, colour: Colour },
-    Path { points: Vec<[f32; 2]>, colour: Colour, width: f32 },
+    Icon { bounds: Rect, mask: Mask, colour: CanvasColour },
+    Path { points: Vec<[f32; 2]>, colour: CanvasColour, width: f32 },
     Rectangle {
         bounds: Rect,
         fill: Option<Colour>,
@@ -24,7 +31,7 @@ pub(super) enum Drawing {
         drag_end: Option<Action>,
         haptic: bool,
     },
-    Text { bounds: Rect, text: String, size: f32, colour: Colour, align: TextAlign, tabular_numbers: bool },
+    Text { bounds: Rect, text: String, size: f32, colour: CanvasColour, align: TextAlign, tabular_numbers: bool },
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
@@ -192,18 +199,18 @@ impl Engine {
                 }
                 Drawing::Rectangle { bounds: area, fill, stroke, stroke_width, action, long_action, drag_action, drag_start, drag_end, haptic } => {
                     let area = bounds(*area);
-                    if let Some(colour) = fill { self.canvas_quad(area, *colour); }
+                    if let Some(colour) = fill { self.canvas_quad(area, CanvasColour::Srgb(*colour)); }
                     if let Some(colour) = stroke {
                         let thickness = stroke_width * scale;
                         let half = thickness / 2.0;
                         self.canvas_quad(Rect { x: area.x - half, y: area.y - half,
-                            width: area.width + thickness, height: thickness }, *colour);
+                            width: area.width + thickness, height: thickness }, CanvasColour::Srgb(*colour));
                         self.canvas_quad(Rect { x: area.x - half, y: area.y + area.height - half,
-                            width: area.width + thickness, height: thickness }, *colour);
+                            width: area.width + thickness, height: thickness }, CanvasColour::Srgb(*colour));
                         self.canvas_quad(Rect { x: area.x - half, y: area.y + half,
-                            width: thickness, height: (area.height - thickness).max(0.0) }, *colour);
+                            width: thickness, height: (area.height - thickness).max(0.0) }, CanvasColour::Srgb(*colour));
                         self.canvas_quad(Rect { x: area.x + area.width - half, y: area.y + half,
-                            width: thickness, height: (area.height - thickness).max(0.0) }, *colour);
+                            width: thickness, height: (area.height - thickness).max(0.0) }, CanvasColour::Srgb(*colour));
                     }
                     if let Some(action) = action {
                         let start = self.hit_regions.len();
@@ -221,7 +228,7 @@ impl Engine {
                 }
                 Drawing::Text { bounds: area, text, size, colour, align, tabular_numbers } => {
                     let area = bounds(*area);
-                    self.scene.text.push(TextRun {
+                    self.scene.text.push(TextRun { font: self.theme.body_font,
                         text: text.as_str().into(), rect: area, clip: area.intersection(self.clip),
                         font_size: self.scaled_font(size * scale / self.viewport.scale),
                         colour: self.canvas_colour(*colour), align: *align,
@@ -260,7 +267,7 @@ impl Engine {
         PointerOutcome { activated, haptic, ..PointerOutcome::default().captured() }
     }
 
-    fn canvas_quad(&mut self, rect: Rect, colour: Colour) {
+    fn canvas_quad(&mut self, rect: Rect, colour: CanvasColour) {
         let rect = Rect {
             x: rect.x.round(), y: rect.y.round(),
             width: (rect.x + rect.width).round() - rect.x.round(),
@@ -273,8 +280,12 @@ impl Engine {
         }
     }
 
-    fn canvas_colour(&self, colour: Colour) -> Colour {
-        let colour = self.scene.colour(colour);
+    fn canvas_colour(&self, colour: CanvasColour) -> Colour {
+        let colour = match colour {
+            // Theme palettes are already linear.
+            CanvasColour::Foreground => return self.scene.colour(Colour::WHITE),
+            CanvasColour::Srgb(colour) => self.scene.explicit_colour(colour),
+        };
         let linear = |channel: f32| {
             if channel <= 0.04045 { channel / 12.92 }
             else { ((channel + 0.055) / 1.055).powf(2.4) }

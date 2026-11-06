@@ -43,6 +43,29 @@ Before distributing an update, increase `version_code` in `ink.toml`. Use `versi
 
 `ink info` shows configuration and built APKs without compiling. Its cached JavaScript size and capabilities describe the last successful compilation; run `ink check` to refresh them.
 
+## Include optional permissions
+
+Declare optional features at the top level of `ink.toml`, before any `[section]` headers:
+
+```toml
+capabilities = ["audio-detached", "network"]
+```
+
+| Capability | Includes |
+| --- | --- |
+| `network` | Internet and network-state access for remote media. Network API imports also include it automatically. |
+| `connectivity` | Network-state access without internet access. |
+| `audio-detached` | Foreground media playback service. Attached playback does not include it. |
+| `location-approximate` | Approximate Android location access. |
+| `location-precise` | Approximate and precise Android location access. |
+| `location-tracking` | Approximate location, notifications and a foreground tracking service. Add `location-precise` for high accuracy. |
+| `media-library-images` | Photo-library access. |
+| `media-library-videos` | Video-library access. Include both library capabilities for a picker showing both kinds. |
+| `notification-scheduling` | Reminder alarms and restoration after reboot. |
+| `notification-exact` | Scheduled reminders and exact-alarm access. |
+
+Capability declarations include Android permissions in the APK. Request runtime permission separately where required. Rebuild the APK after changing capabilities; a JavaScript refresh cannot change installed permissions.
+
 ## Release through GitHub Actions
 
 New apps created with `ink create` include **Prepare Release** and **Release** workflows. Add them to an existing app with:

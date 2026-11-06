@@ -1,4 +1,7 @@
-use std::sync::OnceLock;
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicPtr, Ordering},
+};
 
 use ab_glyph::{Font, FontArc, GlyphId, PxScale, ScaleFont};
 use unicode_segmentation::UnicodeSegmentation;
@@ -32,16 +35,105 @@ pub fn text_graphemes(text: &str) -> impl Iterator<Item = &str> {
     if text.is_ascii() { Graphemes::Ascii(text) } else { Graphemes::Unicode(text.graphemes(true)) }
 }
 
-pub fn font_for_character(character: char) -> (usize, &'static FontArc) {
-    let (index, font, _) = glyph_for_character(character);
+/// A loaded font. Themes install their fonts into numbered slots; `FontRole::DEFAULT` is the
+/// bundled Public Sans.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FontRole(u8);
+
+impl FontRole {
+    pub const DEFAULT: Self = Self(u8::MAX);
+
+    pub const fn slot(index: u8) -> Self {
+        Self(index)
+    }
+
+    /// The slot index, or `None` for Public Sans.
+    pub fn index(self) -> Option<u8> {
+        (self != Self::DEFAULT).then_some(self.0)
+    }
+}
+
+impl Default for FontRole {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+struct ThemeFont {
+    bytes: &'static [u8],
+    font: FontArc,
+    index: usize,
+    ascii: [GlyphId; 128],
+    tabular: f32,
+    raster_scale: f32,
+}
+
+pub const MAX_THEME_FONTS: usize = 16;
+// Theme fonts are installed once per process before layout, so lookups stay a single atomic load.
+static THEME_FONTS: [AtomicPtr<ThemeFont>; MAX_THEME_FONTS] = [const { AtomicPtr::new(std::ptr::null_mut()) }; MAX_THEME_FONTS];
+const THEME_FONT_INDEX: usize = 64;
+
+/// Install a theme's fonts into slots 0, 1, 2… in order.
+pub fn set_theme_fonts(fonts: Vec<Vec<u8>>) -> anyhow::Result<()> {
+    anyhow::ensure!(fonts.len() <= MAX_THEME_FONTS, "a theme can use at most {MAX_THEME_FONTS} font files");
+    for (slot, bytes) in fonts.into_iter().enumerate() {
+        // Hosts may install the same fonts more than once; keep the loaded copy.
+        let installed = unsafe { THEME_FONTS[slot].load(Ordering::Acquire).as_ref() };
+        if installed.is_some_and(|font| font.bytes == bytes.as_slice()) {
+            continue;
+        }
+        let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+        let font = FontArc::try_from_slice(bytes).map_err(|_| anyhow::anyhow!("invalid theme font in slot {slot}"))?;
+        let scaled = font.as_scaled(PxScale::from(1.0));
+        let tabular = ('0'..='9').map(|digit| scaled.h_advance(font.glyph_id(digit))).fold(0.0, f32::max);
+        let raster_scale = font.height_unscaled() / font.units_per_em().unwrap_or(1000.0);
+        let ascii = std::array::from_fn(|code| font.glyph_id(code as u8 as char));
+        let font = Box::leak(Box::new(ThemeFont { bytes, font, index: THEME_FONT_INDEX + slot, ascii, tabular, raster_scale }));
+        THEME_FONTS[slot].store(font, Ordering::Release);
+    }
+    Ok(())
+}
+
+fn theme_font(role: FontRole) -> Option<&'static ThemeFont> {
+    let slot = THEME_FONTS.get(role.index()? as usize)?;
+    unsafe { slot.load(Ordering::Acquire).as_ref() }
+}
+
+/// Converts a CSS-style font size to the scale ab_glyph rasterises at for this role's font.
+pub fn raster_scale(role: FontRole) -> Option<f32> {
+    theme_font(role).map(|font| font.raster_scale)
+}
+
+/// A font file's bytes, for platform text editors.
+pub fn font_bytes(role: FontRole) -> &'static [u8] {
+    theme_font(role).map_or(PUBLIC_SANS, |font| font.bytes)
+}
+
+/// The primary font for a role, used for line metrics.
+pub fn primary_font(role: FontRole) -> &'static FontArc {
+    theme_font(role).map_or_else(public_sans, |font| &font.font)
+}
+
+fn public_sans() -> &'static FontArc {
+    static PRIMARY: OnceLock<FontArc> = OnceLock::new();
+    PRIMARY.get_or_init(|| {
+        FontArc::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid")
+    })
+}
+
+pub fn font_for_character_in(character: char, role: FontRole) -> (usize, &'static FontArc) {
+    let (index, font, _) = glyph_for_character(character, role);
     (index, font)
 }
 
-fn glyph_for_character(character: char) -> (usize, &'static FontArc, GlyphId) {
-    static PRIMARY: OnceLock<FontArc> = OnceLock::new();
-    let primary = PRIMARY.get_or_init(|| {
-        FontArc::try_from_slice(PUBLIC_SANS).expect("bundled Public Sans is valid")
-    });
+fn glyph_for_character(character: char, role: FontRole) -> (usize, &'static FontArc, GlyphId) {
+    if let Some(theme) = theme_font(role) {
+        let glyph = if character.is_ascii() { theme.ascii[character as usize] } else { theme.font.glyph_id(character) };
+        if glyph.0 != 0 {
+            return (theme.index, &theme.font, glyph);
+        }
+    }
+    let primary = public_sans();
     let glyph = if character.is_ascii() {
         static ASCII: OnceLock<[GlyphId; 128]> = OnceLock::new();
         ASCII.get_or_init(|| std::array::from_fn(|code| primary.glyph_id(code as u8 as char)))[character as usize]
@@ -111,25 +203,24 @@ fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
     ]).iter().enumerate().map(|(index, font)| (index + 1, font))
 }
 
-pub fn text_width(text: &str, size: f32) -> f32 {
-    text_width_with_numbers(text, size, false)
-}
-
-pub fn tabular_digit_width(size: f32) -> f32 {
+pub fn tabular_digit_width_in(size: f32, role: FontRole) -> f32 {
+    if let Some(theme) = theme_font(role) {
+        return size * theme.tabular;
+    }
     static WIDTH: OnceLock<f32> = OnceLock::new();
     size * WIDTH.get_or_init(|| {
-        let (_, font) = font_for_character('0');
+        let (_, font) = font_for_character_in('0', FontRole::DEFAULT);
         let scaled = font.as_scaled(PxScale::from(1.0));
         ('0'..='9').map(|digit| scaled.h_advance(scaled.glyph_id(digit))).fold(0.0, f32::max)
     })
 }
 
-pub fn text_width_with_numbers(text: &str, size: f32, tabular_numbers: bool) -> f32 {
-    visual_text_width_with_numbers(&visual_text(text), size, tabular_numbers)
+pub fn text_width_in(text: &str, size: f32, tabular_numbers: bool, role: FontRole) -> f32 {
+    visual_text_width_in(&visual_text(text), size, tabular_numbers, role)
 }
 
-pub fn visual_text_width_with_numbers(text: &str, size: f32, tabular_numbers: bool) -> f32 {
-    TextWidth::new(size, tabular_numbers).push(text)
+pub fn visual_text_width_in(text: &str, size: f32, tabular_numbers: bool, role: FontRole) -> f32 {
+    TextWidth::new_in(size, tabular_numbers, role).push(text)
 }
 
 pub(crate) fn has_rtl(text: &str) -> bool {
@@ -157,16 +248,18 @@ pub fn visual_text(text: &str) -> std::borrow::Cow<'_, str> {
 
 pub(crate) struct TextWidth {
     size: f32,
+    role: FontRole,
     tabular_width: Option<f32>,
     previous: Option<(usize, ab_glyph::GlyphId)>,
     width: f32,
 }
 
 impl TextWidth {
-    pub fn new(size: f32, tabular_numbers: bool) -> Self {
+    pub fn new_in(size: f32, tabular_numbers: bool, role: FontRole) -> Self {
         Self {
             size,
-            tabular_width: tabular_numbers.then(|| tabular_digit_width(size)),
+            role,
+            tabular_width: tabular_numbers.then(|| tabular_digit_width_in(size, role)),
             previous: None,
             width: 0.0,
         }
@@ -200,7 +293,7 @@ impl TextWidth {
             self.previous = None;
             return;
         }
-        let (index, font, glyph) = glyph_for_character(character);
+        let (index, font, glyph) = glyph_for_character(character, self.role);
         let scaled = font.as_scaled(PxScale::from(self.size));
         if let Some((previous_index, previous_glyph)) = self.previous {
             if previous_index == index {

@@ -2,6 +2,7 @@ name = "Ink Template"
 package = "com.vandam.ink.template"
 version = "0.1.0"
 version_code = 1
+capabilities = ["audio-detached", "location-precise", "location-tracking", "media-library-images", "media-library-videos", "notification-exact"]
 
 [background]
 entry = "./workers.ts"

@@ -36,7 +36,7 @@ impl Engine {
         for &(id, kind, run) in &self.capture_readings.runs {
             if id != controller || kind != reading.kind { continue; }
             let text = &mut self.scene.text[run];
-            let next = Self::capture_text(&reading.text, text.font_size, text.rect.width);
+            let next = Self::capture_text(&reading.text, text.font_size, text.rect.width, text.font);
             if text.text.as_str() != next {
                 text.text = next.into();
                 changed = true;
@@ -54,16 +54,16 @@ impl Engine {
 
     pub(super) fn clear_capture_runs(&mut self) { self.capture_readings.runs.clear(); }
 
-    fn capture_text(text: &str, size: f32, width: f32) -> String {
-        if text_width_with_numbers(text, size, true) <= width { text.to_owned() }
-        else { Self::ellipsize_forced(text, size, width, true) }
+    fn capture_text(text: &str, size: f32, width: f32, role: FontRole) -> String {
+        if text_width_in(text, size, true, role) <= width { text.to_owned() }
+        else { Self::ellipsize_forced(text, size, width, true, role) }
     }
 
     pub(super) fn layout_capture(&mut self, controller: u64, kind: CaptureKind, rect: Rect) {
         let text = self.capture_readings.values.get(&controller).filter(|reading| reading.kind == kind).map(|reading| reading.text.as_str()).unwrap_or("—");
         let run = self.scene.text.len();
         let size = self.scaled_font(kind.size());
-        self.scene.text.push(TextRun { text: Self::capture_text(text, size, rect.width).into(),
+        self.scene.text.push(TextRun { font: self.theme.body_font, text: Self::capture_text(text, size, rect.width, self.theme.body_font).into(),
             rect, clip: self.clip, font_size: size, colour: self.scene.colour(Colour::WHITE),
             align: TextAlign::Start, tabular_numbers: true, scrolling: self.scrolling });
         if rect.intersection(self.clip).height > 0.0 { self.capture_readings.runs.push((controller, kind, run)); }

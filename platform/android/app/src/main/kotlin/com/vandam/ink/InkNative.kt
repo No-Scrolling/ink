@@ -56,7 +56,7 @@ internal object InkNative {
     external fun nativeJavaScriptReceive(handle: Long, message: String)
 
     @JvmStatic
-    external fun nativePublicSans(): ByteBuffer
+    external fun nativeFont(assets: android.content.res.AssetManager, slot: Int): ByteBuffer
 
     @JvmStatic
     external fun nativeAttachSurface(

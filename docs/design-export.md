@@ -3,11 +3,11 @@ title: "Design exports"
 description: "Export Ink screens as images for chat and tldraw."
 ---
 
-Use `ink export` to render pages and standalone TSX components as PNG images. Each image is 1080 × 1240 pixels, the Light Phone III screen size. Exports run independently of the emulator.
+Use `ink export` to render pages and standalone TSX components as PNG images. Images are 1080 × 1240 pixels, the Light Phone III screen size, unless you set `--size`. Exports run independently of the emulator.
 
 ## Generate an app header
 
-Save four LP3 screenshots as `assets/a.png`, `assets/b.png`, `assets/c.png` and `assets/d.png`, in display order. Each screenshot must be 1080 × 1240 pixels.
+Save four screenshots as `assets/a.png`, `assets/b.png`, `assets/c.png` and `assets/d.png`, in display order. The screenshots must be the same size; LP3 screenshots are 1080 × 1240 pixels. Ink scales other sizes to fit the same space.
 
 ```sh
 ink header
@@ -61,7 +61,27 @@ File paths are relative to the app directory, including when using `ink -C <app-
 
 `design/` is a convention for compositions, fixtures and generated images. Existing app pages can stay in `app/`.
 
-### Supply route parameters
+#### Set the frame size
+
+Use `--size` to render for a different screen, as width × height in pixels:
+
+```sh
+ink export /settings --size 1080x1200
+```
+
+Text and spacing scale with the width, so a 1080-pixel-wide frame of a different height keeps the same sizes and shows more or less content.
+
+### Simulate a display cutout
+
+Use `--cutout` to reserve a camera cutout, as `X,Y,WIDTH,HEIGHT` in pixels. Repeat it for several cutouts:
+
+```sh
+ink export /settings --size 1080x1200 --cutout 490,20,100,100
+```
+
+By default, the header fits in the widest space beside the cutout. Exports leave the cutout area unpainted.
+
+## Supply route parameters
 
 For a route such as `app/contacts/[id].tsx`, export a concrete path:
 
@@ -246,7 +266,7 @@ Exporting to the same directory replaces its generated files. The manifest inclu
 
 ## Import into tldraw
 
-Drop `frame.png` into a board, or ask an agent with the tldraw plugin to run `tldraw.js` through its `exec` tool. The script creates a 1080 × 1240 frame containing the image on the open board.
+Drop `frame.png` into a board, or ask an agent with the tldraw plugin to run `tldraw.js` through its `exec` tool. The script creates a frame at the export size, containing the image, on the open board.
 
 Reimporting the same project and frame name updates the existing image. It restores the frame and image dimensions, retains the frame's position and surrounding drawings, and opens the page containing the frame. Use different frame names for variants.
 

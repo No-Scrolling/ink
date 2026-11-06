@@ -24,9 +24,12 @@ import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class MainActivity : Activity(), InkJavaScriptHost {
-    internal val publicSansTypeface: Typeface by lazy(LazyThreadSafetyMode.NONE) {
+    private val typefaces = HashMap<Int, Typeface>()
+
+    /** A theme font by slot, or Public Sans for -1. */
+    internal fun typeface(slot: Int): Typeface = typefaces.getOrPut(slot) {
         Typeface.CustomFallbackBuilder(
-            FontFamily.Builder(Font.Builder(InkNative.nativePublicSans()).build()).build(),
+            FontFamily.Builder(Font.Builder(InkNative.nativeFont(assets, slot)).build()).build(),
         ).build()
     }
     private lateinit var host: InkHost

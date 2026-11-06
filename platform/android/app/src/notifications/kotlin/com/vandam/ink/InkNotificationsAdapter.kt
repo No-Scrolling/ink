@@ -49,9 +49,13 @@ private class InkNotificationsAdapter(
         }
         when (operation) {
             "exact-status" -> complete(NativeResult.Success(
-                if (context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) "granted" else "denied",
+                if (BuildConfig.INK_NOTIFICATION_EXACT_ENABLED && context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) "granted" else "denied",
             ))
             "request-exact-permission" -> {
+                if (!BuildConfig.INK_NOTIFICATION_EXACT_ENABLED) {
+                    complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Enable the notification-exact capability to request exact alarm access", false))
+                    return
+                }
                 val activity = requireNotNull(activity)
                 activity.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
                     Uri.parse("package:${activity.packageName}")))
@@ -157,6 +161,14 @@ private class InkNotificationsAdapter(
                 runCatching { JSONObject(payload).optString("id") }.getOrDefault(""),
                 OperationError("invalid-request", it.message ?: "Invalid notification", false),
             )
+        }
+        if (request.triggerAtMs > System.currentTimeMillis() && !BuildConfig.INK_NOTIFICATION_SCHEDULING_ENABLED) {
+            return updateOperation(controller, "schedule", request.id,
+                OperationError("unavailable", "Enable the notification-scheduling capability to schedule reminders", false))
+        }
+        if (request.exact && !BuildConfig.INK_NOTIFICATION_EXACT_ENABLED) {
+            return updateOperation(controller, "schedule", request.id,
+                OperationError("unavailable", "Enable the notification-exact capability to schedule exact reminders", false))
         }
         val permission = permissionStatus()
         if (permission != "granted") {

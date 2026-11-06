@@ -11,4 +11,6 @@ Expected row order, labels, event keys, indices and state are supplied independe
 
 These contracts validate scene data and interaction routing. They do not make pixel, typography, GPU or device-rendering claims. Any visual defect needs the repository's saved-screenshot pixel checks before being reported.
 
+`test/native/tests/themes.rs` runs the compiled `themes` fixture, whose `theme.ts` uses the large header, Back at the end, `cutout: "below"`, inline fields, sections and a custom toggle. It checks title and Back placement against the theme's pixel values, layout under a simulated cutout, inline value wrapping, section grouping, theme colours against explicit canvas colours, and the disabled toggle image. Theme fonts are process-wide, so this runs as a separate test binary.
+
 The compiled `navigation` fixture covers page/tab history, retained state and notification routing. See [navigation contracts](navigation-lifecycle.md).

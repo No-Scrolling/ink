@@ -5,6 +5,7 @@
     "packages/*",
     "examples/light-template",
     "examples/counter",
+    "examples/themes",
     "docs"
   ],
   "scripts": {

@@ -7,10 +7,20 @@ Use `@ink/location` for a single position, live updates or background tracking. 
 
 ## Permissions
 
+Declare Android location access at the top level of `ink.toml` before requesting it:
+
+```toml
+capabilities = ["location-approximate"]
+```
+
+Use `location-precise` instead to include both approximate and precise access. Reading only `location.default()` does not require either Android capability; LightOS still controls consent to its saved location.
+
 | Permission | Required for |
 | --- | --- |
 | `location-approximate` | Positions and watches with `accuracy: "balanced"` (the default). |
 | `location-precise` | Positions and watches with `accuracy: "high"`. |
+| `notifications` | Background tracking. |
+| `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION` | Background tracking, enabled with `location-tracking`. |
 
 ```ts
 import { lightos } from "@ink/lightos";
@@ -104,6 +114,8 @@ Handle denied permission, disabled location services, timeouts and unavailable p
 ## Background tracking
 
 Background tracking also requires notification permission because it displays an ongoing notification.
+
+Add `location-tracking` to `capabilities` in `ink.toml`. It includes approximate location access, notification permission and the foreground location service. Add `location-precise` as well when tracking with `accuracy: "high"`.
 
 ### Start tracking
 
