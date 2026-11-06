@@ -239,6 +239,7 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
         private val pendingMoves = mutableMapOf<Int, Pair<Float, Float>>()
         private val hasPendingMove: Boolean get() = pendingMoves.isNotEmpty()
         private var lastFlingY = 0
+        private var waitingFlingVelocity = 0
         private var capturedGesture = false
         private var pinchActive = false
         private var imageTapDownX = 0f
@@ -273,15 +274,27 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
             if (presentBeforeMove) presentFrame()
             var changed = InkNative.nativeAnimateScene(handle) || (pending && !presentBeforeMove)
             if (hasPendingMove) changed = flushPointerMoves() || changed
+            if (pending && waitingFlingVelocity != 0) {
+                when (InkNative.nativeScrollBy(handle, 1f)) {
+                    SCROLL_CHANGED -> {
+                        startFling(waitingFlingVelocity)
+                        changed = true
+                    }
+                    0 -> waitingFlingVelocity = 0
+                }
+            }
             if (scroller.computeScrollOffset()) {
                 val y = scroller.currY
                 val delta = y - lastFlingY
                 lastFlingY = y
                 if (delta != 0) {
-                    if (InkNative.nativeScrollBy(handle, delta.toFloat())) {
-                        changed = true
-                    } else {
-                        scroller.abortAnimation()
+                    when (InkNative.nativeScrollBy(handle, delta.toFloat())) {
+                        SCROLL_CHANGED -> changed = true
+                        SCROLL_PENDING -> {
+                            waitingFlingVelocity = scroller.currVelocity.toInt()
+                            scroller.forceFinished(true)
+                        }
+                        else -> scroller.abortAnimation()
                     }
                 }
             }
@@ -497,7 +510,7 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
         }
 
         private fun canPresentCommit(): Boolean =
-            !touchActive && !pinchActive && !hasPendingMove && scroller.isFinished &&
+            !touchActive && !pinchActive && !hasPendingMove && scroller.isFinished && waitingFlingVelocity == 0 &&
                 !InkNative.nativeHasSceneAnimations(handle)
 
         private fun presentFrame() {
@@ -525,6 +538,7 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
         private fun startFling(velocityY: Int) {
             // Prepending rows shifts content coordinates; clamp travel against the live layout.
             lastFlingY = 0
+            waitingFlingVelocity = 0
             scroller.fling(
                 0,
                 0,
@@ -558,6 +572,7 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
         }
 
         private fun stopFling() {
+            waitingFlingVelocity = 0
             scroller.abortAnimation()
             pendingMoves.clear()
             if (framePosted) {
@@ -574,6 +589,8 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
 
 
     private companion object {
+        const val SCROLL_CHANGED = 1
+        const val SCROLL_PENDING = 2
         const val POINTER_LONG_PRESS = 4
         const val POINTER_CHANGED = 1
         const val POINTER_ACTIVATED = 1 shl 1

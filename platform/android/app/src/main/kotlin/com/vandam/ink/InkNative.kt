@@ -125,7 +125,7 @@ internal object InkNative {
     ): Int
 
     @JvmStatic
-    external fun nativeScrollBy(handle: Long, delta: Float): Boolean
+    external fun nativeScrollBy(handle: Long, delta: Float): Int
 
     @JvmStatic
     external fun nativeRender(handle: Long): String
@@ -200,6 +200,12 @@ internal object InkNative {
 
     @JvmStatic
     external fun nativeCompleteAction(handle: Long, requestId: Long): Boolean
+
+    @JvmStatic
+    external fun nativeMediaPreviewNeeded(url: String): Boolean
+
+    @JvmStatic
+    external fun nativeMediaPreviewStore(url: String, bytes: ByteArray): Boolean
 
     @JvmStatic
     external fun nativeAudioActivate(

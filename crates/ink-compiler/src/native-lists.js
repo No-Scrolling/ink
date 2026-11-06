@@ -140,7 +140,7 @@ export function compileNativeLists(ts, path, contents) {
       if (kind === "Row") {
         const props = [];
         for (const attribute of opening.attributes.properties) {
-          if (!ts.isJsxAttribute(attribute) || !["image","title","titleMaxLines","titleIcon","subtitle","subtitleIcon","href","url","onPress","onLongPress"].includes(attribute.name.text)) throw Error("unsupported Row property");
+          if (!ts.isJsxAttribute(attribute) || !["image","title","titleMaxLines","titleIcon","subtitle","subtitleIcon","selected","href","url","onPress","onLongPress"].includes(attribute.name.text)) throw Error("unsupported Row property");
           const name = attribute.name.text, value = attribute.initializer;
           if (value && ts.isStringLiteral(value) && !value.text.includes("&")) { props.push(`${name}:${JSON.stringify(value.text)}`); }
           else if (value && ts.isJsxExpression(value) && value.expression && pure(value.expression, name.startsWith("on"))) {
@@ -154,7 +154,7 @@ export function compileNativeLists(ts, path, contents) {
         const field = name => ({ $value: 0, path: ["values", slot, name] });
         const host = (type, props, children = []) => ({ id: next++, type, props, children });
         return host("RowContent", Object.fromEntries(
-          ["image", "title", "titleMaxLines", "titleIcon", "subtitle", "subtitleIcon", "onPress", "onLongPress"].map(name => [name, field(name)])));
+          ["image", "title", "titleMaxLines", "titleIcon", "subtitle", "subtitleIcon", "selected", "onPress", "onLongPress"].map(name => [name, field(name)])));
       }
       const result = { id: next++, type: kind, props: {}, children: [] };
       for (const attribute of opening.attributes.properties) {

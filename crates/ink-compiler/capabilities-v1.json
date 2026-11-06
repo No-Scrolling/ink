@@ -229,6 +229,16 @@
         "android.permission.READ_MEDIA_VIDEO"
       ]
     },
+    "media-library-manage": {
+      "cost": "deleting and editing items in the media library",
+      "dependencies": [
+        "media-library"
+      ],
+      "permissions": [
+        "android.permission.MANAGE_MEDIA",
+        "android.permission.MANAGE_EXTERNAL_STORAGE"
+      ]
+    },
     "microphone-permission": {
       "cost": "microphone permission and recording access",
       "dependencies": [],

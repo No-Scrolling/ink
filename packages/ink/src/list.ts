@@ -114,6 +114,7 @@ export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, follow
     children.push(createElement("Stack", { key: keys[index], axis: "vertical", align: "stretch" }, renderItem(items[index], index)));
   }
   const props = {
+    moreAvailable: hasMore && !!onLoadMore && load.status !== "error",
     keys: data.keys,
     contentVersions,
     revision,

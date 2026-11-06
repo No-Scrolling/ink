@@ -25,6 +25,7 @@ pub use fonts::{font_for_character, tabular_digit_width, text_graphemes, text_wi
 mod icon_assets;
 mod list;
 mod masks;
+pub mod media_previews;
 mod native_editor;
 mod react;
 
@@ -95,12 +96,21 @@ const BUTTON_ICON_GAP: f32 = 12.0;
 const FIELD_LABEL_SIZE: f32 = 20.0;
 const FIELD_LABEL_HEIGHT: f32 = 25.0;
 const CONTENT_INSET_START: f32 = 37.0;
+const WIDE_CONTENT_INSET: f32 = 20.0;
 const CONTENT_TOP: f32 = 14.0;
 const CONTENT_BOTTOM: f32 = 20.0;
 const CONTENT_GAP: f32 = 47.0;
 const SCROLL_OVERSCAN: f32 = 2.0;
-const DECODED_IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
-const DECODED_IMAGE_CACHE_ENTRIES: usize = 256;
+const ACTION_BAR_HEIGHT: f32 = 56.0;
+const HEADER_TITLE_ICON_SIZE: f32 = 24.0;
+const SWIPE_DISTANCE: f32 = 40.0;
+const SCRUB_SEEK_INTERVAL: Duration = Duration::from_millis(120);
+const MEDIA_DIMMED_ALPHA: f32 = 0.96;
+// Automatic scrollbars stay for a moment after scrolling stops, then fade out.
+const SCROLL_BAR_HOLD: f32 = 0.9;
+const SCROLL_BAR_FADE: f32 = 0.35;
+const DECODED_IMAGE_CACHE_BYTES: usize = 64 * 1024 * 1024;
+const DECODED_IMAGE_CACHE_ENTRIES: usize = 512;
 const HEADER_HEIGHT: f32 = 50.0;
 const HEADER_TEXT_SIZE: f32 = 20.0;
 const HEADER_HORIZONTAL_INSET: f32 = 22.0;
@@ -613,7 +623,7 @@ struct NodeIdentity(usize);
 enum NodeKind {
     Canvas { width: f32, height: f32, drawings: Vec<canvas::Drawing> },
     MediaGridRow { children: Vec<Node> },
-    MediaCell { source: ImageSource, selected: bool, video: bool, check: Mask, play: Mask, action: Option<Action> },
+    MediaCell { source: ImageSource, selected: bool, dimmed: bool, video: bool, check: Mask, play: Mask, action: Option<Action>, long_action: Option<Action> },
     Message { children: Vec<Node>, outgoing: bool },
     MessageQuote { children: Vec<Node> },
     LinkPreview { children: Vec<Node> },
@@ -629,6 +639,7 @@ enum NodeKind {
     Row {
         children: Vec<Node>,
         has_image: bool,
+        selected: bool,
         action: Option<Action>,
         long_action: Option<Action>,
     },
@@ -688,6 +699,13 @@ enum NodeKind {
         bounds: Option<Rect>,
     },
     Image {
+        press: Option<Action>,
+        /// A play triangle over a video poster, matching the native paused-video icon.
+        play_icon: bool,
+        /// A video drawn over the image once it has a frame, such as over its poster.
+        video: Option<ControllerId>,
+        /// Whether a next and a previous item exist, for swipeable images.
+        swipe: Option<(bool, bool)>,
         avatar: Option<bool>,
         rotation: Option<u16>,
         background: Option<Colour>,
@@ -732,6 +750,7 @@ enum NodeKind {
 #[derive(Clone, Debug, PartialEq)]
 struct ScreenNode {
     children: Vec<Node>,
+    overlay: Vec<Node>,
     title: Option<String>,
     background: Option<Colour>,
     centred: bool,
@@ -743,6 +762,20 @@ struct ScreenNode {
     left_action: Option<(Mask, Action)>,
     right_action: Option<(Mask, Action)>,
     media_picker: bool,
+    auto_scroll_bar: bool,
+    action_bar: Vec<Option<ActionBarItem>>,
+    immersive: bool,
+    /// A pressable title, with an icon after it such as a chevron.
+    title_action: Option<(Option<Mask>, Action)>,
+    /// Content fills the screen, with the header and action bar drawn over it.
+    overlay_bars: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ActionBarItem {
+    icon: Option<Mask>,
+    label: Option<String>,
+    action: Option<Action>,
 }
 
 impl Node {
@@ -751,6 +784,7 @@ impl Node {
             identity: NodeIdentity(0),
             kind: NodeKind::Screen(Box::new(ScreenNode {
                 children,
+                overlay: Vec::new(),
                 title,
                 background: None,
                 centred,
@@ -762,6 +796,11 @@ impl Node {
                 left_action: None,
                 right_action: None,
                 media_picker: false,
+                auto_scroll_bar: false,
+                action_bar: Vec::new(),
+                immersive: false,
+                title_action: None,
+                overlay_bars: false,
             })),
         }
     }
@@ -880,6 +919,10 @@ impl Node {
         Self {
             identity: NodeIdentity(0),
             kind: NodeKind::Image {
+                press: None,
+                play_icon: false,
+                video: None,
+                swipe: None,
                 avatar: None,
                 rotation: None,
                 background: None,
@@ -1134,6 +1177,8 @@ pub struct CameraPortal {
 pub struct MapPortal {
     pub controller: ControllerId,
     pub rect: Rect,
+    /// The visible part of `rect`, such as between overlaid bars.
+    pub clip: Rect,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1157,6 +1202,8 @@ pub struct Scene {
     pub scroll_max: f32,
     pub scroll_clip: Option<Rect>,
     pub scroll_bar: Option<ScrollBar>,
+    /// Opacity of the scrollbar; automatic scrollbars fade out while idle.
+    pub scroll_bar_alpha: f32,
 }
 
 impl Scene {
@@ -1256,6 +1303,39 @@ enum EdgeBackState {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct SwipePointer {
+    image: NodeIdentity,
+    start_x: f32,
+    next: bool,
+    previous: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ScrubPointer {
+    progress: NodeIdentity,
+    left: f32,
+    width: f32,
+    duration: f32,
+    emitted: Option<Instant>,
+}
+
+/// A progress bar being dragged. It shows the dragged position until playback reports the seek.
+#[derive(Clone, Copy, Debug)]
+struct Scrub {
+    progress: NodeIdentity,
+    position: f32,
+    released: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SwipeRegion {
+    image: NodeIdentity,
+    rect: Rect,
+    next: bool,
+    previous: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
 struct EdgeBackPointer {
     target: Option<PressTarget>,
     start_x: f32,
@@ -1299,6 +1379,8 @@ enum Pointer {
     Content(ContentPointer),
     TextInput(TextInputPointer),
     ImagePan(ImagePanPointer),
+    Swipe(SwipePointer),
+    Scrub(ScrubPointer),
     ScrollThumb {
         grab_offset: f32,
     },
@@ -1495,6 +1577,12 @@ pub struct Engine {
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
+    media_previews: HashMap<String, RemoteImage>,
+    swipe_regions: Vec<SwipeRegion>,
+    play_masks: HashMap<u16, Mask>,
+    scrub: Option<Scrub>,
+    auto_scroll_bar: bool,
+    scroll_activity: Option<Instant>,
     image_animations: HashMap<RemoteImageKey, Box<dyn ImageAnimation>>,
     pending_images: Vec<PendingImage>,
     preloaded_images: BTreeSet<RemoteImageKey>,
@@ -1586,6 +1674,12 @@ impl Engine {
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
             remote_images: HashMap::new(),
+            media_previews: HashMap::new(),
+            swipe_regions: Vec::new(),
+            play_masks: HashMap::new(),
+            scrub: None,
+            auto_scroll_bar: false,
+            scroll_activity: None,
             image_animations: HashMap::new(),
             pending_images: Vec::new(),
             preloaded_images: BTreeSet::new(),
@@ -1663,6 +1757,12 @@ impl Engine {
                     Some(RemoteImageState::Loading { .. })
                 )
         })
+    }
+
+    /// The media library URL of an image request, for requests that produce media thumbnails.
+    pub fn media_request_url(&self, request_id: u64) -> Option<&str> {
+        let RequestOwner::Image(key) = &self.in_flight_requests.get(&request_id)?.owner else { return None; };
+        (key.module == "files" && key.url.starts_with("ink-media://")).then_some(key.url.as_str())
     }
 
     pub fn image_request_target(&self, request_id: u64) -> Option<(u32, u32, ImageFit, bool)> {
@@ -2035,7 +2135,7 @@ impl Engine {
         if let Some(scroll_bar) = self
             .scene
             .scroll_bar
-            .filter(|scroll_bar| scroll_bar.contains_touch(x, y))
+            .filter(|scroll_bar| self.scene.scroll_bar_alpha > 0.0 && scroll_bar.contains_touch(x, y))
         {
             let thumb = scroll_bar.thumb_rect(self.scroll_offset, self.scroll_max);
             self.pointers.insert(id, if y >= thumb.y && y <= thumb.y + thumb.height {
@@ -2062,6 +2162,13 @@ impl Engine {
                 state: EdgeBackState::Pending,
             }));
             return PointerOutcome::default();
+        }
+
+        if let Some(&Action::Seek { id: progress, left, width, duration }) = self.hit_region_at(x, y).map(|region| &region.action) {
+            let pointer = ScrubPointer { progress: NodeIdentity(progress), left, width, duration, emitted: None };
+            self.pointers.insert(id, Pointer::Scrub(pointer));
+            self.claim_pointer(id);
+            return PointerOutcome { haptic: true, ..self.move_scrub(id, pointer, x, false) }.captured();
         }
 
         if let Some(Action::CanvasRange { id: range }) = self.hit_region_at(x, y).map(|region| &region.action) {
@@ -2125,6 +2232,8 @@ impl Engine {
             Pointer::CanvasDrag { group, previous, target } =>
                 self.move_canvas_pointer(id, group, previous, target, x, y),
             Pointer::Content(pointer) => self.move_content_pointer(id, pointer, x, y, tap_slop),
+            Pointer::Swipe(_) => PointerOutcome::default().captured(),
+            Pointer::Scrub(pointer) => self.move_scrub(id, pointer, x, false).captured(),
             Pointer::TextInput(pointer) => self.move_text_input_pointer(id, pointer, x, y, tap_slop),
             Pointer::ImagePan(pointer) => {
                 self.claim_pointer(id);
@@ -2169,7 +2278,16 @@ impl Engine {
         let Some(pointer) = self.pointers.remove(&id) else {
             return PointerOutcome::default().captured();
         };
-        if let Pointer::ImagePan(pointer) = pointer { self.emit_image_crop(pointer.image); }
+        if let Pointer::ImagePan(pointer) = pointer {
+            self.emit_image_crop(pointer.image);
+            // A zoomed image still receives taps that did not pan it.
+            let slop = self.scaled(TAP_SLOP);
+            if (x - pointer.start_x).abs() <= slop && (y - pointer.start_y).abs() <= slop {
+                let revision = self.scene.revision;
+                let activated = self.tap(x, y);
+                return PointerOutcome { changed: self.scene.revision != revision, activated, haptic: false, captured: true };
+            }
+        }
 
         match pointer {
             Pointer::CanvasRange(pointer) => self.end_canvas_range(id, pointer, x, y),
@@ -2232,6 +2350,17 @@ impl Engine {
                 state: EdgeBackState::Claimed,
                 ..
             }) => PointerOutcome::default().captured(),
+            Pointer::Scrub(pointer) => self.move_scrub(id, pointer, x, true).captured(),
+            Pointer::Swipe(pointer) => {
+                let offset = x - pointer.start_x;
+                let forward = offset < 0.0;
+                if offset.abs() > self.scaled(SWIPE_DISTANCE) && (if forward { pointer.next } else { pointer.previous }) {
+                    let direction = if forward { "next" } else { "previous" };
+                    PointerOutcome::activated(self.apply(react::event(pointer.image.0, "onSwipe", vec![direction.into()]))).captured()
+                } else {
+                    PointerOutcome::default().captured()
+                }
+            }
             Pointer::Content(_) => PointerOutcome::default(),
         }
     }
@@ -2403,6 +2532,11 @@ impl Engine {
     fn zoomable_image_at(&self, x: f32, y: f32) -> Option<NodeIdentity> {
         self.scene.images.iter().rev().find_map(|run| {
             let identity = NodeIdentity(run.zoom_id?);
+            if !run.clip.contains(x, y)
+                || self.hit_region_at(x, y).is_some_and(|region| region.target.node != identity)
+            {
+                return None;
+            }
             if run.scrolling
                 && !self
                     .scene
@@ -2610,6 +2744,17 @@ impl Engine {
         tap_slop: f32,
     ) -> PointerOutcome {
         let delta = pointer.start_y - y;
+        let horizontal = x - pointer.start_x;
+        if !pointer.dragging && horizontal.abs() > tap_slop && horizontal.abs() > delta.abs()
+            && let Some(region) = self.swipe_regions.iter().rev().find(|region| region.rect.contains(pointer.start_x, pointer.start_y)).copied()
+        {
+            self.pointers.insert(id, Pointer::Swipe(SwipePointer {
+                image: region.image, start_x: pointer.start_x + horizontal.signum() * tap_slop,
+                next: region.next, previous: region.previous,
+            }));
+            self.claim_pointer(id);
+            return PointerOutcome::default().captured();
+        }
         if !pointer.dragging {
             if delta.abs() <= tap_slop {
                 pointer.cancelled |= (x - pointer.start_x).abs() > tap_slop;
@@ -2726,7 +2871,7 @@ impl Engine {
                 | NodeKind::Row { children, .. }
                 | NodeKind::Stack { children, .. }
                 | NodeKind::ReactList { children, .. } => children.iter().find_map(|child| find(child, target)),
-                NodeKind::Screen(screen) => screen.children.iter().find_map(|child| find(child, target)),
+                NodeKind::Screen(screen) => screen.children.iter().chain(&screen.overlay).find_map(|child| find(child, target)),
                 NodeKind::Tabs { tabs, .. } => tabs.iter().find_map(|tab| find(&tab.screen, target)),
                 _ => None,
             }
@@ -2758,7 +2903,8 @@ impl Engine {
     }
 
     pub fn has_scene_animations(&self) -> bool {
-        self.marquees.values().any(|marquee| marquee.visible)
+        self.scene.scroll_bar_alpha > 0.0 && self.auto_scroll_bar
+            || self.marquees.values().any(|marquee| marquee.visible)
             || self.playback_progress.values().any(PlaybackProgress::animating)
             || self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
     }
@@ -2766,6 +2912,11 @@ impl Engine {
     /// How long until the scene changes on its own: zero for continuous animations, or the next
     /// visible step of slow playback progress.
     pub fn next_scene_frame(&self) -> Option<Duration> {
+        let scroll_bar = (self.auto_scroll_bar && self.scene.scroll_bar_alpha > 0.0).then(|| {
+            let elapsed = self.scroll_activity.map_or(Duration::MAX, |activity| activity.elapsed());
+            Duration::from_secs_f32(SCROLL_BAR_HOLD).saturating_sub(elapsed)
+        });
+        if scroll_bar == Some(Duration::ZERO) { return scroll_bar; }
         if self.marquees.values().any(|marquee| marquee.visible)
             || self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
         {
@@ -2773,10 +2924,14 @@ impl Engine {
         }
         self.playback_progress.values().filter(|progress| progress.animating())
             .map(|progress| progress.next_change(self.scene.quads[progress.quad].rect.x))
+            .chain(scroll_bar)
             .min()
     }
 
     pub fn update_playback_clock(&mut self, controller: u64, position: f32, duration: f32, playing: bool, speed: f32) -> bool {
+        let scrubbed = self.scrub.filter(|scrub| scrub.released)
+            .is_some_and(|scrub| self.playback_progress.get(&scrub.progress).is_some_and(|progress| progress.clock == Some(controller)));
+        if scrubbed { self.scrub = None; self.rebuild_scene(); }
         if controller == 0 || !position.is_finite() || !duration.is_finite() || !speed.is_finite()
             || position < 0.0 || duration < 0.0 || speed <= 0.0 { return false; }
         let started = Instant::now();
@@ -2808,6 +2963,11 @@ impl Engine {
 
     pub fn animate_scene(&mut self) -> bool {
         let mut changed = false;
+        if self.auto_scroll_bar {
+            let alpha = self.scroll_bar_alpha();
+            changed |= alpha != self.scene.scroll_bar_alpha;
+            self.scene.scroll_bar_alpha = alpha;
+        }
         // New image frames only bump `image_revision`, so the renderer refreshes images alone.
         let mut images_changed = false;
         self.image_animations.retain(|key, animation| {
@@ -2945,6 +3105,10 @@ impl Engine {
         }
         self.scroll_offset = offset;
         self.scene.scroll_offset = offset;
+        if self.auto_scroll_bar {
+            self.scroll_activity = Some(Instant::now());
+            self.scene.scroll_bar_alpha = 1.0;
+        }
         let window = self
             .scene
             .scroll_clip
@@ -3073,6 +3237,7 @@ impl Engine {
         self.scene.scroll_clip = None;
         self.scene.scroll_bar = None;
         self.hit_regions.clear();
+        self.swipe_regions.clear();
         self.text_inputs.clear();
         self.visible_images.clear();
         self.visible_zoom_images.clear();
@@ -3155,7 +3320,7 @@ impl Engine {
             | NodeKind::ReactList { children, .. } => {
                 children.iter().find_map(|child| self.auto_focus(child))
             }
-            NodeKind::Screen(screen) => screen.children.iter().find_map(|child| self.auto_focus(child)),
+            NodeKind::Screen(screen) => screen.children.iter().chain(&screen.overlay).find_map(|child| self.auto_focus(child)),
             NodeKind::Tabs { value, tabs } => self
                 .active_tab_index(value, tabs.len())
                 .and_then(|active| self.auto_focus(&tabs[active].screen)),
@@ -3501,9 +3666,10 @@ impl Engine {
                     self.layout(child, Rect { x: rect.x + column as f32 * size, y: rect.y, width: size, height: size });
                 }
             }
-            NodeKind::MediaCell { source, selected, video, check, play, action } => {
+            NodeKind::MediaCell { source, selected, dimmed, video, check, play, action, long_action } => {
+                self.layout_media_preview(source, rect);
                 self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, false, None, None, None, false, rect);
-                if let Some(action) = action { self.push_hit_region(rect, action.clone()); }
+                if let Some(action) = action { self.push_press_region(rect, action.clone(), long_action.clone()); }
                 if *selected {
                     self.scene.masks.push(MaskRun {
                         mask: Mask::solid(), rect, clip: self.clip,
@@ -3525,6 +3691,13 @@ impl Engine {
                     self.scene.masks.push(MaskRun { mask: play.clone(), rect: Rect {
                         x, y, width: size, height: size },
                         clip: self.clip, colour: Colour::WHITE, scrolling: self.scrolling });
+                }
+                if *dimmed {
+                    // Blending is linear, so this leaves about a fifth of the perceived brightness.
+                    self.scene.masks.push(MaskRun {
+                        mask: Mask::solid(), rect, clip: self.clip,
+                        colour: Colour { alpha: MEDIA_DIMMED_ALPHA, ..Colour::BLACK }, scrolling: self.scrolling,
+                    });
                 }
             }
             NodeKind::ReactList { children, start, gap, .. } => {
@@ -3727,9 +3900,10 @@ impl Engine {
             }
             NodeKind::PlayingProgress { position, duration, playing, seek, show_times, clock, speed } => {
                 let anchor = clock.and_then(|id| self.playback_clocks.get(&id)).cloned();
-                let position = anchor.as_ref().map(|value| &value.position).unwrap_or(position);
+                let scrub = self.scrub.filter(|scrub| scrub.progress == node.identity).map(|scrub| scrub.position);
+                let position = scrub.as_ref().or(anchor.as_ref().map(|value| &value.position)).unwrap_or(position);
                 let duration = anchor.as_ref().map(|value| &value.duration).unwrap_or(duration);
-                let playing = anchor.as_ref().map(|value| &value.playing).unwrap_or(playing);
+                let playing = if scrub.is_some() { &false } else { anchor.as_ref().map(|value| &value.playing).unwrap_or(playing) };
                 let speed = anchor.as_ref().map(|value| value.speed).unwrap_or(*speed);
                 let bar = Rect { height: self.scaled(6.0), ..rect };
                 let ratio = if *duration > 0.0 { (position / duration).clamp(0.0, 1.0) } else { 0.0 };
@@ -3754,7 +3928,7 @@ impl Engine {
                 }
                 progress.clock = *clock;
                 progress.speed = speed;
-                if let Some(anchor) = &anchor { progress.started = anchor.started; }
+                if let Some(anchor) = anchor.as_ref().filter(|_| scrub.is_none()) { progress.started = anchor.started; }
                 progress.quad = quad;
                 progress.width = rect.width;
                 progress.visible = true;
@@ -3772,7 +3946,7 @@ impl Engine {
                     self.push_hit_region(Rect { y: bar.y - self.scaled(15.0), height: self.scaled(36.0), ..bar }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
                 }
             }
-            NodeKind::Row { children, has_image, action, long_action } => {
+            NodeKind::Row { children, has_image, selected, action, long_action } => {
                 let image_width = if *has_image { self.scaled(65.0).min(rect.width) } else { 0.0 };
                 if *has_image {
                     if let Some(image) = children.first() {
@@ -3783,13 +3957,23 @@ impl Engine {
                 if let Some(text) = children.last() {
                     let available = Rect { x: rect.x + image_width, width: (rect.width - image_width).max(0.0), ..rect };
                     let size = self.measure(text, available);
-                    self.layout(text, Rect { y: rect.y + (rect.height - size.height) / 2.0, height: size.height, ..available });
+                    let top = rect.y + (rect.height - size.height) / 2.0;
+                    self.layout(text, Rect { y: top, height: size.height, ..available });
+                    if *selected {
+                        let height = self.control_line_height();
+                        let width = self.row_text_width(text, available.width);
+                        self.scene.quads.push(Quad {
+                            rect: Rect { x: available.x, y: (top + size.height + self.scaled(4.0)).round(), width, height },
+                            clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+                        });
+                    }
                 }
                 if let Some(action) = action { self.push_press_region(rect, action.clone(), long_action.clone()); }
             }
             NodeKind::Screen(screen) => {
                 let ScreenNode {
                     children,
+                    overlay,
                     title,
                     centred,
                     footer,
@@ -3801,6 +3985,11 @@ impl Engine {
                     media_picker,
                     bottom_inset,
                     background,
+                    auto_scroll_bar,
+                    action_bar,
+                    immersive,
+                    title_action,
+                    overlay_bars,
                 } = screen.as_ref();
                 if let Some(colour) = background {
                     self.scene.quads.push(Quad {
@@ -3813,6 +4002,7 @@ impl Engine {
                 let image_start = self.scene.images.len();
                 self.layout_screen(
                     children,
+                    overlay,
                     title.as_deref(),
                     *centred,
                     footer.as_ref(),
@@ -3823,6 +4013,11 @@ impl Engine {
                     right_action.as_ref(),
                     *media_picker,
                     screen_bottom_inset && *bottom_inset,
+                    *auto_scroll_bar,
+                    action_bar,
+                    *immersive,
+                    title_action.as_ref(),
+                    *overlay_bars,
                     rect,
                 );
                 if waiting && (self.scene.images.len() > image_start || self.pending_images.len() > pending_start) {
@@ -3931,12 +4126,21 @@ impl Engine {
                 colour: self.scene.colour(tone_colour(*tone)),
                 scrolling: self.scrolling,
             }),
-            NodeKind::Image { source, fallback, fit, zoomable, looping, preload, retain_while_loading, avatar, rotation, background, crop, crop_events, horizontal_guides, overlay, .. } => {
+            NodeKind::Image { source, fallback, fit, zoomable, looping, preload, retain_while_loading, avatar, rotation, background, crop, crop_events, horizontal_guides, overlay, press, swipe, video, play_icon, .. } => {
+                if let Some(controller) = video && rect.intersection(self.clip).width > 0.0 {
+                    self.scene.video_portal = Some(MapPortal { controller: *controller, rect, clip: rect.intersection(self.clip) });
+                }
                 if let Some(colour) = background {
                     self.scene.quads.push(Quad { rect, clip: self.clip, colour: self.scene.colour(*colour), scrolling: self.scrolling });
                 }
+                if let Some(action) = press { self.push_hit_region(rect, action.clone()); }
+                if let Some((next, previous)) = swipe {
+                    self.swipe_regions.push(SwipeRegion { image: node.identity, rect: rect.intersection(self.clip), next: *next, previous: *previous });
+                }
+                if rotation.unwrap_or(0) == 0 { self.layout_media_placeholder(source, *fit, rotation.is_some(), rect); }
                 self.layout_image(node.identity, source, fallback.as_ref(), *fit, *zoomable, *retain_while_loading, *looping, *avatar, *rotation, *crop, *crop_events, rect);
                 self.layout_image_guides(horizontal_guides, rect);
+                if *play_icon { self.layout_play_icon(rect); }
                 if let Some((source, bounds)) = overlay {
                     let overlay_rect = Rect { x: rect.x + bounds.x * rect.width, y: rect.y + bounds.y * rect.height,
                         width: bounds.width * rect.width, height: bounds.height * rect.height };
@@ -3949,11 +4153,7 @@ impl Engine {
                 if visible.width > 0.0 && visible.height > 0.0 {
                     for source in preload {
                         if let ImageSource::Native(module, url) = source {
-                            let key = RemoteImageKey {
-                                module: module.clone(), url: url.clone(), fit: *fit, looping: *looping,
-                                width: rect.width.ceil().max(1.0) as u32,
-                                height: rect.height.ceil().max(1.0) as u32,
-                            };
+                            let key = remote_image_key(module, url, rect, *fit, *looping, rotation.is_some());
                             self.visible_images.insert(key.clone());
                             if self.preloaded_images.insert(key.clone()) {
                                 if let Some(RemoteImageState::Ready { image, .. }) = self.remote_images.get(&key) {
@@ -3971,7 +4171,7 @@ impl Engine {
             }
             NodeKind::VideoView { controller, loading } => {
                 if !cfg!(feature = "video") { return; }
-                self.scene.video_portal = controller.map(|controller| MapPortal { controller, rect });
+                self.scene.video_portal = controller.map(|controller| MapPortal { controller, rect, clip: rect });
                 if *loading {
                     let height = self.text_line_height(18.0);
                     self.layout_text("Loading…", Some(18.0), TextAlign::Centre, Some(1), false,
@@ -3980,7 +4180,7 @@ impl Engine {
             }
             NodeKind::MapView { controller } => {
                 if !cfg!(feature = "maps") { return; }
-                self.scene.map_portal = Some(MapPortal { controller: *controller, rect });
+                self.scene.map_portal = Some(MapPortal { controller: *controller, rect, clip: rect });
             }
             NodeKind::Toggle {
                 label,
@@ -4030,6 +4230,7 @@ impl Engine {
     fn layout_screen(
         &mut self,
         children: &[Node],
+        overlays: &[Node],
         title: Option<&str>,
         centred: bool,
         footer: Option<&(String, Option<Action>)>,
@@ -4040,10 +4241,19 @@ impl Engine {
         right_action: Option<&(Mask, Action)>,
         media_picker: bool,
         bottom_inset: bool,
+        auto_scroll_bar: bool,
+        action_bar: &[Option<ActionBarItem>],
+        immersive: bool,
+        title_action: Option<&(Option<Mask>, Action)>,
+        overlay_bars: bool,
         rect: Rect,
     ) {
-        let automatic_back = left_action.is_none();
+        let bar_regions_start = self.hit_regions.len();
+        // Immersive screens keep the header's space, so hiding it never moves the content.
         let has_header = title.is_some() || self.back_icon.is_some() || left_action.is_some() || right_action.is_some();
+        let back_icon = if immersive { None } else { self.back_icon.clone() };
+        let (title, left_action, right_action) = if immersive { (None, None, None) } else { (title, left_action, right_action) };
+        let automatic_back = left_action.is_none();
         let header_height = if has_header {
             self.scaled(HEADER_HEIGHT)
         } else {
@@ -4052,7 +4262,7 @@ impl Engine {
         let header_inset = self.scaled(HEADER_HORIZONTAL_INSET);
         let header_button_size = self.scaled(HEADER_BUTTON_SIZE);
         let header = self.unobstructed_header(Rect { height: header_height, ..rect });
-        if self.back_icon.is_some() && automatic_back {
+        if back_icon.is_some() && automatic_back {
             self.push_hit_region(
                 Rect {
                     x: header.x + header_inset,
@@ -4083,7 +4293,7 @@ impl Engine {
         }
         if let Some(title) = title {
             let title_inset = header_inset
-                + if self.back_icon.is_some() || left_action.is_some() || right_action.is_some() {
+                + if back_icon.is_some() || left_action.is_some() || right_action.is_some() {
                     header_button_size
                 } else {
                     0.0
@@ -4096,21 +4306,68 @@ impl Engine {
                 height: title_height,
             };
             let font_size = self.scaled_font(HEADER_TEXT_SIZE);
+            let icon = title_action.and_then(|(icon, _)| icon.as_ref());
+            let icon_size = self.scaled(HEADER_TITLE_ICON_SIZE);
+            let icon_space = if icon.is_some() { icon_size + self.scaled(4.0) } else { 0.0 };
+            let text = self.ellipsize(title, font_size, (title_rect.width - icon_space).max(0.0));
+            let text_width = self.text_width(&text, font_size);
+            let left = title_rect.x + (title_rect.width - text_width - icon_space) / 2.0;
             self.scene.text.push(TextRun {
                 tabular_numbers: false,
-                text: self.ellipsize(title, font_size, title_rect.width).into(),
-                rect: title_rect,
+                text: text.into(),
+                rect: if icon.is_some() { Rect { x: left, width: text_width + 1.0, ..title_rect } } else { title_rect },
                 clip: self.clip,
                 font_size,
                 colour: self.scene.colour(Colour::WHITE),
-                align: TextAlign::Centre,
+                align: if icon.is_some() { TextAlign::Start } else { TextAlign::Centre },
                 scrolling: self.scrolling,
             });
+            if let Some(icon) = icon {
+                self.scene.masks.push(MaskRun {
+                    mask: icon.clone(),
+                    rect: Rect {
+                        x: left + text_width + icon_space - icon_size,
+                        y: title_rect.y + (title_rect.height - icon_size) / 2.0,
+                        width: icon_size, height: icon_size,
+                    },
+                    clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
+                });
+            }
+            if let Some((_, action)) = title_action {
+                let press = Rect { x: left - self.scaled(12.0), width: text_width + icon_space + self.scaled(24.0), y: rect.y, height: header_height };
+                self.push_hit_region(press, action.clone());
+            }
         }
 
-        let content_inset = if media_picker { 0.0 } else if pinned_footer { 16.0 } else if wide { 20.0 } else { CONTENT_INSET_START };
-        let scroll_track_end = if media_picker { SCROLL_TRACK_END } else { SCROLL_TRACK_END + content_inset - CONTENT_INSET_START };
+        let content_inset = if media_picker { 0.0 } else if pinned_footer { 16.0 } else if wide { WIDE_CONTENT_INSET } else { CONTENT_INSET_START };
+        // Edge-to-edge media grids place the track where wide screens do.
+        let track_inset = if media_picker { WIDE_CONTENT_INSET } else { content_inset };
+        let scroll_track_end = SCROLL_TRACK_END + track_inset - CONTENT_INSET_START;
         let scroll_content_inset_end = scroll_track_end * 2.0 - SCROLL_TRACK_WIDTH;
+
+        let full = rect;
+        let rect = if action_bar.is_empty() { rect }
+            else if immersive { Rect { height: (rect.height - self.scaled(ACTION_BAR_HEIGHT)).max(0.0), ..rect } }
+            else { self.layout_action_bar(action_bar, rect) };
+        // The bars take taps before the full-screen content beneath them.
+        let bar_regions: Vec<_> = if overlay_bars { self.hit_regions.drain(bar_regions_start..).collect() } else { Vec::new() };
+        let overlay_inset = self.scaled(CONTENT_INSET_START);
+        let overlay_width = (full.width - overlay_inset * 2.0).max(0.0);
+        let overlay_sizes: Vec<_> = if immersive { Vec::new() } else {
+            overlays.iter().map(|child| self.measure(child, Rect { x: full.x + overlay_inset, width: overlay_width, ..full }).height).collect()
+        };
+        let overlay_gap = self.scaled(16.0);
+        let overlay_height: f32 = overlay_sizes.iter().map(|height| height + overlay_gap).sum();
+        // While the bars show, content is clipped between them rather than moved.
+        let visible_content = (overlay_bars && !immersive).then(|| Rect {
+            y: full.y + header_height,
+            height: (rect.y + rect.height - overlay_height - full.y - header_height).max(0.0),
+            ..full
+        });
+        let overlay_bottom = rect.y + rect.height;
+        let (rect, header_height) = if overlay_bars { (full, 0.0) } else {
+            (Rect { height: (rect.height - overlay_height).max(0.0), ..rect }, header_height)
+        };
 
         let (children, rect) = if pinned_footer {
             let (composer, messages) = children.split_last().expect("screen footer requires a child");
@@ -4289,7 +4546,8 @@ impl Engine {
             height: scroll_clip.height * (1.0 + 2.0 * SCROLL_OVERSCAN),
             ..scroll_clip
         };
-        self.scrolling = true;
+        if let Some(visible) = visible_content { self.clip = self.clip.intersection(visible); }
+        self.scrolling = !overlay_bars;
         self.layout_vertical_children_with_sizes(
             children,
             sizes,
@@ -4324,8 +4582,20 @@ impl Engine {
                 thumb_width,
             });
         }
+        self.auto_scroll_bar = auto_scroll_bar && self.scene.scroll_bar.is_some();
+        self.scene.scroll_bar_alpha = self.scroll_bar_alpha();
 
-        if let Some(back) = self.back_icon.as_ref().filter(|_| automatic_back) {
+        let mut bottom = overlay_bottom;
+        for (child, height) in overlays.iter().zip(&overlay_sizes).rev() {
+            bottom -= height;
+            self.layout(child, Rect { x: full.x + overlay_inset, y: bottom, width: overlay_width, height: *height });
+            bottom -= overlay_gap;
+        }
+        if overlay_bars {
+            self.hit_regions.extend(bar_regions);
+        }
+
+        if let Some(back) = back_icon.as_ref().filter(|_| automatic_back) {
             let icon_size = self.scaled(HEADER_BACK_ICON_SIZE);
             self.scene.masks.push(MaskRun {
                 mask: back.clone(),
@@ -4340,6 +4610,87 @@ impl Engine {
                 scrolling: self.scrolling,
             });
         }
+    }
+
+    /// Draws up to three bottom actions in equal slots and returns the area above them.
+    fn layout_action_bar(&mut self, items: &[Option<ActionBarItem>], rect: Rect) -> Rect {
+        let height = self.scaled(ACTION_BAR_HEIGHT);
+        let bar = Rect { y: rect.y + rect.height - height, height, ..rect };
+        let slot_width = bar.width / items.len().max(3) as f32;
+        let offset = (bar.width - slot_width * items.len() as f32) / 2.0;
+        for (index, item) in items.iter().enumerate() {
+            let Some(item) = item else { continue };
+            let slot = Rect { x: bar.x + offset + slot_width * index as f32, width: slot_width, ..bar };
+            let colour = self.scene.colour(if item.action.is_some() { Colour::WHITE } else { Colour::MUTED });
+            let icon_size = self.scaled(HEADER_BACK_ICON_SIZE);
+            let font_size = self.scaled_font(HEADER_TEXT_SIZE);
+            let label_width = item.label.as_ref().map_or(0.0, |label| self.text_width(label, font_size));
+            let gap = if item.icon.is_some() && item.label.is_some() { self.scaled(8.0) } else { 0.0 };
+            let content = (if item.icon.is_some() { icon_size } else { 0.0 } + gap + label_width).min(slot.width);
+            let mut x = slot.x + (slot.width - content) / 2.0;
+            if let Some(icon) = &item.icon {
+                self.scene.masks.push(MaskRun {
+                    mask: icon.clone(),
+                    rect: Rect { x, y: slot.y + (slot.height - icon_size) / 2.0, width: icon_size, height: icon_size },
+                    clip: self.clip, colour, scrolling: false,
+                });
+                x += icon_size + gap;
+            }
+            if let Some(label) = &item.label {
+                let width = (slot.x + slot.width - x).max(0.0);
+                let line = self.scaled(32.0);
+                self.scene.text.push(TextRun {
+                    tabular_numbers: false,
+                    text: self.ellipsize(label, font_size, width).into(),
+                    rect: Rect { x, y: slot.y + (slot.height - line) / 2.0, width, height: line },
+                    clip: self.clip, font_size, colour, align: TextAlign::Start, scrolling: false,
+                });
+            }
+            if let Some(action) = &item.action { self.push_hit_region(slot, action.clone()); }
+        }
+        Rect { height: (rect.height - height).max(0.0), ..rect }
+    }
+
+    fn scroll_bar_alpha(&self) -> f32 {
+        if !self.auto_scroll_bar { return 1.0; }
+        let Some(activity) = self.scroll_activity else { return 0.0; };
+        let elapsed = activity.elapsed().as_secs_f32();
+        (1.0 - (elapsed - SCROLL_BAR_HOLD) / SCROLL_BAR_FADE).clamp(0.0, 1.0)
+    }
+
+    /// Shows a dragged progress position and seeks: quickly while dragging, exactly on release.
+    fn move_scrub(&mut self, id: i32, mut pointer: ScrubPointer, x: f32, released: bool) -> PointerOutcome {
+        let position = ((x - pointer.left) / pointer.width).clamp(0.0, 1.0) * pointer.duration;
+        self.scrub = Some(Scrub { progress: pointer.progress, position, released });
+        let due = pointer.emitted.is_none_or(|emitted| emitted.elapsed() >= SCRUB_SEEK_INTERVAL);
+        let mut activated = false;
+        if released || due {
+            pointer.emitted = Some(Instant::now());
+            activated = self.apply(react::event(pointer.progress.0, "onSeek", vec![position.into(), released.into()]));
+        }
+        if !released { self.pointers.insert(id, Pointer::Scrub(pointer)); }
+        self.relayout_scene();
+        PointerOutcome { changed: true, activated, ..PointerOutcome::default() }
+    }
+
+    /// The native paused-video triangle: 18% of the shorter side, drawn at its exact size.
+    fn layout_play_icon(&mut self, rect: Rect) {
+        let size = (rect.width.min(rect.height) * 0.18).round().max(4.0) as u16;
+        let mask = self.play_masks.entry(size).or_insert_with(|| play_triangle(size)).clone();
+        let (centre_x, centre_y) = (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0);
+        let size = f32::from(size);
+        self.scene.masks.push(MaskRun {
+            rect: Rect { x: (centre_x - size * 0.35).round() - 1.0, y: (centre_y - size / 2.0).round() - 1.0,
+                width: f32::from(mask.width), height: f32::from(mask.height) },
+            mask, clip: self.clip, colour: Colour::WHITE, scrolling: self.scrolling,
+        });
+    }
+
+    /// The widest line of a row's title and subtitle.
+    fn row_text_width(&mut self, text: &Node, available: f32) -> f32 {
+        let NodeKind::Stack { children, .. } = &text.kind else { return available; };
+        children.iter().map(|line| self.measure(line, Rect { x: 0.0, y: 0.0, width: available, height: f32::INFINITY }).width)
+            .fold(0.0, f32::max).min(available)
     }
 
     fn layout_image_guides(&mut self, guides: &[f32], rect: Rect) {
@@ -5075,6 +5426,64 @@ impl Engine {
         (*value < tab_count).then_some(*value)
     }
 
+    /// Draws the stored preview beneath a media cell until its thumbnail is ready.
+    fn layout_media_preview(&mut self, source: &ImageSource, rect: Rect) {
+        let ImageSource::Native(module, url) = source else { return; };
+        let visible = rect.intersection(self.clip);
+        if visible.width <= 0.0 || visible.height <= 0.0 { return; }
+        let thumbnail = RemoteImageKey {
+            looping: false, module: module.clone(), url: url.clone(),
+            width: rect.width.ceil().max(1.0) as u32, height: rect.height.ceil().max(1.0) as u32, fit: ImageFit::Cover,
+        };
+        if matches!(self.remote_images.get(&thumbnail), Some(RemoteImageState::Ready { .. })) { return; }
+        let image = if let Some(image) = self.media_previews.get(url) { image.clone() } else {
+            let Some(key) = media_previews::media_key(url) else { return; };
+            let Some(pixels) = media_previews::previews().and_then(|previews| previews.get(key)) else { return; };
+            let preview = RemoteImageKey { module: "media-preview".into(), width: media_previews::PREVIEW_SIZE, height: media_previews::PREVIEW_SIZE, ..thumbnail };
+            let image = RemoteImage {
+                id: image_id(&preview), generation: 1,
+                width: media_previews::PREVIEW_SIZE, height: media_previews::PREVIEW_SIZE, pixels,
+            };
+            if self.media_previews.len() >= 2048 { self.media_previews.clear(); }
+            self.media_previews.insert(url.clone(), image.clone());
+            image
+        };
+        self.scene.images.push(ImageRun {
+            avatar: None, image: ImageData::Remote(image), zoom_id: None, rect, clip: self.clip,
+            fit: ImageFit::Cover, scrolling: self.scrolling, transform: ImageTransform::default(),
+        });
+    }
+
+    /// Shows a decoded grid thumbnail while a full-resolution library photo loads.
+    fn layout_media_placeholder(&mut self, source: &ImageSource, fit: ImageFit, rotates: bool, rect: Rect) {
+        let ImageSource::Native(module, url) = source else { return; };
+        let Some(thumbnail) = url.strip_suffix("&full=1") else { return; };
+        let full = remote_image_key(module, url, rect, fit, false, rotates);
+        if matches!(self.remote_images.get(&full), Some(RemoteImageState::Ready { .. })) { return; }
+        let cached = self.remote_images.iter().find_map(|(key, state)| match state {
+            RemoteImageState::Ready { image, .. } if key.module == *module && key.url == thumbnail => Some(image.clone()),
+            _ => None,
+        });
+        let Some(image) = cached else {
+            // Decode the grid-sized thumbnail, which is much quicker than the full photo.
+            let cell = (self.scene.width as f32 / 3.0).ceil().max(1.0);
+            let key = remote_image_key(module, thumbnail, Rect { x: 0.0, y: 0.0, width: cell, height: cell }, ImageFit::Cover, false, false);
+            self.visible_images.insert(key.clone());
+            self.queue_remote_image(key.clone());
+            if rect.intersection(self.clip).width > 0.0 {
+                self.pending_images.push(PendingImage {
+                    avatar: None, key, index: self.scene.images.len(), rect, clip: self.clip, fit,
+                    scrolling: self.scrolling, needs_layout: true,
+                });
+            }
+            return;
+        };
+        self.scene.images.push(ImageRun {
+            avatar: None, image: ImageData::Remote(image), zoom_id: None, rect, clip: self.clip,
+            fit, scrolling: self.scrolling, transform: ImageTransform::default(),
+        });
+    }
+
     fn layout_image(
         &mut self,
         identity: NodeIdentity,
@@ -5109,17 +5518,7 @@ impl Engine {
                 if source.is_empty() {
                     fallback.cloned().map(ImageData::Asset)
                 } else {
-                    // Editing uses one bounded, orientation-independent decode. Fit and
-                    // quarter turns only change the draw, never the source or texture ID.
-                    let editing_size = (rect.width.max(rect.height).ceil().max(1.0) as u32 * 2).min(2048);
-                    let key = RemoteImageKey {
-                        looping,
-                        module: module.clone(),
-                        url: source.clone(),
-                        width: if rotation.is_some() { editing_size } else { rect.width.ceil().max(1.0) as u32 },
-                        height: if rotation.is_some() { editing_size } else if module == "barcode" { rect.width.ceil().max(1.0) as u32 } else { rect.height.ceil().max(1.0) as u32 },
-                        fit: if rotation.is_some() { ImageFit::Contain } else { fit },
-                    };
+                    let key = remote_image_key(module, source, rect, fit, looping, rotation.is_some());
                     self.visible_images.insert(key.clone());
                     let loaded = match self.remote_images.get(&key) {
                         Some(RemoteImageState::Ready { image, .. }) => {
@@ -5201,7 +5600,7 @@ impl Engine {
                 scrolling: self.scrolling,
                 transform,
             });
-        } else if zoomable && crop.is_none() {
+        } else if zoomable && crop.is_none() && !matches!(source, ImageSource::Native(_, url) if url.starts_with("ink-media://") && !failed) {
             let height = self.text_line_height(18.0);
             self.layout_text(
                 if failed { "Could not load photo" } else { "Loading…" },
@@ -5655,6 +6054,41 @@ fn tone_colour(tone: Tone) -> Colour {
     }
 }
 
+/// An anti-aliased right-pointing triangle, `size` tall and 0.8 × `size` wide, with a one-pixel margin.
+fn play_triangle(size: u16) -> Mask {
+    let side = f32::from(size);
+    let (width, height) = ((side * 0.8).ceil() as u16 + 2, size + 2);
+    let mut pixels = vec![0_u8; usize::from(width) * usize::from(height)];
+    const SAMPLES: usize = 4;
+    for row in 0..usize::from(height) {
+        for column in 0..usize::from(width) {
+            let mut covered = 0;
+            for sample in 0..SAMPLES * SAMPLES {
+                let x = column as f32 + (sample % SAMPLES) as f32 / SAMPLES as f32 + 0.125 - 1.0;
+                let y = row as f32 + (sample / SAMPLES) as f32 / SAMPLES as f32 + 0.125 - 1.0;
+                let half = side / 2.0 * (1.0 - x / (side * 0.8));
+                if x >= 0.0 && (y - side / 2.0).abs() <= half { covered += 1; }
+            }
+            pixels[row * usize::from(width) + column] = (covered * 255 / (SAMPLES * SAMPLES)) as u8;
+        }
+    }
+    Mask::owned(0x706c_6179_0000 | u64::from(size), width, height, pixels)
+}
+
+fn remote_image_key(module: &str, url: &str, rect: Rect, fit: ImageFit, looping: bool, rotates: bool) -> RemoteImageKey {
+    // Editing uses one bounded, orientation-independent decode. Fit and
+    // quarter turns only change the draw, never the source or texture ID.
+    let editing_size = (rect.width.max(rect.height).ceil().max(1.0) as u32 * 2).min(2048);
+    RemoteImageKey {
+        looping,
+        module: module.to_owned(),
+        url: url.to_owned(),
+        width: if rotates { editing_size } else { rect.width.ceil().max(1.0) as u32 },
+        height: if rotates { editing_size } else if module == "barcode" { rect.width.ceil().max(1.0) as u32 } else { rect.height.ceil().max(1.0) as u32 },
+        fit: if rotates { ImageFit::Contain } else { fit },
+    }
+}
+
 fn image_id(key: &RemoteImageKey) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     key.hash(&mut hasher);
@@ -5735,6 +6169,11 @@ fn fills_remaining_screen(node: &Node) -> bool {
             | NodeKind::Image {
                 bleed: true,
                 zoomable: true,
+                ..
+            }
+            | NodeKind::Image {
+                bleed: true,
+                swipe: Some(_),
                 ..
             }
     )

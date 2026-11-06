@@ -43,7 +43,8 @@ private class InkVideoAdapter(
                     val uri = Uri.parse(data.getString("src"))
                     require(uri.scheme in setOf("https", "content", "file", "asset") ||
                         (BuildConfig.DEBUG && uri.scheme == "http" && uri.host in setOf("localhost", "127.0.0.1", "10.0.2.2", "::1"))) { "Unsupported video URL" }
-                    val session = Session(controller)
+                    // Inline videos leave touches to the app, which plays and pauses them.
+                    val session = Session(controller, data.optBoolean("controls", true))
                     sessions[controller] = session
                     session.open(uri)
                     session.mount(portal?.takeIf { it.controller == controller })
@@ -51,7 +52,7 @@ private class InkVideoAdapter(
                 "deactivate" -> sessions.remove(controller)?.close()
                 "play" -> requireNotNull(sessions[controller]).play()
                 "pause" -> requireNotNull(sessions[controller]).pause()
-                "seek" -> requireNotNull(sessions[controller]).seek(data.getDouble("position"))
+                "seek" -> requireNotNull(sessions[controller]).seek(data.getDouble("position"), data.optBoolean("exact", true))
                 else -> error("Unknown video operation")
             }
             complete(NativeResult.Success(""))
@@ -69,7 +70,7 @@ private class InkVideoAdapter(
     override fun stop() { sessions.values.forEach { it.close() }; sessions.clear(); portal = null }
     private fun failure(message: String) = NativeResult.Failure(NativeErrorKind.UNEXPECTED, message, false)
 
-    private inner class Session(private val controller: Long) : TextureView.SurfaceTextureListener {
+    private inner class Session(private val controller: Long, private val controls: Boolean) : TextureView.SurfaceTextureListener {
         private val player = MediaPlayer()
         private val view = TextureView(activity).apply { surfaceTextureListener = this@Session; isOpaque = false; alpha = 0f }
         private val container = FrameLayout(activity).apply { addView(view) }
@@ -100,7 +101,7 @@ private class InkVideoAdapter(
         private var buffering = false
         private var closed = false
         private var mounted = false
-        private var autoPlay = true
+        private var autoPlay = controls
         private var width = 0
         private var height = 0
         private val tick = object : Runnable {
@@ -112,7 +113,7 @@ private class InkVideoAdapter(
         }
         fun open(uri: Uri) {
             container.addView(playIcon, FrameLayout.LayoutParams(-1, -1))
-            container.setOnClickListener {
+            if (controls) container.setOnClickListener {
                 if (ready) { if (player.isPlaying) pause() else play() }
             }
             player.setAudioAttributes(attributes)
@@ -184,6 +185,8 @@ private class InkVideoAdapter(
                     container.layoutParams = params
                 }
             }
+            val clip = android.graphics.Rect(portal.clip).apply { offset(-portal.x, -portal.y) }
+            if (container.clipBounds != clip) container.clipBounds = clip
             container.visibility = View.VISIBLE
             fit()
             startIfReady()
@@ -218,17 +221,19 @@ private class InkVideoAdapter(
             audio.abandonAudioFocusRequest(focus)
             if (ready) publish()
         }
-        fun seek(seconds: Double) {
+        // Scrubbing seeks to the nearest keyframe, which decodes at once; the final seek is exact.
+        fun seek(seconds: Double, exact: Boolean) {
             require(seconds.isFinite()) { "Invalid video position" }
             if (ready) {
                 ended = false
-                player.seekTo((seconds * 1000).toLong().coerceIn(0, player.duration.toLong()), MediaPlayer.SEEK_CLOSEST)
+                player.seekTo((seconds * 1000).toLong().coerceIn(0, player.duration.toLong()),
+                    if (exact) MediaPlayer.SEEK_CLOSEST else MediaPlayer.SEEK_CLOSEST_SYNC)
             }
         }
         private fun publish() {
             updateClock()
             playIcon.visibility = if (ready && rendered && !player.isPlaying) View.VISIBLE else View.GONE
-            if (!closed) update(controller, JSONObject().put("ready", ready).put("rendered", rendered)
+            if (!closed) update(controller, JSONObject().put("ready", ready).put("rendered", rendered).put("playing", ready && player.isPlaying)
                 .put("position", if (ready) (if (ended) player.duration else player.currentPosition) / 1000.0 else 0).put("duration", if (ready) player.duration / 1000.0 else 0).toString())
         }
         private fun updateClock() {
@@ -260,6 +265,12 @@ private class InkVideoAdapter(
             return true
         }
         override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) = Unit
-        override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+        // A delivered frame is the reliable signal: rendering-start info is not sent after every seek.
+        override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
+            if (rendered || closed || !ready) return
+            rendered = true
+            view.alpha = 1f
+            publish()
+        }
     }
 }

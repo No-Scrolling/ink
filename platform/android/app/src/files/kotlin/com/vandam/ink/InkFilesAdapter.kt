@@ -9,12 +9,12 @@ import org.json.JSONObject
 import java.util.concurrent.Executors
 import java.util.concurrent.ConcurrentHashMap
 
-internal fun createFilesAdapter(activity: Activity): FilesAdapter = InkFilesAdapter(activity)
+internal fun createFilesAdapter(activity: Activity, emit: (String) -> Unit): FilesAdapter = InkFilesAdapter(activity, emit)
 
-private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
+private class InkFilesAdapter(private val activity: Activity, private val emit: (String) -> Unit) : FilesAdapter {
     private val files = InkManagedFiles(activity)
     private val passes = InkPassFiles(activity)
-    private val library = lazy { InkMediaLibrary(activity) }
+    private val library = lazy { InkMediaLibrary(activity, emit) }
     private val executor = Executors.newSingleThreadExecutor()
     private val cancelled = ConcurrentHashMap.newKeySet<Long>()
     private val requests = ConcurrentHashMap.newKeySet<Long>()
@@ -135,6 +135,7 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, intent: Intent?): Boolean {
+        if (library.isInitialized() && library.value.onActivityResult(requestCode, resultCode)) return true
         if (requestCode != REQUEST_CODE) return false
         val request = pending ?: return true
         pending = null
@@ -163,6 +164,7 @@ private class InkFilesAdapter(private val activity: Activity) : FilesAdapter {
         }
         return true
     }
+    override fun resume() { if (library.isInitialized()) library.value.resume() }
     override fun cancel(requestId: Long) { if (requests.remove(requestId)) cancelled.add(requestId); if (library.isInitialized()) library.value.cancel(requestId) }
     override fun stop() { stopped = true; pending = null; requests.clear(); cancelled.clear(); executor.shutdownNow(); if (library.isInitialized()) library.value.stop() }
     private fun failure(error: Throwable) = NativeResult.Failure(NativeErrorKind.UNAVAILABLE, error.message ?: "File operation failed", true)

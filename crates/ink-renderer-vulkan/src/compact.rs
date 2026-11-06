@@ -30,7 +30,7 @@ const MAX_ATLAS_SIZE: u32 = 4096;
 const ATLAS_PADDING: u32 = 1;
 const GLYPH_RASTER_CACHE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_GLYPH_RASTERS: usize = 4096;
-const IMAGE_CACHE_BYTES: usize = 8 * 1024 * 1024;
+const IMAGE_CACHE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C)]
@@ -1728,19 +1728,23 @@ fn push_scrollbar_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {
     let Some(scrollbar) = scene.scroll_bar else {
         return;
     };
+    if scene.scroll_bar_alpha <= 0.0 {
+        return;
+    }
     let thumb = scrollbar.thumb_rect(scene.scroll_offset, scene.scroll_max);
     let clip = scene.scroll_clip.unwrap_or(scrollbar.track);
+    let colour = Colour { alpha: scene.scroll_bar_alpha, ..scene.colour(Colour::WHITE) };
     for quad in [
         ink_core::Quad {
             rect: scrollbar.track,
             clip,
-            colour: scene.colour(Colour::WHITE),
+            colour,
             scrolling: false,
         },
         ink_core::Quad {
             rect: thumb,
             clip,
-            colour: scene.colour(Colour::WHITE),
+            colour,
             scrolling: false,
         },
     ] {
@@ -1823,10 +1827,19 @@ fn push_mask_quad(
     let atlas_top = mask.atlas_y as f32 / atlas_size as f32;
     let atlas_width = mask.width as f32 / atlas_size as f32;
     let atlas_height = mask.height as f32 / atlas_size as f32;
-    let u0 = atlas_left + (visible.x - rect.x) / rect.width * atlas_width;
-    let v0 = atlas_top + (visible.y - rect.y) / rect.height * atlas_height;
-    let u1 = atlas_left + (visible.x + visible.width - rect.x) / rect.width * atlas_width;
-    let v1 = atlas_top + (visible.y + visible.height - rect.y) / rect.height * atlas_height;
+    let (u0, v0, u1, v1) = if mask.width == 1 && mask.height == 1 {
+        // Stretching a single texel would filter in its empty neighbours, so solid fills
+        // sample only its centre.
+        let (u, v) = (atlas_left + atlas_width / 2.0, atlas_top + atlas_height / 2.0);
+        (u, v, u, v)
+    } else {
+        (
+            atlas_left + (visible.x - rect.x) / rect.width * atlas_width,
+            atlas_top + (visible.y - rect.y) / rect.height * atlas_height,
+            atlas_left + (visible.x + visible.width - rect.x) / rect.width * atlas_width,
+            atlas_top + (visible.y + visible.height - rect.y) / rect.height * atlas_height,
+        )
+    };
     let [ndc_left, ndc_top] = position(scene, visible.x, visible.y);
     let [ndc_right, ndc_bottom] =
         position(scene, visible.x + visible.width, visible.y + visible.height);

@@ -73,7 +73,7 @@ export function listText(parts: unknown[]): string {
 export function listRowFields(props: ComponentProps<typeof Row>) {
   return { image: props.image, title: props.title, titleMaxLines: props.titleMaxLines,
     titleIcon: props.titleIcon, subtitle: props.subtitle, subtitleIcon: props.subtitleIcon,
-    onLongPress: props.onLongPress,
+    selected: props.selected, onLongPress: props.onLongPress,
     onPress: pressHandler(props) ?? (props.onLongPress ? () => {} : undefined) };
 }
 
@@ -393,6 +393,7 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
   const nativeProps = {
     items: records.data, keyField: "key", template: records.template, gap, followEnd, initialEnd: initialPosition === "end",
     hasMore: !preparing && hasMore && load.status !== "pending" && load.status !== "error",
+    moreAvailable: hasMore && !!onLoadMore && load.status !== "error",
     hasOlder: !preparing && hasOlder && older.status !== "pending" && older.status !== "error",
     onEndReached: !preparing && onLoadMore ? load.run : undefined,
     onStartReached: !preparing && onLoadOlder ? older.run : undefined,

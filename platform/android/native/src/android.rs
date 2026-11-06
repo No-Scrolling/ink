@@ -38,6 +38,8 @@ const POINTER_CHANGED: jint = 1;
 const POINTER_ACTIVATED: jint = 1 << 1;
 const POINTER_CAPTURED: jint = 1 << 2;
 const POINTER_HAPTIC: jint = 1 << 3;
+const SCROLL_CHANGED: jint = 1;
+const SCROLL_PENDING: jint = 2;
 const LOG_TAG: &[u8] = b"Ink\0";
 static PANIC_HOOK: Once = Once::new();
 
@@ -283,7 +285,7 @@ impl AndroidEngine {
         pointer_result(self.engine.image_double_tap(x, y))
     }
 
-    fn scroll_by(&mut self, delta: f32) -> bool {
+    fn scroll_by(&mut self, delta: f32) -> jint {
         let _affinity = ink_runtime::cpu_affinity::prefer_performance();
         let changed = self.engine.scroll_by(delta);
         if changed
@@ -296,7 +298,9 @@ impl AndroidEngine {
             );
             self.script = None;
         }
-        changed
+        if changed { SCROLL_CHANGED }
+        else if delta > 0.0 && self.script.as_ref().is_some_and(|script| script.scroll_pending(&self.engine)) { SCROLL_PENDING }
+        else { 0 }
     }
 
     fn back(&mut self) -> bool {
@@ -522,6 +526,7 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCreate(
     let cache = env
         .with_env(|env| cache_directory.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
+    if !cache.is_empty() { ink_core::media_previews::open(&std::path::Path::new(&cache).join("ink-media-previews")); }
     let cache = (!cache.is_empty()).then(|| std::path::Path::new(&cache).join("ink-vulkan-pipelines.bin"));
     PANIC_HOOK.call_once(|| {
         std::panic::set_hook(Box::new(|panic| {
@@ -660,6 +665,10 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeVideoPortal<'local>(
             "y": portal.rect.y.round() as i32,
             "width": portal.rect.width.round().max(1.0) as i32,
             "height": portal.rect.height.round().max(1.0) as i32,
+            "clipX": portal.clip.x.round() as i32,
+            "clipY": portal.clip.y.round() as i32,
+            "clipWidth": portal.clip.width.round().max(0.0) as i32,
+            "clipHeight": portal.clip.height.round().max(0.0) as i32,
         }).to_string()
     });
     env.with_env(|env| env.new_string(value))
@@ -908,10 +917,10 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeScrollBy(
     _class: JClass<'_>,
     handle: jlong,
     delta: jfloat,
-) -> jboolean {
+) -> jint {
     engine(handle)
         .map(|engine| engine.lock_arc())
-        .is_some_and(|mut engine| engine.scroll_by(delta)) as jboolean
+        .map_or(0, |mut engine| engine.scroll_by(delta))
 }
 
 #[unsafe(no_mangle)]
@@ -1119,11 +1128,21 @@ fn complete_encoded_image(handle: jlong, request_id: jlong, source: image::Sourc
     let Some(engine) = engine(handle) else {
         return 0;
     };
-    let Some((width, height, fit, looping)) = engine.lock_arc().engine.image_request_target(request_id as u64)
-    else {
+    let Some(((width, height, fit, looping), media)) = ({
+        let engine = engine.lock_arc();
+        engine.engine.image_request_target(request_id as u64)
+            .map(|target| (target, engine.engine.media_request_url(request_id as u64).and_then(ink_core::media_previews::media_key)))
+    }) else {
         return 0;
     };
     let decoded = image::decode(source, width, height, fit, looping);
+    if let (Some(key), Ok((width, height, pixels, _))) = (media, &decoded)
+        && let Some(previews) = ink_core::media_previews::previews()
+        && !previews.contains(key)
+        && let Some(preview) = ink_core::media_previews::square_preview(pixels, *width, *height)
+    {
+        previews.insert(key, preview);
+    }
     let mut engine = engine.lock_arc();
     let update = match decoded {
         Ok((width, height, pixels, animation)) => {
@@ -1197,12 +1216,51 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCompleteEncoded(
 ) -> jint {
     let bytes = env
         .with_env(|env| -> jni::errors::Result<Vec<u8>> {
-            let mut buffer = vec![0_i8; size as usize];
-            bytes.get_region(env, 0, &mut buffer)?;
-            Ok(buffer.into_iter().map(|byte| byte as u8).collect())
+            let mut buffer = env.convert_byte_array(&bytes)?;
+            buffer.truncate(size.max(0) as usize);
+            Ok(buffer)
         })
         .resolve::<jni::errors::LogErrorAndDefault>();
     complete_encoded_image(handle, request_id, image::Source::Bytes(bytes))
+}
+
+#[cfg(feature = "image")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeMediaPreviewNeeded(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    url: JString<'_>,
+) -> jboolean {
+    let url = env.with_env(|env| url.try_to_string(env)).resolve::<jni::errors::LogErrorAndDefault>();
+    let (Some(key), Some(previews)) = (ink_core::media_previews::media_key(&url), ink_core::media_previews::previews()) else {
+        return false as jboolean;
+    };
+    !previews.contains(key) as jboolean
+}
+
+#[cfg(feature = "image")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_vandam_ink_InkNative_nativeMediaPreviewStore(
+    mut env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    url: JString<'_>,
+    bytes: JByteArray<'_>,
+) -> jboolean {
+    let (url, bytes) = env
+        .with_env(|env| -> jni::errors::Result<(String, Vec<u8>)> {
+            Ok((url.try_to_string(env)?, env.convert_byte_array(&bytes)?))
+        })
+        .resolve::<jni::errors::LogErrorAndDefault>();
+    let (Some(key), Some(previews)) = (ink_core::media_previews::media_key(&url), ink_core::media_previews::previews()) else {
+        return false as jboolean;
+    };
+    let side = ink_core::media_previews::PREVIEW_SIZE;
+    let Ok((width, height, pixels, _)) = image::decode(image::Source::Bytes(bytes), side, side, ink_core::ImageFit::Cover, false) else {
+        return false as jboolean;
+    };
+    let Some(preview) = ink_core::media_previews::square_preview(&pixels, width, height) else { return false as jboolean; };
+    previews.insert(key, preview);
+    true as jboolean
 }
 
 #[unsafe(no_mangle)]

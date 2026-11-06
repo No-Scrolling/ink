@@ -32,6 +32,7 @@ pub enum Capability {
     Location,
     Maps,
     MediaLibrary,
+    MediaLibraryManage,
     MicrophonePermission,
     Network,
     NetworkCleartext,

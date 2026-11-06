@@ -72,6 +72,10 @@ impl ScriptRuntime {
         self.notify_viewports(engine)
     }
 
+    pub(super) fn scroll_pending(&self, engine: &Engine) -> bool {
+        self.tree.scroll_pending(engine)
+    }
+
     fn notify_viewports(&mut self, engine: &mut Engine) -> Result<()> {
         for event in self.tree.viewport_events(engine)? {
             let id = event["id"].as_u64().expect("viewport event has a list ID");

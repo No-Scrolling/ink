@@ -3,7 +3,7 @@ package com.vandam.ink
 import android.app.Activity
 import android.content.Intent
 
-internal fun createFilesAdapter(activity: Activity): FilesAdapter = NoFilesAdapter
+internal fun createFilesAdapter(activity: Activity, emit: (String) -> Unit): FilesAdapter = NoFilesAdapter
 
 private object NoFilesAdapter : FilesAdapter {
     override fun execute(requestId: Long, operation: String, payload: String, complete: NativeResultHandler) {

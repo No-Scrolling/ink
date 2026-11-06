@@ -56,6 +56,7 @@ pub enum HostKind {
     Confirmation,
     Screen,
     ScreenState,
+    ScreenOverlay,
     Stack,
     Canvas,
     CanvasRectangle,

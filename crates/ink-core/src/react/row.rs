@@ -22,6 +22,7 @@ impl ReactTree {
         if let Some(src) = image { children.push(Node::image(image_source(src)?, None, false, false, 50.0, 50.0, ImageFit::Cover)); }
         children.push(Node::stack(content, Axis::Vertical, Some(0.0), Alignment::Start, Justification::Start));
         Ok(Node { identity: NodeIdentity(id), kind: NodeKind::Row { children, has_image: image.is_some(),
+            selected: props.get("selected") == Some(&Json::Bool(true)),
             action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
             long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
         } })

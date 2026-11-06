@@ -49,7 +49,9 @@ class MainActivity : Activity(), InkJavaScriptHost {
     private var cameraPortal: CameraPortal? = null
     private var videoPortal: VideoPortal? = null
     private var mapPortal: MapPortal? = null
-    private val filesAdapter by lazy { createFilesAdapter(this) }
+    private val filesAdapter by lazy { createFilesAdapter(this) { message ->
+        runOnUiThread { if (engineHandle != 0L) InkNative.nativeJavaScriptReceive(engineHandle, message) }
+    } }
     private val appNativeAdapters by lazy { createAppNativeAdapters(this) }
     private val secureStoreAdapter by lazy { SecureStoreAdapter(this) }
     private val authAdapter by lazy { AuthAdapter(this) { message ->
@@ -71,7 +73,7 @@ class MainActivity : Activity(), InkJavaScriptHost {
     private val nativeTimeouts = mutableMapOf<Long, Runnable>()
     private val nativeRequestStartedAt = mutableMapOf<Long, Long>()
     private val nativeRequestLabels = mutableMapOf<Long, String>()
-    private val imageExecutor = Executors.newFixedThreadPool(2)
+    private val imageExecutor = Executors.newFixedThreadPool(4)
     private val backCallback = OnBackInvokedCallback {
         handleBack()
     }
@@ -571,6 +573,7 @@ class MainActivity : Activity(), InkJavaScriptHost {
         overlaysAdapter.resume()
         externalAdapter.onResume()
         connectivityAdapter.start()
+        filesAdapter.resume()
         mapsAdapter.resume()
         videoAdapter.resume()
         audioAdapter.resume()
@@ -716,7 +719,9 @@ class MainActivity : Activity(), InkJavaScriptHost {
             val video = InkNative.nativeVideoPortal(engineHandle)
             if (video != null) videoPortal = if (video.isEmpty()) null else {
                 val value = JSONObject(video)
-                VideoPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"))
+                VideoPortal(value.getLong("controller"), value.getInt("x"), value.getInt("y"), value.getInt("width"), value.getInt("height"),
+                    android.graphics.Rect(value.getInt("clipX"), value.getInt("clipY"),
+                        value.getInt("clipX") + value.getInt("clipWidth"), value.getInt("clipY") + value.getInt("clipHeight")))
             }
             videoAdapter.syncPortal(videoPortal)
         }

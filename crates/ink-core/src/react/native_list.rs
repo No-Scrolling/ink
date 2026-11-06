@@ -73,6 +73,10 @@ pub(super) struct NativeList {
 }
 
 impl NativeList {
+    pub(super) fn is_media_grid(&self) -> bool {
+        self.template.kind == HostKind::MediaGridRow
+    }
+
     fn item(&self, key: &str) -> Result<&Arc<Json>> {
         match &self.source {
             Some(snapshot) => snapshot.get(key).map(|record| &record.value),

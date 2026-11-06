@@ -431,6 +431,10 @@ impl ReactTree {
 
     fn update_target(&self, mut id: usize) -> Result<usize> {
         let mut node = self.node(id)?;
+        if node.kind == HostKind::ScreenOverlay {
+            id = node.parent.context("Screen overlay requires a Screen parent")?;
+            node = self.node(id)?;
+        }
         if matches!(node.kind, HostKind::CanvasRectangle | HostKind::CanvasText | HostKind::CanvasIcon | HostKind::CanvasPath) {
             id = node.parent.context("Canvas item requires a Canvas parent")?;
             node = self.node(id)?;
@@ -504,6 +508,11 @@ impl ReactTree {
         Ok(())
     }
 
+    pub fn scroll_pending(&self, engine: &Engine) -> bool {
+        engine.react_list_positions.keys().any(|id| self.nodes.get(id)
+            .is_some_and(|node| node.props.get("moreAvailable") == Some(&Json::Bool(true))))
+    }
+
     pub fn viewport_events(&mut self, engine: &mut Engine) -> Result<Vec<Json>> {
         self.refresh_native_lists(engine)?;
         self.list_windows
@@ -516,7 +525,10 @@ impl ReactTree {
             let Some(metrics) = engine.list_metrics.get(id) else { continue; };
             let offset = clip.y + engine.scroll_offset - top;
             let (start, end) = metrics.window(offset, clip.height);
-            let near_end = offset + clip.height * 2.0 >= metrics.total();
+            let grid = self.native_lists.get(id).is_some_and(NativeList::is_media_grid);
+            let ahead = if grid { 4.0 } else { 2.0 };
+            let near_end = offset + clip.height * ahead >= metrics.total()
+                && (!grid || offset > 0.0 || metrics.total() <= clip.height);
             if let Some(list) = self.native_lists.get_mut(id) {
                 list.boundary_events(*id, start, near_end, &mut events);
                 continue;
@@ -902,6 +914,7 @@ impl ReactTree {
                 kind: NodeKind::Row {
                     children: self.children(host, depth)?,
                     has_image: props.get("hasImage") == Some(&Json::Bool(true)),
+                    selected: props.get("selected") == Some(&Json::Bool(true)),
                     long_action: (props.get("onLongPress") == Some(&Json::Bool(true)))
                         .then(|| event(id, "onLongPress", vec![])),
                     action: (props.get("onPress") == Some(&Json::Bool(true)))
@@ -920,10 +933,12 @@ impl ReactTree {
                 Node { identity: NodeIdentity(id), kind: NodeKind::MediaCell {
                     source: ImageSource::Native("files".into(), src.to_owned()),
                     selected: props.get("selected") == Some(&Json::Bool(true)),
+                    dimmed: props.get("dimmed") == Some(&Json::Bool(true)),
                     video: props.get("video") == Some(&Json::Bool(true)),
                     check: self.icon(string(props, "checkIcon").context("Media cell requires a check icon")?)?,
                     play: self.icon(string(props, "videoIcon").context("Media cell requires a video icon")?)?,
                     action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
+                    long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
                 } }
             }
             HostKind::Screen | HostKind::MediaPickerScreen => {
@@ -936,6 +951,26 @@ impl ReactTree {
                     Ok((self.icon(icon)?, event(id, "onRightPress", vec![])))
                 }).transpose()?;
                 let background = canvas_colour(props, "background")?.map(super::Colour::to_linear);
+                let title_action = (props.get("onTitlePress") == Some(&Json::Bool(true))).then(|| -> Result<_> {
+                    Ok((string(props, "titleIcon").map(|icon| self.icon(icon)).transpose()?, event(id, "onTitlePress", vec![])))
+                }).transpose()?;
+                let action_bar = match props.get("actionBar") {
+                    Some(Json::Array(items)) => {
+                        ensure!(items.len() <= 3, "Action bars have at most three items");
+                        items.iter().enumerate().map(|(index, item)| {
+                            if item.is_null() { return Ok(None); }
+                            let icon = item.get("icon").and_then(Json::as_str).map(|icon| self.icon(icon)).transpose()?;
+                            let label = item.get("label").and_then(Json::as_str).map(str::to_owned);
+                            ensure!(icon.is_some() || label.is_some(), "Action bar items need an icon or label");
+                            let name: &'static str = ["onAction0", "onAction1", "onAction2"][index];
+                            let action = (props.get(name) == Some(&Json::Bool(true)) && item.get("disabled") != Some(&Json::Bool(true)))
+                                .then(|| event(id, name, vec![]));
+                            Ok(Some(super::ActionBarItem { icon, label, action }))
+                        }).collect::<Result<Vec<_>>>()?
+                    }
+                    Some(Json::Null) | None => Vec::new(),
+                    Some(_) => bail!("invalid action bar"),
+                };
                 let props = props.object().context("invalid Screen properties")?;
                 let props = ScreenProps::deserialize(serde::de::value::MapDeserializer::<_, serde_json::Error>::new(
                     props.iter().map(|(key, value)| (key.as_str(), value)),
@@ -964,9 +999,25 @@ impl ReactTree {
                     }
                     screen
                 } else {
-                    Node::screen(self.children(host, depth)?, props.title, props.centered)
+                    let mut children = Vec::new();
+                    for child_id in &host.children {
+                        if self.node(*child_id)?.kind != HostKind::ScreenOverlay
+                            && let Some(child) = self.render_node(*child_id, depth + 1)?
+                        {
+                            children.push(child);
+                        }
+                    }
+                    Node::screen(children, props.title, props.centered)
                 };
                 if let NodeKind::Screen(screen) = &mut screen.kind {
+                    if state.is_none() {
+                        for child_id in &host.children {
+                            let child = self.node(*child_id)?;
+                            if !child.hidden && child.kind == HostKind::ScreenOverlay {
+                                screen.overlay.extend(self.children(child, depth + 1)?);
+                            }
+                        }
+                    }
                     screen.background = background;
                     screen.wide = props.wide;
                     screen.bottom_inset = props.bottom_inset.unwrap_or(true);
@@ -975,10 +1026,16 @@ impl ReactTree {
                     screen.left_action = left_action;
                     screen.right_action = right_action;
                     screen.media_picker = host.kind == HostKind::MediaPickerScreen;
+                    screen.auto_scroll_bar = props.scroll_bar.as_deref() == Some("auto");
+                    screen.immersive = props.immersive;
+                    screen.title_action = title_action;
+                    screen.overlay_bars = props.overlay_bars;
+                    screen.action_bar = action_bar;
                 }
                 screen
             }
             HostKind::ScreenState => bail!("LoadingState, EmptyState and ErrorState must be direct children of Screen"),
+            HostKind::ScreenOverlay => bail!("Screen overlays must be direct children of Screen"),
             HostKind::Stack => {
                 let axis = match string(props, "axis").unwrap_or("vertical") {
                     "vertical" => Axis::Vertical,
@@ -1130,7 +1187,22 @@ impl ReactTree {
                     height,
                     fit,
                 );
-                if let NodeKind::Image { preload, retain_while_loading, looping, fill_width, avatar: image_avatar, rotation, background, crop, crop_events, horizontal_guides, overlay, .. } = &mut node.kind {
+                if let NodeKind::Image { preload, retain_while_loading, looping, fill_width, avatar: image_avatar, rotation, background, crop, crop_events, horizontal_guides, overlay, press, swipe, video, play_icon, .. } = &mut node.kind {
+                    *play_icon = props.get("playIcon") == Some(&Json::Bool(true));
+                    *press = (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![]));
+                    *video = match props.get("videoController") {
+                        None | Some(Json::Null) => None,
+                        Some(value) => {
+                            ensure!(cfg!(feature = "video"), "native component is not included in this build");
+                            let id = value.as_i64().context("Invalid video controller")?;
+                            ensure!((1..=9_007_199_254_740_991).contains(&id), "Invalid video controller");
+                            Some(ControllerId::new((-id) as usize))
+                        }
+                    };
+                    *swipe = (props.get("onSwipe") == Some(&Json::Bool(true))).then(|| (
+                        props.get("hasNext") != Some(&Json::Bool(false)),
+                        props.get("hasPrevious") != Some(&Json::Bool(false)),
+                    ));
                     if let Some(value) = props.get("overlay") {
                         let props = value.as_object().context("Image overlay requires an object")?;
                         let source = image_source(props.get("src").and_then(Json::as_str).context("Image overlay requires a source")?)?;
@@ -1298,6 +1370,12 @@ struct ScreenProps {
     pinned_header: bool,
     #[serde(default, rename = "pinnedFooter")]
     pinned_footer: bool,
+    #[serde(default, rename = "scrollBar")]
+    scroll_bar: Option<String>,
+    #[serde(default)]
+    immersive: bool,
+    #[serde(default, rename = "overlayBars")]
+    overlay_bars: bool,
 }
 
 fn string<'a>(props: &'a HostProps, key: &str) -> Option<&'a str> {
@@ -1381,6 +1459,7 @@ fn replace_nodes(node: &mut Node, ids: &[usize], patches: &mut [Option<Node>]) {
         }
         NodeKind::Screen(screen) => {
             for child in &mut screen.children { replace_nodes(child, ids, patches); }
+            for child in &mut screen.overlay { replace_nodes(child, ids, patches); }
         }
         NodeKind::Tabs { tabs, .. } => {
             for tab in tabs { replace_nodes(&mut tab.screen, ids, patches); }

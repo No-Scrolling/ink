@@ -13,7 +13,19 @@ export { useAction, type Action } from "./action";
 export { NativeError } from "./native";
 export { Tabs, Slot, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
 
-export function Screen({ header, children, leftAction, rightAction, ...props }: {
+export type ActionBarItem = { icon?: IconAsset; label?: string; onPress: () => void; disabled?: boolean } | null;
+
+/** @internal Host props for a bottom action bar of up to three slots. */
+export function actionBarProps(items: readonly ActionBarItem[] | undefined) {
+  if (!items) return {};
+  const props: Record<string, unknown> = {
+    actionBar: items.map(item => item && { icon: item.icon, label: item.label, disabled: item.disabled ?? false }),
+  };
+  items.forEach((item, index) => { if (item && !item.disabled) props[`onAction${index}`] = item.onPress; });
+  return props;
+}
+
+export function Screen({ header, children, overlay, leftAction, rightAction, actionBar, ...props }: {
   children?: ReactNode;
   header?: ReactNode;
   title?: string;
@@ -23,12 +35,27 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   bottomInset?: boolean;
   leftAction?: { icon: IconAsset; onPress: () => void };
   rightAction?: { icon: IconAsset; onPress: () => void };
+  /** Up to three actions in equal slots along the bottom; `null` leaves a slot empty. */
+  actionBar?: readonly ActionBarItem[];
+  /** `"auto"` hides the scrollbar until the page scrolls. */
+  scrollBar?: "auto";
+  /** Hides the header and action bar while keeping their space, so content stays in place. */
+  immersive?: boolean;
+  /** Lets content fill the screen, with the header and action bar drawn over it. */
+  overlayBars?: boolean;
+  /** Content above the bottom action bar, such as video progress. Hidden in immersive mode. */
+  overlay?: ReactNode;
+  /** Makes the title pressable, such as to choose what the page shows. */
+  onTitlePress?: () => void;
+  /** An icon after the title, such as a chevron for `onTitlePress`. */
+  titleIcon?: IconAsset;
 }) {
   const [scrollToEnd, setScrollToEnd] = useState(0);
   const requestEnd = useMemo(() => () => setScrollToEnd(value => value + 1), []);
-  return createElement(ScrollToEndContext.Provider, { value: requestEnd }, createElement("Screen", { ...props, scrollToEnd, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
+  return createElement(ScrollToEndContext.Provider, { value: requestEnd }, createElement("Screen", { ...props, ...actionBarProps(actionBar), scrollToEnd, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
     header != null && createElement(Stack, { gap: 47 }, header),
     children,
+    overlay != null && createElement("ScreenOverlay", null, overlay),
   ));
 }
 

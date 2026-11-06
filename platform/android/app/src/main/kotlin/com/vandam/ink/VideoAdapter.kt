@@ -6,6 +6,8 @@ internal data class VideoPortal(
     val y: Int,
     val width: Int,
     val height: Int,
+    /** The visible part of the portal in screen coordinates. */
+    val clip: android.graphics.Rect,
 )
 
 internal interface VideoAdapter : NativeAdapter {

@@ -9,6 +9,10 @@
     ],
     "src/media.ts": [
       "media-library"
+    ],
+    "src/library.ts": [
+      "media-library",
+      "media-library-manage"
     ]
   }
 }

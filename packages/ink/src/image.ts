@@ -12,17 +12,19 @@ export function Avatar({ src = "", unread = false, onPress, onLongPress }: {
   return createElement("Avatar", { src, unread, onPress, onLongPress });
 }
 
-function RowComponent<const D extends Destination>({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, href, url, onPress, onLongPress }: PressProps<D> & {
+function RowComponent<const D extends Destination>({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, selected, href, url, onPress, onLongPress }: PressProps<D> & {
   image?: string;
   title: string;
   titleMaxLines?: number;
   titleIcon?: IconAsset;
   subtitle?: string;
   subtitleIcon?: IconAsset;
+  /** Underlines the row's text block, such as for the current choice. */
+  selected?: boolean;
   onLongPress?: () => void;
 }) {
   return createElement("RowContent", {
-    image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon,
+    image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, selected,
     onPress: pressHandler({ href, url, onPress }) ?? (onLongPress ? () => {} : undefined),
     onLongPress,
   });
@@ -54,6 +56,18 @@ export function Image(props: {
   fillWidth?: boolean;
   zoomable?: boolean;
   loop?: boolean;
+  /** Up to two sources decoded ahead at this image's size, such as neighbouring photos. */
+  preload?: readonly string[];
+  onPress?: () => void;
+  /** A play triangle centred over the image, such as on a video poster. */
+  playIcon?: boolean;
+  /** A video from `useVideo` drawn over this image, such as over its poster frame. */
+  videoController?: number | null;
+  /** A horizontal swipe: `"next"` when swiped left, `"previous"` when swiped right. */
+  onSwipe?: (direction: "next" | "previous") => void;
+  /** Whether a swipe can continue in each direction. Both default to true. */
+  hasNext?: boolean;
+  hasPrevious?: boolean;
 }) {
   return createElement("Image", props);
 }
