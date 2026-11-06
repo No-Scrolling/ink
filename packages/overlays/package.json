@@ -1,13 +1,13 @@
 {
   "name": "@ink/overlays",
-  "version": "0.1.0-alpha.10",
+  "version": "0.1.0-alpha.11",
   "private": true,
   "exports": {
     ".": "./src/index.ts",
     "./runtime": "./src/runtime.tsx"
   },
   "peerDependencies": {
-    "ink": "0.1.0-alpha.10",
+    "ink": "0.1.0-alpha.11",
     "react": "19.2.8"
   }
 }
