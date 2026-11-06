@@ -514,6 +514,10 @@ class MainActivity : Activity(), InkJavaScriptHost {
         if (engineHandle != 0L) InkNative.nativeCaptureState(engineHandle, -controller, "")
     }
 
+    internal fun emit(message: String) {
+        runOnUiThread { if (engineHandle != 0L) InkNative.nativeJavaScriptReceive(engineHandle, message) }
+    }
+
     internal fun updateController(controller: Long, value: String) {
         runOnUiThread {
             if (engineHandle != 0L && javascriptControllers.containsKey(-controller)) {

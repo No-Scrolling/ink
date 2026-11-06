@@ -35,7 +35,7 @@ Packages declare native requirements in `ink-native.json`. Ink combines these wi
 
 Unused JavaScript can be removed from the bundle. Native SDKs may need to be included as a whole. Pure JavaScript packages need no Ink registration; third-party native modules do not yet have a general extension API.
 
-For app-local Android code, an `android/build.gradle.kts` library can supply resources and a manifest. Ink compiles `android/kotlin/` with its Android host; that code provides `createAppNativeAdapters` for calls from `ink/native`. This integration uses internal Android interfaces and is not a portable package API.
+For app-local Android code, an `android/build.gradle.kts` library can supply resources and a manifest. Ink compiles `android/kotlin/` with its Android host; that code provides `createAppNativeAdapters` for calls from `ink/native`. Adapters can send their own messages with `activity.emit`; listen for them with `onNativeMessage`, using a `type` that does not clash with Ink's own messages. This integration uses internal Android interfaces and is not a portable package API.
 
 ## Running an app
 
