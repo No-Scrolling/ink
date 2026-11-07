@@ -140,6 +140,8 @@ test("changing split-web mode removes the old optional asset while retaining the
     expect(await compile(root)).toMatchObject({ exitCode: 0 });
     const asset = resolve(root, ".ink/android/assets/ink-assets/ink-web.js");
     expect(await Bun.file(asset).exists()).toBe(true);
+    // Reintroducing tr46's tables grows this runtime beyond 350 kB.
+    expect(Bun.file(asset).size).toBeLessThan(160_000);
     expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external", "network"] });
     expect(await compile(root, false)).toMatchObject({ exitCode: 0 });
     expect(await Bun.file(asset).exists()).toBe(false);

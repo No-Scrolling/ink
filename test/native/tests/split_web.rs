@@ -44,6 +44,18 @@ fn compiled_inline_web_supplies_globals_without_an_optional_asset_loader() {
 }
 
 fn assert_web_globals(runtime: &AppRuntime, events: &EventReceiver) {
+    command(runtime, "idna");
+    assert_eq!(
+        message(events, |value| value["label"] == "idna")["value"],
+        json!([
+            "example.com", "xn--mnchen-3ya.de", "xn--mnchen-3ya.de", "xn--fa-hia.de", "xn--53h.example",
+            "xn--zca.com", "lookout.net", "lookout.net", "xn--s5a.com", "xn--snl.com", "xn--r5g.com",
+            "xn--r8jz45g.xn--zckzah", "-x.xn--zca", "x-.xn--zca", "ab--c.xn--zca", "a..xn--zca.",
+            format!("{}.xn--zca", "a".repeat(64)), null, null, null, null, null, null
+        ])
+    );
+    assert_eq!(message(events, |value| value["label"] == "idna-setter")["value"], "https://xn--mnchen-3ya.de/");
+    assert_eq!(message(events, |value| value["label"] == "idna-invalid-setter")["value"], "https://xn--mnchen-3ya.de/");
     command(runtime, "url");
     assert_eq!(
         message(events, |value| value["label"] == "url")["value"],

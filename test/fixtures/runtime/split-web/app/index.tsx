@@ -16,6 +16,23 @@ async function inspect(command: string) {
   } else if (command === "url") {
     const url = new URL("../café?tag=one&tag=two", "https://EXAMPLE.com/notes/");
     report("url", [url.href, url.hostname, url.searchParams.getAll("tag")]);
+  } else if (command === "idna") {
+    const hosts = [
+      "EXAMPLE.com", "münchen.de", "XN--MNCHEN-3YA.de", "faß.de", "☕.example",
+      "ẞ.com", "look\u180Eout.net", "look\u206Bout.net", "Ӏ.com", "㛼.com", "Ↄ.com",
+      "例え。テスト", "-x.ß", "x-.ß", "ab--c.ß", "a..ß.",
+      "a".repeat(64) + ".ß", "אa.example", "a\u200Db.example", "\u0301a.example",
+      "xn--", "xn--a", "exa%23mple.org",
+    ];
+    report("idna", hosts.map(host => {
+      try { return new URL("https://" + host + "/").hostname; }
+      catch (error) { if (error instanceof TypeError) return null; throw error; }
+    }));
+    const url = new URL("https://example.com/");
+    url.hostname = "münchen.de";
+    report("idna-setter", url.href);
+    url.hostname = "a\u200Db.example";
+    report("idna-invalid-setter", url.href);
   } else if (command === "bodies") {
     const blob = new Blob([new Uint8Array([0, 128, 255]), "café"]);
     const response = new Response('{"title":"café"}', {

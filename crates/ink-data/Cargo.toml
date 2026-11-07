@@ -10,7 +10,7 @@ store = ["dep:rusqlite"]
 crypto = ["dep:aes-gcm", "dep:base64", "dep:getrandom"]
 
 [dependencies]
-ink-runtime = { path = "../ink-runtime" }
+ink-runtime = { path = "../ink-runtime", default-features = false }
 anyhow.workspace = true
 serde_json.workspace = true
 aes-gcm = { version = "0.10.3", optional = true }

@@ -3,6 +3,8 @@ pub mod cpu_affinity;
 mod bytecode;
 mod host;
 mod encoding;
+#[cfg(feature = "network")]
+mod idna;
 mod array;
 mod data_views;
 mod commit;
@@ -541,6 +543,8 @@ fn install(
     context
         .with(|ctx| {
             encoding::install(&ctx)?;
+            #[cfg(feature = "network")]
+            idna::install(&ctx)?;
             array::install(&ctx)?;
             binary::install(&ctx, binary, events.clone())?;
             bytecode::evaluate_bytecode::<()>(&ctx, include_bytes!(concat!(env!("OUT_DIR"), "/encoding.jsbc")))?;

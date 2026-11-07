@@ -7,6 +7,14 @@ Use `@ink/network` for `fetch`, response streams, `Blob`, `File`, `FormData` and
 
 Import it in each module that uses these APIs.
 
+`URL` converts internationalised host names to ASCII synchronously using UTS #46.
+Conversion is nontransitional: `ß` remains distinct from `ss`. It checks
+bidirectional text and joiners without enforcing DNS lengths or hyphen placement.
+
+Android and host tools, including CLI exports, use the same Unicode data bundled
+with Ink. Support for newly assigned characters can change when Ink updates that
+data. Invalid punycode labels are rejected, as in Ink's previous URL implementation.
+
 For services that require unencrypted HTTP, opt in explicitly in `ink.toml`:
 
 ```toml

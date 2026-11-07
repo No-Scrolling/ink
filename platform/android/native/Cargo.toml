@@ -26,14 +26,14 @@ bridge-timing = ["dep:libc"]
 presentation-timing = ["bridge-timing", "benchmark", "ink-renderer-vulkan/presentation-timing"]
 memory-diagnostics = ["ink-core/perf", "ink-renderer-vulkan/perf"]
 image = ["ink-renderer-vulkan/image"]
-network = []
+network = ["ink-runtime/network"]
 camera-photo = ["image"]
 store = ["dep:ink-data", "ink-data/store"]
 crypto = ["dep:ink-data", "ink-data/crypto"]
 
 [dependencies]
 ink-core = { path = "../../../crates/ink-core", default-features = false }
-ink-runtime = { path = "../../../crates/ink-runtime" }
+ink-runtime = { path = "../../../crates/ink-runtime", default-features = false }
 ink-data = { path = "../../../crates/ink-data", optional = true }
 anyhow.workspace = true
 ink-audio = { path = "../../../crates/ink-audio", optional = true }

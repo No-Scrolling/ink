@@ -169,6 +169,11 @@ function buildOptions(bootstrap = false) { return {
     });
     build.onLoad({ filter: /\.(?:png|jpe?g|gif|webp|mp3|mp4|mov|webm|db)$/i }, async ({ path }) => ({ contents: `export default ${JSON.stringify(await addAsset(path))}`, loader: "js" }));
     build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
+      if (path === "tr46" && networkEntry && importer?.endsWith("/whatwg-url/lib/url-state-machine.js")) {
+        const replacement = resolve(dirname(networkEntry), "idna.ts");
+        await inspect(replacement);
+        return { path: replacement };
+      }
       const resolved = await realpath(Bun.resolveSync(path, /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
       const name = await inspect(resolved);
       if (development && !bootstrap && importer && (name === "ink" || name === "react" || name?.startsWith("@ink/") || resolved.includes("/node_modules/"))) {
@@ -319,6 +324,11 @@ if (!development && networkEntry) {
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [{ name: "ink-web-shared-native", setup(build) {
       build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
+        if (path === "tr46" && importer?.endsWith("/whatwg-url/lib/url-state-machine.js")) {
+          const replacement = resolve(dirname(networkEntry), "idna.ts");
+          await inspect(replacement);
+          return { path: replacement };
+        }
         const resolved = await realpath(Bun.resolveSync(path, importer ? dirname(importer) : frameworkDirectory));
         await inspect(resolved);
         return resolved === resolve(frameworkDirectory, "native.ts")
