@@ -28,6 +28,7 @@ mod masks;
 pub mod media_previews;
 mod native_editor;
 mod react;
+mod reuse;
 
 pub use icon_assets::ReactIcon;
 pub use react::{ReactCommit, ReactTree};
@@ -1545,6 +1546,7 @@ const PLAYBACK_CLOCK_JUMP: f32 = 0.25;
 
 pub struct Engine {
     root: Node,
+    reuse: reuse::Reuse,
     marquees: HashMap<NodeIdentity, Marquee>,
     playback_progress: HashMap<NodeIdentity, PlaybackProgress>,
     playback_clocks: HashMap<u64, PlaybackClock>,
@@ -1646,6 +1648,7 @@ impl Engine {
     pub fn new() -> Self {
         Self {
             root: Node::screen(vec![], None, false),
+            reuse: reuse::Reuse::default(),
             state: Vec::new(),
             viewport: Viewport::default(),
             keyboard_inset: 0,
@@ -3206,6 +3209,7 @@ impl Engine {
     }
 
     fn relayout_scene_inner(&mut self) {
+        self.begin_reuse();
         self.scene.revision = self.scene.revision.wrapping_add(1);
         self.scene.width = self.viewport.width;
         self.scene.height = self.viewport.height;
@@ -3248,6 +3252,7 @@ impl Engine {
 
         if self.viewport.width == 0 || self.viewport.height == 0 {
             self.pointer_cancel();
+            self.finish_reuse();
             return;
         }
 
@@ -3281,6 +3286,7 @@ impl Engine {
             },
         );
         self.root = root;
+        self.finish_reuse();
         self.image_screens.retain(|id, _| self.visible_image_screens.contains(id));
         self.marquees.retain(|_, marquee| marquee.visible);
         self.playback_progress.retain(|_, progress| progress.visible);
@@ -3350,9 +3356,8 @@ impl Engine {
         #[cfg(feature = "perf")]
         {
             self.measure_depth += 1;
-            self.perf.nodes_measured += 1;
         }
-        let measured = self.measure_inner(node, available);
+        let measured = self.measure_reused(node, available);
         #[cfg(feature = "perf")]
         {
             self.measure_depth -= 1;
@@ -3365,6 +3370,8 @@ impl Engine {
     }
 
     fn measure_inner(&mut self, node: &Node, available: Rect) -> MeasuredSize {
+        #[cfg(feature = "perf")]
+        { self.perf.nodes_measured += 1; }
         match &node.kind {
             NodeKind::Canvas { width, height, .. } => {
                 let scale = self.viewport.scale.min(available.width / width).min(available.height / height);
@@ -3638,7 +3645,7 @@ impl Engine {
 
     fn layout_node(&mut self, node: &Node, rect: Rect, screen_bottom_inset: bool) {
         let previous = std::mem::replace(&mut self.layout_owner, node.identity);
-        self.layout_node_inner(node, rect, screen_bottom_inset);
+        self.layout_reused(node, rect, screen_bottom_inset);
         self.layout_owner = previous;
     }
 
@@ -3739,6 +3746,7 @@ impl Engine {
                         self.layout(child, child_rect);
                         if children.len() == 3 && index == 2 {
                             for hit in &mut self.hit_regions[first_hit..] { hit.preserve_input = true; }
+                            self.reuse.invalidate_hits(first_hit..self.hit_regions.len());
                         }
                     }
                 }
@@ -4088,9 +4096,11 @@ impl Engine {
                 let run = self.scene.text.len();
                 self.layout_text_lines(&lines, size, *align, *tabular_numbers, rect);
                 if node.identity.0 != 0 && *max_lines == Some(1) && links.is_empty() && self.scene.text.len() == run + 1 {
-                    if let Some(width) = width { self.fixed_text_runs.insert(node.identity, FixedTextRun {
+                    if let Some(width) = width { let fixed = FixedTextRun {
                         run, width: *width, font_size: *font_size, align: *align, tabular_numbers: *tabular_numbers,
-                    }); }
+                    };
+                    self.fixed_text_runs.insert(node.identity, fixed.clone());
+                    self.reuse.fixed.push((node.identity, fixed)); }
                 }
             }
             NodeKind::TextInput {
