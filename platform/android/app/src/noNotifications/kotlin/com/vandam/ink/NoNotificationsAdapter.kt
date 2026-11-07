@@ -1,7 +1,10 @@
 package com.vandam.ink
 
+import android.app.Activity
+
 internal fun createNotificationsAdapter(
-    activity: MainActivity,
+    activity: Activity,
+    haptic: () -> Unit,
     update: (Long, String) -> Unit,
 ): NotificationsAdapter = NoNotificationsAdapter
 

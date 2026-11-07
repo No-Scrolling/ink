@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -19,12 +20,12 @@ import java.util.concurrent.Future
 import java.util.concurrent.FutureTask
 
 internal fun createLightSdkAdapter(
-    activity: MainActivity,
+    activity: Activity,
     updateController: (Long, String) -> Unit,
 ): LightSdkAdapter = InkLightSdkAdapter(activity, updateController)
 
 private class InkLightSdkAdapter(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val updateController: (Long, String) -> Unit,
 ) : LightSdkAdapter, ServiceConnection {
     private val context = activity.applicationContext

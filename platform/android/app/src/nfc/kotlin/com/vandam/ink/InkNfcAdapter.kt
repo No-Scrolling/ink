@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.nfc.NdefRecord
 import android.nfc.NfcAdapter.ReaderCallback
 import android.nfc.Tag
@@ -10,9 +11,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.charset.Charset
 
-internal fun createNfcAdapter(activity: MainActivity): NfcAdapter = InkNfcAdapter(activity)
+internal fun createNfcAdapter(activity: Activity): NfcAdapter = InkNfcAdapter(activity)
 
-private class InkNfcAdapter(private val activity: MainActivity) : NfcAdapter {
+private class InkNfcAdapter(private val activity: Activity) : NfcAdapter {
     private val connection = InkNfcConnection(activity)
     private val platformAdapter = android.nfc.NfcAdapter.getDefaultAdapter(activity)
     private val requests = mutableMapOf<Long, NativeResultHandler>()

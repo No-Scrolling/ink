@@ -1,7 +1,9 @@
 package com.vandam.ink
 
+import android.app.Activity
+
 internal fun createAudioMicrophone(
-    _activity: MainActivity,
+    _activity: Activity,
     _processSamples: (ShortArray, Int) -> Unit,
     _updateController: (Long, String) -> Unit,
     _activateProcessor: (Long, String, String) -> Boolean,

@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.app.AlarmManager
 import android.app.Notification
@@ -18,9 +19,10 @@ import org.json.JSONObject
 import java.io.File
 
 internal fun createNotificationsAdapter(
-    activity: MainActivity,
+    activity: Activity,
+    haptic: () -> Unit,
     update: (Long, String) -> Unit,
-): NotificationsAdapter = InkNotificationsAdapter(activity, update, activity)
+): NotificationsAdapter = InkNotificationsAdapter(activity, update, activity, haptic)
 
 internal fun createWorkerNotificationsAdapter(context: Context): NativeAdapter =
     InkNotificationsAdapter(context, { _, _ -> })
@@ -28,10 +30,11 @@ internal fun createWorkerNotificationsAdapter(context: Context): NativeAdapter =
 private class InkNotificationsAdapter(
     private val context: Context,
     private val update: (Long, String) -> Unit,
-    private val activity: MainActivity? = null,
+    private val activity: Activity? = null,
+    haptic: () -> Unit = {},
 ) : NotificationsAdapter {
     private var tapController: Long? = null
-    private val lightPush = activity?.let { createLightPushAdapter(it, update) }
+    private val lightPush = activity?.let { createLightPushAdapter(it, haptic, update) }
 
     override fun start() { lightPush?.start() }
 

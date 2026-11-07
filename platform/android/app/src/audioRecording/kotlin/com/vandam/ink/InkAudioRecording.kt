@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaMetadataRetriever
@@ -12,13 +13,13 @@ import java.util.UUID
 import org.json.JSONObject
 
 internal fun createAudioRecording(
-    activity: MainActivity,
+    activity: Activity,
     updateController: (Long, String) -> Unit,
     analysisActive: () -> Boolean,
 ): AudioRecording = InkAudioRecording(activity, updateController, analysisActive)
 
 private class InkAudioRecording(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val updateController: (Long, String) -> Unit,
     private val analysisActive: () -> Boolean,
 ) : AudioRecording {

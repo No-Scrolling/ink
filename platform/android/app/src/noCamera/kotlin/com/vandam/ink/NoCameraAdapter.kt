@@ -1,9 +1,10 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.widget.FrameLayout
 
 internal fun createCameraAdapter(
-    _activity: MainActivity,
+    _activity: Activity,
     _root: FrameLayout,
     _updateController: (Long, String) -> Unit,
     _updateReview: (Long, String?) -> Unit,

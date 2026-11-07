@@ -1,12 +1,13 @@
 package com.vandam.ink
 
+import android.app.Activity
+
 internal fun createAudioAdapter(
-    _activity: MainActivity,
-    _processSamples: (ShortArray, Int) -> Unit,
+    _activity: Activity,
+    _bundle: InkBundle,
+    _clock: PlaybackClock,
+    _processing: AudioProcessing,
     _updateController: (Long, String) -> Unit,
-    _activateProcessor: (Long, String, String) -> Boolean,
-    _deactivateProcessor: (Long) -> Unit,
-    _setProcessorEnabled: (Long, Boolean) -> Boolean,
 ): AudioAdapter = object : AudioAdapter {
     override fun execute(
         requestId: Long,

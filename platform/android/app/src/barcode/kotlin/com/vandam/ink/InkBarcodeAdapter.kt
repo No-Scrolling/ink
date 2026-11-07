@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -15,9 +16,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.FutureTask
 
-internal fun createBarcodeAdapter(activity: MainActivity): BarcodeAdapter = InkBarcodeAdapter(activity)
+internal fun createBarcodeAdapter(activity: Activity): BarcodeAdapter = InkBarcodeAdapter(activity)
 
-private class InkBarcodeAdapter(private val activity: MainActivity) : BarcodeAdapter {
+private class InkBarcodeAdapter(private val activity: Activity) : BarcodeAdapter {
     private val executor = Executors.newSingleThreadExecutor()
     private val requests = ConcurrentHashMap<Long, FutureTask<Unit>>()
 

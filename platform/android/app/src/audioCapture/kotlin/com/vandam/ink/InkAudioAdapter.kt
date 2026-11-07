@@ -1,43 +1,35 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.content.pm.PackageManager
 import org.json.JSONObject
 
 internal fun createAudioAdapter(
-    activity: MainActivity,
-    processSamples: (ShortArray, Int) -> Unit,
+    activity: Activity,
+    bundle: InkBundle,
+    clock: PlaybackClock,
+    processing: AudioProcessing,
     updateController: (Long, String) -> Unit,
-    activateProcessor: (Long, String, String) -> Boolean,
-    deactivateProcessor: (Long) -> Unit,
-    setProcessorEnabled: (Long, Boolean) -> Boolean,
-): AudioAdapter = InkAudioAdapter(
-    activity,
-    processSamples,
-    updateController,
-    activateProcessor,
-    deactivateProcessor,
-    setProcessorEnabled,
-)
+): AudioAdapter = InkAudioAdapter(activity, bundle, clock, processing, updateController)
 
 private class InkAudioAdapter(
-    private val activity: MainActivity,
-    processSamples: (ShortArray, Int) -> Unit,
+    private val activity: Activity,
+    bundle: InkBundle,
+    clock: PlaybackClock,
+    private val processing: AudioProcessing,
     private val updateController: (Long, String) -> Unit,
-    activateProcessor: (Long, String, String) -> Boolean,
-    deactivateProcessor: (Long) -> Unit,
-    setProcessorEnabled: (Long, Boolean) -> Boolean,
 ) : AudioAdapter {
     private val controllers = mutableMapOf<Long, String>()
     private val observed = mutableSetOf<Long>()
     private val lastStatus = mutableMapOf<Long, String>()
-    private val playback = createAudioPlayback(activity, updateController)
-    private val microphone = createAudioMicrophone(activity, processSamples, ::updateCapture,
-        activateProcessor, deactivateProcessor, setProcessorEnabled) { recording.active }
+    private val playback = createAudioPlayback(activity, updateController, bundle, clock)
+    private val microphone = createAudioMicrophone(activity, processing::processAudioSamples, ::updateCapture,
+        processing::activateAudioProcessor, processing::deactivateAudioProcessor, processing::setAudioProcessorEnabled) { recording.active }
     private val recording: AudioRecording = createAudioRecording(activity, ::updateCapture) { microphone.active }
 
     private fun updateCapture(controller: Long, value: String) {
-        activity.updateCaptureState(controller, value)
+        processing.updateCaptureState(controller, value)
         val status = JSONObject(value).optString("status")
         val previous = lastStatus.put(controller, status)
         if (controller in observed || status != previous || status != "recording") updateController(controller, value)
@@ -90,7 +82,7 @@ private class InkAudioAdapter(
         recording.stop()
         playback.stop()
         microphone.stop()
-        controllers.keys.forEach(activity::removeCaptureState)
+        controllers.keys.forEach(processing::removeCaptureState)
         controllers.clear()
         observed.clear()
         lastStatus.clear()
@@ -116,7 +108,7 @@ private class InkAudioAdapter(
         if (result is NativeResult.Failure) {
             observed.remove(controller)
             lastStatus.remove(controller)
-            activity.removeCaptureState(controller)
+            processing.removeCaptureState(controller)
             complete(result)
             return
         }
@@ -133,7 +125,7 @@ private class InkAudioAdapter(
         }
         observed.remove(controller)
         lastStatus.remove(controller)
-        activity.removeCaptureState(controller)
+        processing.removeCaptureState(controller)
         complete(NativeResult.Success(""))
     }
 
@@ -153,7 +145,7 @@ private class InkAudioAdapter(
                 complete(protocol("Invalid measurement subscription"))
                 return
             }
-            if (kind in SUPPORTED_PROCESSORS && !activity.observeAudioMeasurements(controller, enabled)) {
+            if (kind in SUPPORTED_PROCESSORS && !processing.observeAudioMeasurements(controller, enabled)) {
                 complete(protocol("Audio processor is not active"))
                 return
             }

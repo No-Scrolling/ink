@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.SurfaceTexture
 import android.graphics.Canvas
@@ -20,13 +21,15 @@ import android.view.View
 import android.widget.FrameLayout
 import org.json.JSONObject
 
-internal fun createVideoAdapter(activity: MainActivity, root: FrameLayout, update: (Long, String) -> Unit): VideoAdapter =
-    InkVideoAdapter(activity, root, update)
+internal fun createVideoAdapter(activity: Activity, root: FrameLayout, update: (Long, String) -> Unit, bundle: InkBundle, clock: PlaybackClock): VideoAdapter =
+    InkVideoAdapter(activity, root, update, bundle, clock)
 
 private class InkVideoAdapter(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val root: FrameLayout,
     private val update: (Long, String) -> Unit,
+    private val bundle: InkBundle,
+    private val clock: PlaybackClock,
 ) : VideoAdapter {
     private val sessions = mutableMapOf<Long, Session>()
     private var portal: VideoPortal? = null
@@ -149,7 +152,7 @@ private class InkVideoAdapter(
                 true
             }
             if (uri.scheme == "asset") {
-                player.setDataSource(activity.bundledMediaFile(uri.toString()).absolutePath)
+                player.setDataSource(bundle.mediaFile(uri.toString()).absolutePath)
             } else {
                 player.setDataSource(activity, uri)
             }
@@ -160,7 +163,7 @@ private class InkVideoAdapter(
             ready = false
             autoPlay = false
             handler.removeCallbacks(tick)
-            activity.removePlaybackClock(-controller)
+            clock.removePlaybackClock(-controller)
             container.keepScreenOn = false
             audio.abandonAudioFocusRequest(focus)
             update(controller, JSONObject().put("error", message).toString())
@@ -238,14 +241,14 @@ private class InkVideoAdapter(
         }
         private fun updateClock() {
             if (closed || !ready) return
-            activity.updatePlaybackClock(-controller,
+            clock.updatePlaybackClock(-controller,
                 (if (ended) player.duration else player.currentPosition).coerceAtLeast(0).toLong(),
                 player.duration.coerceAtLeast(0).toLong(), player.isPlaying && !buffering, 1f)
         }
         fun close() {
             pause()
             closed = true
-            activity.removePlaybackClock(-controller)
+            clock.removePlaybackClock(-controller)
             ready = false
             player.release()
             surface?.release()

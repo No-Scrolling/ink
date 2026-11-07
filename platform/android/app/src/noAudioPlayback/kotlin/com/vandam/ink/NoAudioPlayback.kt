@@ -1,8 +1,12 @@
 package com.vandam.ink
 
+import android.app.Activity
+
 internal fun createAudioPlayback(
-    _activity: MainActivity,
+    _activity: Activity,
     _updateController: (Long, String) -> Unit,
+    _bundle: InkBundle,
+    _clock: PlaybackClock,
 ): AudioPlayback = object : AudioPlayback {
     override fun activate(controller: Long, config: String) = unavailable()
 

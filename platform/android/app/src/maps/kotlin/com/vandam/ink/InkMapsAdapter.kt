@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
@@ -17,14 +18,14 @@ import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 
 internal fun createMapsAdapter(
-    activity: MainActivity,
+    activity: Activity,
     root: FrameLayout,
     updateController: (Long, String) -> Unit,
 ): MapsAdapter = InkMapsAdapter(activity, root, updateController)
 
 @Suppress("DEPRECATION")
 private class InkMapsAdapter(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val root: FrameLayout,
     private val updateController: (Long, String) -> Unit,
 ) : MapsAdapter {

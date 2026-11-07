@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -26,22 +27,23 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 internal fun createLightPushAdapter(
-    activity: MainActivity,
+    activity: Activity,
+    haptic: () -> Unit,
     update: (Long, String) -> Unit,
-): LightPushAdapter = InkLightPushAdapter(activity, update)
+): LightPushAdapter = InkLightPushAdapter(activity, haptic, update)
 
 private object ForegroundPush {
-    private var activity = WeakReference<MainActivity>(null)
+    private var activity = WeakReference<Activity>(null)
     private var group: String? = null
 
     @Synchronized
-    fun set(owner: MainActivity, groupKey: String?) {
+    fun set(owner: Activity, groupKey: String?) {
         activity = WeakReference(owner)
         group = groupKey
     }
 
     @Synchronized
-    fun clear(owner: MainActivity) {
+    fun clear(owner: Activity) {
         if (activity.get() === owner) {
             activity.clear()
             group = null
@@ -56,7 +58,8 @@ private object ForegroundPush {
 }
 
 private class InkLightPushAdapter(
-    private val activity: MainActivity,
+    private val activity: Activity,
+    private val haptic: () -> Unit,
     private val update: (Long, String) -> Unit,
 ) : LightPushAdapter {
     private val store = InkLightPushStore(activity)
@@ -124,7 +127,7 @@ private class InkLightPushAdapter(
         when (operation) {
             "foreground-message" -> {
                 val key = JSONObject(payload).getString("groupKey")
-                if (ForegroundPush.matches(key)) activity.performInteractionHaptic()
+                if (ForegroundPush.matches(key)) haptic()
                 return true
             }
             "foreground" -> {

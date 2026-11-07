@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -11,7 +12,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
 internal fun createAudioMicrophone(
-    activity: MainActivity,
+    activity: Activity,
     processSamples: (ShortArray, Int) -> Unit,
     updateController: (Long, String) -> Unit,
     activateProcessor: (Long, String, String) -> Boolean,
@@ -22,7 +23,7 @@ internal fun createAudioMicrophone(
     activateProcessor, deactivateProcessor, setProcessorEnabled, recordingActive)
 
 private class InkAudioMicrophone(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val processSamples: (ShortArray, Int) -> Unit,
     private val updateController: (Long, String) -> Unit,
     private val activateProcessor: (Long, String, String) -> Boolean,

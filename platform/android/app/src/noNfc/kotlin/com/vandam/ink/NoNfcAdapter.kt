@@ -1,6 +1,8 @@
 package com.vandam.ink
 
-internal fun createNfcAdapter(_activity: MainActivity): NfcAdapter =
+import android.app.Activity
+
+internal fun createNfcAdapter(_activity: Activity): NfcAdapter =
     object : NfcAdapter {
         override fun execute(
             requestId: Long,

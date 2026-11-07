@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
@@ -10,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal class InkNfcConnection(private val activity: MainActivity) {
+internal class InkNfcConnection(private val activity: Activity) {
     private val adapter = NfcAdapter.getDefaultAdapter(activity)
     private val executor = Executors.newFixedThreadPool(2)
     private val technology = AtomicReference<TagTechnology?>(null)

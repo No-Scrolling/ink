@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.content.ComponentName
 import android.net.Uri
 import android.os.Bundle
@@ -26,17 +27,21 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 internal fun createAudioPlayback(
-    activity: MainActivity,
+    activity: Activity,
     updateController: (Long, String) -> Unit,
+    bundle: InkBundle,
+    clock: PlaybackClock,
 ): AudioPlayback {
     AudioDecoderCache.warm()
-    return InkAudioPlayback(activity, updateController)
+    return InkAudioPlayback(activity, updateController, bundle, clock)
 }
 
 @UnstableApi
 private class InkAudioPlayback(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val updateController: (Long, String) -> Unit,
+    private val bundle: InkBundle,
+    private val clock: PlaybackClock,
 ) : AudioPlayback {
     private data class Entry(val mode: String, val usage: String, val cache: Boolean, val preloadNext: Long, val startupBuffer: Int, val playback: AudioSessionPlayback)
     private val sessions = mutableMapOf<String, Entry>()
@@ -63,7 +68,7 @@ private class InkAudioPlayback(
         if (existing == null && sessions.size >= 8) {
             return NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Too many audio sessions", false)
         }
-        val entry = existing ?: Entry(mode, usage, cache, preloadNext, startupBuffer, AudioSessionPlayback(activity, updateController, name, cache, preloadNext, startupBuffer) {
+        val entry = existing ?: Entry(mode, usage, cache, preloadNext, startupBuffer, AudioSessionPlayback(activity, updateController, bundle, clock, name, cache, preloadNext, startupBuffer) {
             sessions.filterKeys { it != name }.values.forEach { it.playback.pauseForFocus() }
         }).also { sessions[name] = it }
         controllers[controller] = name
@@ -97,8 +102,10 @@ private class InkAudioPlayback(
 
 @UnstableApi
 private class AudioSessionPlayback(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val updateController: (Long, String) -> Unit,
+    private val bundle: InkBundle,
+    private val clock: PlaybackClock,
     private val name: String,
     private val cache: Boolean,
     private val preloadNext: Long,
@@ -163,7 +170,7 @@ private class AudioSessionPlayback(
                 putString("operation", operation)
                 putString("payload", payload)
                 body.optJSONObject("item")?.let {
-                    putBundle("item", Item.from(it).mediaItem(activity).toBundleIncludeLocalConfiguration(MediaLibraryInfo.INTERFACE_VERSION))
+                    putBundle("item", Item.from(it).mediaItem(activity, bundle).toBundleIncludeLocalConfiguration(MediaLibraryInfo.INTERFACE_VERSION))
                 }
             }
         }.getOrElse {
@@ -299,7 +306,7 @@ private class AudioSessionPlayback(
             return
         }
         controllers.remove(controller)
-        activity.removePlaybackClock(-controller)
+        clock.removePlaybackClock(-controller)
         if (controllers.isEmpty()) release()
     }
 
@@ -464,7 +471,7 @@ private class AudioSessionPlayback(
         require(items.isNotEmpty()) { "Audio queues cannot be empty" }
         require(startPosition >= 0) { "Start position must be non-negative" }
         require(startIndex in items.indices) { "Start index must reference an audio item" }
-        val mediaItems = items.map { item -> item.mediaItem(activity) }
+        val mediaItems = items.map { item -> item.mediaItem(activity, bundle) }
         require(items.map { it.id }.toSet().size == items.size) { "Audio queue item IDs must be unique" }
         failure = null
         dispatch { player ->
@@ -489,7 +496,7 @@ private class AudioSessionPlayback(
             }.toLong() else player.currentPosition + body.optLong("offset", 0)
             val replacement = Item(current.mediaId, body.getString("src"), metadata.title?.toString().orEmpty(),
                 metadata.artist?.toString().orEmpty(), metadata.albumTitle?.toString().orEmpty(),
-                metadata.artworkUri?.toString().orEmpty(), duration.takeIf { it > 0 }).mediaItem(activity)
+                metadata.artworkUri?.toString().orEmpty(), duration.takeIf { it > 0 }).mediaItem(activity, bundle)
             val index = player.currentMediaItemIndex
             val prepare = body.optBoolean("prepare", true)
             val playWhenReady = player.playWhenReady && player.playbackState != Player.STATE_ENDED
@@ -523,7 +530,7 @@ private class AudioSessionPlayback(
         if (controllers.isEmpty()) return
         val player = player
         val duration = player?.duration?.validTime()?.takeIf { it > 0 } ?: player?.currentMediaItem?.mediaMetadata?.durationMs ?: 0
-        controllers.forEach { activity.updatePlaybackClock(-it, player?.currentPosition?.coerceAtLeast(0) ?: 0,
+        controllers.forEach { clock.updatePlaybackClock(-it, player?.currentPosition?.coerceAtLeast(0) ?: 0,
             duration, player?.isPlaying == true, player?.playbackParameters?.speed ?: 1f) }
     }
 
@@ -595,7 +602,7 @@ private class AudioSessionPlayback(
     }
 
     private fun release() {
-        controllers.forEach { activity.removePlaybackClock(-it) }
+        controllers.forEach { clock.removePlaybackClock(-it) }
         handler.removeCallbacks(progress)
         pending.clear()
         connection?.let(MediaController::releaseFuture)
@@ -625,7 +632,7 @@ private class AudioSessionPlayback(
         val artwork: String,
         val duration: Long?,
     ) {
-        fun mediaItem(activity: MainActivity): MediaItem {
+        fun mediaItem(activity: Activity, bundle: InkBundle): MediaItem {
             val uri = when {
                 src.startsWith("ink-source://") -> Uri.parse(src).also { InkMediaSources.source(activity, it) }
                 src.startsWith("https://") -> Uri.parse(src)
@@ -635,7 +642,7 @@ private class AudioSessionPlayback(
                     }
                     Uri.parse(src)
                 }
-                src.startsWith("asset:///") -> activity.bundledAudioUri(src)
+                src.startsWith("asset:///") -> bundle.audioUri(src)
                 src.startsWith("ink-file://") -> Uri.fromFile(InkManagedFiles(activity).resolve(src))
                 src.startsWith(RECORDING_PREFIX) -> {
                     val recordingId = src.removePrefix(RECORDING_PREFIX)

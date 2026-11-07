@@ -1,7 +1,9 @@
 package com.vandam.ink
 
+import android.app.Activity
+
 internal fun createAudioRecording(
-    _activity: MainActivity,
+    _activity: Activity,
     _updateController: (Long, String) -> Unit,
     _analysisActive: () -> Boolean,
 ): AudioRecording = object : AudioRecording {

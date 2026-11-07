@@ -85,11 +85,11 @@ class InkOverlayService : Service() {
             val layout = layout(nextOptions)
             val props = payload.getJSONObject("props")
             val current = runtime ?: OverlayRuntime(windowContext, scale, ::stopSelf).also { candidate ->
-                try { windows.addView(candidate.host.view, layout) }
+                try { windows.addView(candidate.view, layout) }
                 catch (error: Exception) { candidate.close(); throw error }
                 runtime = candidate
             }
-            if (overlayId != null) windows.updateViewLayout(current.host.view, layout)
+            if (overlayId != null) windows.updateViewLayout(current.view, layout)
             options = nextOptions
             overlayId = id
             current.setContent(id, props)
@@ -137,7 +137,7 @@ class InkOverlayService : Service() {
         appOps.stopWatchingMode(permissionChanged)
         handler.removeCallbacksAndMessages(null)
         runtime?.let {
-            try { windows.removeViewImmediate(it.host.view) }
+            try { windows.removeViewImmediate(it.view) }
             finally { it.close() }
         }
         runtime = null

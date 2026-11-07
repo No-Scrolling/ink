@@ -1,16 +1,16 @@
 package com.vandam.ink
 
+import android.app.Activity
 import org.json.JSONObject
 
 internal fun createAudioAdapter(
-    activity: MainActivity,
-    _processSamples: (ShortArray, Int) -> Unit,
+    activity: Activity,
+    bundle: InkBundle,
+    clock: PlaybackClock,
+    _processing: AudioProcessing,
     updateController: (Long, String) -> Unit,
-    _activateProcessor: (Long, String, String) -> Boolean,
-    _deactivateProcessor: (Long) -> Unit,
-    _setProcessorEnabled: (Long, Boolean) -> Boolean,
 ): AudioAdapter = object : AudioAdapter {
-    private val playback = createAudioPlayback(activity, updateController)
+    private val playback = createAudioPlayback(activity, updateController, bundle, clock)
     private val controllers = mutableSetOf<Long>()
 
     override fun execute(requestId: Long, operation: String, payload: String, complete: NativeResultHandler) {

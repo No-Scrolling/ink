@@ -1,12 +1,13 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import org.json.JSONObject
 
 internal class PermissionsAdapter(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val lightSdk: LightSdkAdapter,
 ) : NativeAdapter {
     private data class Permission(val name: String, val android: Array<String>)

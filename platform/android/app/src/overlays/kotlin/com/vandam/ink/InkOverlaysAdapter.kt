@@ -1,12 +1,13 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 
-internal fun createOverlaysAdapter(activity: MainActivity, emit: (String) -> Unit): OverlaysAdapter = InkOverlaysAdapter(activity, emit)
+internal fun createOverlaysAdapter(activity: Activity, emit: (String) -> Unit): OverlaysAdapter = InkOverlaysAdapter(activity, emit)
 
-private class InkOverlaysAdapter(private val activity: MainActivity, private val emit: (String) -> Unit) : OverlaysAdapter {
+private class InkOverlaysAdapter(private val activity: Activity, private val emit: (String) -> Unit) : OverlaysAdapter {
     private var permission: Pair<Long, NativeResultHandler>? = null
     private val pending = mutableMapOf<Long, Long>()
     private var unwatch: (() -> Unit)? = null

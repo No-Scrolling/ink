@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -19,7 +20,7 @@ import java.io.File
 import org.json.JSONObject
 
 internal fun createCameraAdapter(
-    activity: MainActivity,
+    activity: Activity,
     root: FrameLayout,
     updateController: (Long, String) -> Unit,
     updateReview: (Long, String?) -> Unit,
@@ -50,7 +51,7 @@ internal interface CameraSessionFeature {
 }
 
 internal interface CameraSessionHost {
-    val activity: MainActivity
+    val activity: Activity
     val preview: PreviewView
     val facing: String
     val flashColour: Int
@@ -71,7 +72,7 @@ internal interface CameraSessionHost {
 }
 
 private class InkCameraAdapter(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val root: FrameLayout,
     private val updateController: (Long, String) -> Unit,
     private val updateReview: (Long, String?) -> Unit,

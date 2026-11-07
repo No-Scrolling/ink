@@ -1,11 +1,12 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.View
 
 internal fun createLightSdkAdapter(
-    _activity: MainActivity,
+    _activity: Activity,
     _updateController: (Long, String) -> Unit,
 ): LightSdkAdapter = object : LightSdkAdapter {
     override fun start() = Unit

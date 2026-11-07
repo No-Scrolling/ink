@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -9,7 +10,7 @@ import android.os.CancellationSignal
 import android.os.SystemClock
 import org.json.JSONObject
 
-internal fun createLocationAdapter(activity: MainActivity): LocationAdapter =
+internal fun createLocationAdapter(activity: Activity): LocationAdapter =
     InkLocationAdapter(activity)
 
 internal fun createWorkerLocationAdapter(context: Context): LocationAdapter =
@@ -155,7 +156,7 @@ private class InkLocationAdapter(private val context: Context, private val allow
                         return
                     }
                     if (operation == "tracking-start") {
-                        InkLocationService.start(context as? MainActivity ?: error("Tracking requires a visible app"), requestId, options, complete)
+                        InkLocationService.start(context as? Activity ?: error("Tracking requires a visible app"), requestId, options, complete)
                     } else {
                         check(watches.size < 16) { "Too many location watches" }
                         val id = nextWatch++

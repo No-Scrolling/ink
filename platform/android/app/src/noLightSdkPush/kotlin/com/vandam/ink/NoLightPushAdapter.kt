@@ -1,9 +1,11 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.content.Intent
 
 internal fun createLightPushAdapter(
-    _activity: MainActivity,
+    _activity: Activity,
+    _haptic: () -> Unit,
     _update: (Long, String) -> Unit,
 ): LightPushAdapter = NoLightPushAdapter
 

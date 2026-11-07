@@ -16,7 +16,7 @@ import android.view.ViewConfiguration
 import android.widget.OverScroller
 import kotlin.math.abs
 
-internal class InkHost(context: Context, private val callbacks: Callbacks, private val scale: Float = 0f) : SurfaceHolder.Callback, AutoCloseable {
+internal class InkHost(context: Context, handle: Long, private val callbacks: Callbacks, private val scale: Float = 0f) : SurfaceHolder.Callback, AutoCloseable {
     interface Callbacks {
         fun beforeFrame() {}
         fun changed() {}
@@ -25,8 +25,7 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
         fun haptic(view: View) {}
     }
 
-    var handle = InkNative.nativeCreate(context.codeCacheDir.absolutePath)
-        private set
+    private var handle = handle
     var surfaceAttached = false
         private set
     private val handler = Handler(Looper.getMainLooper())
@@ -80,7 +79,6 @@ internal class InkHost(context: Context, private val callbacks: Callbacks, priva
         detachSurface()
         view.release()
         view.holder.removeCallback(this)
-        if (handle != 0L) InkNative.nativeDestroy(handle)
         handle = 0L
     }
 

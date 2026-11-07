@@ -1,6 +1,8 @@
 package com.vandam.ink
 
-internal fun createBarcodeAdapter(activity: MainActivity): BarcodeAdapter = object : BarcodeAdapter {
+import android.app.Activity
+
+internal fun createBarcodeAdapter(activity: Activity): BarcodeAdapter = object : BarcodeAdapter {
     override fun execute(requestId: Long, operation: String, payload: String, complete: NativeResultHandler) {
         complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Barcode generation is not enabled", false))
     }

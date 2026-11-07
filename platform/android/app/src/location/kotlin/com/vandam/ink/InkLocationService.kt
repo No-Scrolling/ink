@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -89,7 +90,7 @@ internal class InkLocationService : Service() {
         private var pending: Pair<Long, NativeResultHandler>? = null
         private var lastError: String? = null
 
-        fun start(activity: MainActivity, id: Long, options: JSONObject, complete: NativeResultHandler) {
+        fun start(activity: Activity, id: Long, options: JSONObject, complete: NativeResultHandler) {
             check(activity.hasWindowFocus() && !activity.isFinishing) { "Start location tracking while the app is visible" }
             check(instance?.updates == null && pending == null) { "Location tracking is already running or starting" }
             if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {

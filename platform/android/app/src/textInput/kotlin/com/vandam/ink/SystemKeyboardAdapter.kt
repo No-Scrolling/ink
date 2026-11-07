@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.app.Activity
 import android.content.Context
 import android.text.Editable
 import android.text.InputFilter
@@ -33,16 +34,21 @@ private const val SPELLING_ANNOTATE = "ing.noscroll.ink.spelling.annotate.v1"
 private const val MAX_EDITOR_LINES = 3
 
 internal fun createTextInputAdapter(
-    activity: MainActivity,
+    activity: Activity,
     container: ViewGroup,
     onEdit: TextEditHandler,
-): TextInputAdapter = SystemKeyboardAdapter(activity, container, onEdit)
+    typeface: () -> android.graphics.Typeface,
+    onInset: (Int) -> Unit,
+): TextInputAdapter = SystemKeyboardAdapter(activity, container, onEdit, typeface, onInset)
 
 private class SystemKeyboardAdapter(
-    private val activity: MainActivity,
+    private val activity: Activity,
     private val container: ViewGroup,
     private val onEdit: TextEditHandler,
+    loadTypeface: () -> android.graphics.Typeface,
+    private val onInset: (Int) -> Unit,
 ) : TextInputAdapter {
+    private val typeface by lazy(LazyThreadSafetyMode.NONE, loadTypeface)
     private val inputMethod = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
     private var active = false
     private var action = -1
@@ -129,7 +135,7 @@ private class SystemKeyboardAdapter(
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
         editor.visibility = View.GONE
         editor.background = null
-        editor.typeface = activity.publicSansTypeface
+        editor.typeface = typeface
         // Match Ink's unhinted glyph metrics rather than Android's font shaping defaults.
         editor.fontFeatureSettings = "'kern' 0, 'liga' 0"
         editor.paint.hinting = android.graphics.Paint.HINTING_OFF
@@ -176,7 +182,7 @@ private class SystemKeyboardAdapter(
             val dismissed = imeVisible && !visible && active
             imeVisible = visible
             if (dismissed) onEdit(TextEdit.Dismiss)
-            activity.setKeyboardInset(if (visible && active) insets.getInsets(WindowInsets.Type.ime()).bottom else 0)
+            onInset(if (visible && active) insets.getInsets(WindowInsets.Type.ime()).bottom else 0)
             insets
         }
     }
@@ -239,7 +245,7 @@ private class SystemKeyboardAdapter(
             inputMethod.hideSoftInputFromWindow(editor.windowToken, 0)
             editor.clearFocus()
             imeVisible = false
-            activity.setKeyboardInset(0)
+            onInset(0)
             return
         }
         this.action = action
@@ -248,7 +254,7 @@ private class SystemKeyboardAdapter(
             syncing = true
             editor.inputType = inputType()
             editor.setSingleLine(action != 0)
-            editor.typeface = activity.publicSansTypeface
+            editor.typeface = typeface
             editor.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or when (action) {
                 0 -> EditorInfo.IME_FLAG_NO_ENTER_ACTION
                 2 -> EditorInfo.IME_ACTION_DONE
@@ -310,7 +316,7 @@ private class SystemKeyboardAdapter(
         val typeChanged = editor.inputType != type
         if (typeChanged) {
             editor.inputType = type
-            editor.typeface = activity.publicSansTypeface
+            editor.typeface = typeface
         }
         if (changed || textChanged) editor.setText(text)
         if (changed || textChanged) editor.setSelection(cursor)
@@ -366,7 +372,7 @@ private class SystemKeyboardAdapter(
         hideAfterFrame = false
         editor.visibility = View.GONE
         imeVisible = false
-        activity.setKeyboardInset(0)
+        onInset(0)
     }
 
     override fun close() {
