@@ -75,6 +75,11 @@ Workers can use:
 
 Import `"@ink/network"` in workers that use web globals. Workers do not inherit the foreground app’s imports.
 
+For helpers shared with workers, import `resource` from `ink/resource`,
+`notifications` from `@ink/notifications/commands`, and `decodePushDelivery` or
+`setPushTask` from `@ink/lightos/push/delivery`. These entry points omit UI hooks.
+The existing imports from `ink`, `@ink/notifications` and `@ink/lightos/push` remain available.
+
 Permission prompts, UI controllers, camera, microphone and NFC are unavailable. Native calls have their own timeouts and are cancelled when the worker stops.
 
 ## Persist before scheduling

@@ -17,7 +17,8 @@
     "./file-router": "./src/file-router.tsx",
     "./runtime-types": "./runtime.d.ts",
     "./tsconfig": "./tsconfig.app.json",
-    "./internal/react": "./src/react.ts"
+    "./internal/react": "./src/react.ts",
+    "./resource": "./src/resource.ts"
   },
   "dependencies": {
     "linkify-it": "^6.1.0",

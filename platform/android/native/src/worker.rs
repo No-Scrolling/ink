@@ -43,15 +43,16 @@ pub extern "system" fn Java_com_vandam_ink_InkWorker_nativeStart(
     store_path: JString<'_>,
     files_path: JString<'_>,
 ) -> jlong {
-    let Some((bundle, host)) = env
+    let Some((bundle, assets, host)) = env
         .with_env(|env| -> jni::errors::Result<_> {
             let assets = super::assets::BundleAssets::new(env, &assets)?;
             #[cfg(any(feature = "store", feature = "crypto"))]
             let host = Some(super::data::host(env, &assets, store_path.try_to_string(env)?, files_path.try_to_string(env)?)?);
             #[cfg(not(any(feature = "store", feature = "crypto")))]
-            let host = { let _ = (assets, store_path, files_path); None };
+            let host = { let _ = (store_path, files_path); None };
             Ok(Some((
                 env.convert_byte_array(&bundle)?,
+                assets,
                 host,
             )))
         })
@@ -72,7 +73,7 @@ pub extern "system" fn Java_com_vandam_ink_InkWorker_nativeStart(
     if workers.active.len() >= 8 || workers.next_id == jlong::MAX {
         return 0;
     }
-    match AppRuntime::spawn_script(script, || {}, None::<fn() -> anyhow::Result<ink_runtime::Script>>, host) {
+    match AppRuntime::spawn_script(script, || {}, Some(move || assets.script("ink-assets/ink-web")), host) {
         Ok((runtime, events)) => {
             workers.next_id += 1;
             let id = workers.next_id;

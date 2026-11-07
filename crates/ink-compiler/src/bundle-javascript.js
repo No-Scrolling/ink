@@ -48,7 +48,11 @@ if (routing === "routes") {
   const { generateFileRoutes } = await import("./file-routes.js");
   await generateFileRoutes(root, resolve(dirname(entry), "routes.tsx"));
 }
-const splitWeb = !development && process.env.INK_SPLIT_WEB !== "0" && output.endsWith("/app.js");
+const appMetadata = Bun.file(resolve(dirname(output), "app.js.metadata.json"));
+const sharedWorkerWeb = output.endsWith("/worker.js") && await appMetadata.exists()
+  && (await appMetadata.json()).assets.some(asset => asset.name === "ink-web.js");
+const splitWeb = !development && process.env.INK_SPLIT_WEB !== "0"
+  && (output.endsWith("/app.js") || sharedWorkerWeb);
 const inputs = new Set();
 const environment = {};
 for (const name of [".env", ".env.local"]) {
@@ -70,13 +74,15 @@ const svgReferences = new Map();
 const iconSizes = new Map();
 const inspectedIconModules = new Set();
 const declarations = new Map();
+const inspectedPackages = new Map();
 const shared = new Map();
 const components = new Set();
 const persistentModules = new Map();
 const sourceMaps = new Map();
 const bundleDirectory = await realpath(process.cwd());
 const ts = await import(Bun.resolveSync("typescript", root));
-const iconSource = await Bun.file(Bun.resolveSync("ink/icons", root)).text();
+const iconPath = await realpath(Bun.resolveSync("ink/icons", root));
+const iconSource = await Bun.file(iconPath).text();
 const materialIcons = new Map(Array.from(
   iconSource.matchAll(/export const (\w+) = "((?:outlined|filled):[a-z0-9_]+)"/g),
   ([, name, reference]) => [name, reference],
@@ -138,6 +144,7 @@ const convertedModules = new Map();
 let discovering = development;
 async function inspect(path) {
   path = await realpath(path);
+  if (inspectedPackages.has(path)) return inspectedPackages.get(path);
   inputs.add(path);
   let directory = dirname(path);
   while (true) {
@@ -171,6 +178,7 @@ async function inspect(path) {
         if (development) for (const name of names) capabilities.add(name);
       }
       if (pkg.name === "@ink/network" && path === resolve(directory, "src/index.ts")) networkEntry = path;
+      inspectedPackages.set(path, pkg.name);
       return pkg.name;
     }
     const parent = dirname(directory);
@@ -212,6 +220,11 @@ function buildOptions(bootstrap = false) { return {
         await inspect(replacement);
         return { path: replacement };
       }
+      if (path === "webidl-conversions" && networkEntry && /\/whatwg-url\/lib\//.test(importer ?? "")) {
+        const replacement = resolve(dirname(networkEntry), "url-conversions.ts");
+        await inspect(replacement);
+        return { path: replacement };
+      }
       const aliases = {
         react: resolve(frameworkDirectory, "react-compat.ts"),
         "react-dom": "preact/compat",
@@ -233,14 +246,22 @@ function buildOptions(bootstrap = false) { return {
     });
     build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async ({ path }) => {
       const packageName = await inspect(path);
+      if (path === iconPath) return { contents: iconSource, loader: "ts" };
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
       if (packageName === "preact" && path.endsWith("/dist/preact.mjs")) contents = nativePreact(contents);
+      if (packageName === "linkify-it") contents = contents.replace("tlds: unpackTlds(),", "tlds: /* @__PURE__ */ unpackTlds(),");
       if (!inspectedNativeModules.has(path)) {
         inspectedNativeModules.add(path);
         const source = ts.createSourceFile(path, contents, ts.ScriptTarget.Latest, true);
         const requirements = new Set(moduleCapabilities.get(path) ?? []);
-        const families = { Canvas: "ui-canvas", CanvasIcon: "ui-canvas", CanvasPath: "ui-canvas", CanvasRectangle: "ui-canvas", CanvasText: "ui-canvas", NativeList: "ui-lists", PlayingScreen: "ui-playing", MessageContent: "ui-messages" };
+        const families = {
+          Canvas: "ui-canvas", CanvasIcon: "ui-canvas", CanvasPath: "ui-canvas", CanvasRectangle: "ui-canvas", CanvasText: "ui-canvas",
+          List: "ui-lists", NativeList: "ui-lists", MediaGridRow: "ui-lists", MediaCell: "ui-lists",
+          PlayingScreen: "ui-playing", PlayingTransport: "ui-playing", PlayingLabel: "ui-playing",
+          MessageContent: "ui-messages", Message: "ui-messages", MessageQuote: "ui-messages", ConversationComposer: "ui-messages",
+          CameraPreview: "camera-permission", VideoView: "video", MapView: "maps",
+        };
         function visit(node) {
           // The web shim installs all globals lazily. Only consumers need the
           // optional socket transport; inspecting the shim itself would retain it.
@@ -261,13 +282,14 @@ function buildOptions(bootstrap = false) { return {
               const kind = node.arguments[0];
               if (ts.isStringLiteral(kind)) {
                 if (Object.hasOwn(families, kind.text)) requirements.add(families[kind.text]);
+                if (["PlayingLayout", "PlayingProgress"].includes(kind.text) && packageName !== "@ink/video") requirements.add("ui-playing");
                 if (kind.text === "TextInput") requirements.add("text-input");
                 if (["Image", "Avatar", "RowContent", "PlayingScreen"].includes(kind.text)) {
                   requirements.add("image"); requirements.add("network");
                 }
               } else if (!path.startsWith(frameworkDirectory + "/") && !path.includes("/.ink/")) {
                 // Dynamic host descriptions need every optional family.
-                for (const feature of Object.values(families)) requirements.add(feature);
+                for (const feature of ["ui-canvas", "ui-lists", "ui-playing", "ui-messages"]) requirements.add(feature);
                 requirements.add("image"); requirements.add("network"); requirements.add("text-input");
               }
             }
@@ -387,6 +409,11 @@ if (!development && networkEntry) {
       build.onResolve({ filter: /.*/ }, async ({ path, importer }) => {
         if (path === "tr46" && importer?.endsWith("/whatwg-url/lib/url-state-machine.js")) {
           const replacement = resolve(dirname(networkEntry), "idna.ts");
+          await inspect(replacement);
+          return { path: replacement };
+        }
+        if (path === "webidl-conversions" && /\/whatwg-url\/lib\//.test(importer ?? "")) {
+          const replacement = resolve(dirname(networkEntry), "url-conversions.ts");
           await inspect(replacement);
           return { path: replacement };
         }

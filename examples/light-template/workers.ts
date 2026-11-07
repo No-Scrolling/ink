@@ -1,10 +1,10 @@
 import * as v from "valibot";
 import { lightos } from "@ink/lightos";
 import "@ink/network";
-import { notifications } from "@ink/notifications";
+import { notifications } from "@ink/notifications/commands";
 import { location } from "@ink/location";
 import { defineTask, jobs } from "@ink/background";
-import { decodePushDelivery } from "@ink/lightos/push";
+import { decodePushDelivery } from "@ink/lightos/push/delivery";
 import { backgroundResult, pushResult, workerReport } from "./data/background";
 import { decodeTodo } from "./data/todos";
 

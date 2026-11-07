@@ -9,6 +9,12 @@
     ],
     "src/push.ts": [
       "light-sdk-push"
+    ],
+    "src/push-hooks.ts": [
+      "light-sdk-push"
+    ],
+    "src/push-delivery.ts": [
+      "light-sdk-push"
     ]
   }
 }

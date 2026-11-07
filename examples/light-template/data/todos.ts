@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import "@ink/network";
-import { resource } from "ink";
+import { resource } from "ink/resource";
 
 export const todoSchema = v.object({
   userId: v.pipe(v.number(), v.safeInteger()),
