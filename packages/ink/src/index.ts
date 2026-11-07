@@ -19,7 +19,7 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   children?: ReactNode;
   header?: ReactNode;
   title?: string;
-  /** Shown under the title when the theme uses the large header layout. */
+  /** Shown under a large header's title. Wraps without truncation and grows the header to fit. */
   subtitle?: string;
   /** Small muted text pinned to the bottom of the screen, such as a hint or privacy note. */
   note?: string;

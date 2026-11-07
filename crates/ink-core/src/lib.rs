@@ -4346,7 +4346,7 @@ impl Engine {
         let centred_padding = ((HEADER_HEIGHT - title_row) / 2.0).max(0.0);
         let header_top = self.theme.header_top.unwrap_or(if large { LARGE_HEADER_TOP } else { centred_padding });
         let header_bottom = self.theme.header_bottom.unwrap_or(if large { LARGE_HEADER_BOTTOM } else { centred_padding });
-        let header_height = if has_header {
+        let mut header_height = if has_header {
             self.scaled(header_top + title_row + header_bottom
                 + if subtitle.is_some() { self.header_subtitle_size() * 1.4 } else { 0.0 })
         } else {
@@ -4356,16 +4356,38 @@ impl Engine {
         let header_inset = self.scaled(HEADER_HORIZONTAL_INSET);
         let header_icon = self.theme.header_icon_size.unwrap_or(HEADER_BACK_ICON_SIZE);
         let header_button_size = self.scaled(HEADER_BUTTON_SIZE.max(header_icon));
-        let header = self.unobstructed_header(Rect { height: header_height, ..rect });
+        let back_visible = self.back_icon.is_some() && automatic_back;
+        let back_at_end = back_visible && self.theme.back_at_end;
+        let subtitle_line_height = self.scaled(self.header_subtitle_size() * 1.4);
+        let subtitle_font_size = self.scaled_font(self.header_subtitle_size());
         // Large headers align the end action's icon with the content edge.
         let end_inset = if large {
             self.scaled(self.content_inset()) - (header_button_size - self.scaled(header_icon)) / 2.0
         } else {
             header_inset
         };
-        let back_visible = self.back_icon.is_some() && automatic_back;
-        let back_at_end = back_visible && self.theme.back_at_end;
-        let back_x = if back_at_end { header.x + header.width - end_inset - header_button_size } else { header.x + header_inset };
+        let has_left = (back_visible && !back_at_end) || left_action.is_some();
+        let (header, back_x, end_x, x, width, subtitle_lines) = loop {
+            let header = self.unobstructed_header(Rect { height: header_height, ..rect });
+            let back_x = if back_at_end { header.x + header.width - end_inset - header_button_size } else { header.x + header_inset };
+            // An end back button takes the end slot; the screen's end action moves in beside it.
+            let end_x = header.x + header.width - end_inset - header_button_size * if back_at_end { 2.0 } else { 1.0 };
+            let x = (header.x + self.scaled(self.content_inset()))
+                .max(if has_left { header.x + header_inset + header_button_size } else { 0.0 });
+            let end = if right_action.is_some() { end_x } else if back_at_end { back_x }
+                else { header.x + header.width - self.scaled(self.content_inset()) };
+            let width = (end - x).max(0.0);
+            let lines = subtitle.map(|text| self.wrap_text(text, subtitle_font_size, width, None, false));
+            if let Some(lines) = &lines {
+                let height = self.scaled(header_top + title_row + header_bottom) + subtitle_line_height * lines.len() as f32;
+                // Growing the header can bring another cutout into its bounds and narrow the text.
+                if height > header_height {
+                    header_height = height;
+                    continue;
+                }
+            }
+            break (header, back_x, end_x, x, width, lines);
+        };
         if back_visible {
             self.push_hit_region(
                 Rect {
@@ -4377,8 +4399,6 @@ impl Engine {
                 Action::Back,
             );
         }
-        // An end back button takes the end slot; the screen's end action moves in beside it.
-        let end_x = header.x + header.width - end_inset - header_button_size * if back_at_end { 2.0 } else { 1.0 };
         for (is_left, action) in [(true, left_action), (false, right_action)] {
             let Some((icon, action)) = action else { continue };
             let action_rect = Rect {
@@ -4400,17 +4420,6 @@ impl Engine {
             });
         }
         if let Some(title) = title.filter(|_| large) {
-            let has_left = (back_visible && !back_at_end) || left_action.is_some();
-            let x = (header.x + self.scaled(self.content_inset()))
-                .max(if has_left { header.x + header_inset + header_button_size } else { 0.0 });
-            let end = if right_action.is_some() {
-                end_x
-            } else if back_at_end {
-                back_x
-            } else {
-                header.x + header.width - self.scaled(self.content_inset())
-            };
-            let width = (end - x).max(0.0);
             let line = self.scaled(title_size * 1.25);
             let font_size = self.scaled_font_in(title_size, self.theme.display_font);
             self.scene.text.push(TextRun { font: self.theme.display_font,
@@ -4423,19 +4432,21 @@ impl Engine {
                 align: TextAlign::Start,
                 scrolling: self.scrolling,
             });
-            if let Some(subtitle) = subtitle {
-                let line = self.scaled(self.header_subtitle_size() * 1.4);
-                let font_size = self.scaled_font(self.header_subtitle_size());
-                self.scene.text.push(TextRun { font: self.theme.body_font,
-                    tabular_numbers: false,
-                    text: self.ellipsize(subtitle, font_size, width).into(),
-                    rect: Rect { x, y: rect.y + self.scaled(header_top + title_size * 1.25), width, height: line },
-                    clip: self.clip,
-                    font_size,
-                    colour: self.scene.colour(if self.theme.subtitle_muted == Some(false) { Colour::WHITE } else { Colour::MUTED }),
-                    align: TextAlign::Start,
-                    scrolling: self.scrolling,
-                });
+            if let Some(lines) = subtitle_lines {
+                let y = rect.y + self.scaled(header_top + title_size * 1.25);
+                let colour = self.scene.colour(if self.theme.subtitle_muted == Some(false) { Colour::WHITE } else { Colour::MUTED });
+                for (index, line) in lines.iter().enumerate() {
+                    self.scene.text.push(TextRun { font: self.theme.body_font,
+                        tabular_numbers: false,
+                        text: line.text.clone(),
+                        rect: Rect { x, y: y + index as f32 * subtitle_line_height, width, height: subtitle_line_height },
+                        clip: self.clip,
+                        font_size: subtitle_font_size,
+                        colour,
+                        align: TextAlign::Start,
+                        scrolling: self.scrolling,
+                    });
+                }
             }
         } else if let Some(title) = title {
             let title_inset = header_inset

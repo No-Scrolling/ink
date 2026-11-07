@@ -111,6 +111,30 @@ header: {
 </div>
 </div>
 
+### Header subtitles
+
+<div className="pattern-example">
+<div>
+
+<p>In the large header layout, <code>Screen</code> subtitles wrap without truncation by default. The header grows to fit every line and moves the screen's content down. Explicit line breaks are preserved.</p>
+
+```tsx
+import { Screen, Text } from "ink";
+
+<Screen
+  title="Learning"
+  subtitle={"Choose how Atlas learns from your typing and keeps your personal dictionary up to date.\nYour words stay on this device."}
+>
+  <Text>Control which words Atlas remembers.</Text>
+</Screen>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/header-subtitle.png" alt="A Learning header with its full subtitle on three lines above the screen content." width="1080" height="1240" />
+</div>
+</div>
+
 ### Camera cutouts
 
 <div className="pattern-example">
