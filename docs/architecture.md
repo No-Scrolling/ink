@@ -3,7 +3,7 @@ title: "How Ink works"
 description: "How Ink builds and runs apps."
 ---
 
-Ink runs React and TypeScript apps on Android. QuickJS-ng runs the JavaScript; Rust handles layout, input and rendering through Vulkan.
+Ink runs React-compatible TypeScript apps on Android with Preact. QuickJS-ng runs the JavaScript; Rust handles layout, input and rendering through Vulkan.
 
 ## Building an app
 
@@ -89,7 +89,7 @@ JNI symbol names must be unique across both crates. A combined library has one
 
 ## Running an app
 
-React runs on a dedicated JavaScript thread. It manages app state and sends UI changes to Rust. Native API calls return promises so file and network operations do not block that thread.
+Preact runs on a dedicated JavaScript thread. It manages app state and sends UI changes to Rust. Native API calls return promises so file and network operations do not block that thread.
 
 Rust schedules store and read-only SQLite requests on worker threads. A Kotlin backend calls Android's built-in SQLite synchronously on those threads, and Rust sends results directly to the JavaScript queue. Android APKs do not bundle a SQLite engine. Encryption runs as a Rust native function. These modules retain the native request timeouts, cancellation and result-size limits. Android services such as Keystore, networking, camera and location use Kotlin adapters.
 
@@ -97,12 +97,12 @@ QuickJS-ng manages its small-object allocation directly. Ink uses the standard r
 
 The workspace pins `rquickjs-sys` to upstream commit `7a23f6f02f5396b41283b25a0d72f34d8982778e`, which bundles QuickJS-ng 0.17.0. The high-level bindings remain at rquickjs 0.14.0. Remove the Cargo patch when a published binding release includes this engine version.
 
-`Text` and `Stack` are typed React host elements, so neither needs a component wrapper. JSX and `createElement` use the same path; these exports are host names, not callable component functions. Primitive Text content lives on its host node, while mixed and nested text use child nodes. The renderer resolves Text's `href` into a press handler and checks that links do not also supply `onPress`. Native Stack handles its optional press behaviour.
+`Text` and `Stack` are typed host elements, so neither needs a component wrapper. JSX and `createElement` use the same path; these exports are host names, not callable component functions. Primitive Text content lives on its host node, while mixed and nested text use child nodes. The renderer resolves Text's `href` into a press handler and checks that links do not also supply `onPress`. Native Stack handles its optional press behaviour.
 
-Rust measures text, positions components, handles gestures and draws the screen. It keeps the UI tree between updates and applies React changes in batches.
+Rust measures text, positions components, handles gestures and draws the screen. It keeps the UI tree between updates and applies Preact changes in batches.
 
 ```text
-React state changes
+Component state changes
         ↓
 Batched UI updates
         ↓
@@ -112,6 +112,16 @@ Vulkan rendering
 ```
 
 Scrolling continues natively while JavaScript is busy. New content and actions that need JavaScript must wait for it.
+
+### JavaScript compatibility
+
+Apps keep importing from `react` and using `@types/react`. The compiler aliases React imports and JSX runtimes to Preact, and React DOM imports to Preact’s compatibility modules. Ink’s own components use Preact core; its memoised rows use a class with `shouldComponentUpdate`.
+
+The React Compiler still targets React 19. Ink supplies the compiler’s per-component memo cache through Preact hooks. React’s reconciler and scheduler are absent from app bundles. The native operation protocol is unchanged.
+
+Development uses Prefresh with Oxc’s refresh registrations and hook signatures. Component body edits retain state; changing the hook signature resets it. The existing development module cache and full-reload compatibility checks remain in place. Ink defers the development root update until Prefresh has replaced mounted component types.
+
+Preact updates run to completion on the JavaScript thread. React’s concurrent scheduling is not available: transitions run synchronously and deferred values update immediately. Ink does not provide a browser DOM, server rendering or React Server Components.
 
 ### Updating the screen
 
@@ -129,9 +139,9 @@ Images with fixed bounds can finish loading without recalculating layout.
 
 Lists render rows around the visible area and measure their heights automatically. Stable keys keep the scroll position when rows change. See [Lists](/lists).
 
-The renderer reuses prepared text and image geometry. Text, icons and images share one textured pipeline. It combines adjacent draws of the same image without changing their order. A completed React update can replace a queued frame callback and render as soon as the GPU is ready. Active gestures, flings and scene animations stay paced by Android’s frame scheduler. Submission still goes through Android’s presentation pipeline; rendering immediately does not bypass the display’s refresh rate.
+The renderer reuses prepared text and image geometry. Text, icons and images share one textured pipeline. It combines adjacent draws of the same image without changing their order. A completed Preact update can replace a queued frame callback and render as soon as the GPU is ready. Active gestures, flings and scene animations stay paced by Android’s frame scheduler. Submission still goes through Android’s presentation pipeline; rendering immediately does not bypass the display’s refresh rate.
 
-Input activation, haptic feedback and scene changes are separate signals. A tap that only dispatches a React callback does not redraw the old scene; the completed commit requests its frame.
+Input activation, haptic feedback and scene changes are separate signals. A tap that only dispatches a JavaScript callback does not redraw the old scene; the completed commit requests its frame.
 
 An unchanged screen requests no rendering frames. Timers, network connections and media can still use CPU and power.
 
@@ -144,11 +154,14 @@ Text and icons share a texture cache that starts at 1 MiB. When it fills, Ink cl
 | Data or work | When it ends |
 | --- | --- |
 | Component state | Component unmounts. |
-| Screen effects and resource subscriptions | Screen is hidden or removed. |
+| Ink hook effects and resource subscriptions | Screen is hidden or removed. |
+| App effects and subscriptions from `react` | Component unmounts, or the app cleans them up. Hiding a screen keeps them active. |
 | Camera, microphone and foreground location | According to the module’s rules for hidden screens and app backgrounding. |
 | Shared JavaScript state | App runtime stops. |
 | Detached audio | Playback is stopped or Android terminates it. |
 | Saved settings and queued jobs | Data is deleted or app storage is cleared. |
+
+Ink keeps hidden screens mounted and sends native visibility changes without adding layout nodes. Ink’s resource, controller and native module hooks disconnect their effects and subscriptions while hidden, then reconnect when shown. Component state is retained. Unlike React’s `Activity`, this does not pause an app’s own `useEffect`, `useLayoutEffect` or `useSyncExternalStore` calls imported from `react`. Clean up work that should stop when leaving a screen, or keep that work in an Ink resource or controller hook.
 
 Putting the app in the background does not unsubscribe its screen from resources. Native modules handle backgrounding separately; check the module’s page for its behaviour.
 

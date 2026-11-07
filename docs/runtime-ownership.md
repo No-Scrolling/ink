@@ -1,10 +1,10 @@
 # Rust and JavaScript ownership
 
-Updated 19 October 2026. Rust owns Ink's visual engine and native list windows. Apps use React components and JSX; JavaScript supplies application data, actions and React semantics. Android services remain in Kotlin where they use platform APIs.
+Updated 7 November 2026. Rust owns Ink's visual engine and native list windows. Apps use React-compatible components and JSX; Preact supplies component state and reconciliation. JavaScript supplies application data and actions. Android services remain in Kotlin where they use platform APIs.
 
-Android builds now select native list, message and playback composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Custom React components keep their existing behaviour.
+Android builds now select native list, message and playback composition through the app's generated capabilities. Unused families can be removed without changing speed optimisation. Custom components keep their state, hooks, context and event callbacks. Hidden-screen effects and scheduling differ as described below.
 
-Canvas, text-input, camera, video and map primitives are also selected at build time. Core defaults retain all primitives. The React commit decoder borrows QuickJS's JSON text until deserialisation finishes, then sends owned values across the thread boundary.
+Canvas, text-input, camera, video and map primitives are also selected at build time. Core defaults retain all primitives. The native commit decoder borrows QuickJS's JSON text until deserialisation finishes, then sends owned values across the thread boundary.
 
 | Work | Owner | Behaviour |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ Canvas, text-input, camera, video and map primitives are also selected at build 
 | Text/Stack and standard Row list templates | Rust windows and identity; JS data dependencies | Supported inline declarations compile automatically. |
 | Conversation, reorder and media picker lists | Rust windows and visual templates; JS data/actions | Ink's built-ins now use native row plans automatically. Message composition is native too. |
 | Playback screen and progress labels | Rust composition and clock; native audio supplies anchors | `PlayingScreen` takes one playback binding and connects native clocks and transport commands. JS receives state changes; `getState()` reads a fresh snapshot. Source replacement and relative seeks preserve native timing. |
-| Custom React components | JavaScript execution and lifecycle; Rust resulting primitives | Hooks, effects, conditional trees and custom render functions retain React behaviour. |
+| Custom React components | JavaScript execution and lifecycle; Rust resulting primitives | Preact runs hooks, effects, conditional trees and custom render functions. Ink hooks disconnect while hidden; app effects remain active. |
 | Controlled text input | Kotlin IME, Rust editor, JS value/actions | Event ordering and composition semantics remain intact. |
 | Navigation, resources, filtering, fetching decisions | JavaScript | Application responsibilities. |
 | HTTP, WebSockets and Blob | Native I/O and byte transport; JS Web API semantics | Body bytes use typed buffers, without base64/JSON byte encoding. Metadata still uses JSON. |
@@ -46,9 +46,9 @@ The store keeps its existing database path, schema and revision rules, using WAL
 
 **Binary transport.** Fetch chunks, managed-file reads, uploads and WebSocket binary batches travel beside the JSON envelope as byte arrays. Runtime queues own their data; cancellation and size limits remain. This removes base64 conversion, not every copy: QuickJS thread ownership and JNI still require byte copies. Native-file multipart parts retain their existing file-reference path. The unused JS base64 dependency was removed. No network throughput or APK-size improvement is claimed without a paired measurement.
 
-## Why retain a React compatibility path?
+## Why retain a JavaScript component path?
 
-A custom row may ultimately produce only Ink primitives while still running hooks, effects, context reads, arbitrary calculations or conditional component trees. Rust can own the resulting visuals without replacing those JavaScript semantics. Known declarations and Ink's built-ins use native plans; unsupported custom rows retain React rather than silently changing their behaviour.
+A custom row may ultimately produce only Ink primitives while still running hooks, effects, context reads, arbitrary calculations or conditional component trees. Rust can own the resulting visuals without replacing those JavaScript semantics. Known declarations and Ink's built-ins use native plans; unsupported custom rows retain JavaScript components and Preact reconciliation.
 
 Further compiler coverage should prove equivalence for pure wrappers. Dropping the compatibility path for all existing apps would require a narrower component contract or a substantially more capable compiler. Restricting drawing primitives alone does not prove that a component is stateless.
 
@@ -60,8 +60,16 @@ Further compiler coverage should prove equivalence for pure wrappers. Dropping t
 - Map configuration uses normalised field comparison, removing the JS stringify/parse round trip and duplicate initial update. The native adapter still owns gestures and marker updates. Props are checked on each render so in-place marker edits remain observable.
 - Complex bridge values retain the existing JSON semantics. The fresh instrumented React fixture measured about 0.051 ms in native transfer, including conversion and queue submission. This does not isolate arbitrary nested-value conversion. The earlier paired primitive converter gained roughly 2%, so a second general conversion path remains unjustified by the available measurements.
 
-Rust now owns the standard continuously changing displays covered by this audit. JS still executes app functions, hooks, effects, callbacks and general React reconciliation. Keeping that compatibility path is deliberate. Further pure-row compiler coverage and native template allocation work need workload-specific evidence, not a blanket language migration.
+Rust now owns the standard continuously changing displays covered by this audit. JS still executes app functions, hooks, effects and callbacks. Preact reconciles the resulting host tree. Further pure-row compiler coverage and native template allocation work need workload-specific evidence, not a blanket language migration.
 
 Static subtree layout now retains measurements and ranges into the previous scene. Native node content includes the applied React operations, generated list rows and event actions; changes invalidate the affected cached subtree. Reuse also requires matching bounds, clipping, scrolling mode, scale and appearance. Stateful list, image, editor, portal, capture and playback nodes continue to register their live state through normal layout. See the [layout reuse evaluation](layout-reuse-evaluation.md) for measurements and the decision to retain the current text stack.
 
 The effects page still explicitly reads fresh player state once a second while visible. This is an app-specific statistic subscription, not a playback animation loop. A custom tuner can likewise retain JS measurements for its own note display policy. Kotlin remains appropriate for Android services and platform integration.
+
+## Preact runtime
+
+The app bundler aliases React imports, JSX and compiler-runtime imports to Preact or Ink’s adapters. React types remain available to app TypeScript. Ink’s host facade keeps sibling links for constant-time insertion and removal, and emits the existing create, update, text, insert, remove and hidden operations. Rust and Kotlin require no protocol changes.
+
+Hidden screens retain state. Ink’s visibility context disconnects its hooks’ effects and resource subscriptions; native visibility hides the existing host roots. Apps’ own effects and external-store subscriptions imported from `react` continue while hidden. Preact does not implement React’s concurrent scheduling or `Activity` effect suspension. See [JavaScript compatibility](architecture.md#javascript-compatibility) and [Leaving a screen](architecture.md#leaving-a-screen).
+
+Fast refresh uses Prefresh. Oxc continues to supply the React Compiler transform and refresh hook signatures. Body edits preserve component state, while changed hook signatures reset it.

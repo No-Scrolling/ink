@@ -25,3 +25,5 @@ A regression requires `text-input-full`, an unsupported capability, to produce a
 - The eligible href Row case now checks projected title data, its template event binding, and deferred access to real navigation.
 
 Expectations come from explicit sample data and public behaviour; no compiler or Ink helper is mocked. The execution harness resolves genuine workspace modules, emits temporary JavaScript using TypeScript, and removes it after loading. Filesystem fixtures are temporary and cleaned up.
+
+`preact-runtime.test.ts` runs production and development bundles in isolated JavaScript contexts through the real Ink renderer. It checks primitive and mixed text, adjacent text batches, current callbacks, hidden-screen state and subscription reconnection, and fast-refresh state retention and reset. Rust scene suites cover the resulting protocol in QuickJS and native navigation.
