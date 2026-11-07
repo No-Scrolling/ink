@@ -258,9 +258,20 @@ impl ReactTree {
         let mut scroll_to_end = FxHashSet::default();
         let mut dismiss_keyboard = FxHashSet::default();
         let mut inputs_changed = structural;
+        let mut hit_areas_changed = false;
         for operation in operations {
+            if let Operation::Create { id, props, .. } | Operation::Update { id, props } = &operation {
+                for (key, event) in [("leftHitSlop", "onLeftPress"), ("rightHitSlop", "onRightPress"), ("endHitSlop", "onEndPress")] {
+                    let target = (NodeIdentity(*id), event);
+                    if let Some(value) = props.get(key) { engine.action_hit_slops.insert(target, super::HitInsets::parse(value)?); }
+                    else { engine.action_hit_slops.remove(&target); }
+                }
+            }
             match operation {
                 Operation::Create { id, r#type, props } => {
+                    if let Some(value) = props.get("hitSlop") {
+                        engine.hit_slops.insert(NodeIdentity(id), super::HitInsets::parse(value)?);
+                    }
                     ensure!(
                         id != 0 && !self.nodes.contains_key(&id),
                         "duplicate React node {id}"
@@ -279,6 +290,12 @@ impl ReactTree {
                     );
                 }
                 Operation::Update { id, props } => {
+                    let insets = props.get("hitSlop").map(super::HitInsets::parse).transpose()?;
+                    let previous = engine.hit_slops.get(&NodeIdentity(id)).copied();
+                    let area_changed = previous != insets;
+                    hit_areas_changed |= area_changed;
+                    if let Some(insets) = insets { engine.hit_slops.insert(NodeIdentity(id), insets); }
+                    else { engine.hit_slops.remove(&NodeIdentity(id)); }
                     let native_list = self.native_lists.contains_key(&id);
                     if cfg!(feature = "ui-playing") && self.node(id)?.kind == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
                     if cfg!(feature = "ui-messages") && self.node(id)?.kind == HostKind::MessageContent { self.prepare_message(id, &props)?; }
@@ -297,7 +314,7 @@ impl ReactTree {
                     } else {
                         HostProps::new(node.kind, props)?
                     };
-                    if node.props == next && !native_list { continue; }
+                    if node.props == next && !native_list && !area_changed { continue; }
                     node.props = next;
                     targets.insert(self.update_target(id)?);
                 }
@@ -329,6 +346,8 @@ impl ReactTree {
         }
         if structural {
             engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
+            engine.hit_slops.retain(|id, _| self.nodes.contains_key(&id.0));
+            engine.action_hit_slops.retain(|(id, _), _| self.nodes.contains_key(&id.0));
         }
         if inputs_changed { self.sync_inputs(engine)?; }
         if !structural && targets.is_empty() && scroll_to_end.is_empty() && dismiss_keyboard.is_empty() { return Ok(()); }
@@ -354,7 +373,7 @@ impl ReactTree {
                 .map(|&id| self.render_node(id, 0))
                 .collect::<Result<Vec<_>>>()?;
             if patches.iter().all(Option::is_some) {
-                let text_patches = engine.fixed_text_patches(&patches);
+                let text_patches = if hit_areas_changed { None } else { engine.fixed_text_patches(&patches) };
                 replace_nodes(&mut engine.root, &roots, &mut patches);
                 if patches.iter().all(Option::is_none) {
                     #[cfg(feature = "perf")]
@@ -972,6 +991,7 @@ impl ReactTree {
                     screen.subtitle = props.subtitle;
                     screen.note = props.note;
                     screen.theme = props.theme;
+                    screen.debug_hitboxes = props.debug_hitboxes;
                     screen.wide = props.wide;
                     screen.bottom_inset = props.bottom_inset.unwrap_or(true);
                     screen.pinned_header = state.is_none() && props.pinned_header;
@@ -1044,7 +1064,7 @@ impl ReactTree {
                     value => bail!("unsupported input mode {value}"),
                 };
                 ensure!(!numeric || action != TextInputAction::Return, "numeric inputs require a search or done action");
-                Node::text_input(
+                let mut node = Node::text_input(
                     string(props, "placeholder").unwrap_or(""),
                     self.inputs
                         .get(&id)
@@ -1056,7 +1076,29 @@ impl ReactTree {
                     string(props, "prefix").unwrap_or("").to_owned(),
                     string(props, "suffix").unwrap_or("").to_owned(),
                     self.icon("close")?,
-                )
+                );
+                if let NodeKind::TextInput { options, .. } = &mut node.kind {
+                    options.appearance = props.get("style").map(|style| serde_json::from_value::<super::InputAppearance>(style.clone()))
+                        .transpose()?.unwrap_or_default().in_units(1.0)?;
+                    options.disabled = props.get("disabled") == Some(&Json::Bool(true));
+                    options.read_only = props.get("readOnly") == Some(&Json::Bool(true));
+                    options.error = string(props, "error").unwrap_or("").to_owned();
+                    options.label = string(props, "label").unwrap_or("").to_owned();
+                    options.description = string(props, "description").unwrap_or("").to_owned();
+                    options.invalid = !options.error.is_empty() || props.get("invalid") == Some(&Json::Bool(true));
+                    options.clearable = props.get("clearable") != Some(&Json::Bool(false));
+                    options.leading_icon = string(props, "leadingIcon").map(|name| self.icon(name)).transpose()?;
+                    let lines = |name, default| -> Result<usize> {
+                        let Some(value) = props.get(name) else { return Ok(default); };
+                        let value = value.as_u64().context("input line limits must be integers")?;
+                        ensure!((1..=1000).contains(&value), "input line limits must be between 1 and 1000");
+                        Ok(value as usize)
+                    };
+                    options.min_lines = lines("minLines", 1)?;
+                    options.max_lines = lines("maxLines", 3.max(options.min_lines))?;
+                    ensure!(options.min_lines <= options.max_lines, "minLines must not exceed maxLines");
+                }
+                node
             }
             HostKind::Barcode => {
                 let value = string(props, "value").context("Barcode requires a value")?;
@@ -1304,6 +1346,8 @@ impl Engine {
 
 #[derive(Deserialize)]
 struct ScreenProps {
+    #[serde(default, rename = "debugHitboxes")]
+    debug_hitboxes: bool,
     #[serde(rename = "bottomInset")]
     bottom_inset: Option<bool>,
     title: Option<String>,

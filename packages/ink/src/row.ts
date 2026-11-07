@@ -1,9 +1,9 @@
 import type { IconAsset } from "./assets";
 import { createElement, memo } from "./react";
 import type { Destination } from "./navigation";
-import { pressHandler, type PressProps } from "./press";
+import { pressHandler, type HitAreaProps, type PressProps } from "./press";
 
-function RowComponent<const D extends Destination>({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, endIcon, endAction, href, url, onPress, onLongPress }: PressProps<D> & {
+function RowComponent<const D extends Destination>({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, endIcon, endAction, href, url, onPress, onLongPress, hitSlop }: PressProps<D> & {
   image?: string;
   title: string;
   titleMaxLines?: number;
@@ -13,7 +13,7 @@ function RowComponent<const D extends Destination>({ image, title, titleMaxLines
   /** A muted icon at the end of the row, such as an arrow for a link. Pressing it presses the row. */
   endIcon?: IconAsset;
   /** A separate button at the end of the row, such as one that removes the item. */
-  endAction?: { icon: IconAsset; onPress: () => void };
+  endAction?: HitAreaProps & { icon: IconAsset; onPress: () => void };
   onLongPress?: () => void;
 }) {
   return createElement("RowContent", {
@@ -22,6 +22,8 @@ function RowComponent<const D extends Destination>({ image, title, titleMaxLines
     onEndPress: endAction?.onPress,
     onPress: pressHandler({ href, url, onPress }) ?? (onLongPress ? () => {} : undefined),
     onLongPress,
+    hitSlop,
+    endHitSlop: endAction?.hitSlop,
   });
 }
 

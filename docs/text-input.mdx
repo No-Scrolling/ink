@@ -50,7 +50,7 @@ export default function Search() {
 
 <p>Both call <code>onSubmit</code> with the entered text. Without it, they dismiss the keyboard.</p>
 
-<p>Use <code>action="return"</code> for new lines. Add a header <code>rightAction</code> to save or continue. The input grows to three lines, then scrolls.</p>
+<p>Use <code>action="return"</code> for new lines. Add a header <code>rightAction</code> to save or continue. The input grows to three lines, then scrolls. Set <code>minLines</code> and <code>maxLines</code> to change this range. Both accept integers from 1 to 1,000; <code>maxLines</code> must be at least <code>minLines</code>.</p>
 
 ```tsx
 import { check } from "ink/icons";
@@ -81,6 +81,72 @@ import { check } from "ink/icons";
 </Tab>
 <Tab title="Return">
 <img src="/images/patterns/input-multiline.png" alt="A multiline note with a tick in the header and Return on the keyboard." width="1080" height="1240" />
+</Tab>
+</Tabs>
+</div>
+</div>
+
+## Labels and appearance
+
+Use `label`, `description` and `error` to place associated text around an input. An error replaces the description and applies the theme's `invalid` style.
+
+```tsx
+import { useState } from "react";
+import { Screen, TextInput } from "ink";
+import { search } from "ink/icons";
+
+export default function Search() {
+  const [query, setQuery] = useState("");
+  return <Screen title="Search">
+    <TextInput
+      label="Destination"
+      description="Enter a town or station."
+      value={query}
+      onChange={setQuery}
+      leadingIcon={search}
+      action="search"
+      clearable={false}
+      style={{ border: "outline", radius: 8, paddingX: 12, paddingY: 8 }}
+    />
+  </Screen>;
+}
+```
+
+`style` overrides the app's [text input theme](/themes#text-inputs). Its sizes use Ink units, like `Text` and `Icon`; theme sizes use export-frame pixels. Set `clearable={false}` to hide the clear button. The clear button is shown by default on editable, single-line inputs with a value.
+
+`disabled` prevents interaction and uses muted text by default. `readOnly` displays the value without opening the keyboard or allowing edits. Both suppress autofocus and the clear button. Set `invalid` to apply error styling without an error message.
+
+## Touch areas
+
+<div className="pattern-example">
+<div>
+
+<p><code>hitSlop</code> changes the touch area without changing layout. A number applies to every side; an object changes individual sides. Values use Ink units. Negative values shrink the area.</p>
+
+```tsx
+import { Screen, TextInput } from "ink";
+
+<Screen title="Search" debugHitboxes>
+  <TextInput
+    value={query}
+    onChange={setQuery}
+    hitSlop={{ top: 8, bottom: 8 }}
+  />
+</Screen>
+```
+
+<p>This fragment assumes <code>query</code> and <code>setQuery</code> come from state. <code>debugHitboxes</code> draws the active touch areas in red, outlined with no fill. It follows scrolling and clipping. The mode also works with <code>ink export --hitboxes</code>.</p>
+
+<p><code>Button</code>, <code>Row</code>, <code>Field</code>, <code>Toggle</code>, pressable <code>Text</code> and <code>Stack</code> also accept <code>hitSlop</code>. Header actions accept it inside <code>leftAction</code> or <code>rightAction</code>.</p>
+
+</div>
+<div className="pattern-preview">
+<Tabs inline>
+<Tab title="Appearance">
+<img src="/images/patterns/input-themed.png" alt="Custom text inputs with labels, errors, read-only and disabled states." width="1080" height="1240" />
+</Tab>
+<Tab title="Touch areas">
+<img src="/images/patterns/input-hitboxes.png" alt="The same inputs with red outlined touch areas around the editable fields, clear button and Save button. Field interiors remain unchanged." width="1080" height="1240" />
 </Tab>
 </Tabs>
 </div>
@@ -134,12 +200,12 @@ import { check } from "ink/icons";
 </div>
 </div>
 
-## Hints and errors
+## Custom hint layouts
 
 <div className="pattern-example">
 <div>
 
-<p>Place a small <code>Text</code> component below the input.</p>
+<p>For a custom hint layout, place a small <code>Text</code> component below the input instead of using <code>description</code> and <code>error</code>.</p>
 
 ```tsx
 <Stack gap={12}>

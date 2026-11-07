@@ -150,6 +150,9 @@ struct PreparedScene {
     quads: Vec<ink_core::Quad>,
     lines: Vec<ink_core::Line>,
     masks: Vec<PreparedMaskRun>,
+    background_masks: Vec<PreparedMaskRun>,
+    background_fixed: Range<u32>,
+    background_scroll: Range<u32>,
     images: Vec<PreparedImageRun>,
     preloaded_images: Vec<(u64, u64)>,
     quad_fixed: Range<u32>,
@@ -966,6 +969,7 @@ impl Renderer {
         );
         self.overlay_instances.clear();
         push_scrollbar_instances(scene, &mut self.overlay_instances);
+        push_hitbox_instances(scene, &mut self.overlay_instances);
         let overlay_end = self.overlay_instances.len() as u32;
         let _overlay_uploaded_bytes =
             self.overlay_buffer
@@ -1022,6 +1026,22 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.quad_buffer.buffer());
                 set_scroll_scissor(&mut pass, scene);
                 pass.draw(0..6, self.prepared.quad_scroll.clone());
+                reset_scissor(&mut pass, scene);
+            }
+            if !self.prepared.background_fixed.is_empty() {
+                pass.set_pipeline(&self.text_pipeline);
+                pass.set_bind_group(0, &self.fixed_transform);
+                pass.set_bind_group(1, &self.glyph_atlas.bind_group);
+                pass.set_vertex_buffer(0, self.text_buffer.buffer());
+                pass.draw(0..6, self.prepared.background_fixed.clone());
+            }
+            if !self.prepared.background_scroll.is_empty() {
+                pass.set_pipeline(&self.text_pipeline);
+                pass.set_bind_group(0, &self.scroll_transform);
+                pass.set_bind_group(1, &self.glyph_atlas.bind_group);
+                pass.set_vertex_buffer(0, self.text_buffer.buffer());
+                set_scroll_scissor(&mut pass, scene);
+                pass.draw(0..6, self.prepared.background_scroll.clone());
                 reset_scissor(&mut pass, scene);
             }
             if !self.prepared.image_draws.is_empty() {
@@ -1124,6 +1144,8 @@ impl Renderer {
                 + range_length(&self.prepared.line_scroll)
                 + range_length(&self.prepared.text_fixed)
                 + range_length(&self.prepared.text_scroll)
+                + range_length(&self.prepared.background_fixed)
+                + range_length(&self.prepared.background_scroll)
                 + u64::from(overlay_end);
             instances += self
                 .prepared
@@ -1143,6 +1165,8 @@ impl Renderer {
                 + self.prepared.system_glyph_draws.len() as u64
                 + u64::from(!self.prepared.text_fixed.is_empty())
                 + u64::from(!self.prepared.text_scroll.is_empty())
+                + u64::from(!self.prepared.background_fixed.is_empty())
+                + u64::from(!self.prepared.background_scroll.is_empty())
                 + u64::from(overlay_end > 0);
             self.perf.instances += instances;
             self.perf.draw_calls += draw_calls;
@@ -1315,6 +1339,7 @@ impl Renderer {
             || viewport_changed
             || text_changed
             || !prepared_masks_match(&self.prepared.masks, &scene.masks)
+            || !prepared_masks_match(&self.prepared.background_masks, &scene.background_masks)
         {
             let text_runs = self.prepare_text_runs(scene)?;
             let mut text = text_runs
@@ -1322,7 +1347,7 @@ impl Renderer {
                 .filter(|run| !run.run.scrolling)
                 .flat_map(|run| run.text.iter().copied())
                 .collect::<Vec<_>>();
-            text.extend(self.mask_instances(scene, false)?);
+            text.extend(self.mask_instances(scene, &scene.masks, false)?);
             let fixed_end = text.len() as u32;
             text.extend(
                 text_runs
@@ -1330,7 +1355,13 @@ impl Renderer {
                     .filter(|run| run.run.scrolling)
                     .flat_map(|run| run.text.iter().copied()),
             );
-            text.extend(self.mask_instances(scene, true)?);
+            text.extend(self.mask_instances(scene, &scene.masks, true)?);
+            let text_end = text.len() as u32;
+            text.extend(self.mask_instances(scene, &scene.background_masks, false)?);
+            let background_fixed_end = text.len() as u32;
+            text.extend(self.mask_instances(scene, &scene.background_masks, true)?);
+            self.prepared.background_fixed = text_end..background_fixed_end;
+            self.prepared.background_scroll = background_fixed_end..text.len() as u32;
 
             let mut groups = HashMap::<(bool, usize), Vec<TextInstance>>::new();
             for run in &text_runs {
@@ -1365,13 +1396,14 @@ impl Renderer {
                     (_text_uploaded_bytes + _system_glyph_uploaded_bytes) as u64;
             }
             self.prepared.text_fixed = 0..fixed_end;
-            self.prepared.text_scroll = fixed_end..text.len() as u32;
+            self.prepared.text_scroll = fixed_end..text_end;
             self.prepared.text_runs = text_runs;
             self.prepared.system_glyph_draws = system_glyph_draws;
             self.prepared.masks.clear();
             self.prepared
                 .masks
                 .extend(scene.masks.iter().map(PreparedMaskRun::from));
+            self.prepared.background_masks = scene.background_masks.iter().map(PreparedMaskRun::from).collect();
         }
 
         if !self.prepared.ready
@@ -1607,9 +1639,9 @@ impl Renderer {
         })
     }
 
-    fn mask_instances(&mut self, scene: &Scene, scrolling: bool) -> Result<Vec<TextInstance>> {
-        let mut instances = Vec::with_capacity(scene.masks.len());
-        for run in scene.masks.iter().filter(|run| run.scrolling == scrolling) {
+    fn mask_instances(&mut self, scene: &Scene, masks: &[ink_core::MaskRun], scrolling: bool) -> Result<Vec<TextInstance>> {
+        let mut instances = Vec::with_capacity(masks.len());
+        for run in masks.iter().filter(|run| run.scrolling == scrolling) {
             let mask = self.glyph_atlas.mask(&self.queue, &run.mask)?;
             push_mask_quad(
                 &mut instances,
@@ -1722,6 +1754,31 @@ fn line_instances(scene: &Scene, scrolling: bool) -> Vec<LineInstance> {
             shape: [line.width / 2.0, scale[0], scale[1], 0.0],
         })
         .collect()
+}
+
+fn push_hitbox_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {
+    let viewport = Rect { x: 0.0, y: 0.0, width: scene.width as f32, height: scene.height as f32 };
+    let width = (scene.width as f32 / 540.0).max(1.0);
+    for hitbox in &scene.hitboxes {
+        let mut rect = hitbox.rect;
+        let clip = if hitbox.scrolling {
+            rect.y += scene.scroll_origin - scene.scroll_offset;
+            scene.scroll_clip.unwrap_or(viewport)
+        } else { viewport };
+        let rect = intersect(intersect(rect, clip), viewport);
+        if rect.width <= 0.0 || rect.height <= 0.0 { continue; }
+        let stroke = width.min(rect.width / 2.0).min(rect.height / 2.0);
+        for edge in [
+            Rect { height: stroke, ..rect },
+            Rect { y: rect.y + rect.height - stroke, height: stroke, ..rect },
+            Rect { width: stroke, ..rect },
+            Rect { x: rect.x + rect.width - stroke, width: stroke, ..rect },
+        ] {
+            push_quad_instance(instances, scene, &ink_core::Quad {
+                rect: edge, clip: viewport, colour: Colour { red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0 }, scrolling: false,
+            });
+        }
+    }
 }
 
 fn push_scrollbar_instances(scene: &Scene, instances: &mut Vec<QuadInstance>) {

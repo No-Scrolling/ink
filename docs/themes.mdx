@@ -179,6 +179,73 @@ toggle: defineToggle({
 subtitle: { size: 32, tone: "muted" },
 ```
 
+## Text inputs
+
+<div className="pattern-example">
+<div>
+
+<p>Set <code>textInput</code> to style every input. Sizes are export-frame pixels. State overrides inherit the base appearance.</p>
+
+```ts theme.ts
+import { defineTheme } from "ink/theme";
+
+export default defineTheme({
+  textInput: {
+    border: "outline",
+    borderWidth: 2,
+    borderColour: "muted",
+    radius: 14,
+    background: "#161616",
+    paddingX: 20,
+    paddingY: 14,
+    fontSize: 44,
+    focused: { borderColour: "foreground" },
+    invalid: { borderColour: "#ff7575" },
+    disabled: { textColour: "muted" },
+    readOnly: { border: "none" },
+  },
+});
+```
+
+<p><code>border</code> accepts <code>"underline"</code> (the default), <code>"outline"</code> or <code>"none"</code>. The background is independent of the border.</p>
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/input-themed.png" alt="Outlined search and name inputs, a read-only account, a disabled input and a multiline note." width="1080" height="1240" />
+</div>
+</div>
+
+| Settings | Purpose |
+| --- | --- |
+| `border`, `borderWidth`, `borderColour`, `radius`, `background` | Border and surface |
+| `paddingX`, `paddingY`, `minHeight` | Space inside the field and minimum height |
+| `fontSize`, `font`, `align` | Text size, font role and alignment (`"start"`, `"center"` or `"end"`) |
+| `textColour`, `placeholderColour`, `affixColour` | Text, placeholder, prefix, suffix and leading icon colours |
+| `cursorColour`, `selectionColour` | Native editor cursor and text selection |
+| `clearColour`, `clearSize`, `clearPadding`, `clearGap` | Clear button appearance and spacing |
+
+Colours accept a hex value or `"foreground"`, `"background"` or `"muted"`. Roles follow the screen's colour scheme; hex colours use their inverse in light mode.
+
+`fonts.input` accepts a font file and defaults to `fonts.body`. Choose a file with the required weight. `textInput.font` selects `"input"` (the default), `"body"` or `"display"`.
+
+`focused`, `invalid`, `readOnly` and `disabled` accept the same style settings and apply in that order. Per-input `style` settings merge with the theme, including each state's overrides. Per-input sizes use Ink units, like `Text` and `Icon`.
+
+## Touch areas
+
+`hitSlop` expands or shrinks a control's touch area without changing its appearance or layout. Theme values use export-frame pixels:
+
+```ts theme.ts
+import { defineTheme } from "ink/theme";
+
+export default defineTheme({
+  hitSlop: { top: 12, right: 8, bottom: 12, left: 8 },
+});
+```
+
+Use a number for all four sides. Negative values shrink the area. A component's `hitSlop` replaces the theme value and uses Ink units. Touch areas stay within the containing clip and scroll viewport. When areas overlap, the last laid-out control takes priority.
+
+To inspect the effective touch areas, set `debugHitboxes` on `Screen` or export with `ink export --hitboxes`. Ink draws red outlines with no fill. Disabled and read-only inputs have no touch area. See [Inputs](/text-input#touch-areas) for a component example.
+
 ## Scroll bar
 
 By default, the scroll bar is always shown on screens that scroll. To show a thin line by the screen edge only while the screen scrolls:

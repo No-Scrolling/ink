@@ -20,8 +20,13 @@ if (theme == null || typeof theme !== "object") fail("export the theme as the de
 
 // Each key maps to its allowed child keys, or null for a value. Keep this in step with the `Theme`
 // type and the Rust `ThemeSource`; test/fixtures/scene/themes/theme.ts sets every key to check all three.
+const inputStyle = Object.fromEntries([
+  "border", "borderWidth", "borderColour", "radius", "background", "paddingX", "paddingY", "minHeight",
+  "fontSize", "font", "align", "textColour", "placeholderColour", "affixColour", "cursorColour",
+  "selectionColour", "clearColour", "clearSize", "clearPadding", "clearGap",
+].map(key => [key, null]));
 const shape = {
-  fonts: { body: null, display: null },
+  fonts: { body: null, display: null, input: null },
   colours: { background: null, foreground: null, muted: null, light: { background: null, foreground: null, muted: null } },
   text: { size: null },
   spacing: { inset: null, gap: null },
@@ -32,6 +37,8 @@ const shape = {
   toggle: null,
   selection: null,
   field: null,
+  hitSlop: null,
+  textInput: { ...inputStyle, focused: inputStyle, invalid: inputStyle, disabled: inputStyle, readOnly: inputStyle },
 };
 const aliases = { colors: "colours", color: "colour", centered: "centred", font: "fonts" };
 
@@ -118,7 +125,7 @@ const roles = (value = {}, path) => {
 
 async function describe(theme) {
   const fonts = {};
-  for (const role of ["body", "display"]) {
+  for (const role of ["body", "display", "input"]) {
     const path = theme.fonts?.[role];
     if (path === undefined) continue;
     if (typeof path !== "string") fail(`\`${prefix}fonts.${role}\` must be a path to a .ttf or .otf file`);
@@ -171,6 +178,24 @@ async function describe(theme) {
   if (theme.scrollBar?.colour !== undefined && (typeof theme.scrollBar.colour !== "string" || !colourPattern.test(theme.scrollBar.colour))) fail(`\`${prefix}scrollBar.colour\` must be a hex colour such as "#8a8a8a", got ${JSON.stringify(theme.scrollBar.colour)}`);
   if (theme.scrollBar?.track !== undefined && typeof theme.scrollBar.track !== "boolean") fail(`\`${prefix}scrollBar.track\` must be true or false`);
 
+  const describeInputStyle = (style = {}, path = "textInput") => Object.fromEntries(Object.entries(style).map(([key, value]) => {
+    const location = `${path}.${key}`;
+    if (["focused", "invalid", "disabled", "readOnly"].includes(key)) return [key, describeInputStyle(value, location)];
+    if (key === "border") return [key, choice(value, location, ["underline", "outline", "none"])];
+    if (key === "font") return [key, choice(value, location, ["body", "display", "input"])];
+    if (key === "align") return [key, choice(value, location, ["start", "center", "end"])];
+    if (key === "background" || key.endsWith("Colour")) {
+      if (!["foreground", "background", "muted"].includes(value) && (typeof value !== "string" || !colourPattern.test(value))) fail(`\`${prefix}${location}\` must be a hex colour or foreground, background or muted`);
+      return [key, value];
+    }
+    return [key, number(value, location, { min: ["fontSize", "clearSize"].includes(key) ? 1 : 0, max: 10000 })];
+  }));
+  const hitSlop = theme.hitSlop ?? 0;
+  if (typeof hitSlop !== "number" && (typeof hitSlop !== "object" || Array.isArray(hitSlop))) fail("`hitSlop` must be a number or an object of top, right, bottom and left");
+  if (typeof hitSlop === "object") check(hitSlop, { top: null, right: null, bottom: null, left: null }, `${prefix}hitSlop.`);
+  const hitInsets = Object.fromEntries(["top", "right", "bottom", "left"].map(side => [side,
+    number(typeof hitSlop === "number" ? hitSlop : hitSlop[side] ?? 0, `hitSlop.${side}`, { min: -10000, max: 10000 })]));
+
   return {
     fonts,
     colours: { dark, light },
@@ -212,6 +237,8 @@ async function describe(theme) {
     toggle,
     selection: choice(theme.selection, "selection", ["underline", "check"]),
     field: choice(theme.field, "field", ["stacked", "inline"]),
+    textInput: describeInputStyle(theme.textInput),
+    hitSlop: hitInsets,
   };
 }
 

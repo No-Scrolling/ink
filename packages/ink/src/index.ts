@@ -6,7 +6,9 @@ import type {} from "react/jsx-dev-runtime";
 import { createElement, useMemo, useState } from "./react";
 import { ScrollToEndContext } from "./scroll";
 import type { Destination } from "./navigation";
-import { pressHandler, type PressProps } from "./press";
+import { pressHandler, type HitAreaProps, type PressProps } from "./press";
+export type { HitSlop, HitAreaProps } from "./press";
+export type { TextInputStyle, TextInputAppearance } from "./theme";
 export { useSnapshot, type Snapshot, type SnapshotSource } from "./snapshot";
 export { resource, type ResourceSnapshot, type ResourceSource } from "./resource";
 export { useAction, type Action } from "./action";
@@ -23,22 +25,24 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   note?: string;
   /** A named variant from `variants` in theme.ts. The build fails if theme.ts does not define it. */
   theme?: string;
+  /** Draw actual touch areas as red outlines with no fill. */
+  debugHitboxes?: boolean;
   background?: string;
   centered?: boolean;
   wide?: boolean;
   bottomInset?: boolean;
-  leftAction?: { icon: IconAsset; onPress: () => void };
-  rightAction?: { icon: IconAsset; onPress: () => void };
+  leftAction?: HitAreaProps & { icon: IconAsset; onPress: () => void };
+  rightAction?: HitAreaProps & { icon: IconAsset; onPress: () => void };
 }) {
   const [scrollToEnd, setScrollToEnd] = useState(0);
   const requestEnd = useMemo(() => () => setScrollToEnd(value => value + 1), []);
-  return createElement(ScrollToEndContext.Provider, { value: requestEnd }, createElement("Screen", { ...props, scrollToEnd, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress },
+  return createElement(ScrollToEndContext.Provider, { value: requestEnd }, createElement("Screen", { ...props, scrollToEnd, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, leftHitSlop: leftAction?.hitSlop, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress, rightHitSlop: rightAction?.hitSlop },
     header != null && createElement(Stack, { gap: 47 }, header),
     children,
   ));
 }
 
-export interface StackProps {
+export interface StackProps extends HitAreaProps {
   children?: ReactNode;
   axis?: "vertical" | "horizontal";
   gap?: number;
@@ -108,7 +112,7 @@ export function Field<const D extends Destination>(props: PressProps<D> & {
   return createElement("Field", { ...rest, onPress: pressHandler({ href, url, onPress }) });
 }
 
-export function Toggle(props: {
+export function Toggle(props: HitAreaProps & {
   label: string;
   subtitle?: string;
   value: boolean;

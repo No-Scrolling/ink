@@ -30,7 +30,6 @@ import android.view.MotionEvent
 import kotlin.math.roundToInt
 
 private const val SPELLING_ANNOTATE = "ing.noscroll.ink.spelling.annotate.v1"
-private const val MAX_EDITOR_LINES = 3
 
 internal fun createTextInputAdapter(
     activity: MainActivity,
@@ -55,8 +54,10 @@ private class SystemKeyboardAdapter(
     private var pending = false
     private var imeVisible = false
     private var lightAppearance: Boolean? = null
-    // The visible screen's body font slot; -1 is Public Sans.
+    // The editor's font slot; -1 is Public Sans.
     private var fontSlot = -1
+    private var minEditorLines = 1
+    private var maxEditorLines = 3
     private var lineMeasurement: Triple<String, Int, Float>? = null
     private var measuredLineCount = 1
     private var awaitingEditorDraw = false
@@ -145,7 +146,7 @@ private class SystemKeyboardAdapter(
         editor.setHighlightColor(0x66888888)
         editor.isFocusableInTouchMode = true
         editor.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        editor.maxLines = MAX_EDITOR_LINES
+        editor.maxLines = maxEditorLines
         editor.setPadding(0, 0, 0, 0)
         editor.filters = arrayOf(InputFilter { source, start, end, _, _, _ ->
             val value = source.subSequence(start, end).toString()
@@ -199,14 +200,14 @@ private class SystemKeyboardAdapter(
                 .build().lineCount
             lineMeasurement = key
         }
-        return measuredLineCount.coerceIn(1, MAX_EDITOR_LINES)
+        return measuredLineCount.coerceIn(minEditorLines, maxEditorLines)
     }
 
     private fun resizeEditor() {
         val lines = measuredLines()
         // Android omits line spacing after the final line. Match its content height so
         // the unscrolled editor can draw underlines into its bottom padding too.
-        val finalLineSpacing = if (action == 0 && measuredLineCount <= MAX_EDITOR_LINES) {
+        val finalLineSpacing = if (action == 0 && measuredLineCount <= maxEditorLines) {
             editor.lineHeight - editor.paint.fontMetricsInt.run { descent - ascent }
         } else 0
         if (action == 0) editor.translationY = finalLineSpacing.toFloat()
@@ -279,6 +280,14 @@ private class SystemKeyboardAdapter(
         editor.removeCallbacks(hideEditor)
         if (pending) return
         val data = JSONObject(context)
+        minEditorLines = data.getInt("minLines")
+        maxEditorLines = data.getInt("maxLines")
+        editor.maxLines = if (action == 0) maxEditorLines else 1
+        editor.gravity = Gravity.TOP or when (data.getString("align")) {
+            "center" -> Gravity.CENTER_HORIZONTAL
+            "end" -> Gravity.END
+            else -> Gravity.START
+        }
         val bounds = data.optJSONObject("editor") ?: return
         nativeBaseline = bounds.getDouble("baseline").toFloat()
         val width = bounds.getDouble("width").roundToInt().coerceAtLeast(1)
@@ -289,6 +298,12 @@ private class SystemKeyboardAdapter(
         val top = bounds.getDouble("y").roundToInt()
         if (params.width != width || params.height != height || params.leftMargin != left || params.topMargin != top) {
             editor.layoutParams = FrameLayout.LayoutParams(width, height).apply { leftMargin = left; topMargin = top }
+        }
+        val slot = data.optInt("fontSlot", -1)
+        if (slot != fontSlot) {
+            fontSlot = slot
+            editor.typeface = activity.typeface(slot)
+            lineMeasurement = null
         }
         val fontSize = bounds.getDouble("fontSize").toFloat()
         if (editor.textSize != fontSize) editor.setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize)
@@ -306,11 +321,14 @@ private class SystemKeyboardAdapter(
         if (editor.currentHintTextColor != hintColour) editor.setHintTextColor(hintColour)
         val textColour = data.getInt("textColour")
         if (editor.currentTextColor != textColour) editor.setTextColor(textColour)
-        val slot = data.optInt("fontSlot", -1)
-        if (slot != fontSlot) {
-            fontSlot = slot
-            editor.typeface = activity.typeface(slot)
-        }
+        val cursorColour = data.getInt("cursorColour")
+        editor.textCursorDrawable?.mutate()?.setTint(cursorColour)
+        editor.textSelectHandle?.mutate()?.setTint(cursorColour)
+        editor.textSelectHandleLeft?.mutate()?.setTint(cursorColour)
+        editor.textSelectHandleRight?.mutate()?.setTint(cursorColour)
+        editor.highlightColor = data.getInt("selectionColour")
+        editor.contentDescription = data.getString("label").ifEmpty { placeholder }
+        editor.stateDescription = listOf(data.getString("description"), data.getString("error")).filter { it.isNotEmpty() }.joinToString(". ")
         val cursor = data.getInt("cursor").coerceIn(0, text.length)
         syncing = true
         val changed = inputId != id

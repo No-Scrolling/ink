@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Field, Row, Screen, Section, SettingsChoices, Text, Toggle } from "ink";
+import { Field, Row, Screen, Section, SettingsChoices, Text, TextInput, Toggle } from "ink";
 import { arrowOutward, close } from "ink/icons";
 
 // Every themed component in one screen, rendered by `ink theme check`.
@@ -24,5 +24,8 @@ export default function ThemeGallery() {
       <Row title="Removable" endAction={{ icon: close, onPress: () => {} }} />
     </Section>
     <Text>Body text</Text>
+    <Section title="Inputs">
+      <TextInput label="Name" value="Alex" onChange={() => {}} action="done" />
+    </Section>
   </Screen>;
 }

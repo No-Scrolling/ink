@@ -1,6 +1,9 @@
 import { createElement, useState } from "./react";
+import type { IconAsset } from "./assets";
+import type { HitAreaProps } from "./press";
+import type { TextInputAppearance } from "./theme";
 
-export function TextInput(props: {
+export function TextInput(props: HitAreaProps & {
   value: string;
   onChange: (value: string) => void;
   onSubmit?: (value: string) => void;
@@ -10,6 +13,18 @@ export function TextInput(props: {
   inputMode?: "text" | "numeric";
   prefix?: string;
   suffix?: string;
+  label?: string;
+  description?: string;
+  error?: string;
+  invalid?: boolean;
+  disabled?: boolean;
+  readOnly?: boolean;
+  clearable?: boolean;
+  leadingIcon?: IconAsset;
+  minLines?: number;
+  maxLines?: number;
+  /** Overrides the theme. Sizes here use Ink units, like `Text` and `Icon`. */
+  style?: TextInputAppearance;
 }) {
   const [eventCount, setEventCount] = useState(0);
   const nativeProps = {
@@ -20,5 +35,11 @@ export function TextInput(props: {
       props.onChange(value);
     },
   };
-  return createElement("TextInput", nativeProps);
+  const input = createElement("TextInput", nativeProps);
+  if (!props.label && !props.description && !props.error) return input;
+  return createElement("Stack", { gap: 6 },
+    props.label && createElement("Text", { size: 16 }, props.label),
+    input,
+    (props.error || props.description) && createElement("Text", { size: 16 }, props.error || props.description),
+  );
 }

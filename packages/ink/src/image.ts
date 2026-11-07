@@ -1,12 +1,13 @@
 import { createElement } from "./react";
+import type { HitAreaProps } from "./press";
 
-export function Avatar({ src = "", unread = false, onPress, onLongPress }: {
+export function Avatar({ src = "", unread = false, onPress, onLongPress, hitSlop }: HitAreaProps & {
   src?: string;
   unread?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
 }) {
-  return createElement("Avatar", { src, unread, onPress, onLongPress });
+  return createElement("Avatar", { src, unread, onPress, onLongPress, hitSlop });
 }
 
 export type ImageCrop = { zoom: number; x: number; y: number };

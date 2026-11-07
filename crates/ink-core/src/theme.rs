@@ -118,6 +118,9 @@ pub struct Theme {
     pub body_font: FontRole,
     /// Screen titles; the body font unless the theme sets one.
     pub display_font: FontRole,
+    pub input_font: FontRole,
+    pub text_input: crate::InputAppearance,
+    pub hit_slop: crate::HitInsets,
     /// Named variants for individual screens, each a complete theme.
     pub variants: BTreeMap<String, Arc<Theme>>,
     pub inset: Option<f32>,
@@ -155,6 +158,9 @@ impl Default for Theme {
             scale: 1.0,
             body_font: FontRole::DEFAULT,
             display_font: FontRole::DEFAULT,
+            input_font: FontRole::DEFAULT,
+            text_input: crate::InputAppearance::default(),
+            hit_slop: crate::HitInsets::default(),
             variants: BTreeMap::new(),
             inset: None,
             gap: None,
@@ -209,6 +215,10 @@ pub struct ThemeSource {
     pub scroll_bar: SourceScrollBar,
     #[serde(default)]
     pub subtitle: SourceSubtitle,
+    #[serde(default)]
+    pub text_input: crate::InputAppearance,
+    #[serde(default)]
+    pub hit_slop: crate::HitInsets,
     /// Complete descriptions of each named variant, sharing this file's blobs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub variants: BTreeMap<String, ThemeSource>,
@@ -252,6 +262,7 @@ pub struct SourceRoles {
 pub struct SourceFonts {
     pub body: Option<usize>,
     pub display: Option<usize>,
+    pub input: Option<usize>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -378,6 +389,7 @@ impl ThemeSource {
         };
         let body_font = slot(self.fonts.body)?.unwrap_or(FontRole::DEFAULT);
         let display_font = slot(self.fonts.display)?.unwrap_or(body_font);
+        let input_font = slot(self.fonts.input)?.unwrap_or(body_font);
         let scale = match self.text.size {
             Some(size) => {
                 ensure!(size.is_finite() && size > 0.0, "text.size must be positive");
@@ -429,6 +441,9 @@ impl ThemeSource {
             scale,
             body_font,
             display_font,
+            input_font,
+            text_input: self.text_input.in_units(LP3_REFERENCE_SCALE * scale)?,
+            hit_slop: self.hit_slop.in_units(LP3_REFERENCE_SCALE * scale),
             variants: BTreeMap::new(),
             inset: self.spacing.inset.map(units),
             gap: self.spacing.gap.map(units),

@@ -86,6 +86,9 @@ pub struct ExportArgs {
     /// Theme module to preview instead of the app's theme.ts
     #[arg(long, value_name = "FILE")]
     theme: Option<PathBuf>,
+    /// Draw touch areas as red outlines with no fill
+    #[arg(long)]
+    hitboxes: bool,
     /// Render in light mode
     #[arg(long)]
     light: bool,
@@ -194,6 +197,7 @@ pub fn run(app: &Project, args: ExportArgs) -> Result<()> {
         ("props".into(), props),
         ("fixtures".into(), json!(args.fixtures)),
         ("theme".into(), json!(args.theme)),
+        ("hitboxes".into(), json!(args.hitboxes)),
         ("light".into(), json!(args.light)),
         ("cutouts".into(), json!(args.cutout.iter().map(|cutout| [cutout.x, cutout.y, cutout.width, cutout.height]).collect::<Vec<_>>())),
         ("stableCaptures".into(), json!(3)),

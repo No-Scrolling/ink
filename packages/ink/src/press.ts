@@ -1,10 +1,17 @@
 import { navigate, type CheckedDestination, type Destination } from "./navigation";
 import { openLink } from "./external";
 
-export type PressProps<D extends Destination = Destination> =
+export type HitSlop = number | { top?: number; right?: number; bottom?: number; left?: number };
+
+export type HitAreaProps = {
+  /** Extra touch area in Ink units. Negative values shrink it without changing layout. */
+  hitSlop?: HitSlop;
+};
+
+export type PressProps<D extends Destination = Destination> = HitAreaProps & (
   | { href: D & CheckedDestination<D>; url?: never; onPress?: never }
   | { url: string; href?: never; onPress?: never }
-  | { onPress?: () => void; href?: never; url?: never };
+  | { onPress?: () => void; href?: never; url?: never });
 
 export function pressHandler({ href, url, onPress }: { href?: Destination; url?: string; onPress?: () => void }) {
   if (href !== undefined && (url !== undefined || onPress !== undefined) || url !== undefined && onPress !== undefined) {

@@ -81,6 +81,16 @@ ink export /settings --size 1080x1200 --cutout 490,20,100,100
 
 By default, the header fits in the widest space beside the cutout. Exports leave the cutout area unpainted.
 
+### Show touch areas
+
+Add `--hitboxes` to draw the effective touch areas as red outlines with no fill:
+
+```sh
+ink export /settings --hitboxes
+```
+
+The outlines follow scrolling and clipping. They do not change layout or touch behaviour.
+
 ## Supply route parameters
 
 For a route such as `app/contacts/[id].tsx`, export a concrete path:

@@ -5,7 +5,7 @@ import { defineTheme } from "ink/theme";
 // Run `ink theme check` to build the theme, check its contrast and render every component.
 export default defineTheme({
   // Font files, relative to this file. `display` is used for screen titles.
-  // fonts: { body: "./assets/fonts/Body.ttf", display: "./assets/fonts/Display.ttf" },
+  // fonts: { body: "./assets/fonts/Body.ttf", display: "./assets/fonts/Display.ttf", input: "./assets/fonts/Input.ttf" },
 
   // Dark mode colours. Light mode uses the inverse of each, unless `light` sets it.
   // colours: {
@@ -38,6 +38,14 @@ export default defineTheme({
   // field: "stacked",       // or "inline": label and value on one row
   // selection: "underline", // or "check": a tick at the end of the selected row
   // toggle: "line",         // or "switch", or a control from defineToggle()
+
+  // textInput: {
+  //   border: "underline", borderWidth: 2.55, radius: 0,
+  //   paddingX: 0, fontSize: 61.2,
+  //   textColour: "foreground", placeholderColour: "muted",
+  //   focused: {}, invalid: {}, disabled: {}, readOnly: {},
+  // },
+  // hitSlop: 0, // extra touch area; use a number or { top, right, bottom, left }
 
   // Themes for individual screens, used with <Screen theme="reader">. Each sets only what differs.
   // variants: {

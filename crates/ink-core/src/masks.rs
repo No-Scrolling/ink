@@ -130,3 +130,29 @@ pub(crate) fn rounded_rect(width: u32, height: u32, radius: f32) -> Mask {
         pixels: crate::AssetBytes::Owned(pixels.into()),
     }
 }
+
+pub(crate) fn outlined_rect(width: u32, height: u32, radius: f32, border: f32) -> Mask {
+    let outer = rounded_rect(width, height, radius);
+    let border = border.min(width.min(height) as f32 / 2.0);
+    let mut pixels = outer.pixels.as_ref().to_vec();
+    // Evaluate the inset shape at the same sample positions as the outer mask.
+    let inner_radius = (radius - border).max(0.0);
+    for y in 0..height {
+        for x in 0..width {
+            let mut inner = 0;
+            for sy in 0..4 {
+                for sx in 0..4 {
+                    let px = x as f32 + (sx as f32 + 0.5) / 4.0;
+                    let py = y as f32 + (sy as f32 + 0.5) / 4.0;
+                    if px < border || py < border || px >= width as f32 - border || py >= height as f32 - border { continue; }
+                    let dx = (border + inner_radius - px).max(px - (width as f32 - border - inner_radius)).max(0.0);
+                    let dy = (border + inner_radius - py).max(py - (height as f32 - border - inner_radius)).max(0.0);
+                    if dx * dx + dy * dy <= inner_radius * inner_radius { inner += 1; }
+                }
+            }
+            let index = (y * width + x) as usize;
+            pixels[index] = pixels[index].saturating_sub((inner * 255 / 16) as u8);
+        }
+    }
+    Mask::owned(hash(&format!("ink_outline_{height}_{radius}_{border}"), width), width as u16, height as u16, pixels)
+}

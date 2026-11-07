@@ -23,6 +23,9 @@ pub use capture::CaptureKind;
 pub use fonts::{FontRole, MAX_THEME_FONTS, font_bytes, font_for_character_in, primary_font, set_theme_fonts, tabular_digit_width_in, text_graphemes, text_width_in, visual_text, visual_text_width_in};
 
 mod theme;
+mod input;
+pub use input::{InputAppearance, InputStyle, InputColour, InputBorder, InputFont, InputAlign, HitInsets};
+use input::{InputOptions, input_alignment_offset};
 /// The theme file description, for the compiler.
 pub mod theme_source {
     pub use crate::theme::{SourceScrollBar, SourceSubtitle, SourceColours, SourceFonts, SourceHeader, SourceImage, SourceRoles, SourceSection, SourceSpacing, SourceText, SourceToggle};
@@ -697,6 +700,7 @@ enum NodeKind {
         prefix: String,
         suffix: String,
         clear: Mask,
+        options: Box<InputOptions>,
     },
     Button {
         label: String,
@@ -770,6 +774,7 @@ struct ScreenNode {
     note: Option<String>,
     /// A named theme variant for this screen.
     theme: Option<String>,
+    debug_hitboxes: bool,
     background: Option<Colour>,
     centred: bool,
     footer: Option<(String, Option<Action>)>,
@@ -792,6 +797,7 @@ impl Node {
                 subtitle: None,
                 note: None,
                 theme: None,
+                debug_hitboxes: false,
                 background: None,
                 centred,
                 footer: None,
@@ -868,6 +874,7 @@ impl Node {
                 prefix,
                 suffix,
                 clear,
+                options: Box::default(),
             },
         }
     }
@@ -1154,13 +1161,16 @@ impl ScrollBar {
     }
 
     fn contains_touch(self, x: f32, y: f32) -> bool {
+        self.touch_rect().contains(x, y)
+    }
+
+    fn touch_rect(self) -> Rect {
         let touch_width = self.thumb_width * SCROLL_THUMB_TOUCH_MULTIPLIER;
         Rect {
             x: self.track.x - (touch_width - self.track.width) / 2.0,
             width: touch_width,
             ..self.track
         }
-        .contains(x, y)
     }
 
     fn scroll_offset_for_thumb_top(self, thumb_top: f32, scroll_max: f32) -> f32 {
@@ -1196,9 +1206,11 @@ pub struct Scene {
     pub width: u32,
     pub height: u32,
     pub quads: Vec<Quad>,
+    pub hitboxes: Vec<Hitbox>,
     pub lines: Vec<Line>,
     pub text: Vec<TextRun>,
     pub masks: Vec<MaskRun>,
+    pub background_masks: Vec<MaskRun>,
     pub images: Vec<ImageRun>,
     pub preloaded_images: Vec<ImageData>,
     pub camera_portal: Option<CameraPortal>,
@@ -1210,6 +1222,12 @@ pub struct Scene {
     pub scroll_clip: Option<Rect>,
     pub scroll_bar: Option<ScrollBar>,
     pub palette: Palette,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hitbox {
+    pub rect: Rect,
+    pub scrolling: bool,
 }
 
 impl Scene {
@@ -1560,6 +1578,10 @@ pub struct Engine {
     react_list_positions: HashMap<usize, f32>,
     list_metrics: HashMap<usize, list::ListMetrics>,
     hit_regions: Vec<HitRegion>,
+    hit_slops: HashMap<NodeIdentity, HitInsets>,
+    action_hit_slops: HashMap<(NodeIdentity, &'static str), HitInsets>,
+    debug_hitboxes: bool,
+    screen_debug_hitboxes: bool,
     text_inputs: Vec<TextInputLayout>,
     text_input_scroll_offsets: HashMap<StateId, f32>,
     clip: Rect,
@@ -1604,6 +1626,7 @@ pub struct Engine {
     /// Empty space to the right of each icon's drawn shape, as a fraction of its width.
     icon_trailing_space: HashMap<u64, f32>,
     switch_masks: Option<(u32, u32, Mask, Mask)>,
+    input_masks: HashMap<(u32, u32, u32, u32), Mask>,
     wrapped_text: HashMap<TextWrapKey, (WrappedLines, bool), ahash::RandomState>,
     #[cfg(feature = "perf")]
     perf: CorePerfMetrics,
@@ -1662,6 +1685,10 @@ impl Engine {
             react_list_positions: HashMap::new(),
             list_metrics: HashMap::new(),
             hit_regions: Vec::new(),
+            hit_slops: HashMap::new(),
+            action_hit_slops: HashMap::new(),
+            debug_hitboxes: false,
+            screen_debug_hitboxes: false,
             text_inputs: Vec::new(),
             text_input_scroll_offsets: HashMap::new(),
             clip: Rect::default(),
@@ -1706,6 +1733,7 @@ impl Engine {
             scroll_activity: None,
             icon_trailing_space: HashMap::new(),
             switch_masks: None,
+            input_masks: HashMap::new(),
             wrapped_text: HashMap::default(),
             #[cfg(feature = "perf")]
             perf: CorePerfMetrics::default(),
@@ -2552,7 +2580,9 @@ impl Engine {
     }
 
     fn text_input_at(&self, x: f32, y: f32) -> Option<TextInputLayout> {
+        let Some(Action::FocusTextInput { state, .. }) = self.hit_region_at(x, y).map(|region| &region.action) else { return None; };
         self.text_inputs.iter().rev().copied().find(|input| {
+            if input.state != *state { return false; }
             if input.scrolling
                 && !self
                     .scene
@@ -2574,17 +2604,22 @@ impl Engine {
         let Some(StateValue::String(value)) = self.state.get(input.state.0) else {
             return false;
         };
-        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
+        let Some(Node { kind: NodeKind::TextInput { options, .. }, .. }) = self.text_input_node(input.state) else {
+            return false;
+        };
+        let style = self.theme.text_input.resolve(self.focused_input == Some(input.state), options);
+        let role = style.font(&self.theme);
+        let font_size = self.scaled_font_in(style.size(), role);
         let cursor = if input.action == TextInputAction::Return {
-            let lines = self.input_lines(value, input.text_rect.width);
+            let lines = self.input_lines(value, input.text_rect.width, &style);
             let y = if input.scrolling { y + self.scroll_offset - self.scroll_origin } else { y };
-            let line = ((y - input.text_rect.y + input.scroll_offset) / self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING)).max(0.0) as usize;
+            let line = ((y - input.text_rect.y + input.scroll_offset) / self.scaled(style.line_height())).max(0.0) as usize;
             let (start, end) = lines[line.min(lines.len() - 1)];
-            start + self.text_cursor_for_offset(&value[start..end], font_size, (x - input.text_rect.x).max(0.0))
+            start + self.text_cursor_for_offset(&value[start..end], font_size, (x - input.text_rect.x - input_alignment_offset(&style, input.text_rect.width, text_width_in(&value[start..end], font_size, false, role))).max(0.0), role)
         } else {
-            let target = (x - input.text_rect.x + input.scroll_offset)
-                .clamp(0.0, self.text_width(value, font_size));
-            self.text_cursor_for_offset(value, font_size, target)
+            let width = text_width_in(value, font_size, false, role);
+            let target = (x - input.text_rect.x + input.scroll_offset - input_alignment_offset(&style, input.text_rect.width, width)).clamp(0.0, width);
+            self.text_cursor_for_offset(value, font_size, target, role)
         };
         let changed = self.focused_input != Some(input.state)
             || self.focused_input_action != input.action
@@ -3211,6 +3246,8 @@ impl Engine {
         self.scene.height = self.viewport.height;
         self.react_list_positions.clear();
         self.scene.quads.clear();
+        self.scene.hitboxes.clear();
+        self.screen_debug_hitboxes = false;
         self.scene.lines.clear();
         self.scene.text.clear();
         self.fixed_text_runs.clear();
@@ -3218,6 +3255,7 @@ impl Engine {
         for marquee in self.marquees.values_mut() { marquee.visible = false; }
         for progress in self.playback_progress.values_mut() { progress.visible = false; }
         self.scene.masks.clear();
+        self.scene.background_masks.clear();
         self.scene.images.clear();
         self.scene.preloaded_images.clear();
         self.preloaded_images.clear();
@@ -3250,6 +3288,12 @@ impl Engine {
             return;
         }
 
+        if self.focused_input.or(self.native_editor_state).is_some_and(|state| {
+            self.text_input_node(state).is_none_or(|node| matches!(&node.kind, NodeKind::TextInput { options, .. } if options.disabled || options.read_only))
+        }) {
+            self.focused_input = None;
+            self.native_editor_state = None;
+        }
         let root = std::mem::replace(&mut self.root, Node::screen(vec![], None, false));
         let auto_focus = self.auto_focus(&root);
         let auto_focus_node = auto_focus.map(|(node, _, _)| node);
@@ -3280,6 +3324,14 @@ impl Engine {
             },
         );
         self.root = root;
+        if self.debug_hitboxes || self.screen_debug_hitboxes {
+            self.scene.hitboxes.extend(self.hit_regions.iter().map(|region| Hitbox { rect: region.rect, scrolling: region.scrolling }));
+            if let Some(bar) = self.scene.scroll_bar {
+                self.scene.hitboxes.push(Hitbox { rect: bar.touch_rect(), scrolling: false });
+            }
+            self.scene.hitboxes.extend(self.scene.images.iter().filter(|image| image.zoom_id.is_some())
+                .map(|image| Hitbox { rect: image.rect.intersection(image.clip), scrolling: image.scrolling }));
+        }
         self.image_screens.retain(|id, _| self.visible_image_screens.contains(id));
         self.marquees.retain(|_, marquee| marquee.visible);
         self.playback_progress.retain(|_, progress| progress.visible);
@@ -3303,8 +3355,9 @@ impl Engine {
                 state,
                 action,
                 auto_focus: true,
+                options,
                 ..
-            } => Some((node.identity, *state, *action)),
+            } if !options.disabled && !options.read_only => Some((node.identity, *state, *action)),
             NodeKind::ConversationComposer { children, .. }
             | NodeKind::Message { children, .. }
             | NodeKind::MessageQuote { children, .. }
@@ -3513,21 +3566,8 @@ impl Engine {
                     height: (line_height * lines.len() as f32).min(available.height),
                 }
             }
-            NodeKind::TextInput { state, action, prefix, suffix, .. } => MeasuredSize {
-                width: available.width,
-                height: if *action == TextInputAction::Return {
-                    let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.as_str(), _ => "" };
-                    let (prefix_width, suffix_width) = self.input_affix_widths(prefix, suffix, available.width);
-                    let lines = self.native_editor_lines.as_ref()
-                        .filter(|(id, text, _)| id == state && text == value)
-                        .map(|(_, _, lines)| *lines)
-                        .unwrap_or_else(|| self.input_lines(value, (available.width - prefix_width - suffix_width - self.scaled(1.0)).max(0.0)).len())
-                        .clamp(1, TEXT_INPUT_MAX_LINES);
-                    let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
-                    let line_height = if self.native_editor_state == Some(*state) { line_height.round() } else { line_height };
-                    (line_height * lines as f32 + self.scaled(TEXT_INPUT_BOTTOM_PADDING)).min(available.height)
-                } else { self.scaled(TEXT_INPUT_HEIGHT).min(available.height) },
-            },
+            NodeKind::TextInput { state, action, prefix, suffix, options, .. } =>
+                self.measure_input(*state, *action, prefix, suffix, options, available),
             // With ticks, options fill the row so the whole width is pressable; underlined options
             // stay as wide as their text.
             NodeKind::Button { selectable: true, .. } if self.theme.selection == SelectionStyle::Check => MeasuredSize {
@@ -3747,9 +3787,11 @@ impl Engine {
                     };
                     let size = self.measure(child, Rect { width, ..rect });
                     let child_rect = Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width, height: size.height };
-                    if let NodeKind::TextInput { placeholder, state, action, prefix, suffix, clear, .. } = &child.kind {
-                        self.layout_text_input(placeholder, *state, *action, prefix, suffix, clear,
+                    if let NodeKind::TextInput { placeholder, state, action, prefix, suffix, clear, options, .. } = &child.kind {
+                        let previous = std::mem::replace(&mut self.layout_owner, child.identity);
+                        self.layout_text_input(placeholder, *state, *action, prefix, suffix, clear, options,
                             Rect { width: width + side + gap, ..child_rect }, side + gap);
+                        self.layout_owner = previous;
                     } else {
                         let first_hit = self.hit_regions.len();
                         self.layout(child, child_rect);
@@ -4010,8 +4052,10 @@ impl Engine {
                     media_picker,
                     bottom_inset,
                     background,
+                    debug_hitboxes,
                 } = screen.as_ref();
                 self.use_screen_theme(theme.as_deref());
+                self.screen_debug_hitboxes = *debug_hitboxes;
                 if let Some(colour) = background {
                     self.scene.quads.push(Quad {
                         rect, clip: self.clip, colour: self.scene.explicit_colour(*colour), scrolling: false,
@@ -4118,8 +4162,9 @@ impl Engine {
                 prefix,
                 suffix,
                 clear,
+                options,
                 ..
-            } => self.layout_text_input(placeholder, *state, *action, prefix, suffix, clear, rect, 0.0),
+            } => self.layout_text_input(placeholder, *state, *action, prefix, suffix, clear, options, rect, 0.0),
             NodeKind::Button {
                 label,
                 icon,
@@ -5082,233 +5127,6 @@ impl Engine {
         }
     }
 
-    fn input_lines(&self, value: &str, width: f32) -> Vec<(usize, usize)> {
-        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let mut lines = Vec::new();
-        let mut offset = 0;
-        for paragraph in value.split('\n') {
-            let breakpoints = linebreaks(paragraph).map(|(index, _)| index).collect::<Vec<_>>();
-            let mut start = 0;
-            if paragraph.is_empty() { lines.push((offset, offset)); }
-            while start < paragraph.len() {
-                let end = breakpoints.iter().copied()
-                    .filter(|end| *end > start)
-                    .take_while(|end| self.text_width(&paragraph[start..*end], font_size) <= width)
-                    .last()
-                    .unwrap_or_else(|| Self::forced_text_break(paragraph, start, font_size, width, false, self.theme.body_font));
-                lines.push((offset + start, offset + end));
-                start = end;
-            }
-            offset += paragraph.len() + 1;
-        }
-        lines
-    }
-
-    fn input_affix_widths(&self, prefix: &str, suffix: &str, width: f32) -> (f32, f32) {
-        let font_size = self.scaled_font(TEXT_INPUT_AFFIX_SIZE);
-        let measure = |text: &str| if text.is_empty() { 0.0 } else {
-            (self.text_width(text, font_size) + self.scaled(TEXT_INPUT_AFFIX_GAP)).min(width / 3.0)
-        };
-        (measure(prefix), measure(suffix))
-    }
-
-    fn layout_multiline_input(&mut self, placeholder: &str, state: StateId, rect: Rect, content: Rect, trailing_width: f32) {
-        let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.clone(), _ => String::new() };
-        let focused = self.focused_input == Some(state);
-        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let line_height = self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING);
-        let cursor_width = self.scaled(1.0);
-        let viewport = Rect { x: content.x, width: (content.width - trailing_width - cursor_width).max(0.0), height: (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0), ..rect };
-        let lines = self.input_lines(&value, viewport.width);
-        let cursor = if focused { self.focused_input_cursor } else { value.len() };
-        let cursor_line = lines.iter().rposition(|(start, _)| *start <= cursor).unwrap_or(0);
-        let scroll_max = (lines.len() as f32 * line_height - viewport.height).max(0.0);
-        let scroll_offset = self.text_input_scroll_offsets.get(&state).copied()
-            .unwrap_or((cursor_line + 1) as f32 * line_height - viewport.height)
-            .clamp(0.0, scroll_max);
-        let clip = viewport.intersection(self.clip);
-        let text_run = self.scene.text.len();
-        let showing_placeholder = value.is_empty();
-        // Android places the line's extra spacing above the text.
-        let baseline_offset = (line_height - font_size) / 2.0;
-        for (index, (start, end)) in lines.iter().copied().enumerate() {
-            self.scene.text.push(TextRun { font: self.theme.body_font,
-                tabular_numbers: false,
-                text: if self.native_editor_state == Some(state) { "" } else if showing_placeholder { placeholder } else { &value[start..end] }.into(),
-                rect: Rect { y: (viewport.y + index as f32 * line_height - scroll_offset + baseline_offset).round(), height: line_height, ..viewport },
-                clip, font_size, colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
-                align: TextAlign::Start, scrolling: self.scrolling,
-            });
-        }
-        let underline_height = self.control_line_height();
-        self.scene.quads.push(Quad {
-            rect: Rect { y: (rect.y + rect.height).round() - underline_height, height: underline_height, ..rect },
-            clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling,
-        });
-        self.text_inputs.push(TextInputLayout {
-            node: self.layout_owner,
-            state, action: TextInputAction::Return, text_run, rect, text_rect: viewport,
-            hit_rect: Rect { width: (rect.width - trailing_width).max(0.0), ..rect }.intersection(self.clip),
-            scroll_offset, scroll_max, scrolling: self.scrolling,
-        });
-        self.push_hit_region(rect, Action::FocusTextInput { state, action: TextInputAction::Return });
-    }
-
-    fn layout_text_input(
-        &mut self,
-        placeholder: &str,
-        state: StateId,
-        action: TextInputAction,
-        prefix: &str,
-        suffix: &str,
-        clear: &Mask,
-        rect: Rect,
-        trailing_width: f32,
-    ) {
-        if !cfg!(feature = "text-input") { return; }
-        let font_size = self.scaled_font(TEXT_INPUT_AFFIX_SIZE);
-        let (prefix_width, suffix_width) = self.input_affix_widths(prefix, suffix, (rect.width - trailing_width).max(0.0));
-        let gap = self.scaled(TEXT_INPUT_AFFIX_GAP);
-        for (text, x, width) in [
-            (prefix, rect.x, prefix_width),
-            (suffix, rect.x + rect.width - trailing_width - suffix_width + gap, suffix_width),
-        ] {
-            if text.is_empty() { continue; }
-            let bounds = Rect {
-                x,
-                y: rect.y,
-                width: (width - gap).max(0.0),
-                height: self.scaled(TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING),
-            };
-            self.scene.text.push(TextRun { font: self.theme.body_font,
-                tabular_numbers: false,
-                text: text.into(),
-                rect: bounds,
-                clip: bounds.intersection(self.clip),
-                font_size,
-                colour: self.scene.colour(Colour::WHITE),
-                align: TextAlign::Start,
-                scrolling: self.scrolling,
-            });
-        }
-        let content = Rect { x: rect.x + prefix_width, width: (rect.width - prefix_width - suffix_width).max(0.0), ..rect };
-        if action == TextInputAction::Return {
-            self.layout_multiline_input(placeholder, state, rect, content, trailing_width);
-            return;
-        }
-        let value = match self.state.get(state.0) {
-            Some(StateValue::String(value)) => value.clone(),
-            _ => String::new(),
-        };
-        let showing_placeholder = value.is_empty();
-        let text = if showing_placeholder {
-            placeholder
-        } else {
-            &value
-        };
-        let text_height = (rect.height - self.scaled(TEXT_INPUT_BOTTOM_PADDING)).max(0.0);
-        let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
-        let clear_button_width = if value.is_empty() || trailing_width > 0.0 {
-            0.0
-        } else {
-            self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE + TEXT_INPUT_CLEAR_PADDING * 2.0)
-        };
-        let clear_gap = if value.is_empty() || trailing_width > 0.0 {
-            0.0
-        } else {
-            self.scaled(TEXT_INPUT_CLEAR_GAP)
-        };
-        let cursor_width = self.scaled(1.0);
-        let text_viewport = Rect {
-            x: content.x,
-            width: (content.width - trailing_width - clear_button_width - clear_gap - cursor_width).max(0.0),
-            height: text_height,
-            ..rect
-        };
-        let text_width = self.text_width(text, font_size);
-        let scroll_max = if value.is_empty() {
-            0.0
-        } else {
-            (text_width - text_viewport.width).max(0.0)
-        };
-        let scroll_offset = if value.is_empty() {
-            0.0
-        } else {
-            self.text_input_scroll_offsets
-                .get(&state)
-                .copied()
-                .unwrap_or(scroll_max)
-                .clamp(0.0, scroll_max)
-        };
-        let text_run = self.scene.text.len();
-        self.scene.text.push(TextRun { font: self.theme.body_font,
-            tabular_numbers: false,
-            text: if self.native_editor_state == Some(state) { "" } else { text }.into(),
-            rect: Rect {
-                x: text_viewport.x - scroll_offset,
-                y: text_viewport.y.round(),
-                width: text_width.max(text_viewport.width),
-                ..text_viewport
-            },
-            clip: text_viewport.intersection(self.clip),
-            font_size,
-            colour: self.scene.colour(if showing_placeholder { Colour::MUTED } else { Colour::WHITE }),
-            align: TextAlign::Start,
-            scrolling: self.scrolling,
-        });
-        let underline_height = self.control_line_height();
-        self.scene.quads.push(Quad {
-            rect: Rect {
-                x: rect.x,
-                y: (rect.y + rect.height).round() - underline_height,
-                width: rect.width,
-                height: underline_height,
-            },
-            clip: self.clip,
-            colour: self.scene.colour(Colour::WHITE),
-            scrolling: self.scrolling,
-        });
-        self.text_inputs.push(TextInputLayout {
-            node: self.layout_owner,
-            state,
-            action,
-            text_run,
-            hit_rect: Rect {
-                width: (rect.width - suffix_width - trailing_width - clear_button_width).max(0.0),
-                ..rect
-            }
-            .intersection(self.clip),
-            text_rect: text_viewport,
-            rect,
-            scroll_offset,
-            scroll_max,
-            scrolling: self.scrolling,
-        });
-        self.push_hit_region(rect, Action::FocusTextInput { state, action });
-        if !value.is_empty() && trailing_width == 0.0 {
-            let icon_size = self.scaled(TEXT_INPUT_CLEAR_ICON_SIZE);
-            let clear_rect = Rect {
-                x: content.x + content.width - clear_button_width,
-                y: rect.y,
-                width: clear_button_width,
-                height: rect.height,
-            };
-            self.scene.masks.push(MaskRun {
-                mask: clear.clone(),
-                rect: Rect {
-                    x: clear_rect.x + self.scaled(TEXT_INPUT_CLEAR_PADDING),
-                    y: rect.y + (text_height - icon_size) / 2.0,
-                    width: icon_size,
-                    height: icon_size,
-                },
-                clip: rect.intersection(self.clip),
-                colour: self.scene.colour(Colour::WHITE),
-                scrolling: self.scrolling,
-            });
-            self.push_hit_region(clear_rect, Action::ClearInput { state });
-        }
-    }
-
     fn layout_toggle(
         &mut self,
         label: &str,
@@ -5927,7 +5745,7 @@ impl Engine {
         text_width_in(text, font_size, false, self.theme.body_font)
     }
 
-    fn text_cursor_for_offset(&self, text: &str, font_size: f32, offset: f32) -> usize {
+    fn text_cursor_for_offset(&self, text: &str, font_size: f32, offset: f32, role: FontRole) -> usize {
         let mut previous = None;
         let mut width = 0.0;
         for (index, grapheme) in text.grapheme_indices(true) {
@@ -5937,7 +5755,7 @@ impl Engine {
                 previous = None;
             } else {
                 for character in grapheme.chars() {
-                    let (font_index, font) = font_for_character_in(character, self.theme.body_font);
+                    let (font_index, font) = font_for_character_in(character, role);
                     let scaled = font.as_scaled(PxScale::from(font_size));
                     let glyph = scaled.glyph_id(character);
                     if let Some((previous_index, previous_glyph)) = previous {
@@ -6076,7 +5894,7 @@ impl Engine {
     }
 
     fn push_press_region(&mut self, rect: Rect, action: Action, long_action: Option<Action>) {
-        let rect = rect.intersection(self.clip);
+        let rect = self.hit_rect(rect, &action);
         if rect.width > 0.0 && rect.height > 0.0 {
             let target = self.press_target(&action);
             self.hit_regions.push(HitRegion {
@@ -6093,6 +5911,16 @@ impl Engine {
                 target,
             });
         }
+    }
+
+    fn hit_rect(&self, rect: Rect, action: &Action) -> Rect {
+        let action_slop = match action {
+            Action::Native { operation } => operation.event_target
+                .and_then(|(id, event)| self.action_hit_slops.get(&(NodeIdentity(id), event)).copied()),
+            _ => None,
+        };
+        action_slop.or_else(|| self.hit_slops.get(&self.layout_owner).copied()).unwrap_or(self.theme.hit_slop)
+            .expand(rect, self.viewport.scale).intersection(self.clip)
     }
 }
 

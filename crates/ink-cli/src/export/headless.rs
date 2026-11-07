@@ -44,6 +44,7 @@ pub(super) fn capture(project: &Project, marker: &str, args: &ExportArgs) -> Res
         engine.set_theme(theme.theme);
     }
     engine.set_colour_scheme(args.light);
+    engine.set_debug_hitboxes(args.hitboxes);
     engine.set_display_cutouts(args.cutout.clone());
     let mut tree = ReactTree::with_icons(&fs::read(assets.join("ink-icons-v1.bin"))?)?;
     let mut renderer = Renderer::offscreen(width, height)?;

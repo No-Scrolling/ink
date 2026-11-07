@@ -28,6 +28,8 @@ struct Evaluated {
     toggle: Option<EvaluatedToggle>,
     selection: Option<String>,
     field: Option<String>,
+    text_input: ink_core::InputAppearance,
+    hit_slop: ink_core::HitInsets,
     #[serde(default)]
     variants: BTreeMap<String, Evaluated>,
 }
@@ -164,7 +166,9 @@ impl Blobs {
             let index = Some(self.font(role, path)?);
             match role.as_str() {
                 "body" => fonts.body = index,
-                _ => fonts.display = index,
+                "display" => fonts.display = index,
+                "input" => fonts.input = index,
+                _ => bail!("unknown font role {role}"),
             }
         }
         let toggle = match evaluated.toggle {
@@ -196,6 +200,8 @@ impl Blobs {
             toggle,
             selection: evaluated.selection,
             field: evaluated.field,
+            text_input: evaluated.text_input,
+            hit_slop: evaluated.hit_slop,
             section: evaluated.section,
             scroll_bar: evaluated.scroll_bar,
             subtitle: evaluated.subtitle,

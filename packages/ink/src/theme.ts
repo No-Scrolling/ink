@@ -19,6 +19,39 @@
 /** A hex colour: `#rgb`, `#rrggbb` or `#rrggbbaa`. */
 export type Colour = `#${string}`;
 
+export type InputColour = Colour | "foreground" | "background" | "muted";
+
+export interface TextInputStyle {
+  border?: "underline" | "outline" | "none";
+  borderWidth?: number;
+  borderColour?: InputColour;
+  radius?: number;
+  background?: InputColour;
+  paddingX?: number;
+  paddingY?: number;
+  minHeight?: number;
+  fontSize?: number;
+  /** Choose a font from `fonts`. Supply a font file with the required weight. */
+  font?: "body" | "display" | "input";
+  align?: "start" | "center" | "end";
+  textColour?: InputColour;
+  placeholderColour?: InputColour;
+  affixColour?: InputColour;
+  cursorColour?: InputColour;
+  selectionColour?: InputColour;
+  clearColour?: InputColour;
+  clearSize?: number;
+  clearPadding?: number;
+  clearGap?: number;
+}
+
+export interface TextInputAppearance extends TextInputStyle {
+  focused?: TextInputStyle;
+  invalid?: TextInputStyle;
+  disabled?: TextInputStyle;
+  readOnly?: TextInputStyle;
+}
+
 export interface Colours {
   /** Screen background. Default: `#000000`. */
   background?: Colour;
@@ -61,7 +94,7 @@ export interface ToggleControl {
 
 export interface Theme {
   /** Font files, relative to `theme.ts`. `display` is used for screen titles and defaults to `body`. */
-  fonts?: { body?: string; display?: string };
+  fonts?: { body?: string; display?: string; input?: string };
   /** Dark mode colours, with optional `light` overrides. */
   colours?: ThemeColours;
   text?: {
@@ -133,6 +166,10 @@ export interface Theme {
   selection?: "underline" | "check";
   /** `"stacked"`: label above value (default). `"inline"`: label and value on one row, with a chevron when pressable. */
   field?: "stacked" | "inline";
+  /** Input appearance. Sizes are export-frame pixels, including state overrides. */
+  textInput?: TextInputAppearance;
+  /** Extra touch area around controls, in export-frame pixels. Negative values shrink it. */
+  hitSlop?: import("./press").HitSlop;
   /**
    * Named themes for individual screens, used with `<Screen theme="name">`. Each variant changes
    * only the settings it sets; everything else comes from this theme. Ink prepares every variant
