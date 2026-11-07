@@ -1,0 +1,116 @@
+{
+  "serial": "emulator-5554",
+  "applicationId": "com.vandam.ink.startupprobe",
+  "samples": [
+    {
+      "pair": 0,
+      "variant": "before",
+      "pid": "2497",
+      "totalTimeMs": 168,
+      "javascriptReadyMs": 381.9999694824219,
+      "firstContentMs": 437.000036239624,
+      "pssKb": 26825,
+      "rssKb": 138360
+    },
+    {
+      "pair": 0,
+      "variant": "after",
+      "pid": "2598",
+      "totalTimeMs": 164,
+      "javascriptReadyMs": 385.9999179840088,
+      "firstContentMs": 429.99982833862305,
+      "pssKb": 26735,
+      "rssKb": 137944
+    },
+    {
+      "pair": 1,
+      "variant": "before",
+      "pid": "2678",
+      "totalTimeMs": 170,
+      "javascriptReadyMs": 388.99993896484375,
+      "firstContentMs": 434.999942779541,
+      "pssKb": 27236,
+      "rssKb": 138516
+    },
+    {
+      "pair": 1,
+      "variant": "after",
+      "pid": "2756",
+      "totalTimeMs": 177,
+      "javascriptReadyMs": 399.0001678466797,
+      "firstContentMs": 438.0002021789551,
+      "pssKb": 26549,
+      "rssKb": 137840
+    },
+    {
+      "pair": 2,
+      "variant": "before",
+      "pid": "2834",
+      "totalTimeMs": 153,
+      "javascriptReadyMs": 375.99992752075195,
+      "firstContentMs": 412.99986839294434,
+      "pssKb": 27002,
+      "rssKb": 138272
+    },
+    {
+      "pair": 2,
+      "variant": "after",
+      "pid": "2909",
+      "totalTimeMs": 152,
+      "javascriptReadyMs": 372.999906539917,
+      "firstContentMs": 417.00005531311035,
+      "pssKb": 26700,
+      "rssKb": 137976
+    },
+    {
+      "pair": 3,
+      "variant": "before",
+      "pid": "2986",
+      "totalTimeMs": 161,
+      "javascriptReadyMs": 381.9999694824219,
+      "firstContentMs": 422.9998588562012,
+      "pssKb": 26988,
+      "rssKb": 138256
+    },
+    {
+      "pair": 3,
+      "variant": "after",
+      "pid": "3063",
+      "totalTimeMs": 162,
+      "javascriptReadyMs": 384.99999046325684,
+      "firstContentMs": 422.9998588562012,
+      "pssKb": 26644,
+      "rssKb": 137936
+    },
+    {
+      "pair": 4,
+      "variant": "before",
+      "pid": "3141",
+      "totalTimeMs": 165,
+      "javascriptReadyMs": 427.0000457763672,
+      "firstContentMs": 430.00006675720215,
+      "pssKb": 27103,
+      "rssKb": 138332
+    },
+    {
+      "pair": 4,
+      "variant": "after",
+      "pid": "3223",
+      "totalTimeMs": 157,
+      "javascriptReadyMs": 380.00011444091797,
+      "firstContentMs": 421.9999313354492,
+      "pssKb": 26661,
+      "rssKb": 137976
+    },
+    {
+      "pair": 5,
+      "variant": "before",
+      "pid": "3300",
+      "totalTimeMs": 160,
+      "javascriptReadyMs": 394.9999809265137,
+      "firstContentMs": 438.99989128112793,
+      "pssKb": 27076,
+      "rssKb": 138320
+    }
+  ]
+}

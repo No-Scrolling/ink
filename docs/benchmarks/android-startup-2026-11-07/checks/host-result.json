@@ -1,0 +1,130 @@
+{
+  "revision": "0885cd10498e8e8498837a7d9a4391ea87061619",
+  "dirty": true,
+  "bun": "1.4.4",
+  "profile": "ink-dev",
+  "suites": [
+    "unit",
+    "compiler",
+    "sdk",
+    "runtime",
+    "scene",
+    "audio"
+  ],
+  "startedAt": "2026-11-07T15:08:40.086Z",
+  "commands": [
+    {
+      "name": "prepare",
+      "argv": [
+        "/opt/homebrew/Cellar/bun/1.4.4_1/bin/bun",
+        "test/native/prepare.ts",
+        "runtime",
+        "scene",
+        "--profile",
+        "ink-dev"
+      ],
+      "exitCode": 0,
+      "passed": 0,
+      "failed": 0
+    },
+    {
+      "name": "unit",
+      "argv": [
+        "cargo",
+        "test",
+        "--no-fail-fast",
+        "--profile",
+        "ink-dev",
+        "--workspace",
+        "--exclude",
+        "ink-test"
+      ],
+      "exitCode": 0,
+      "passed": 18,
+      "failed": 0
+    },
+    {
+      "name": "compiler",
+      "argv": [
+        "/opt/homebrew/Cellar/bun/1.4.4_1/bin/bun",
+        "test",
+        "./test/compiler"
+      ],
+      "exitCode": 0,
+      "passed": 52,
+      "failed": 0
+    },
+    {
+      "name": "sdk",
+      "argv": [
+        "/opt/homebrew/Cellar/bun/1.4.4_1/bin/bun",
+        "test",
+        "./test/sdk"
+      ],
+      "exitCode": 0,
+      "passed": 52,
+      "failed": 0
+    },
+    {
+      "name": "runtime",
+      "argv": [
+        "cargo",
+        "test",
+        "--no-fail-fast",
+        "--profile",
+        "ink-dev",
+        "-p",
+        "ink-test",
+        "--test",
+        "runtime",
+        "--test",
+        "split_web",
+        "--test",
+        "data"
+      ],
+      "exitCode": 0,
+      "passed": 29,
+      "failed": 0
+    },
+    {
+      "name": "scene",
+      "argv": [
+        "cargo",
+        "test",
+        "--no-fail-fast",
+        "--profile",
+        "ink-dev",
+        "-p",
+        "ink-test",
+        "--test",
+        "scene",
+        "--test",
+        "navigation",
+        "--test",
+        "images"
+      ],
+      "exitCode": 0,
+      "passed": 18,
+      "failed": 0
+    },
+    {
+      "name": "audio",
+      "argv": [
+        "cargo",
+        "test",
+        "--no-fail-fast",
+        "--profile",
+        "ink-dev",
+        "-p",
+        "ink-test",
+        "--test",
+        "audio"
+      ],
+      "exitCode": 0,
+      "passed": 8,
+      "failed": 0
+    }
+  ],
+  "failures": [],
+  "completedAt": "2026-11-07T15:09:25.768Z"
+}

@@ -1,0 +1,12 @@
+{
+  "serial": "LP3LHMA531900140",
+  "uninstall": "Success",
+  "removed": [
+    "package:com.vandam.ink.startupprobe"
+  ],
+  "otherPackagesRemoved": [],
+  "addedPackageCount": 0,
+  "probePresent": false,
+  "accessibilityBefore": "com.vandam.luma/com.vandam.luma.helper.ActionService",
+  "accessibilityAfter": "com.vandam.luma/com.vandam.luma.helper.ActionService"
+}

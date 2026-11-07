@@ -1,0 +1,10 @@
+{
+  "serial": "emulator-5554",
+  "uninstall": "Success",
+  "removed": [
+    "package:com.vandam.ink.startupprobe"
+  ],
+  "otherPackagesRemoved": [],
+  "addedPackageCount": 0,
+  "probePresent": false
+}

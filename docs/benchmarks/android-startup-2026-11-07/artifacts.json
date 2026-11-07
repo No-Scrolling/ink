@@ -1,0 +1,25 @@
+{
+  "baselineCommit": "0885cd10498e8e8498837a7d9a4391ea87061619",
+  "implementationCommit": "285ab68b0181640323bc57d1fa777b73f0144511",
+  "applicationId": "com.vandam.ink.startupprobe",
+  "baselineApkSha256": "2cb6c71ac94795f45eefcf2026ca394f6a639c2392c91dc25856a09810dacc02",
+  "candidateApkSha256": "ec43936fd29927c7f54fdfe2a0924550385e3b9f06585ae26aab1cf7b5c0e155",
+  "certificateSha256": "65d06f7b177cda50f32bc382daf71605ee490a2b764b87d097a7870e9d0d22cb",
+  "bothAppBytecodeSha256": "ffc21e96c3e415ad86e50c5ac30cd15945c2f95d848abadc6c712245fc8ec709",
+  "bothIconAssetSha256": "135e9d3da0bdac14a396d1034addc34cf36d6c904a8bd1c3e69d7e6cf0df3189",
+  "phone": {
+    "serial": "LP3LHMA531900140",
+    "model": "TLP301",
+    "fingerprint": "Light/LightPhoneIII/LightPhoneIII:14/UKQ1.240321.001/00WW_1_440000:user/release-keys",
+    "cpu0Capacity": 478,
+    "cpu6Capacity": 1024
+  },
+  "emulator": {
+    "serial": "emulator-5554",
+    "avd": "Light_Phone_III",
+    "command": "emulator -avd Light_Phone_III -writable-system",
+    "fingerprint": "Android/sdk_phone64_arm64/emu64a:14/UE1A.230829.036.A1/11228894:userdebug/test-keys"
+  },
+  "build": "INK_KEYSTORE_PASSWORD=<throwaway-key-password> INK_PRESENTATION_TIMING=1 scripts/ink -C .ink/startup-probe build",
+  "notes": "Both APKs used the same throwaway signing key, release Cargo/Gradle settings, Preact app source, bytecode, icons and capabilities. APKs, signing key and temporary build outputs were deleted after measurement."
+}

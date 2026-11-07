@@ -1,0 +1,90 @@
+{
+  "phone": {
+    "counts": {
+      "before": 15,
+      "after": 15
+    },
+    "discards": 0,
+    "metrics": {
+      "totalTimeMs": {
+        "before": 300,
+        "after": 297,
+        "change": -3,
+        "percent": -1,
+        "pairedMedianChange": 2
+      },
+      "javascriptReadyMs": {
+        "before": 588.0000591278076,
+        "after": 511.99984550476074,
+        "change": -76.00021362304688,
+        "percent": -12.9252050987511,
+        "pairedMedianChange": -73.99988174438477
+      },
+      "firstContentMs": {
+        "before": 608.0000400543213,
+        "after": 605.0000190734863,
+        "change": -3.000020980834961,
+        "percent": -0.4934244709205819,
+        "pairedMedianChange": -0.9999275207519531
+      },
+      "pssKb": {
+        "before": 21677,
+        "after": 21124,
+        "change": -553,
+        "percent": -2.551091018129815,
+        "pairedMedianChange": -548
+      },
+      "rssKb": {
+        "before": 134324,
+        "after": 133724,
+        "change": -600,
+        "percent": -0.44668115898871386,
+        "pairedMedianChange": -600
+      }
+    }
+  },
+  "emulator": {
+    "counts": {
+      "before": 15,
+      "after": 15
+    },
+    "discards": 1,
+    "metrics": {
+      "totalTimeMs": {
+        "before": 157,
+        "after": 147,
+        "change": -10,
+        "percent": -6.369426751592357,
+        "pairedMedianChange": -17
+      },
+      "javascriptReadyMs": {
+        "before": 391.00003242492676,
+        "after": 372.999906539917,
+        "change": -18.000125885009766,
+        "percent": -4.6036123765452235,
+        "pairedMedianChange": -14.999866485595703
+      },
+      "firstContentMs": {
+        "before": 423.0000972747803,
+        "after": 414.0000343322754,
+        "change": -9.000062942504883,
+        "percent": -2.1276739652044228,
+        "pairedMedianChange": -11.00015640258789
+      },
+      "pssKb": {
+        "before": 30216,
+        "after": 29845,
+        "change": -371,
+        "percent": -1.2278263171829493,
+        "pairedMedianChange": -417
+      },
+      "rssKb": {
+        "before": 138368,
+        "after": 137988,
+        "change": -380,
+        "percent": -0.2746299722479186,
+        "pairedMedianChange": -400
+      }
+    }
+  }
+}

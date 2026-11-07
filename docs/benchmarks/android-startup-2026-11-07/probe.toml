@@ -1,0 +1,10 @@
+name = "Startup probe"
+package = "com.vandam.ink.startupprobe"
+version = "0.1.0"
+version_code = 1
+capabilities = ["network", "audio-playback", "media-library"]
+
+[signing]
+keystore = "probe.jks"
+key_alias = "probe"
+certificate_sha256 = "65:D0:6F:7B:17:7C:DA:50:F3:2B:C3:82:DA:F7:16:05:EE:49:0A:2B:76:4B:87:D0:97:A7:87:0E:9D:0D:22:CB"

@@ -1,0 +1,297 @@
+{
+  "full": 590261,
+  "cropped": 208722,
+  "saved": 381539,
+  "icons": [
+    {
+      "name": "add",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 5041,
+      "left": 36,
+      "top": 36
+    },
+    {
+      "name": "alarm",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 10593,
+      "left": 18,
+      "top": 22
+    },
+    {
+      "name": "arrow_back",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 6561,
+      "left": 31,
+      "top": 31
+    },
+    {
+      "name": "arrow_back_ios",
+      "filled": 0,
+      "width": 133,
+      "height": 133,
+      "alphaBytes": 17689,
+      "croppedAlphaBytes": 5115,
+      "left": 39,
+      "top": 20
+    },
+    {
+      "name": "arrow_forward",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 6561,
+      "left": 31,
+      "top": 31
+    },
+    {
+      "name": "check",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 5002,
+      "left": 30,
+      "top": 41
+    },
+    {
+      "name": "close",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 5041,
+      "left": 36,
+      "top": 36
+    },
+    {
+      "name": "delete",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 7371,
+      "left": 31,
+      "top": 26
+    },
+    {
+      "name": "download",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 6561,
+      "left": 31,
+      "top": 31
+    },
+    {
+      "name": "edit",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 8281,
+      "left": 26,
+      "top": 26
+    },
+    {
+      "name": "favorite",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 9292,
+      "left": 21,
+      "top": 26
+    },
+    {
+      "name": "folder",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 8181,
+      "left": 21,
+      "top": 31
+    },
+    {
+      "name": "home",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 7371,
+      "left": 31,
+      "top": 26
+    },
+    {
+      "name": "info",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 10201,
+      "left": 21,
+      "top": 21
+    },
+    {
+      "name": "mail",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 8181,
+      "left": 21,
+      "top": 31
+    },
+    {
+      "name": "menu",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 5551,
+      "left": 26,
+      "top": 41
+    },
+    {
+      "name": "more_vert",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 1701,
+      "left": 61,
+      "top": 31
+    },
+    {
+      "name": "pause",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 5041,
+      "left": 36,
+      "top": 36
+    },
+    {
+      "name": "play_arrow",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 3976,
+      "left": 43,
+      "top": 36
+    },
+    {
+      "name": "refresh",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 6561,
+      "left": 31,
+      "top": 31
+    },
+    {
+      "name": "search",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 8281,
+      "left": 26,
+      "top": 26
+    },
+    {
+      "name": "settings",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 10201,
+      "left": 21,
+      "top": 21
+    },
+    {
+      "name": "share",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 9191,
+      "left": 26,
+      "top": 21
+    },
+    {
+      "name": "star",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 9696,
+      "left": 21,
+      "top": 23
+    },
+    {
+      "name": "stop",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 3721,
+      "left": 41,
+      "top": 41
+    },
+    {
+      "name": "upload",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 6561,
+      "left": 31,
+      "top": 31
+    },
+    {
+      "name": "volume_up",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 8008,
+      "left": 26,
+      "top": 27
+    },
+    {
+      "name": "warning",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 10560,
+      "left": 17,
+      "top": 23
+    },
+    {
+      "name": "wifi",
+      "filled": 0,
+      "width": 143,
+      "height": 143,
+      "alphaBytes": 20449,
+      "croppedAlphaBytes": 10320,
+      "left": 11,
+      "top": 28
+    }
+  ]
+}
