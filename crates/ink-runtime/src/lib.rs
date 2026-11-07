@@ -10,7 +10,36 @@ mod data_views;
 mod commit;
 mod binary;
 mod queue;
-pub type EventReceiver = queue::Receiver<Event>;
+/// Receives runtime events and rearms wake notifications when the queue empties.
+/// Nonblocking consumers must drain to empty or request a drain continuation.
+pub struct EventReceiver {
+    inner: queue::Receiver<Event>,
+    wake_pending: Arc<AtomicBool>,
+}
+
+impl EventReceiver {
+    pub fn recv(&self) -> std::result::Result<Event, std::sync::mpsc::RecvError> {
+        self.wake_pending.store(false, Ordering::Release);
+        self.inner.recv()
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> std::result::Result<Event, RecvTimeoutError> {
+        self.wake_pending.store(false, Ordering::Release);
+        self.inner.recv_timeout(timeout)
+    }
+
+    pub fn try_recv(&self) -> std::result::Result<Event, std::sync::mpsc::TryRecvError> {
+        match self.inner.try_recv() {
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Rearm before checking again: an enqueue racing with the first
+                // empty check is either observed here or schedules another wake.
+                self.wake_pending.store(false, Ordering::Release);
+                self.inner.try_recv()
+            }
+            result => result,
+        }
+    }
+}
 pub use bytecode::{Script, compile};
 pub use host::{NativeCall, NativeHost, NativeSession, Responder};
 
@@ -103,9 +132,12 @@ impl AppRuntime {
         let budget = Arc::new(queue::Budget::default());
         let (commands, incoming) = queue::channel(CHANNEL_CAPACITY, budget.clone());
         let (outgoing, events) = queue::channel(CHANNEL_CAPACITY, budget.clone());
+        let wake_pending = Arc::new(AtomicBool::new(false));
+        let events = EventReceiver { inner: events, wake_pending: wake_pending.clone() };
         let outgoing = EventSink {
             sender: outgoing,
             wake: Arc::new(wake),
+            wake_pending,
         };
         let wake = outgoing.wake.clone();
         let stopped = Arc::new(AtomicBool::new(false));
@@ -253,6 +285,7 @@ impl Drop for AppRuntime {
 struct EventSink {
     sender: queue::Sender<Event>,
     wake: Arc<dyn Fn() + Send + Sync>,
+    wake_pending: Arc<AtomicBool>,
 }
 
 impl EventSink {
@@ -285,7 +318,9 @@ impl EventSink {
 
     fn try_send_sized(&self, event: Event, bytes: usize) -> std::result::Result<(), TrySendError<Event>> {
         let result = self.sender.try_send(event, bytes);
-        (self.wake)();
+        if result.is_ok() && !self.wake_pending.swap(true, Ordering::AcqRel) {
+            (self.wake)();
+        }
         result
     }
 }
