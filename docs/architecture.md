@@ -164,7 +164,9 @@ Ink keeps hidden screens mounted and sends native visibility changes without add
 
 Putting the app in the background does not unsubscribe its screen from resources. Native modules handle backgrounding separately; check the module’s page for its behaviour.
 
-When the Android surface disappears, Ink releases its window and swapchain but keeps the Vulkan device, pipelines, glyph atlas and image textures while the activity remains alive. Returning to the app recreates the surface resources. Destroying the activity releases the renderer. Pipeline cache data is saved in Android’s code cache for later launches.
+At engine creation, a Vulkan worker prepares the instance, device, pipelines and glyph atlas while JavaScript starts. Android attaches its window and swapchain when preparation finishes. The UI thread checks readiness without waiting for the worker. If the prepared queue or preferred sRGB format cannot present to the window, a worker creates a window-specific renderer.
+
+When the Android surface disappears, Ink releases its window and swapchain but keeps the Vulkan device, pipelines, glyph atlas and image textures while the activity remains alive. Returning to the app recreates the surface resources. Destroying the activity releases the renderer and cancels delivery of pending preparation. Pipeline cache data is saved in Android’s code cache for later launches.
 
 Hooks release native resources when their effects end. For handles opened directly, call `close()` or unsubscribe when finished. Garbage collection does not close cameras, sockets or players. Reopen saved files by ID; old connection handles cannot be reused.
 

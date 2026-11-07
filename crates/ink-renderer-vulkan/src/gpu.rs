@@ -1124,6 +1124,8 @@ pub struct Surface {
 #[derive(Clone, Copy)]
 pub(crate) enum Presentation {
     Window(*mut c_void),
+    /// Android resources prepared before a window is available.
+    Detached,
     #[cfg_attr(not(feature = "offscreen"), allow(dead_code))]
     Offscreen,
 }
@@ -1132,6 +1134,12 @@ pub(crate) enum Presentation {
 const PRESENT_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
 
 impl Surface {
+    pub fn prepare(pipeline_cache: &[u8]) -> Result<Self> {
+        unsafe {
+            Self::create(Entry::load().context("load Vulkan")?.into(), Presentation::Detached, 1, 1, pipeline_cache)
+        }
+    }
+
     pub unsafe fn new(window: *mut c_void, width: u32, height: u32, pipeline_cache: &[u8]) -> Result<Self> {
         unsafe {
             Self::create(
@@ -1212,7 +1220,7 @@ impl Surface {
     ) -> Result<Self> {
         let window = match target {
             Presentation::Window(window) => Some(window),
-            Presentation::Offscreen => None,
+            Presentation::Offscreen | Presentation::Detached => None,
         };
         let presentable = !matches!(target, Presentation::Offscreen);
         unsafe {
@@ -1541,7 +1549,9 @@ impl Surface {
             {
                 s.timing = GpuTiming::new(s.core.clone(), family)?;
             }
-            s.recreate()?;
+            if !matches!(target, Presentation::Detached) {
+                s.recreate()?;
+            }
             Ok(s)
         }
     }

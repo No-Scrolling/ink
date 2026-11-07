@@ -49,12 +49,20 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
     override fun surfaceCreated(holder: SurfaceHolder) {
         if (handle == 0L || surfaceAttached) return
         val frame = holder.surfaceFrame
-        surfaceAttached = InkNative.nativeAttachSurface(handle, holder.surface, frame.width().coerceAtLeast(1), frame.height().coerceAtLeast(1))
-        if (!surfaceAttached) { scheduleSurfaceRecovery(); return }
+        val result = InkNative.nativeAttachSurface(handle, holder.surface, frame.width().coerceAtLeast(1), frame.height().coerceAtLeast(1))
+        surfaceAttached = result == 1
+        if (!surfaceAttached) {
+            if (result == 2) {
+                handler.removeCallbacks(recoverSurface)
+                handler.postDelayed(recoverSurface, 8L)
+            } else scheduleSurfaceRecovery()
+            return
+        }
         if (scale > 0f) InkNative.nativeSetViewportScale(handle, scale)
         surfaceRetryDelay = 16L
         handler.removeCallbacks(recoverSurface)
-        view.requestFrame()
+        // A commit may already be ready while the renderer was preparing.
+        view.requestCommitFrame()
         callbacks.changed()
     }
 
@@ -71,7 +79,8 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
     private fun detachSurface() {
         handler.removeCallbacksAndMessages(null)
         view.stopScrolling()
-        if (handle != 0L && surfaceAttached) InkNative.nativeDetachSurface(handle)
+        // Also cancel a window-specific worker whose result has not reached the UI thread.
+        if (handle != 0L) InkNative.nativeDetachSurface(handle)
         surfaceAttached = false
     }
 

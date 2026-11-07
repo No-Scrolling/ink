@@ -59,12 +59,13 @@ internal object InkNative {
     external fun nativePublicSans(): ByteBuffer
 
     @JvmStatic
+    // 0: failed, 1: attached, 2: renderer preparation pending.
     external fun nativeAttachSurface(
         handle: Long,
         surface: Surface,
         width: Int,
         height: Int,
-    ): Boolean
+    ): Int
 
     @JvmStatic
     external fun nativeSetKeyboardInset(handle: Long, height: Int): Boolean

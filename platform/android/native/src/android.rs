@@ -76,6 +76,7 @@ struct AndroidEngine {
     idle_renderer: Option<DetachedRenderer>,
     /// Compiled pipelines saved by an earlier launch.
     pipeline_cache: Option<std::path::PathBuf>,
+    preparing_renderer: Option<RendererPreparation>,
     sent_camera_portal: Option<(Option<CameraPortal>, bool)>,
     sent_map_portal: Option<Option<MapPortal>>,
     sent_video_portal: Option<Option<MapPortal>>,
@@ -90,7 +91,7 @@ struct AttachedSurface {
     _window: NativeWindow,
 }
 
-// Vulkan buffers and surface ownership move together, exclusively under the engine mutex.
+// Vulkan buffers and their window move together. A worker or the engine mutex owns them exclusively.
 unsafe impl Send for AttachedSurface {}
 
 impl AttachedSurface {
@@ -102,9 +103,53 @@ impl AttachedSurface {
     }
 }
 
-/// A renderer without a window. Like `AttachedSurface`, it is owned under the engine mutex.
+/// A renderer without a window, owned exclusively by a worker or under the engine mutex.
 struct DetachedRenderer(Renderer);
 unsafe impl Send for DetachedRenderer {}
+
+/// The worker exclusively owns Vulkan objects until the channel transfers them.
+/// Dropping the receiver cancels delivery without joining a driver call on the UI thread.
+struct RendererPreparation {
+    result: std::sync::mpsc::Receiver<anyhow::Result<PreparedRenderer>>,
+    window_bound: bool,
+}
+
+enum PreparedRenderer {
+    Detached(DetachedRenderer),
+    Attached(AttachedSurface),
+}
+
+impl RendererPreparation {
+    fn start(cache: Option<std::path::PathBuf>, window: Option<(NativeWindow, u32, u32)>) -> Self {
+        let (sender, result) = std::sync::mpsc::channel();
+        let window_bound = window.is_some();
+        if let Err(error) = std::thread::Builder::new().name("Ink Vulkan".into()).spawn(move || {
+            let _span = ink_renderer_vulkan::StartupSpan::new("renderer_prepare");
+            let prepared = (|| -> anyhow::Result<PreparedRenderer> {
+                let saved = cache.as_ref().and_then(|path| std::fs::read(path).ok()).unwrap_or_default();
+                let prepared = if let Some((window, width, height)) = window {
+                    let renderer = unsafe { Renderer::with_pipeline_cache(window.ptr().as_ptr().cast(), width, height, &saved)? };
+                    PreparedRenderer::Attached(AttachedSurface { renderer, _window: window })
+                } else {
+                    PreparedRenderer::Detached(DetachedRenderer(Renderer::prepare_android(&saved)?))
+                };
+                let renderer = match &prepared {
+                    PreparedRenderer::Detached(DetachedRenderer(renderer)) => renderer,
+                    PreparedRenderer::Attached(surface) => &surface.renderer,
+                };
+                if let Some(path) = cache {
+                    save_pipeline_cache(path, saved, renderer.pipeline_cache_data().unwrap_or_default());
+                }
+                Ok(prepared)
+            })();
+            // Failed delivery drops resources here, after any driver operation ends.
+            let _ = sender.send(prepared);
+        }) {
+            android_log(ANDROID_LOG_ERROR, &format!("could not start Vulkan worker: {error}"));
+        }
+        Self { result, window_bound }
+    }
+}
 
 /// Save new pipeline cache contents off the UI thread, replacing the file atomically.
 fn save_pipeline_cache(path: std::path::PathBuf, saved: Vec<u8>, data: Vec<u8>) {
@@ -123,12 +168,14 @@ fn save_pipeline_cache(path: std::path::PathBuf, saved: Vec<u8>, data: Vec<u8>) 
 
 impl AndroidEngine {
     fn new(cache: Option<std::path::PathBuf>) -> Self {
+        let preparing_renderer = Some(RendererPreparation::start(cache.clone(), None));
         Self {
             engine: Engine::new(),
             script: None,
             javascript_error: None,
             surface: None,
             idle_renderer: None,
+            preparing_renderer,
             pipeline_cache: cache,
             sent_camera_portal: None,
             sent_map_portal: None,
@@ -141,60 +188,55 @@ impl AndroidEngine {
     }
 
     fn detach(&mut self) {
+        if self.preparing_renderer.as_ref().is_some_and(|pending| pending.window_bound) {
+            self.preparing_renderer = None;
+        }
         if let Some(surface) = self.surface.take() {
             self.idle_renderer = Some(surface.detach());
         }
     }
 
-    /// Create a renderer for `window`, seeded with pipelines compiled by an earlier launch.
-    fn create_renderer(&self, window: *mut std::ffi::c_void, width: u32, height: u32) -> anyhow::Result<Renderer> {
-        let saved = self.pipeline_cache.as_ref().and_then(|path| std::fs::read(path).ok()).unwrap_or_default();
-        let renderer = unsafe { Renderer::with_pipeline_cache(window, width, height, &saved)? };
-        if let Some(path) = &self.pipeline_cache {
-            save_pipeline_cache(path.clone(), saved, renderer.pipeline_cache_data().unwrap_or_default());
-        }
-        Ok(renderer)
-    }
-
     fn attach(&mut self, env: &EnvUnowned<'_>, surface: &JObject<'_>, width: u32, height: u32) -> bool {
-        self.detach();
         self.engine.set_viewport(width, height);
-
-        let Some(window) =
-            (unsafe { NativeWindow::from_surface(env.as_raw().cast(), surface.as_raw()) })
-        else {
-            android_log(ANDROID_LOG_ERROR, "ANativeWindow_fromSurface returned null");
-            return false;
-        };
-        let pointer = window.ptr().as_ptr().cast();
-        let reused = self.idle_renderer.take().and_then(|DetachedRenderer(mut renderer)| {
-            match unsafe { renderer.attach(pointer, width, height) } {
-                Ok(()) => Some(renderer),
+        if let Some(pending) = &self.preparing_renderer {
+            let prepared = match pending.result.try_recv() {
+                Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(anyhow::anyhow!("Vulkan worker stopped")),
+                Ok(result) => result,
+            };
+            self.preparing_renderer = None;
+            match prepared {
+                Ok(PreparedRenderer::Detached(renderer)) => self.idle_renderer = Some(renderer),
+                Ok(PreparedRenderer::Attached(mut surface)) => {
+                    surface.renderer.resize(width, height);
+                    self.surface = Some(surface);
+                }
                 Err(error) => {
-                    android_log(ANDROID_LOG_WARN, &format!("recreating Vulkan device: {error:#}"));
-                    None
+                    android_log(ANDROID_LOG_WARN, &format!("Vulkan preparation failed: {error:#}"));
+                    return false;
                 }
             }
-        });
-        let renderer = match reused.map_or_else(|| self.create_renderer(pointer, width, height), Ok) {
-            Ok(renderer) => renderer,
-            Err(error) => {
-                android_log(
-                    ANDROID_LOG_ERROR,
-                    &format!("failed to initialise Vulkan: {error:#}"),
-                );
+        }
+        if self.surface.is_none() {
+            let Some(window) = (unsafe { NativeWindow::from_surface(env.as_raw().cast(), surface.as_raw()) }) else {
+                android_log(ANDROID_LOG_ERROR, "ANativeWindow_fromSurface returned null");
+                return false;
+            };
+            if let Some(DetachedRenderer(mut renderer)) = self.idle_renderer.take() {
+                match unsafe { renderer.attach(window.ptr().as_ptr().cast(), width, height) } {
+                    Ok(()) => self.surface = Some(AttachedSurface { renderer, _window: window }),
+                    Err(error) => {
+                        android_log(ANDROID_LOG_WARN, &format!("recreating Vulkan device: {error:#}"));
+                        self.preparing_renderer = Some(RendererPreparation::start(self.pipeline_cache.clone(), Some((window, width, height))));
+                        return false;
+                    }
+                }
+            } else {
+                self.preparing_renderer = Some(RendererPreparation::start(self.pipeline_cache.clone(), Some((window, width, height))));
                 return false;
             }
-        };
-
-        self.surface = Some(AttachedSurface {
-            _window: window,
-            renderer,
-        });
-        android_log(
-            ANDROID_LOG_INFO,
-            &format!("attached Vulkan surface {width}x{height}"),
-        );
+        }
+        android_log(ANDROID_LOG_INFO, &format!("attached Vulkan surface {width}x{height}"));
         true
     }
 
@@ -686,12 +728,14 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeAttachSurface(
     surface: JObject<'_>,
     width: jint,
     height: jint,
-) -> jboolean {
+) -> jint {
     let Some(engine) = engine(handle) else {
-        return false;
+        return 0;
     };
     let mut engine = engine.lock_arc();
-    engine.attach(&env, &surface, dimension(width), dimension(height)) as jboolean
+    if engine.attach(&env, &surface, dimension(width), dimension(height)) { 1 }
+    else if engine.preparing_renderer.is_some() { 2 }
+    else { 0 }
 }
 
 #[unsafe(no_mangle)]

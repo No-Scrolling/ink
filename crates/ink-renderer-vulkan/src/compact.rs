@@ -796,6 +796,12 @@ impl Renderer {
         Self::from_surface(surface, width, height)
     }
 
+    /// Prepare Android resources without a window, using the preferred sRGB format.
+    /// Attach validates presentation support; callers can fall back to a window-specific renderer.
+    pub fn prepare_android(pipeline_cache: &[u8]) -> Result<Self> {
+        Self::from_surface(gpu::Surface::prepare(pipeline_cache)?, 1, 1)
+    }
+
     /// Present to `window`. Uploaded glyphs, images and prepared geometry are kept.
     ///
     /// # Safety
