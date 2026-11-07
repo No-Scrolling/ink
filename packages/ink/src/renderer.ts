@@ -1,7 +1,7 @@
 declare const process: { env: { NODE_ENV: string } };
-import { options, render as renderPreact, type ComponentChildren, type VNode } from "preact";
+import { options, render as renderPreact, type Component, type ComponentChildren, type VNode } from "preact";
 import type { ReactNode } from "react";
-import { Activity } from "./visibility";
+import { Activity, activityChanged, isComponentVisible } from "./visibility";
 import { onNativeMessage } from "./native";
 import { pressHandler } from "./press";
 import type { Destination } from "./navigation";
@@ -11,6 +11,8 @@ declare const __inkCommit: (operations: Operation[]) => void;
 declare const __inkPost: (message: string) => void;
 
 type Props = Record<string, unknown>;
+const hostProperties = Symbol("ink.hostProps");
+type HostProps = Props & { [hostProperties]?: Props };
 // Preact only needs tree links and mutation methods; no browser DOM is involved.
 class HostNode {
   id: number;
@@ -21,6 +23,7 @@ class HostNode {
   previousSibling: HostNode | null = null;
   nextSibling: HostNode | null = null;
   hidden = false;
+  mounted = false;
   readonly nodeType: number;
   readonly namespaceURI = "http://www.w3.org/1999/xhtml";
   constructor(readonly type: string, text?: string) {
@@ -37,7 +40,7 @@ class HostNode {
   get data() { return this.props.text; }
   set data(text: unknown) {
     this.props = { text: String(text) };
-    if (mounted.has(this.id)) (textChanges ?? createTextBatch()).push(this.id, String(text));
+    if (this.mounted) (textChanges ?? createTextBatch()).push(this.id, String(text));
   }
   // Native props and callbacks are read together from the completed host vnode.
   setAttribute() {}
@@ -55,7 +58,7 @@ class HostNode {
     else this.firstChild = child;
     if (before) before.previousSibling = child;
     else this.lastChild = child;
-    if (this.id === 0 || mounted.has(this.id)) {
+    if (this.id === 0 || this.mounted) {
       publish(child);
       queue({ op: "insert", id: child.id, parent: this.id, before: before?.id ?? null });
     }
@@ -69,7 +72,7 @@ class HostNode {
   }
   removeChild(child: HostNode) {
     this.unlink(child);
-    if (mounted.has(child.id)) {
+    if (child.mounted) {
       queue({ op: "remove", id: child.id, parent: this.id });
       forget(child);
     }
@@ -136,7 +139,8 @@ function nativeProps(props: Props, type: string): Props {
 }
 
 function publish(instance: Instance) {
-  if (mounted.has(instance.id)) return;
+  if (instance.mounted) return;
+  instance.mounted = true;
   mounted.set(instance.id, instance);
   queue({ op: "create", id: instance.id, type: instance.type, props: nativeProps(instance.props, instance.type) });
   if (instance.hidden) queue({ op: "hidden", id: instance.id, value: true });
@@ -147,6 +151,7 @@ function publish(instance: Instance) {
 }
 
 function forget(instance: Instance) {
+  instance.mounted = false;
   mounted.delete(instance.id);
   for (let child = instance.firstChild; child; child = child.nextSibling) forget(child);
 }
@@ -191,10 +196,11 @@ function compiledListUpdate(previous: Props, props: Props): Props | null {
 
 function update(instance: Instance, type: string, _oldProps: Props, props: Props) {
   const previous = instance.props;
+  if (previous === props) return;
   const isText = type === "Text";
   if (isText) props = hostProps(type, props);
   instance.props = props;
-  if (!mounted.has(instance.id)) return;
+  if (!instance.mounted) return;
   if (type === "NativeList" && props.keyField === "key" && previous.template === props.template) {
     const next = compiledListUpdate(previous, props);
     if (next) queue({ op: "update", id: instance.id, props: next }, true);
@@ -252,7 +258,7 @@ function update(instance: Instance, type: string, _oldProps: Props, props: Props
 function hide(instance: Instance, value: boolean) {
   if (instance.hidden === value) return;
   instance.hidden = value;
-  if (mounted.has(instance.id)) queue({ op: "hidden", id: instance.id, value });
+  if (instance.mounted) queue({ op: "hidden", id: instance.id, value });
 }
 
 function errorMessage(error: unknown, info: { componentStack?: string | null }) {
@@ -265,24 +271,39 @@ function report(error: unknown, info: { componentStack?: string | null }) {
 }
 
 // These fields are the stable, mangled option-hook ABI in the pinned Preact 10.
-type HostVNode = VNode<Props> & { __e?: HostNode; __?: HostVNode; __k?: (HostVNode | null)[] };
-const hooks = options as typeof options & { __c?: (vnode: HostVNode, queue: unknown[]) => void };
+type HostVNode = VNode<Props> & { __e?: HostNode; __?: HostVNode; __k?: (HostVNode | null)[]; __c?: Component };
+const hooks = options as typeof options & {
+  __c?: (vnode: HostVNode, queue: unknown[]) => void;
+  __inkNative?: boolean;
+  __inkHost?: (node: HostNode, type: string, props: Props, vnode: HostVNode) => void;
+};
+hooks.__inkHost = (node, type, props, vnode) => {
+  update(node, type, node.props, props);
+  if (!node.parentNode && isHidden(vnode)) node.hidden = true;
+};
 const previousDiff = options.diffed;
 options.diffed = vnode => {
-  previousDiff?.(vnode);
+  if (typeof vnode.type !== "string" && vnode.type != null) previousDiff?.(vnode);
   const host = vnode as HostVNode;
-  if (typeof host.type === "string" && host.__e) update(host.__e, host.type, host.__e.props, host.props);
-  if (host.__e && (typeof host.type === "string" || host.type == null)) hide(host.__e, isHidden(host));
-  if (host.type === Activity) visitVisibility(host);
+  if (!hooks.__inkNative) {
+    if (typeof host.type === "string" && host.__e) update(host.__e, host.type, host.__e.props, (host.props as HostProps)[hostProperties]!);
+    if (host.__e && (typeof host.type === "string" || host.type == null)) hide(host.__e, isHidden(host));
+  }
+  if (hooks.__inkNative && host.type == null && host.__e) hide(host.__e, isHidden(host));
+  if (host.type === Activity && host.__c && activityChanged(host.__c)) visitVisibility(host);
 };
 
 function isHidden(vnode: HostVNode) {
+  let component: Component | undefined;
   for (let parent = vnode.__; parent; parent = parent.__) {
     // A native ancestor already carries visibility for this entire branch.
     if (typeof parent.type === "string") return false;
-    if (parent.type === Activity && parent.props.mode === "hidden") return true;
+    if (parent.__c) {
+      component ??= parent.__c;
+      if (parent.type === Activity) return !isComponentVisible(parent.__c);
+    }
   }
-  return false;
+  return component ? !isComponentVisible(component) : false;
 }
 
 function visitVisibility(vnode: HostVNode) {
@@ -295,15 +316,19 @@ function visitVisibility(vnode: HostVNode) {
 
 const previousVNode = options.vnode;
 options.vnode = vnode => {
-  // Compat normalises DOM attributes and event names. Ink hosts use the
-  // native prop protocol directly; component vnodes still use its hook chain.
-  if (typeof vnode.type === "string") {
-    (vnode as VNode & { $typeof?: symbol }).$typeof = Symbol.for("react.element");
-  } else previousVNode?.(vnode);
-  if (vnode.type === "Text") {
-    const props = vnode.props as Props;
-    const text = textContent("Text", props);
-    if (text !== null) (vnode as HostVNode).props = { ...props, text, children: undefined };
+  if (typeof vnode.type !== "string") {
+    previousVNode?.(vnode);
+    return;
+  }
+  const props = vnode.props as HostProps;
+  // Preact reconciles children; Ink compares native props once, after the diff.
+  // Keep the original props in this envelope so cloned compiler-cached vnodes
+  // retain them without copying or normalising every native property.
+  if (!hooks.__inkNative && !props[hostProperties]) {
+    (vnode as VNode<HostProps>).props = {
+      children: (textContent(vnode.type, props) === null ? props.children : undefined) as ComponentChildren,
+      [hostProperties]: props,
+    };
   }
 };
 

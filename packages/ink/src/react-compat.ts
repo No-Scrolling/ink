@@ -1,22 +1,24 @@
 import React from "preact/compat";
-import { Activity } from "./visibility";
-import { useRef, useLayoutEffect, useCallback } from "preact/hooks";
-const compatibleReact = /* @__PURE__ */ Object.assign({}, React, { Activity, useEffectEvent });
+import { cloneElement, isValidElement } from "preact";
+import { Activity, useEffect, useLayoutEffect, useSyncExternalStore, useImperativeHandle } from "./visibility";
+import { useRef, useCallback, useLayoutEffect as commitLayoutEffect } from "preact/hooks";
+const compatibleReact = /* @__PURE__ */ Object.assign({}, React, { Activity, cloneElement, isValidElement, useEffect, useLayoutEffect, useSyncExternalStore, useImperativeHandle, useEffectEvent });
 export default compatibleReact;
 export {
   Children, Component, Fragment, PureComponent, StrictMode, Suspense, SuspenseList,
-  cloneElement, createContext, createElement, createFactory, createPortal, createRef,
-  findDOMNode, flushSync, forwardRef, hydrate, isValidElement, lazy, memo, render,
+  createContext, createElement, createFactory, createPortal, createRef,
+  findDOMNode, flushSync, forwardRef, hydrate, lazy, memo, render,
   startTransition, unmountComponentAtNode, unstable_batchedUpdates,
-  useCallback, useContext, useDebugValue, useDeferredValue, useEffect,
-  useId, useImperativeHandle, useInsertionEffect, useLayoutEffect, useMemo, useReducer,
-  useRef, useState, useSyncExternalStore, useTransition, version,
+  useCallback, useContext, useDebugValue, useDeferredValue,
+  useId, useInsertionEffect, useMemo, useReducer,
+  useRef, useState, useTransition, version,
 } from "preact/compat";
-export { Activity } from "./visibility";
+export { cloneElement, isValidElement } from "preact";
+export { Activity, useEffect, useLayoutEffect, useSyncExternalStore, useImperativeHandle } from "./visibility";
 
 /** Effect events retain their identity and read the latest committed callback. */
 export function useEffectEvent<T extends (...args: never[]) => unknown>(callback: T): T {
   const current = useRef(callback);
-  useLayoutEffect(() => { current.current = callback; });
+  commitLayoutEffect(() => { current.current = callback; });
   return useCallback(((...args: Parameters<T>) => current.current(...args)) as T, []);
 }

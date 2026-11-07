@@ -59,11 +59,13 @@ test("production JSX and compiler caches deliver current callbacks and batched t
   await project(async (_root, build) => {
     const app = runtime();
     app.evaluate(await build(`
-import { useState } from "react";
+import React, { cloneElement, isValidElement, useState } from "react";
 import { Screen, Stack, Text } from "ink";
 export default function App() {
   const [count, setCount] = useState(0);
-  return <Screen><Stack><Text>{"First " + count}</Text><Text>{"Second " + count}</Text>
+  const first = <Text>Unchanged source</Text>;
+  if (!isValidElement(first) || !React.isValidElement(first)) throw new Error("Invalid Ink element");
+  return <Screen><Stack>{cloneElement(first, {children: "First " + count})}<Text>{"Second " + count}</Text>
     <Text onPress={() => setCount(count + 1)}>Increase</Text><Text>Mixed {count}</Text></Stack></Screen>;
 }`));
     await app.settle();
@@ -174,5 +176,230 @@ export default function App() {
     expect(app.batches.flat().some(op => op.props?.text === "Ready")).toBe(true);
     expect(app.batches.flat().some(op => op.op === "remove")).toBe(true);
     expect(app.messages.filter(message => message.type === "error")).toEqual([]);
+  });
+});
+
+const activityContract = `import { useLibraryEffects } from "effect-library";
+import { Activity, memo, useEffect, useEffectEvent, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { onNativeMessage } from "ink/native";
+const log = label => __inkPost(JSON.stringify({type:"effect", label}));
+let snapshot = 0;
+let bump, read;
+const listeners = new Set();
+const subscribe = listener => { log("subscribe"); listeners.add(listener); return () => {log("unsubscribe");listeners.delete(listener);}; };
+const getSnapshot = () => snapshot;
+const Child = memo(function Child({value}) {
+ useLibraryEffects("child", value);
+ const data = useSyncExternalStore(subscribe, getSnapshot);
+ return <Text>{"Data "+data}</Text>;
+});
+function Parent({value}) {
+ useLibraryEffects("parent", value);
+ const [count,setCount] = useState(0);
+ bump = () => setCount(value => value + 1);
+ read = useEffectEvent(() => __inkPost(JSON.stringify({type:"callback",count})));
+ useLayoutEffect(() => { read(); return () => { read(); }; }, [count]);
+ return <Stack><Text onPress={()=>setCount(count+1)}>{"Count "+count}</Text><Child value={value}/></Stack>;
+}
+export default function App() {
+ const [visible,setVisible] = useState(true);
+ const [value,setValue] = useState(0);
+ const [mounted,setMounted] = useState(true);
+ useEffect(() => onNativeMessage("contract", message => {
+  if(message.command==="hide")setVisible(false);
+  if(message.command==="show")setVisible(true);
+  if(message.command==="change")setValue(1);
+  if(message.command==="bump")bump();
+  if(message.command==="read")read();
+  if(message.command==="publish"){snapshot=2;for(const listener of listeners)listener();}
+  if(message.command==="remove")setMounted(false);
+ }),[]);
+ return mounted && <Activity mode={visible?"visible":"hidden"}><Parent value={value}/></Activity>;
+}
+const Stack = "Stack", Text = "Text";
+`;
+
+// Expected ordering was checked against current main's real React renderer.
+// The assertions describe the contract rather than comparing two runtimes.
+test("Activity disconnects app and library effects in React order, retaining state and native nodes", async () => {
+  await project(async (root, build) => {
+    const library = resolve(root, "node_modules/effect-library");
+    await mkdir(library);
+    await writeFile(resolve(library, "package.json"), '{"name":"effect-library","main":"index.js"}');
+    await writeFile(resolve(library, "index.js"), `import React from "react";
+const log = label => __inkPost(JSON.stringify({type:"effect", label}));
+export function useLibraryEffects(name, value) {
+ React.useLayoutEffect(() => { log(name+" layout "+value); return () => log(name+" layout cleanup "+value); }, [value]);
+ React.useEffect(() => { log(name+" passive "+value); return () => log(name+" passive cleanup "+value); }, [value]);
+}
+`);
+    const app = runtime();
+    const labels = () => app.messages.splice(0).filter(message => message.type === "effect").map(message => message.label);
+    app.evaluate(await build(activityContract));
+    await app.settle();
+    expect(labels()).toEqual(["child layout 0", "parent layout 0", "child passive 0", "subscribe", "parent passive 0"]);
+    const button = app.batches.flat().find(op => op.props?.text === "Count 0")!.id;
+    app.evaluate(`__inkReceive(${JSON.stringify(JSON.stringify({type:"event",id:button,name:"onPress",args:[]}))})`);
+    await app.settle();
+    expect(app.messages.filter(message => message.type === "callback")).toEqual([{type:"callback",count:1},{type:"callback",count:1}]);
+    expect(labels()).toEqual([]);
+    app.batches.length = 0;
+    app.send("hide"); await app.settle();
+    expect(labels()).toEqual(["parent layout cleanup 0", "child layout cleanup 0", "parent passive cleanup 0", "child passive cleanup 0", "unsubscribe"]);
+    app.batches.length = 0;
+    app.send("change"); await app.settle();
+    app.send("bump"); await app.settle();
+    expect(app.messages.filter(message => message.type === "callback")).toEqual([]);
+    app.send("read"); await app.settle();
+    expect(app.messages).toContainEqual({type:"callback",count:2});
+    app.send("publish"); await app.settle();
+    expect(labels()).toEqual([]);
+    app.send("show"); await app.settle();
+    expect(labels()).toEqual(["child layout 1", "parent layout 1", "child passive 1", "subscribe", "parent passive 1"]);
+    expect(app.batches.flat().some(op => op.op === "create" || op.op === "remove")).toBe(false);
+    expect(app.batches.flat().some(op => op.changes?.includes("Count 0"))).toBe(false);
+    expect(app.batches.flat().some(op => op.changes?.includes("Data 2"))).toBe(true);
+    expect(app.batches.flat().some(op => op.changes?.includes("Count 2"))).toBe(true);
+    app.send("remove"); await app.settle();
+    expect(labels()).toEqual(["parent layout cleanup 1", "child layout cleanup 1", "parent passive cleanup 1", "child passive cleanup 1", "unsubscribe"]);
+  });
+});
+
+test("nested Activity keeps initially hidden effects disconnected and respects hidden ancestors", async () => {
+  await project(async (_root, build) => {
+    const app = runtime();
+    app.evaluate(await build(`
+import { Activity, memo, useEffect, useLayoutEffect, useState } from "react";
+import { onNativeMessage } from "ink/native";
+const log = label => __inkPost(JSON.stringify({type:"effect", label}));
+const Child = memo(function Child() {
+  useLayoutEffect(() => {log("child layout");return () => log("child layout cleanup");}, []);
+  useEffect(() => {log("child passive");return () => log("child passive cleanup");}, []);
+  return "Retained child";
+});
+function Parent({inner}) {
+  useLayoutEffect(() => {log("parent layout");return () => log("parent layout cleanup");}, []);
+  useEffect(() => {log("parent passive");return () => log("parent passive cleanup");}, []);
+  return <Activity mode={inner ? "visible" : "hidden"}><Child /></Activity>;
+}
+export default function App() {
+  const [outer,setOuter] = useState(false);
+  const [inner,setInner] = useState(false);
+  useEffect(() => onNativeMessage("contract", message => {
+    if(message.command==="outerShow")setOuter(true);
+    if(message.command==="outerHide")setOuter(false);
+    if(message.command==="innerShow")setInner(true);
+    if(message.command==="innerHide")setInner(false);
+  }),[]);
+  return <Activity mode={outer ? "visible" : "hidden"}><Parent inner={inner}/></Activity>;
+}`));
+    const labels = () => app.messages.splice(0).filter(message => message.type === "effect").map(message => message.label);
+    await app.settle();
+    expect(labels()).toEqual([]);
+    app.send("innerShow"); await app.settle();
+    expect(labels()).toEqual([]);
+    app.send("outerShow"); await app.settle();
+    expect(labels()).toEqual(["child layout", "parent layout", "child passive", "parent passive"]);
+    app.send("outerHide"); await app.settle();
+    expect(labels()).toEqual(["parent layout cleanup", "child layout cleanup", "parent passive cleanup", "child passive cleanup"]);
+    app.send("innerHide"); await app.settle();
+    expect(labels()).toEqual([]);
+    app.send("outerShow"); await app.settle();
+    expect(labels()).toEqual(["parent layout", "parent passive"]);
+    app.send("innerShow"); await app.settle();
+    expect(labels()).toEqual(["child layout", "child passive"]);
+    expect(app.messages.filter(message => message.type === "error")).toEqual([]);
+  });
+});
+
+test("Activity disconnects imperative handles and reconnects retained component state", async () => {
+  await project(async (_root, build) => {
+    const app = runtime();
+    app.evaluate(await build(`
+import { Activity, forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { onNativeMessage } from "ink/native";
+const Page = forwardRef(function Page(props, ref) {
+  const [value] = useState(41);
+  useImperativeHandle(ref, () => ({value}), []);
+  return null;
+});
+export default function App() {
+  const [visible,setVisible] = useState(true);
+  const ref = useRef(null);
+  useEffect(() => onNativeMessage("contract", message => {
+    if(message.command==="hide")setVisible(false);
+    if(message.command==="show")setVisible(true);
+    if(message.command==="read")__inkPost(JSON.stringify({type:"handle",value:ref.current?.value ?? null}));
+  }),[]);
+  return <Activity mode={visible ? "visible" : "hidden"}><Page ref={ref}/></Activity>;
+}`));
+    await app.settle();
+    app.send("read"); await app.settle();
+    app.send("hide"); await app.settle();
+    app.send("read"); await app.settle();
+    app.send("show"); await app.settle();
+    app.send("read"); await app.settle();
+    expect(app.messages).toEqual([{type:"handle",value:41},{type:"handle",value:null},{type:"handle",value:41}]);
+  });
+});
+
+test("cached host children retain context and route effect failures to their error boundary", async () => {
+  await project(async (_root, build) => {
+    const app = runtime();
+    app.evaluate(await build(`
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { Stack, Text } from "ink";
+import { onNativeMessage } from "ink/native";
+const Context = createContext(0);
+class Boundary extends React.Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? <Text>Recovered effect</Text> : this.props.children; }
+}
+function Page() {
+  const value = useContext(Context);
+  useEffect(() => { if (value === 1) throw new Error("effect failed"); }, [value]);
+  return <Text>Before effect</Text>;
+}
+const retained = <Stack><Page /></Stack>;
+export default function App() {
+  const [value,setValue] = useState(0);
+  useEffect(() => onNativeMessage("contract", () => setValue(1)), []);
+  return <Boundary><Context.Provider value={value}>{retained}</Context.Provider></Boundary>;
+}
+`));
+    await app.settle();
+    expect(app.batches.flat().some(op => op.props?.text === "Before effect")).toBe(true);
+    app.send("fail"); await app.settle();
+    expect(app.batches.flat().some(op => op.props?.text === "Recovered effect")).toBe(true);
+    expect(app.messages).toEqual([]);
+  });
+});
+
+test("Suspense does not start effects from a render that suspended", async () => {
+  await project(async (_root, build) => {
+    const app = runtime();
+    app.evaluate(await build(`
+import { Suspense, useEffect } from "react";
+import { Text } from "ink";
+import { onNativeMessage } from "ink/native";
+let ready = false, resolve;
+const pending = new Promise(done => { resolve = done; });
+function Page() {
+  useEffect(() => { __inkPost(JSON.stringify({type:"effect",label:"started"})); }, []);
+  if (!ready) throw pending;
+  return <Text>Ready content</Text>;
+}
+export default function App() {
+  useEffect(() => onNativeMessage("contract", () => { ready = true; resolve(); }), []);
+  return <Suspense fallback={<Text>Loading content</Text>}><Page /></Suspense>;
+}
+`));
+    await app.settle();
+    expect(app.messages).toEqual([]);
+    expect(app.batches.flat().some(op => op.props?.text === "Loading content")).toBe(true);
+    app.send("resolve"); await app.settle();
+    expect(app.messages).toEqual([{type:"effect",label:"started"}]);
+    expect(app.batches.flat().some(op => op.props?.text === "Ready content")).toBe(true);
   });
 });

@@ -6,6 +6,44 @@ import { compileDataViews } from "./data-views.js";
 import { compileNativeLists } from "./native-lists.js";
 const [root, entry, output, profile = "release", routing] = Bun.argv.slice(2);
 const development = profile === "development";
+
+// Keep Preact's component/key/ref reconciliation, replacing only its browser
+// element driver. The hash guards the private helper ABI of Preact 10.29.3.
+function nativePreact(contents) {
+  const hash = new Bun.CryptoHasher("sha256").update(contents).digest("hex");
+  if (hash !== "0e45430f304ba64df2a5611b0c97043d5480491c044c139b503d1f2e5a3f7729")
+    throw new Error("Preact core changed: update Ink's native element driver and runtime contracts");
+  const start = contents.indexOf("function G(");
+  const end = contents.indexOf("function J(", start);
+  const driver = `function G(dom, next, previous, context, namespace, excess, commits, hydrating, refs) {
+    const type = next.type;
+    const props = next.props;
+    if (type == null) {
+      if (!dom) return document.createTextNode(props);
+      if (previous.props !== props) dom.data = props;
+      return dom;
+    }
+    if (!dom) dom = document.createElementNS(namespace, type);
+    l.__inkHost(dom, type, props, next);
+    const value = props.text ?? props.children;
+    const primitive = type === "Text" && (typeof value === "string" || typeof value === "number" || typeof value === "bigint");
+    const children = primitive ? null : props.children;
+    if (children != null || previous.__k && previous.__k.length) {
+      L(dom, g(children) ? children : [children], next, previous, context,
+        namespace, null, commits, previous.__k && $(previous, 0), false, refs);
+    } else next.__k = w;
+    return dom;
+  }`;
+  contents = contents.slice(0, start) + driver + contents.slice(end);
+  // Host nodes have no hooks, refresh signatures or component lifecycles.
+  contents = contents.replace("(s=l.__b)&&s(u);n:if", '"function"==typeof j&&(s=l.__b)&&s(u);n:if');
+  contents = contents.replace("return(s=l.diffed)&&s(u),128&u.__u", 'return("function"==typeof j||j==null)&&(s=l.diffed)&&s(u),128&u.__u');
+  // Release retired vnode cycles promptly in a reference-counted interpreter.
+  // Reparent cached host children first; placement still sees the old links.
+  contents = contents.replace("?(u.__k=t.__k,u.__e=t.__e):f=u.__e=G", "?(u.__k=t.__k,u.__e=t.__e,u.__k&&u.__k.length&&u.__k.forEach(function(child){if(child)child.__=u})):f=u.__e=G");
+  contents = contents.replace("p.__u&=-7);return u.__e=y,f", "p.__u&=-7,h!==d&&h!==p&&(h.__=null,h.__k=null));return u.__e=y,f");
+  return contents + "\nl.__inkNative = true;\n";
+}
 if (routing === "routes") {
   const { generateFileRoutes } = await import("./file-routes.js");
   await generateFileRoutes(root, resolve(dirname(entry), "routes.tsx"));
@@ -179,8 +217,8 @@ function buildOptions(bootstrap = false) { return {
         "react-dom": "preact/compat",
         "react-dom/client": "preact/compat/client",
         "react-dom/test-utils": "preact/test-utils",
-        "react/jsx-runtime": "preact/jsx-runtime",
-        "react/jsx-dev-runtime": "preact/jsx-dev-runtime",
+        "react/jsx-runtime": resolve(frameworkDirectory, "jsx-runtime.ts"),
+        "react/jsx-dev-runtime": resolve(frameworkDirectory, "jsx-runtime.ts"),
         "react/compiler-runtime": resolve(frameworkDirectory, "compiler-runtime.ts"),
       };
       const target = aliases[path] ?? path;
@@ -197,6 +235,7 @@ function buildOptions(bootstrap = false) { return {
       const packageName = await inspect(path);
       const extension = extname(path).slice(1);
       let contents = await Bun.file(path).text();
+      if (packageName === "preact" && path.endsWith("/dist/preact.mjs")) contents = nativePreact(contents);
       if (!inspectedNativeModules.has(path)) {
         inspectedNativeModules.add(path);
         const source = ts.createSourceFile(path, contents, ts.ScriptTarget.Latest, true);
