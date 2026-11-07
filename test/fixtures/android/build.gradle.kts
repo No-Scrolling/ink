@@ -28,6 +28,7 @@ kotlin {
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
             "**/NativeRequests.kt", "**/InkFetchStreams.kt", "**/InkManagedFiles.kt", "**/SecureStoreAdapter.kt",
+            "**/SplineFling.kt", "**/SplineFlingContracts.kt",
         )
     }
 }

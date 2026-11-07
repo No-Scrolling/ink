@@ -13,7 +13,6 @@ import android.view.SurfaceView
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
-import android.widget.OverScroller
 import kotlin.math.abs
 
 internal class InkHost(context: Context, handle: Long, private val callbacks: Callbacks, private val scale: Float = 0f) : SurfaceHolder.Callback, AutoCloseable {
@@ -178,7 +177,7 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
         private val touchSlop = viewConfiguration.scaledTouchSlop
         private val doubleTapSlop = viewConfiguration.scaledDoubleTapSlop
         private val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
-        private val scroller = OverScroller(context)
+        private val fling = SplineFling(resources.displayMetrics.density, ViewConfiguration.getScrollFriction())
         private val scaleGestureDetector = ScaleGestureDetector(
             context,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -245,7 +244,7 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
         }
         private val pendingMoves = mutableMapOf<Int, Pair<Float, Float>>()
         private val hasPendingMove: Boolean get() = pendingMoves.isNotEmpty()
-        private var lastFlingY = 0
+        private var lastFlingY = 0f
         private var waitingFlingVelocity = 0
         private var capturedGesture = false
         private var pinchActive = false
@@ -257,7 +256,7 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
         private var previousImageTapX = 0f
         private var previousImageTapY = 0f
         private var velocityTracker: VelocityTracker? = null
-        private val frameCallback = Choreographer.FrameCallback {
+        private val frameCallback = Choreographer.FrameCallback { frameTimeNanos ->
             if (BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FrameCallback ns=${System.nanoTime()}")
             callbacks.beforeFrame()
             framePosted = false
@@ -284,27 +283,29 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
             if (pending && waitingFlingVelocity != 0) {
                 when (InkNative.nativeScrollBy(handle, 1f)) {
                     SCROLL_CHANGED -> {
-                        startFling(waitingFlingVelocity)
+                        startFling(waitingFlingVelocity, frameTimeNanos)
                         changed = true
                     }
                     0 -> waitingFlingVelocity = 0
                 }
             }
-            if (scroller.computeScrollOffset()) {
-                val y = scroller.currY
+            val wasFlinging = !fling.isFinished
+            if (fling.advance(frameTimeNanos)) {
+                val y = fling.position
                 val delta = y - lastFlingY
                 lastFlingY = y
-                if (delta != 0) {
-                    when (InkNative.nativeScrollBy(handle, delta.toFloat())) {
+                if (delta != 0f) {
+                    when (InkNative.nativeScrollBy(handle, delta)) {
                         SCROLL_CHANGED -> changed = true
                         SCROLL_PENDING -> {
-                            waitingFlingVelocity = scroller.currVelocity.toInt()
-                            scroller.forceFinished(true)
+                            waitingFlingVelocity = fling.velocity.toInt()
+                            fling.stop()
                         }
-                        else -> scroller.abortAnimation()
+                        else -> fling.stop()
                     }
                 }
             }
+            if (wasFlinging && fling.isFinished && BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FlingFinished ns=${System.nanoTime()}")
             if (changed) {
                 if (presentBeforeMove) renderPending = true else presentFrame()
             }
@@ -517,7 +518,7 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
         }
 
         private fun canPresentCommit(): Boolean =
-            !touchActive && !pinchActive && !hasPendingMove && scroller.isFinished && waitingFlingVelocity == 0 &&
+            !touchActive && !pinchActive && !hasPendingMove && fling.isFinished && waitingFlingVelocity == 0 &&
                 !InkNative.nativeHasSceneAnimations(handle)
 
         private fun presentFrame() {
@@ -542,26 +543,18 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
             renderPending = false
         }
 
-        private fun startFling(velocityY: Int) {
+        private fun startFling(velocityY: Int, timeNanos: Long = System.nanoTime()) {
             // Prepending rows shifts content coordinates; clamp travel against the live layout.
-            lastFlingY = 0
+            lastFlingY = 0f
             waitingFlingVelocity = 0
-            scroller.fling(
-                0,
-                0,
-                0,
-                velocityY,
-                0,
-                0,
-                Int.MIN_VALUE,
-                Int.MAX_VALUE,
-            )
+            fling.start(velocityY, timeNanos)
+            if (BuildConfig.INK_PRESENTATION_TIMING) Log.i("Ink", "FlingStarted velocity=$velocityY distance=${fling.distance} duration_ns=${fling.durationNanos} ns=$timeNanos")
             postFrame()
         }
 
         private fun postFrame() {
             val delay = when {
-                renderPending || hasPendingMove || !scroller.isFinished -> 0L
+                renderPending || hasPendingMove || !fling.isFinished -> 0L
                 surfaceAttached && handle != 0L -> InkNative.nativeNextSceneFrame(handle)
                 else -> -1L
             }
@@ -580,7 +573,7 @@ internal class InkHost(context: Context, handle: Long, private val callbacks: Ca
 
         private fun stopFling() {
             waitingFlingVelocity = 0
-            scroller.abortAnimation()
+            fling.stop()
             pendingMoves.clear()
             if (framePosted) {
                 choreographer.removeFrameCallback(frameCallback)
