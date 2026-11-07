@@ -117,3 +117,11 @@ sdkmanager --licenses
 Source-checkout development uses `scripts/ink` and local `file:` dependencies. App commands resolve their SDK from the app's `ink` dependency. When the launcher belongs to another checkout, build and editing commands forward to the selected SDK's launcher. `INK_SDK_ROOT` selects the SDK for app creation and environment checks only. Installed releases use registry packages and never dispatch through another source checkout.
 
 To move an app between checkouts, update its `ink` and `@ink/*` `file:` dependencies in `package.json`, remove obsolete Ink `overrides` produced by older scaffolds, then run the new checkout's `scripts/ink add` with your existing modules and `scripts/ink check` from the app directory. Apps without modules can run `bun install` instead. All Ink packages must come from that checkout. Workspace examples use their enclosing SDK.
+
+## Verify Android dependency updates
+
+Android builds verify downloaded dependencies against `platform/android/gradle/verification-metadata.xml`. The Gradle distribution has a separate SHA-256 checksum in `gradle-wrapper.properties`.
+
+When updating Android dependencies, resolve the affected capability combinations with `--write-verification-metadata sha256`, review the added artefacts and checksums, and commit the metadata with the dependency change. Rebuild without that option to confirm verification passes. Do not disable verification to accept a new dependency.
+
+Native app modules must use dependencies covered by the SDK’s verification metadata. Add and review missing entries in the SDK before distributing a release that requires them.

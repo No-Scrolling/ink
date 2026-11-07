@@ -3,6 +3,7 @@ use std::{fs, path::Path};
 use anyhow::{Result, ensure};
 
 const FILES: &[(&str, &str)] = &[
+    (".github/install-ink.sh", include_str!("../../../scripts/install.sh")),
     (
         ".github/workflows/prepare-release.yml",
         include_str!("app-release/prepare-release.yml"),
@@ -41,6 +42,7 @@ pub fn setup(root: &Path) -> Result<()> {
     println!("Ink · setup release");
     crate::output::tree_step("Workflows", "Prepare Release and Release", true, true);
     println!("\nAdd INK_KEYSTORE_BASE64 and INK_KEYSTORE_PASSWORD as GitHub Actions secrets.");
+    println!("Set INK_SIGNING_CERT_SHA256 to your signing certificate SHA-256 fingerprint.");
     println!("Set INK_KEY_ALIAS as a repository variable if your alias is not app.");
     println!("Allow GitHub Actions to create pull requests, then run Prepare Release.");
     Ok(())

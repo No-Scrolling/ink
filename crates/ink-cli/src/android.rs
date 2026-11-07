@@ -109,7 +109,11 @@ pub fn build(project: &Project, profile: Profile, verbose: bool) -> Result<Build
     let artifact = build_stage("Android", || {
         assemble(project, profile, verbose, project.light_server())
     })?;
-    if let Err(error) = verify_apk(&artifact.apk, verbose) {
+    if let Err(error) = if profile == Profile::Release {
+        crate::apk::verify(project, &artifact.apk, &android_sdk()?, &apksigner()?)
+    } else {
+        verify_apk(&artifact.apk, verbose)
+    } {
         output::tree_root_field("Verify", "failed", true);
         return Err(error);
     }
@@ -192,6 +196,7 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
         if env::var_os("INK_KEY_PASSWORD").is_none() {
             output::warning("INK_KEY_PASSWORD is unset; using INK_KEYSTORE_PASSWORD");
         }
+        crate::apk::expected_certificate(signing)?;
         Some(signing)
     } else {
         None

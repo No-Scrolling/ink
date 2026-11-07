@@ -379,7 +379,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
             "cargo", "ndk", "-t", "arm64-v8a",
             "--platform", android.defaultConfig.minSdk.toString(),
             "-o", generatedJniRoot.get().dir(variant).asFile.absolutePath,
-            "build", "-p", "ink-android",
+            "build", "--locked", "-p", "ink-android",
         ))
         addAll(profile)
         for ((feature, enabled) in listOf(

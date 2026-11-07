@@ -22,10 +22,10 @@ jobs:
     env:
       INK_SKIP_SETUP: '1'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.4.2'
       - id: app
@@ -39,9 +39,10 @@ jobs:
         env:
           KEYSTORE: ${{ secrets.INK_KEYSTORE_BASE64 }}
           PASSWORD: ${{ secrets.INK_KEYSTORE_PASSWORD }}
+          CERTIFICATE: ${{ vars.INK_SIGNING_CERT_SHA256 }}
         run: |
-          if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ]; then
-            echo '::error::Add INK_KEYSTORE_BASE64 and INK_KEYSTORE_PASSWORD in repository Settings → Secrets and variables → Actions.'
+          if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ] || [ -z "$CERTIFICATE" ]; then
+            echo '::error::Add INK_KEYSTORE_BASE64 and INK_KEYSTORE_PASSWORD secrets and the INK_SIGNING_CERT_SHA256 variable in repository Settings → Secrets and variables → Actions.'
             exit 1
           fi
       - name: Reserve the release tag
@@ -54,8 +55,7 @@ jobs:
           INK_HOME: ${{ runner.temp }}/ink
           INK_BIN_DIR: ${{ runner.temp }}/ink-bin
         run: |
-          curl -fsSL https://ink.noscroll.ing/install.sh -o "$RUNNER_TEMP/install-ink.sh"
-          sh "$RUNNER_TEMP/install-ink.sh"
+          sh .github/install-ink.sh
           echo "INK_HOME=$INK_HOME" >> "$GITHUB_ENV"
           echo "$INK_BIN_DIR" >> "$GITHUB_PATH"
           echo "$INK_HOME/current/bin" >> "$GITHUB_PATH"
@@ -63,7 +63,7 @@ jobs:
         if: steps.app.outputs.changed == 'true'
         name: Read Ink build requirements
         run: bun .github/ink-release.mjs toolchain
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         if: steps.app.outputs.changed == 'true'
         with:
           distribution: temurin
@@ -97,6 +97,7 @@ jobs:
           INK_KEYSTORE_PASSWORD: ${{ secrets.INK_KEYSTORE_PASSWORD }}
           INK_KEY_PASSWORD: ${{ secrets.INK_KEY_PASSWORD || secrets.INK_KEYSTORE_PASSWORD }}
           INK_KEY_ALIAS: ${{ vars.INK_KEY_ALIAS || 'app' }}
+          INK_SIGNING_CERT_SHA256: ${{ vars.INK_SIGNING_CERT_SHA256 }}
           APK_NAME: ${{ steps.app.outputs.apk }}
           BUILD_TOOLS_VERSION: ${{ steps.tools.outputs.build_tools }}
         run: |
@@ -115,7 +116,7 @@ jobs:
           "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "release/$APK_NAME"
           cd release
           sha256sum "$APK_NAME" > SHA256SUMS
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: steps.app.outputs.changed == 'true'
         with:
           name: signed-apk

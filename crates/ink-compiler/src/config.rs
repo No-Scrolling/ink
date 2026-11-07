@@ -27,6 +27,7 @@ struct AppConfig {
 struct SigningConfig {
     keystore: PathBuf,
     key_alias: String,
+    certificate_sha256: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +60,7 @@ struct AuthConfig {
 pub struct ReleaseSigning {
     pub keystore: PathBuf,
     pub key_alias: String,
+    pub certificate_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -106,6 +108,7 @@ impl ResolvedConfig {
             signing: config.signing.map(|signing| ReleaseSigning {
                 keystore: directory.join(signing.keystore),
                 key_alias: signing.key_alias,
+                certificate_sha256: signing.certificate_sha256,
             }),
             light_server: config
                 .lightos

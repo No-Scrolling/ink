@@ -27,13 +27,18 @@ Add its location to `ink.toml`:
 [signing]
 keystore = "release.jks"
 key_alias = "app"
+certificate_sha256 = "<SHA-256 certificate fingerprint>"
 ```
+
+Read the SHA-256 fingerprint with `keytool -list -v -keystore release.jks -alias app` and set `certificate_sha256` to that value. Colons are accepted. Ink checks the signed APK against this fingerprint.
 
 Set `INK_KEYSTORE_PASSWORD` in your shell or secret manager. If the key has a different password, set `INK_KEY_PASSWORD` too. Otherwise, Ink uses the keystore password.
 
 ```sh
 ink build
 ```
+
+Ink verifies the release APK’s signature, certificate, manifest, development assets and native library alignment before copying it to `dist/`. Declare intentional native permissions and exported components in `android/src/main/AndroidManifest.xml`; undeclared additions from dependencies fail verification. QuickJS bytecode preserves string literals, so keep credentials out of application code and `INK_PUBLIC_` environment variables.
 
 Ink writes the signed APK to `dist/`. Keep keystores and passwords out of version control.
 
@@ -61,6 +66,8 @@ Create a signing key as described above, then add its contents and password as r
 base64 < ~/.keystores/app-release.jks | gh secret set INK_KEYSTORE_BASE64
 gh secret set INK_KEYSTORE_PASSWORD
 ```
+
+Set the repository variable `INK_SIGNING_CERT_SHA256` to the certificate fingerprint. The fingerprint is public; keep the private key and passwords in Actions secrets.
 
 Run these commands from the app's GitHub checkout. The password command prompts privately. If the key has a separate password, add `INK_KEY_PASSWORD` too. Set the repository variable `INK_KEY_ALIAS` if the alias differs from `app`.
 

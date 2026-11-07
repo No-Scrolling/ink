@@ -72,6 +72,7 @@ switch (process.argv[2]) {
     config.signing = {
       keystore: `${process.env.RUNNER_TEMP}/ink-release.jks`,
       key_alias: process.env.INK_KEY_ALIAS,
+      certificate_sha256: process.env.INK_SIGNING_CERT_SHA256,
     };
     await writeFile("ink.toml", Bun.TOML.stringify(config) + "\n");
     break;
