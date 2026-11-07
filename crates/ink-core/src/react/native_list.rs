@@ -102,13 +102,6 @@ impl ReactTree {
             "flat": flat, "flat_records": flat_records, "flat_versions": flat_versions})
     }
 
-    pub(super) fn native_id(&mut self) -> Result<usize> {
-        ensure!(self.next_native_id as u64 > 9_007_199_254_740_991, "native identifiers exhausted");
-        let id = self.next_native_id;
-        self.next_native_id -= 1;
-        Ok(id)
-    }
-
     pub fn route_native_message(&self, message: String) -> Result<String> {
         if !cfg!(feature = "ui-lists") || self.native_events.is_empty() { return Ok(message); }
         let mut event: Json = serde_json::from_str(&message)?;

@@ -17,15 +17,18 @@ use unicode_segmentation::UnicodeSegmentation;
 pub use ink_protocol::SmolStr;
 
 mod fonts;
+#[cfg(feature = "ui-canvas")]
 mod canvas;
 mod capture;
 pub use capture::CaptureKind;
 pub use fonts::{font_for_character, tabular_digit_width, text_graphemes, text_width, text_width_with_numbers, visual_text, visual_text_width_with_numbers};
 
 mod icon_assets;
+#[cfg(feature = "ui-lists")]
 mod list;
 mod masks;
 pub mod media_previews;
+#[cfg(feature = "text-input")]
 mod native_editor;
 mod react;
 mod reuse;
@@ -80,14 +83,23 @@ pub fn perf_trace_counter(name: &'static [u8], _value: u64) {
 pub const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
 
 const DEFAULT_TEXT_SIZE: f32 = 30.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_TEXT_SIZE: f32 = 24.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_AFFIX_SIZE: f32 = 26.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_AFFIX_GAP: f32 = 8.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_HEIGHT: f32 = 38.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_BOTTOM_PADDING: f32 = 6.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_MAX_LINES: usize = 3;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_CLEAR_ICON_SIZE: f32 = 24.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_CLEAR_GAP: f32 = 20.0;
+#[cfg(feature = "text-input")]
 const TEXT_INPUT_CLEAR_PADDING: f32 = 5.0;
 const CONTROL_LINE_HEIGHT: f32 = 1.0;
 const DEFAULT_ICON_SIZE: f32 = 28.0;
@@ -105,7 +117,9 @@ const SCROLL_OVERSCAN: f32 = 2.0;
 const ACTION_BAR_HEIGHT: f32 = 56.0;
 const HEADER_TITLE_ICON_SIZE: f32 = 24.0;
 const SWIPE_DISTANCE: f32 = 40.0;
+#[cfg(any(feature = "ui-playing", feature = "video"))]
 const SCRUB_SEEK_INTERVAL: Duration = Duration::from_millis(120);
+#[cfg(feature = "ui-lists")]
 const MEDIA_DIMMED_ALPHA: f32 = 0.96;
 // Automatic scrollbars stay for a moment after scrolling stops, then fade out.
 const SCROLL_BAR_HOLD: f32 = 0.9;
@@ -634,18 +648,28 @@ struct NodeIdentity(usize);
 
 #[derive(Clone, Debug, PartialEq)]
 enum NodeKind {
+    #[cfg(feature = "ui-canvas")]
     Canvas { width: f32, height: f32, drawings: Vec<canvas::Drawing> },
+    #[cfg(feature = "ui-lists")]
     MediaGridRow { children: Vec<Node> },
+    #[cfg(feature = "ui-lists")]
     MediaCell { source: ImageSource, selected: bool, dimmed: bool, video: bool, check: Mask, play: Mask, action: Option<Action>, long_action: Option<Action> },
+    #[cfg(feature = "ui-messages")]
     Message { children: Vec<Node>, outgoing: bool },
+    #[cfg(feature = "ui-messages")]
     MessageQuote { children: Vec<Node> },
     LinkPreview { children: Vec<Node> },
+    #[cfg(feature = "ui-messages")]
     ConversationComposer { children: Vec<Node> },
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     PlayingLayout { children: Vec<Node>, centred: bool, hide_controls: bool, bleed: bool },
     Pressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool, haptic: bool },
+    #[cfg(feature = "ui-playing")]
     PlayingTransport { children: Vec<Node>, loading: bool },
+    #[cfg(feature = "ui-playing")]
     PlayingLabel { text: String, size: f32 },
     RowTitle { children: Vec<Node>, text: String, size: f32, max_lines: Option<u32> },
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     PlayingProgress { position: f32, duration: f32, playing: bool, seek: bool, show_times: bool, clock: Option<u64>, speed: f32 },
     PitchIndicator { cents: Option<f32> },
     CaptureReadout { controller: u64, kind: CaptureKind },
@@ -656,6 +680,7 @@ enum NodeKind {
         action: Option<Action>,
         long_action: Option<Action>,
     },
+    #[cfg(feature = "ui-lists")]
     ReactList {
         children: Vec<Node>,
         start: usize,
@@ -682,6 +707,7 @@ enum NodeKind {
         max_lines: Option<u32>,
         tabular_numbers: bool,
     },
+    #[cfg(feature = "text-input")]
     TextInput {
         placeholder: String,
         state: StateId,
@@ -738,11 +764,14 @@ enum NodeKind {
         height: f32,
         fit: ImageFit,
     },
+    #[cfg(feature = "camera")]
     CameraPreview {
         controller: ControllerId,
         kind: CameraPreviewKind,
     },
+    #[cfg(feature = "video")]
     VideoView { controller: Option<ControllerId>, loading: bool },
+    #[cfg(feature = "maps")]
     MapView {
         controller: ControllerId,
     },
@@ -858,6 +887,7 @@ impl Node {
         }
     }
 
+    #[cfg(feature = "text-input")]
     pub fn text_input(
         placeholder: impl Into<String>,
         state: StateId,
@@ -958,6 +988,7 @@ impl Node {
         }
     }
 
+    #[cfg(feature = "camera")]
     pub const fn camera_preview(controller: ControllerId, kind: CameraPreviewKind) -> Self {
         Self {
             identity: NodeIdentity(0),
@@ -965,6 +996,7 @@ impl Node {
         }
     }
 
+    #[cfg(feature = "maps")]
     pub const fn map_view(controller: ControllerId) -> Self {
         Self {
             identity: NodeIdentity(0),
@@ -1234,9 +1266,13 @@ struct HitRegion {
     rect: Rect,
     action: Action,
     long_action: Option<Action>,
+    #[cfg(feature = "ui-canvas")]
     drag_group: Option<NodeIdentity>,
+    #[cfg(feature = "ui-canvas")]
     drag_action: Option<Action>,
+    #[cfg(feature = "ui-canvas")]
     drag_start: Option<Action>,
+    #[cfg(feature = "ui-canvas")]
     drag_end: Option<Action>,
     scrolling: bool,
     preserve_input: bool,
@@ -1261,6 +1297,7 @@ enum PressRole {
     Back,
 }
 
+#[cfg(feature = "text-input")]
 #[derive(Clone, Copy, Debug)]
 struct TextInputLayout {
     node: NodeIdentity,
@@ -1323,6 +1360,7 @@ struct SwipePointer {
     previous: bool,
 }
 
+#[cfg(any(feature = "ui-playing", feature = "video"))]
 #[derive(Clone, Copy, Debug)]
 struct ScrubPointer {
     progress: NodeIdentity,
@@ -1333,6 +1371,7 @@ struct ScrubPointer {
 }
 
 /// A progress bar being dragged. It shows the dragged position until playback reports the seek.
+#[cfg(any(feature = "ui-playing", feature = "video"))]
 #[derive(Clone, Copy, Debug)]
 struct Scrub {
     progress: NodeIdentity,
@@ -1367,6 +1406,7 @@ struct ContentPointer {
     cancelled: bool,
 }
 
+#[cfg(feature = "text-input")]
 #[derive(Clone, Copy, Debug)]
 struct TextInputPointer {
     input: TextInputLayout,
@@ -1387,12 +1427,16 @@ struct ImagePanPointer {
 
 #[derive(Clone, Copy, Debug)]
 enum Pointer {
+    #[cfg(feature = "ui-canvas")]
     CanvasRange(canvas::RangePointer),
+    #[cfg(feature = "ui-canvas")]
     CanvasDrag { group: NodeIdentity, previous: (f32, f32), target: Option<PressTarget> },
     Content(ContentPointer),
+    #[cfg(feature = "text-input")]
     TextInput(TextInputPointer),
     ImagePan(ImagePanPointer),
     Swipe(SwipePointer),
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     Scrub(ScrubPointer),
     ScrollThumb {
         grab_offset: f32,
@@ -1479,6 +1523,7 @@ pub struct CorePerfMetrics {
     pub incremental_rebuilds: u32,
 }
 
+#[cfg(feature = "ui-playing")]
 #[derive(Clone)]
 struct Marquee {
     text: String,
@@ -1494,6 +1539,7 @@ fn playback_time(seconds: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+#[cfg(any(feature = "ui-playing", feature = "video"))]
 #[derive(Clone)]
 struct PlaybackClock {
     position: f32,
@@ -1503,6 +1549,7 @@ struct PlaybackClock {
     started: Instant,
 }
 
+#[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
 #[derive(Clone)]
 struct PlaybackProgress {
     clock: Option<u64>,
@@ -1518,6 +1565,7 @@ struct PlaybackProgress {
     elapsed_label: Option<(usize, u64)>,
 }
 
+#[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
 impl PlaybackProgress {
     fn current(&self) -> f32 {
         let elapsed = if self.playing { self.started.elapsed().as_secs_f32() * self.speed } else { 0.0 };
@@ -1552,15 +1600,20 @@ impl PlaybackProgress {
 }
 
 /// Shading steps for the progress bar's partially covered pixel.
+#[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
 const PROGRESS_EDGE_STEPS: f32 = 4.0;
 /// Clock corrections larger than this, in seconds, are seeks that should draw at once.
+#[cfg(any(feature = "ui-playing", feature = "video"))]
 const PLAYBACK_CLOCK_JUMP: f32 = 0.25;
 
 pub struct Engine {
     root: Node,
     reuse: reuse::Reuse,
+    #[cfg(feature = "ui-playing")]
     marquees: HashMap<NodeIdentity, Marquee>,
+    #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
     playback_progress: HashMap<NodeIdentity, PlaybackProgress>,
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     playback_clocks: HashMap<u64, PlaybackClock>,
     capture_readings: capture::CaptureReadings,
     state: Vec<StateValue>,
@@ -1568,13 +1621,18 @@ pub struct Engine {
     keyboard_inset: u32,
     display_cutouts: Vec<Rect>,
     native_editor_state: Option<StateId>,
+    #[cfg(feature = "text-input")]
     native_editor_lines: Option<(StateId, String, usize)>,
     scene: Scene,
     fixed_text_runs: rustc_hash::FxHashMap<NodeIdentity, FixedTextRun>,
+    #[cfg(feature = "ui-lists")]
     react_list_positions: HashMap<usize, f32>,
+    #[cfg(feature = "ui-lists")]
     list_metrics: HashMap<usize, list::ListMetrics>,
     hit_regions: Vec<HitRegion>,
+    #[cfg(feature = "text-input")]
     text_inputs: Vec<TextInputLayout>,
+    #[cfg(feature = "text-input")]
     text_input_scroll_offsets: HashMap<StateId, f32>,
     clip: Rect,
     scrolling: bool,
@@ -1591,9 +1649,11 @@ pub struct Engine {
     queued_requests: VecDeque<QueuedRequest>,
     in_flight_requests: HashMap<u64, PendingRequest>,
     remote_images: HashMap<RemoteImageKey, RemoteImageState>,
+    #[cfg(feature = "ui-lists")]
     media_previews: HashMap<String, RemoteImage>,
     swipe_regions: Vec<SwipeRegion>,
     play_masks: HashMap<u16, Mask>,
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     scrub: Option<Scrub>,
     auto_scroll_bar: bool,
     scroll_activity: Option<Instant>,
@@ -1607,6 +1667,7 @@ pub struct Engine {
     image_screens: HashMap<NodeIdentity, Option<Instant>>,
     visible_image_screens: BTreeSet<NodeIdentity>,
     image_zooms: HashMap<NodeIdentity, ImageZoomState>,
+    #[cfg(feature = "ui-canvas")]
     canvas_ranges: HashMap<NodeIdentity, canvas::RangeState>,
     visible_zoom_images: BTreeSet<NodeIdentity>,
     image_pinch: Option<ImagePinch>,
@@ -1666,13 +1727,18 @@ impl Engine {
             keyboard_inset: 0,
             display_cutouts: Vec::new(),
             native_editor_state: None,
+            #[cfg(feature = "text-input")]
             native_editor_lines: None,
             scene: Scene::default(),
             fixed_text_runs: rustc_hash::FxHashMap::default(),
+            #[cfg(feature = "ui-lists")]
             react_list_positions: HashMap::new(),
+            #[cfg(feature = "ui-lists")]
             list_metrics: HashMap::new(),
             hit_regions: Vec::new(),
+            #[cfg(feature = "text-input")]
             text_inputs: Vec::new(),
+            #[cfg(feature = "text-input")]
             text_input_scroll_offsets: HashMap::new(),
             clip: Rect::default(),
             scrolling: false,
@@ -1689,9 +1755,11 @@ impl Engine {
             queued_requests: VecDeque::new(),
             in_flight_requests: HashMap::new(),
             remote_images: HashMap::new(),
+            #[cfg(feature = "ui-lists")]
             media_previews: HashMap::new(),
             swipe_regions: Vec::new(),
             play_masks: HashMap::new(),
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             scrub: None,
             auto_scroll_bar: false,
             scroll_activity: None,
@@ -1704,12 +1772,16 @@ impl Engine {
             blocking_images: BTreeSet::new(),
             image_screens: HashMap::new(),
             visible_image_screens: BTreeSet::new(),
+            #[cfg(feature = "ui-playing")]
             marquees: HashMap::new(),
+            #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
             playback_progress: HashMap::new(),
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             playback_clocks: HashMap::new(),
             capture_readings: capture::CaptureReadings::default(),
             image_zooms: HashMap::new(),
-            canvas_ranges: HashMap::new(),
+    #[cfg(feature = "ui-canvas")]
+    canvas_ranges: HashMap::new(),
             visible_zoom_images: BTreeSet::new(),
             image_pinch: None,
             last_native_request: None,
@@ -2065,6 +2137,7 @@ impl Engine {
         true
     }
 
+    #[cfg(feature = "text-input")]
     fn rebuild_viewport(&mut self) {
         let focused_rect = self
             .text_inputs
@@ -2096,7 +2169,9 @@ impl Engine {
     }
 
     pub fn tap(&mut self, x: f32, y: f32) -> bool {
+        #[cfg(feature = "ui-canvas")]
         self.snapshot_canvas_ranges();
+        #[cfg(feature = "ui-canvas")]
         if let Some(Action::CanvasRange { id }) = self.hit_region_at(x, y).map(|region| &region.action) {
             let range = NodeIdentity(*id);
             self.begin_canvas_range(-1, range, x, y);
@@ -2179,6 +2254,7 @@ impl Engine {
             return PointerOutcome::default();
         }
 
+        #[cfg(any(feature = "ui-playing", feature = "video"))]
         if let Some(&Action::Seek { id: progress, left, width, duration }) = self.hit_region_at(x, y).map(|region| &region.action) {
             let pointer = ScrubPointer { progress: NodeIdentity(progress), left, width, duration, emitted: None };
             self.pointers.insert(id, Pointer::Scrub(pointer));
@@ -2186,10 +2262,12 @@ impl Engine {
             return PointerOutcome { haptic: true, ..self.move_scrub(id, pointer, x, false) }.captured();
         }
 
+        #[cfg(feature = "ui-canvas")]
         if let Some(Action::CanvasRange { id: range }) = self.hit_region_at(x, y).map(|region| &region.action) {
             return self.begin_canvas_range(id, NodeIdentity(*range), x, y);
         }
 
+        #[cfg(feature = "ui-canvas")]
         if let Some(region) = self.hit_region_at(x, y).cloned()
             && let Some(group) = region.drag_group
             && let Some(action) = region.drag_start
@@ -2214,6 +2292,7 @@ impl Engine {
             return PointerOutcome::default().captured();
         }
 
+        #[cfg(feature = "text-input")]
         if let Some(input) = self.text_input_at(x, y) {
             self.pointers.insert(id, Pointer::TextInput(TextInputPointer {
                 input,
@@ -2243,12 +2322,16 @@ impl Engine {
         };
 
         match pointer {
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasRange(pointer) => self.move_canvas_range(id, pointer, x, y),
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasDrag { group, previous, target } =>
                 self.move_canvas_pointer(id, group, previous, target, x, y),
             Pointer::Content(pointer) => self.move_content_pointer(id, pointer, x, y, tap_slop),
             Pointer::Swipe(_) => PointerOutcome::default().captured(),
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             Pointer::Scrub(pointer) => self.move_scrub(id, pointer, x, false).captured(),
+            #[cfg(feature = "text-input")]
             Pointer::TextInput(pointer) => self.move_text_input_pointer(id, pointer, x, y, tap_slop),
             Pointer::ImagePan(pointer) => {
                 self.claim_pointer(id);
@@ -2305,6 +2388,7 @@ impl Engine {
         }
 
         match pointer {
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasRange(pointer) => self.end_canvas_range(id, pointer, x, y),
             Pointer::Content(ContentPointer {
                 dragging: false,
@@ -2342,6 +2426,7 @@ impl Engine {
                 let next = scroll_bar.scroll_offset_for_track_tap(y, self.scroll_max);
                 PointerOutcome::activated(self.set_scroll_offset(next)).captured()
             }
+            #[cfg(feature = "text-input")]
             Pointer::TextInput(pointer) if !pointer.dragging => {
                 let input = self.text_inputs.iter().find(|input| input.node == pointer.input.node).copied();
                 PointerOutcome::activated(input.is_some_and(|input| {
@@ -2349,7 +2434,8 @@ impl Engine {
                         region.target == PressTarget { node: input.node, role: PressRole::Focus }
                     }) && self.focus_text_input(input, x, y)
                 }))
-            }
+            },
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasDrag { target, .. } => {
                 let action = self.hit_regions.iter().find(|region| Some(region.target) == target)
                     .and_then(|region| region.drag_end.clone().map(|action| (action, region.haptic)));
@@ -2359,12 +2445,14 @@ impl Engine {
             }
             Pointer::ScrollThumb { .. }
             | Pointer::ScrollTrack { .. }
-            | Pointer::TextInput(_)
             | Pointer::ImagePan(_)
             | Pointer::EdgeBack(EdgeBackPointer {
                 state: EdgeBackState::Claimed,
                 ..
             }) => PointerOutcome::default().captured(),
+            #[cfg(feature = "text-input")]
+            Pointer::TextInput(_) => PointerOutcome::default().captured(),
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             Pointer::Scrub(pointer) => self.move_scrub(id, pointer, x, true).captured(),
             Pointer::Swipe(pointer) => {
                 let offset = x - pointer.start_x;
@@ -2381,6 +2469,7 @@ impl Engine {
     }
 
     pub fn pointer_long_press(&mut self, id: i32, x: f32, y: f32) -> PointerOutcome {
+        #[cfg(feature = "text-input")]
         if let Some(Pointer::TextInput(pointer)) = self.pointers.get(&id) {
             if !pointer.dragging {
                 let input = pointer.input;
@@ -2399,6 +2488,7 @@ impl Engine {
         let Some(action) = region.long_action else { return PointerOutcome::default(); };
         self.pointers.clear();
         self.gesture_owner = Some(id);
+        #[cfg(feature = "ui-canvas")]
         if let Some(group) = region.drag_group {
             self.pointers.insert(id, Pointer::CanvasDrag { group, previous: (x, y), target: Some(region.target) });
         }
@@ -2409,13 +2499,21 @@ impl Engine {
     }
 
     pub fn pointer_cancel(&mut self) -> PointerOutcome {
+        #[cfg(feature = "ui-canvas")]
         let ranges: Vec<_> = self.pointers.values().filter_map(|pointer| match pointer {
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasRange(pointer) => Some(*pointer),
             _ => None,
         }).collect();
+        #[cfg(feature = "ui-canvas")]
         let mut activated = false;
+        #[cfg(not(feature = "ui-canvas"))]
+        let activated = false;
+        #[cfg(feature = "ui-canvas")]
         for pointer in ranges { activated |= self.cancel_canvas_range(pointer); }
+        #[cfg(feature = "ui-canvas")]
         let endings: Vec<_> = self.pointers.values().filter_map(|pointer| match pointer {
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasDrag { target, .. } => self.hit_regions.iter()
                 .find(|region| Some(region.target) == *target)
                 .and_then(|region| region.drag_end.clone()),
@@ -2423,6 +2521,7 @@ impl Engine {
         }).collect();
         self.pointers.clear();
         self.gesture_owner = None;
+        #[cfg(feature = "ui-canvas")]
         for action in endings { activated |= self.apply(action); }
         PointerOutcome { activated, ..PointerOutcome::default().captured() }
     }
@@ -2434,8 +2533,9 @@ impl Engine {
 
     fn pointer_screen_changed(&mut self) {
         self.pointers.retain(|_, pointer| match *pointer {
-            Pointer::Content(ContentPointer { dragging: false, cancelled: false, target: Some(_), .. })
-            | Pointer::TextInput(TextInputPointer { dragging: false, .. }) => true,
+            Pointer::Content(ContentPointer { dragging: false, cancelled: false, target: Some(_), .. }) => true,
+            #[cfg(feature = "text-input")]
+            Pointer::TextInput(TextInputPointer { dragging: false, .. }) => true,
             Pointer::EdgeBack(EdgeBackPointer { state: EdgeBackState::Pending, target: Some(target), start_x, start_y, start_offset }) => {
                 *pointer = Pointer::Content(ContentPointer {
                     target: Some(target), start_x, start_y, start_offset, dragging: false, cancelled: false,
@@ -2603,6 +2703,7 @@ impl Engine {
         self.apply(react::event(image.0, "onCropChange", vec![serde_json::json!({ "zoom": transform.scale, "x": x, "y": y })]));
     }
 
+    #[cfg(feature = "text-input")]
     fn text_input_at(&self, x: f32, y: f32) -> Option<TextInputLayout> {
         self.text_inputs.iter().rev().copied().find(|input| {
             if input.scrolling
@@ -2622,6 +2723,7 @@ impl Engine {
         })
     }
 
+    #[cfg(feature = "text-input")]
     fn focus_text_input(&mut self, input: TextInputLayout, x: f32, y: f32) -> bool {
         let Some(StateValue::String(value)) = self.state.get(input.state.0) else {
             return false;
@@ -2653,6 +2755,7 @@ impl Engine {
         true
     }
 
+    #[cfg(feature = "text-input")]
     fn focus_text_input_at_end(&mut self, state: StateId, action: TextInputAction) {
         self.focused_input = Some(state);
         self.focused_input_action = action;
@@ -2663,6 +2766,7 @@ impl Engine {
         self.text_input_scroll_offsets.remove(&state);
     }
 
+    #[cfg(feature = "text-input")]
     fn move_text_input_pointer(
         &mut self,
         id: i32,
@@ -2717,6 +2821,7 @@ impl Engine {
         PointerOutcome::changed(self.set_text_input_scroll(pointer.input.state, next)).captured()
     }
 
+    #[cfg(feature = "text-input")]
     fn set_text_input_scroll(&mut self, state: StateId, offset: f32) -> bool {
         let current = self
             .text_input_scroll_offsets
@@ -2849,6 +2954,18 @@ impl Engine {
         self.pop_route()
     }
 
+    #[cfg(not(feature = "text-input"))]
+    pub fn text_input_context(&self) -> String { String::new() }
+
+    #[cfg(not(feature = "text-input"))]
+    pub fn text_input_numeric(&self) -> bool { false }
+
+    #[cfg(not(feature = "text-input"))]
+    fn apply_editor_update(&mut self, _payload: &str) -> bool { false }
+
+    #[cfg(not(feature = "text-input"))]
+    fn rebuild_viewport(&mut self) { self.rebuild_scene(); }
+
     pub const fn text_input_active(&self) -> bool {
         self.focused_input.is_some()
     }
@@ -2857,35 +2974,44 @@ impl Engine {
         self.focused_input_action
     }
 
+    #[cfg(feature = "text-input")]
     pub fn text_input_numeric(&self) -> bool {
         self.focused_input
             .and_then(|state| self.text_input_numeric_for(state))
             .unwrap_or(false)
     }
 
+    #[cfg(feature = "text-input")]
     fn text_input_numeric_for(&self, state: StateId) -> Option<bool> {
         match &self.text_input_node(state)?.kind {
+            #[cfg(feature = "text-input")]
             NodeKind::TextInput { numeric, .. } => Some(*numeric),
             _ => None,
         }
     }
 
+    #[cfg(feature = "text-input")]
     fn text_input_node(&self, state: StateId) -> Option<&Node> {
         fn find(node: &Node, target: StateId) -> Option<&Node> {
             match &node.kind {
+                #[cfg(feature = "text-input")]
                 NodeKind::TextInput { state, .. } if *state == target => Some(node),
+                #[cfg(feature = "ui-messages")]
                 NodeKind::ConversationComposer { children, .. }
                 | NodeKind::Message { children, .. }
-                | NodeKind::MessageQuote { children, .. }
-                | NodeKind::LinkPreview { children, .. }
+                | NodeKind::MessageQuote { children, .. } => children.iter().find_map(|child| find(child, target)),
+                NodeKind::LinkPreview { children, .. }
                 | NodeKind::RowTitle { children, .. }
-                | NodeKind::PlayingTransport { children, .. }
-                | NodeKind::PlayingLayout { children, .. }
                 | NodeKind::Pressable { children, .. }
-                | NodeKind::MediaGridRow { children }
                 | NodeKind::Row { children, .. }
-                | NodeKind::Stack { children, .. }
+                | NodeKind::Stack { children, .. } => children.iter().find_map(|child| find(child, target)),
+                #[cfg(feature = "ui-lists")]
+                NodeKind::MediaGridRow { children }
                 | NodeKind::ReactList { children, .. } => children.iter().find_map(|child| find(child, target)),
+                #[cfg(feature = "ui-playing")]
+                NodeKind::PlayingTransport { children, .. } => children.iter().find_map(|child| find(child, target)),
+                #[cfg(any(feature = "ui-playing", feature = "video"))]
+                NodeKind::PlayingLayout { children, .. } => children.iter().find_map(|child| find(child, target)),
                 NodeKind::Screen(screen) => screen.children.iter().chain(&screen.overlay).find_map(|child| find(child, target)),
                 NodeKind::Tabs { tabs, .. } => tabs.iter().find_map(|tab| find(&tab.screen, target)),
                 _ => None,
@@ -2918,10 +3044,12 @@ impl Engine {
     }
 
     pub fn has_scene_animations(&self) -> bool {
-        self.scene.scroll_bar_alpha > 0.0 && self.auto_scroll_bar
-            || self.marquees.values().any(|marquee| marquee.visible)
-            || self.playback_progress.values().any(PlaybackProgress::animating)
-            || self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
+        if self.scene.scroll_bar_alpha > 0.0 && self.auto_scroll_bar { return true; }
+        #[cfg(feature = "ui-playing")]
+        if self.marquees.values().any(|marquee| marquee.visible) { return true; }
+        #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
+        if self.playback_progress.values().any(PlaybackProgress::animating) { return true; }
+        self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
     }
 
     /// How long until the scene changes on its own: zero for continuous animations, or the next
@@ -2932,17 +3060,22 @@ impl Engine {
             Duration::from_secs_f32(SCROLL_BAR_HOLD).saturating_sub(elapsed)
         });
         if scroll_bar == Some(Duration::ZERO) { return scroll_bar; }
-        if self.marquees.values().any(|marquee| marquee.visible)
-            || self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
+        #[cfg(feature = "ui-playing")]
+        if self.marquees.values().any(|marquee| marquee.visible) { return Some(Duration::ZERO); }
+        if self.image_animations.keys().any(|key| visible_image(&self.scene, image_id(key)))
         {
             return Some(Duration::ZERO);
         }
-        self.playback_progress.values().filter(|progress| progress.animating())
+        #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
+        return self.playback_progress.values().filter(|progress| progress.animating())
             .map(|progress| progress.next_change(self.scene.quads[progress.quad].rect.x))
             .chain(scroll_bar)
-            .min()
+            .min();
+        #[cfg(not(any(feature = "ui-playing", feature = "video", feature = "ui-canvas")))]
+        scroll_bar
     }
 
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     pub fn update_playback_clock(&mut self, controller: u64, position: f32, duration: f32, playing: bool, speed: f32) -> bool {
         let scrubbed = self.scrub.filter(|scrub| scrub.released)
             .is_some_and(|scrub| self.playback_progress.get(&scrub.progress).is_some_and(|progress| progress.clock == Some(controller)));
@@ -2954,6 +3087,7 @@ impl Engine {
         let mut visible = false;
         let mut duration_changed = false;
         let mut changed = false;
+        #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
         for progress in self.playback_progress.values_mut().filter(|progress| progress.clock == Some(controller)) {
             visible |= progress.visible;
             duration_changed |= progress.duration != duration;
@@ -2968,13 +3102,21 @@ impl Engine {
         changed
     }
 
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     pub fn remove_playback_clock(&mut self, controller: u64) {
         self.playback_clocks.remove(&controller);
+        #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
         for progress in self.playback_progress.values_mut().filter(|progress| progress.clock == Some(controller)) {
             progress.position = progress.current();
             progress.playing = false;
         }
     }
+
+    #[cfg(not(any(feature = "ui-playing", feature = "video")))]
+    pub fn update_playback_clock(&mut self, _controller: u64, _position: f32, _duration: f32, _playing: bool, _speed: f32) -> bool { false }
+
+    #[cfg(not(any(feature = "ui-playing", feature = "video")))]
+    pub fn remove_playback_clock(&mut self, _controller: u64) {}
 
     pub fn animate_scene(&mut self) -> bool {
         let mut changed = false;
@@ -3008,6 +3150,7 @@ impl Engine {
             }
             !animation.finished()
         });
+        #[cfg(feature = "ui-playing")]
         for marquee in self.marquees.values().filter(|marquee| marquee.visible) {
             let cycle = 1.25 + marquee.distance / marquee.speed;
             let elapsed = marquee.started.elapsed().as_secs_f32() % cycle;
@@ -3019,6 +3162,7 @@ impl Engine {
                 run.rect.x = x;
             }
         }
+        #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
         for progress in self.playback_progress.values_mut().filter(|progress| progress.visible) {
             let current = progress.current();
             if let Some((run, seconds)) = &mut progress.elapsed_label {
@@ -3054,6 +3198,7 @@ impl Engine {
     }
 
     pub fn can_present_pointer_move(&self, id: i32, y: f32) -> bool {
+        #[cfg(feature = "ui-canvas")]
         if matches!(self.pointers.get(&id), Some(Pointer::CanvasRange(_))) { return true; }
         let Some(Pointer::Content(pointer)) = self.pointers.get(&id) else { return false; };
         // Before dragging starts this includes touch slop, so checking both
@@ -3066,6 +3211,10 @@ impl Engine {
         self.list_viewports_ready_at(self.scroll_offset)
     }
 
+    #[cfg(not(feature = "ui-lists"))]
+    fn list_viewports_ready_at(&self, _offset: f32) -> bool { true }
+
+    #[cfg(feature = "ui-lists")]
     fn list_viewports_ready_at(&self, offset: f32) -> bool {
         let Some(clip) = self.scene.scroll_clip else { return true; };
         self.react_list_positions.iter().all(|(id, top)| {
@@ -3094,9 +3243,13 @@ impl Engine {
                 if self.focused_input == Some(state) {
                     self.focused_input_cursor = 0;
                 }
+                #[cfg(feature = "text-input")]
                 self.text_input_scroll_offsets.remove(&state);
                 true
             }
+            #[cfg(not(feature = "text-input"))]
+            Action::FocusTextInput { .. } => true,
+            #[cfg(feature = "text-input")]
             Action::FocusTextInput { state, action } => {
                 self.focus_text_input_at_end(state, action);
                 true
@@ -3107,6 +3260,7 @@ impl Engine {
     }
 
     fn pop_route(&mut self) -> bool {
+        #[cfg(feature = "ui-canvas")]
         self.snapshot_canvas_ranges();
         if let Some((_, operation)) = &self.navigation_handler {
             return self.queue_native_action(operation.clone());
@@ -3150,6 +3304,7 @@ impl Engine {
         #[cfg(feature = "perf")]
         let (started, trace) = (Instant::now(), PerfTraceSection::new(b"Ink relayout\0"));
         let previous_offset = self.scroll_offset;
+        #[cfg(feature = "ui-lists")]
         let mut anchors: Vec<_> = self.react_list_positions.iter().filter_map(|(id, top)| {
             let metrics = self.list_metrics.get(id)?;
             let clip = self.scene.scroll_clip?;
@@ -3162,9 +3317,12 @@ impl Engine {
                 metrics.follow_end && self.pointers.is_empty()
                     && self.scroll_max - self.scroll_offset <= self.scaled(64.0)))
         }).collect();
+        #[cfg(feature = "ui-lists")]
         let clip_top = self.scene.scroll_clip.map_or(0.0, |clip| clip.y);
+        #[cfg(feature = "ui-lists")]
         anchors.sort_by(|left, right| (left.3 - clip_top).abs().total_cmp(&(right.3 - clip_top).abs()).then_with(|| left.0.cmp(&right.0)));
         self.relayout_scene_inner();
+        #[cfg(feature = "ui-lists")]
         for (id, key, old_index, position, follow) in anchors {
             let Some(top) = self.react_list_positions.get(&id) else { continue; };
             let Some(metrics) = self.list_metrics.get(&id) else { continue; };
@@ -3187,6 +3345,7 @@ impl Engine {
             match pointer {
                 Pointer::Content(pointer) => pointer.start_offset += adjustment,
                 Pointer::EdgeBack(pointer) => pointer.start_offset += adjustment,
+                #[cfg(feature = "text-input")]
                 Pointer::TextInput(pointer) => pointer.content_offset += adjustment,
                 _ => {}
             }
@@ -3198,12 +3357,15 @@ impl Engine {
             Pointer::Content(ContentPointer { target: Some(target), .. })
             | Pointer::EdgeBack(EdgeBackPointer { target: Some(target), .. }) =>
                 self.hit_regions.iter().any(|region| region.target == *target),
+            #[cfg(feature = "text-input")]
             Pointer::TextInput(pointer) => {
                 let input = self.text_inputs.iter().find(|input| input.node == pointer.input.node);
                 if let Some(input) = input && !pointer.dragging { pointer.input = *input; }
                 input.is_some()
             },
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasDrag { group, .. } => self.hit_regions.iter().any(|region| region.drag_group == Some(*group)),
+            #[cfg(feature = "ui-canvas")]
             Pointer::CanvasRange(pointer) => self.canvas_ranges.contains_key(&pointer.range),
             Pointer::ImagePan(pointer) => self.visible_zoom_images.contains(&pointer.image),
             Pointer::ScrollThumb { .. } | Pointer::ScrollTrack { .. } => self.scene.scroll_bar.is_some(),
@@ -3225,13 +3387,16 @@ impl Engine {
         self.scene.revision = self.scene.revision.wrapping_add(1);
         self.scene.width = self.viewport.width;
         self.scene.height = self.viewport.height;
+        #[cfg(feature = "ui-lists")]
         self.react_list_positions.clear();
         self.scene.quads.clear();
         self.scene.lines.clear();
         self.scene.text.clear();
         self.fixed_text_runs.clear();
         self.clear_capture_runs();
+        #[cfg(feature = "ui-playing")]
         for marquee in self.marquees.values_mut() { marquee.visible = false; }
+        #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
         for progress in self.playback_progress.values_mut() { progress.visible = false; }
         self.scene.masks.clear();
         self.scene.images.clear();
@@ -3254,9 +3419,11 @@ impl Engine {
         self.scene.scroll_bar = None;
         self.hit_regions.clear();
         self.swipe_regions.clear();
+        #[cfg(feature = "text-input")]
         self.text_inputs.clear();
         self.visible_images.clear();
         self.visible_zoom_images.clear();
+        #[cfg(feature = "ui-canvas")]
         self.reset_canvas_range_layout();
         self.scroll_max = 0.0;
         self.scene.scroll_max = 0.0;
@@ -3274,6 +3441,7 @@ impl Engine {
         if auto_focus_node != self.auto_focus_node {
             self.auto_focus_node = auto_focus_node;
             self.focused_input = auto_focus.map(|(_, state, _)| state);
+            #[cfg(feature = "text-input")]
             if let Some((_, state, action)) = auto_focus {
                 self.focus_text_input_at_end(state, action);
             }
@@ -3300,13 +3468,16 @@ impl Engine {
         self.root = root;
         self.finish_reuse();
         self.image_screens.retain(|id, _| self.visible_image_screens.contains(id));
+        #[cfg(feature = "ui-playing")]
         self.marquees.retain(|_, marquee| marquee.visible);
+        #[cfg(any(feature = "ui-playing", feature = "video", feature = "ui-canvas"))]
         self.playback_progress.retain(|_, progress| progress.visible);
         self.animate_scene();
         self.retained_images.retain(|identity, _| self.visible_retained_images.contains(identity));
         self.sync_visible_images();
         self.image_zooms
             .retain(|identity, _| self.visible_zoom_images.contains(identity));
+        #[cfg(feature = "ui-canvas")]
         self.retain_canvas_ranges();
         if self
             .image_pinch
@@ -3318,45 +3489,67 @@ impl Engine {
 
     fn auto_focus(&self, node: &Node) -> Option<(NodeIdentity, StateId, TextInputAction)> {
         match &node.kind {
+            #[cfg(feature = "text-input")]
             NodeKind::TextInput {
                 state,
                 action,
                 auto_focus: true,
                 ..
             } => Some((node.identity, *state, *action)),
+            #[cfg(feature = "ui-messages")]
             NodeKind::ConversationComposer { children, .. }
             | NodeKind::Message { children, .. }
-            | NodeKind::MessageQuote { children, .. }
-            | NodeKind::LinkPreview { children, .. }
+            | NodeKind::MessageQuote { children, .. } => {
+                children.iter().find_map(|child| self.auto_focus(child))
+            },
+            NodeKind::LinkPreview { children, .. }
             | NodeKind::RowTitle { children, .. }
-            | NodeKind::PlayingTransport { children, .. }
-            | NodeKind::PlayingLayout { children, .. }
             | NodeKind::Pressable { children, .. }
-            | NodeKind::MediaGridRow { children }
             | NodeKind::Row { children, .. }
-            | NodeKind::Stack { children, .. }
+            | NodeKind::Stack { children, .. } => {
+                children.iter().find_map(|child| self.auto_focus(child))
+            },
+            #[cfg(feature = "ui-lists")]
+            NodeKind::MediaGridRow { children }
             | NodeKind::ReactList { children, .. } => {
                 children.iter().find_map(|child| self.auto_focus(child))
-            }
+            },
+            #[cfg(feature = "ui-playing")]
+            NodeKind::PlayingTransport { children, .. } => {
+                children.iter().find_map(|child| self.auto_focus(child))
+            },
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
+            NodeKind::PlayingLayout { children, .. } => {
+                children.iter().find_map(|child| self.auto_focus(child))
+            },
             NodeKind::Screen(screen) => screen.children.iter().chain(&screen.overlay).find_map(|child| self.auto_focus(child)),
             NodeKind::Tabs { value, tabs } => self
                 .active_tab_index(value, tabs.len())
                 .and_then(|active| self.auto_focus(&tabs[active].screen)),
+            #[cfg(feature = "ui-canvas")]
+            NodeKind::Canvas { .. } => None,
             NodeKind::Text { .. }
-            | NodeKind::TextInput { .. }
             | NodeKind::Button { .. }
             | NodeKind::Field { .. }
             | NodeKind::Icon { .. }
             | NodeKind::Image { .. }
-            | NodeKind::CameraPreview { .. }
-            | NodeKind::VideoView { .. } | NodeKind::MapView { .. }
-            | NodeKind::MediaCell { .. }
-            | NodeKind::PlayingLabel { .. }
-            | NodeKind::PlayingProgress { .. }
             | NodeKind::PitchIndicator { .. }
             | NodeKind::CaptureReadout { .. }
-            | NodeKind::Canvas { .. }
             | NodeKind::Toggle { .. } => None,
+            #[cfg(feature = "ui-lists")]
+            NodeKind::MediaCell { .. } => None,
+            #[cfg(feature = "text-input")]
+            NodeKind::TextInput { .. } => None,
+            #[cfg(feature = "camera")]
+            NodeKind::CameraPreview { .. } => None,
+            #[cfg(feature = "video")]
+            NodeKind::VideoView { .. } => None,
+            #[cfg(feature = "maps")]
+            NodeKind::MapView { .. } => None,
+            #[cfg(feature = "ui-playing")]
+            NodeKind::PlayingLabel { .. } => None,
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
+            NodeKind::PlayingProgress { .. } => None,
         }
     }
 
@@ -3385,12 +3578,16 @@ impl Engine {
         #[cfg(feature = "perf")]
         { self.perf.nodes_measured += 1; }
         match &node.kind {
+            #[cfg(feature = "ui-canvas")]
             NodeKind::Canvas { width, height, .. } => {
                 let scale = self.viewport.scale.min(available.width / width).min(available.height / height);
                 MeasuredSize { width: width * scale, height: height * scale }
             }
+            #[cfg(feature = "ui-lists")]
             NodeKind::MediaGridRow { .. } => MeasuredSize { width: available.width, height: available.width / 3.0 },
+            #[cfg(feature = "ui-lists")]
             NodeKind::MediaCell { .. } => MeasuredSize { width: available.width, height: available.width },
+            #[cfg(feature = "ui-lists")]
             NodeKind::ReactList { children, start, keys, content_versions, revision, gap, follow_end, .. } => {
                 let mut metrics = self.list_metrics.remove(&node.identity.0).unwrap_or_default();
                 metrics.prepare(keys, content_versions, *revision, available.width, self.scaled(*gap), self.scaled(40.0));
@@ -3405,12 +3602,13 @@ impl Engine {
                 let height = metrics.total();
                 self.list_metrics.insert(node.identity.0, metrics);
                 MeasuredSize { width: available.width, height }
-            }
+            },
+            #[cfg(feature = "ui-messages")]
             NodeKind::Message { children, .. } => {
                 let width = available.width * 0.85;
                 let size = children.first().map(|child| self.measure(child, Rect { width, ..available })).unwrap_or_default();
                 MeasuredSize { width: available.width, height: size.height }
-            }
+            },
             NodeKind::LinkPreview { children } => {
                 let width = available.width.min(self.scaled(220.0));
                 let mut height = self.scaled(16.0);
@@ -3420,22 +3618,26 @@ impl Engine {
                 }
                 MeasuredSize { width, height: height.min(available.height) }
             }
+            #[cfg(feature = "ui-messages")]
             NodeKind::MessageQuote { children } => {
                 let inset = self.scaled(10.0);
                 let size = children.first().map(|child| self.measure(child, Rect { width: (available.width - inset).max(0.0), ..available })).unwrap_or_default();
                 MeasuredSize { width: (size.width + inset).min(available.width), height: size.height }
 
-            }
+            },
+            #[cfg(feature = "ui-messages")]
             NodeKind::ConversationComposer { children } => {
                 let width = (available.width - self.scaled(40.0 * (children.len() - 1) as f32)).max(0.0);
                 let height = children.iter().map(|child| self.measure(child, Rect { width, ..available }).height).fold(0.0, f32::max);
                 MeasuredSize { width: available.width, height }
-            }
+            },
             NodeKind::Pressable { children, .. } => children.first().map(|child| self.measure(child, available)).unwrap_or_default(),
+            #[cfg(feature = "ui-playing")]
             NodeKind::PlayingTransport { children, .. } => MeasuredSize {
                 width: available.width,
                 height: children.iter().map(|child| self.measure(child, available).height).fold(0.0, f32::max),
             },
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             NodeKind::PlayingProgress { show_times, .. } => MeasuredSize {
                 width: available.width,
                 height: self.scaled(6.0) + if *show_times { self.scaled(1.0) + self.text_line_height(12.0) } else { 0.0 },
@@ -3447,7 +3649,13 @@ impl Engine {
                 let text = children.last().map(|child| self.measure(child, Rect { width: (available.width - image_width).max(0.0), ..available })).unwrap_or_default();
                 MeasuredSize { width: available.width, height: text.height.max(self.scaled(50.0)).min(available.height) }
             }
-            NodeKind::PlayingLayout { .. } | NodeKind::Screen(_) | NodeKind::Tabs { .. } => MeasuredSize {
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
+            NodeKind::PlayingLayout { .. } => MeasuredSize {
+                width: available.width,
+                height: available.height,
+            },
+            NodeKind::Screen(_)
+            | NodeKind::Tabs { .. } => MeasuredSize {
                 width: available.width,
                 height: available.height,
             },
@@ -3492,6 +3700,7 @@ impl Engine {
                 let lines = self.wrap_inset_text(text, self.scaled_font(*size), available.width, *max_lines, false, &[], self.scaled(*size + 6.0));
                 MeasuredSize { width: available.width, height: (self.text_line_height(*size) * lines.len() as f32).min(available.height) }
             }
+            #[cfg(feature = "ui-playing")]
             NodeKind::PlayingLabel { text, size } => MeasuredSize {
                 width: self.text_width(text, self.scaled_font(*size)).min(available.width),
                 height: self.text_line_height(*size).min(available.height),
@@ -3529,6 +3738,7 @@ impl Engine {
                     height: (line_height * lines.len() as f32).min(available.height),
                 }
             }
+            #[cfg(feature = "text-input")]
             NodeKind::TextInput { state, action, prefix, suffix, .. } => MeasuredSize {
                 width: available.width,
                 height: if *action == TextInputAction::Return {
@@ -3616,7 +3826,26 @@ impl Engine {
                     },
                 }
             }
-            NodeKind::CameraPreview { .. } | NodeKind::VideoView { .. } | NodeKind::MapView { .. } => MeasuredSize {
+            #[cfg(feature = "camera")]
+            NodeKind::CameraPreview { .. } => MeasuredSize {
+                width: available.width,
+                height: if available.height.is_finite() {
+                    available.height
+                } else {
+                    (self.viewport.height as f32 - available.y).max(0.0)
+                },
+            },
+            #[cfg(feature = "video")]
+            NodeKind::VideoView { .. } => MeasuredSize {
+                width: available.width,
+                height: if available.height.is_finite() {
+                    available.height
+                } else {
+                    (self.viewport.height as f32 - available.y).max(0.0)
+                },
+            },
+            #[cfg(feature = "maps")]
+            NodeKind::MapView { .. } => MeasuredSize {
                 width: available.width,
                 height: if available.height.is_finite() {
                     available.height
@@ -3664,27 +3893,27 @@ impl Engine {
     fn layout_node_inner(&mut self, node: &Node, rect: Rect, screen_bottom_inset: bool) {
         let visible = rect.intersection(self.clip);
         if self.scrolling
-            && !matches!(
-                &node.kind,
-                NodeKind::Screen(_)
-                    | NodeKind::Stack { .. }
-                    | NodeKind::MediaGridRow { .. }
-                    | NodeKind::MediaCell { .. }
-                    | NodeKind::Tabs { .. }
-                    | NodeKind::ReactList { .. }
-            )
+            && !match &node.kind {
+                NodeKind::Screen(_) | NodeKind::Stack { .. } | NodeKind::Tabs { .. } => true,
+                #[cfg(feature = "ui-lists")]
+                NodeKind::MediaGridRow { .. } | NodeKind::MediaCell { .. } | NodeKind::ReactList { .. } => true,
+                _ => false,
+            }
             && (visible.width == 0.0 || visible.height == 0.0)
         {
             return;
         }
         match &node.kind {
+            #[cfg(feature = "ui-canvas")]
             NodeKind::Canvas { width, height, drawings } => self.layout_canvas(node.identity, *width, *height, drawings, rect),
+            #[cfg(feature = "ui-lists")]
             NodeKind::MediaGridRow { children } => {
                 let size = rect.width / 3.0;
                 for (column, child) in children.iter().enumerate() {
                     self.layout(child, Rect { x: rect.x + column as f32 * size, y: rect.y, width: size, height: size });
                 }
-            }
+            },
+            #[cfg(feature = "ui-lists")]
             NodeKind::MediaCell { source, selected, dimmed, video, check, play, action, long_action } => {
                 self.layout_media_preview(source, rect);
                 self.layout_image(node.identity, source, None, ImageFit::Cover, false, false, false, None, None, None, false, rect);
@@ -3718,7 +3947,8 @@ impl Engine {
                         colour: Colour { alpha: MEDIA_DIMMED_ALPHA, ..Colour::BLACK }, scrolling: self.scrolling,
                     });
                 }
-            }
+            },
+            #[cfg(feature = "ui-lists")]
             NodeKind::ReactList { children, start, gap, .. } => {
                 self.react_list_positions.insert(node.identity.0, rect.y + self.scroll_origin);
                 let Some(metrics) = self.list_metrics.get(&node.identity.0) else { return; };
@@ -3736,8 +3966,9 @@ impl Engine {
                     });
                 }
 
-            }
+            },
 
+            #[cfg(feature = "ui-messages")]
             NodeKind::ConversationComposer { children } => {
                 let side = self.scaled(28.0);
                 let gap = self.scaled(12.0);
@@ -3750,10 +3981,13 @@ impl Engine {
                     };
                     let size = self.measure(child, Rect { width, ..rect });
                     let child_rect = Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width, height: size.height };
+                    #[cfg(feature = "text-input")]
                     if let NodeKind::TextInput { placeholder, state, action, prefix, suffix, clear, .. } = &child.kind {
                         self.layout_text_input(placeholder, *state, *action, prefix, suffix, clear,
                             Rect { width: width + side + gap, ..child_rect }, side + gap);
-                    } else {
+                        continue;
+                    }
+                    {
                         let first_hit = self.hit_regions.len();
                         self.layout(child, child_rect);
                         if children.len() == 3 && index == 2 {
@@ -3762,7 +3996,8 @@ impl Engine {
                         }
                     }
                 }
-            }
+            },
+            #[cfg(feature = "ui-messages")]
             NodeKind::Message { children, outgoing } => {
                 if let Some(child) = children.first() {
                     let max_width = rect.width * 0.85;
@@ -3770,7 +4005,7 @@ impl Engine {
                     let width = size.width.ceil().min(max_width);
                     self.layout(child, Rect { x: if *outgoing { rect.x + rect.width - width } else { rect.x }, width, ..rect });
                 }
-            }
+            },
             NodeKind::LinkPreview { children } => {
                 let mut y = rect.y;
                 for (index, child) in children.iter().enumerate() {
@@ -3783,11 +4018,13 @@ impl Engine {
                     y += size.height;
                 }
             }
+            #[cfg(feature = "ui-messages")]
             NodeKind::MessageQuote { children } => {
                 let inset = self.scaled(10.0);
                 self.scene.quads.push(Quad { rect: Rect { width: self.scaled(2.0), ..rect }, clip: self.clip, colour: self.scene.colour(Colour::WHITE), scrolling: self.scrolling });
                 if let Some(child) = children.first() { self.layout(child, Rect { x: rect.x + inset, width: (rect.width - inset).max(0.0), ..rect }); }
-            }
+            },
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             NodeKind::PlayingLayout { children, centred, hide_controls, bleed } => {
                 let inset = self.scaled(CONTENT_INSET_START);
                 let body = Rect { x: rect.x + inset, width: (rect.width - inset * 2.0).max(0.0), ..rect };
@@ -3801,7 +4038,8 @@ impl Engine {
                 let size = self.measure(&children[0], available);
                 let y = available.y + if *centred { (available.height - size.height).max(0.0) / 2.0 } else { 0.0 };
                 self.layout(&children[0], Rect { y, height: size.height, ..available });
-            }
+            },
+            #[cfg(feature = "ui-playing")]
             NodeKind::PlayingTransport { children, loading } => {
                 for (index, child) in children.iter().enumerate() {
                     if *loading && index != 1 {
@@ -3828,7 +4066,7 @@ impl Engine {
                         self.layout(child, Rect { x, y: rect.y + (rect.height - size.height) / 2.0, width: size.width, height: size.height });
                     }
                 }
-            }
+            },
             NodeKind::RowTitle { children, text, size, max_lines } => {
                 let inset = self.scaled(*size + 6.0);
                 let line_height = self.text_line_height(*size);
@@ -3845,6 +4083,7 @@ impl Engine {
                     });
                 }
             }
+            #[cfg(feature = "ui-playing")]
             NodeKind::PlayingLabel { text, size } => {
                 let font_size = self.scaled_font(*size);
                 let width = self.text_width(text, font_size);
@@ -3877,7 +4116,7 @@ impl Engine {
                     marquee.speed = speed;
                     marquee.visible = true;
                 }
-            }
+            },
             NodeKind::Pressable { children, action, long_action, selected, haptic } => {
                 if *selected {
                     let height = self.control_line_height();
@@ -3918,6 +4157,7 @@ impl Engine {
                     });
                 }
             }
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             NodeKind::PlayingProgress { position, duration, playing, seek, show_times, clock, speed } => {
                 let anchor = clock.and_then(|id| self.playback_clocks.get(&id)).cloned();
                 let scrub = self.scrub.filter(|scrub| scrub.progress == node.identity).map(|scrub| scrub.position);
@@ -3965,7 +4205,7 @@ impl Engine {
                 if *seek && *duration > 0.0 {
                     self.push_hit_region(Rect { y: bar.y - self.scaled(15.0), height: self.scaled(36.0), ..bar }, Action::Seek { id: node.identity.0, left: rect.x, width: rect.width, duration: *duration });
                 }
-            }
+            },
             NodeKind::Row { children, has_image, selected, action, long_action } => {
                 let image_width = if *has_image { self.scaled(65.0).min(rect.width) } else { 0.0 };
                 if *has_image {
@@ -4115,6 +4355,7 @@ impl Engine {
                     self.reuse.fixed.push((node.identity, fixed)); }
                 }
             }
+            #[cfg(feature = "text-input")]
             NodeKind::TextInput {
                 placeholder,
                 state,
@@ -4188,9 +4429,11 @@ impl Engine {
                     }
                 }
             }
+            #[cfg(feature = "camera")]
             NodeKind::CameraPreview { controller, kind } => {
                 self.layout_camera_preview(*controller, *kind, rect)
-            }
+            },
+            #[cfg(feature = "video")]
             NodeKind::VideoView { controller, loading } => {
                 if !cfg!(feature = "video") { return; }
                 self.scene.video_portal = controller.map(|controller| MapPortal { controller, rect, clip: rect });
@@ -4199,11 +4442,12 @@ impl Engine {
                     self.layout_text("Loading…", Some(18.0), TextAlign::Centre, Some(1), false,
                         Rect { y: rect.y + (rect.height - height) / 2.0, height, ..rect });
                 }
-            }
+            },
+            #[cfg(feature = "maps")]
             NodeKind::MapView { controller } => {
                 if !cfg!(feature = "maps") { return; }
                 self.scene.map_portal = Some(MapPortal { controller: *controller, rect, clip: rect });
-            }
+            },
             NodeKind::Toggle {
                 label,
                 subtitle,
@@ -4681,6 +4925,7 @@ impl Engine {
     }
 
     /// Shows a dragged progress position and seeks: quickly while dragging, exactly on release.
+    #[cfg(any(feature = "ui-playing", feature = "video"))]
     fn move_scrub(&mut self, id: i32, mut pointer: ScrubPointer, x: f32, released: bool) -> PointerOutcome {
         let position = ((x - pointer.left) / pointer.width).clamp(0.0, 1.0) * pointer.duration;
         self.scrub = Some(Scrub { progress: pointer.progress, position, released });
@@ -5036,6 +5281,7 @@ impl Engine {
         }
     }
 
+    #[cfg(feature = "text-input")]
     fn input_lines(&self, value: &str, width: f32) -> Vec<(usize, usize)> {
         let font_size = self.scaled_font(TEXT_INPUT_TEXT_SIZE);
         let mut lines = Vec::new();
@@ -5058,6 +5304,7 @@ impl Engine {
         lines
     }
 
+    #[cfg(feature = "text-input")]
     fn input_affix_widths(&self, prefix: &str, suffix: &str, width: f32) -> (f32, f32) {
         let font_size = self.scaled_font(TEXT_INPUT_AFFIX_SIZE);
         let measure = |text: &str| if text.is_empty() { 0.0 } else {
@@ -5066,6 +5313,7 @@ impl Engine {
         (measure(prefix), measure(suffix))
     }
 
+    #[cfg(feature = "text-input")]
     fn layout_multiline_input(&mut self, placeholder: &str, state: StateId, rect: Rect, content: Rect, trailing_width: f32) {
         let value = match self.state.get(state.0) { Some(StateValue::String(value)) => value.clone(), _ => String::new() };
         let focused = self.focused_input == Some(state);
@@ -5108,6 +5356,7 @@ impl Engine {
         self.push_hit_region(rect, Action::FocusTextInput { state, action: TextInputAction::Return });
     }
 
+    #[cfg(feature = "text-input")]
     fn layout_text_input(
         &mut self,
         placeholder: &str,
@@ -5449,6 +5698,7 @@ impl Engine {
     }
 
     /// Draws the stored preview beneath a media cell until its thumbnail is ready.
+    #[cfg(feature = "ui-lists")]
     fn layout_media_preview(&mut self, source: &ImageSource, rect: Rect) {
         let ImageSource::Native(module, url) = source else { return; };
         let visible = rect.intersection(self.clip);
@@ -5632,6 +5882,7 @@ impl Engine {
         }
     }
 
+    #[cfg(feature = "camera")]
     fn layout_camera_preview(
         &mut self,
         controller: ControllerId,
@@ -5839,6 +6090,7 @@ impl Engine {
         text_width(text, font_size)
     }
 
+    #[cfg(feature = "text-input")]
     fn text_cursor_for_offset(&self, text: &str, font_size: f32, offset: f32) -> usize {
         let mut previous = None;
         let mut width = 0.0;
@@ -5942,9 +6194,13 @@ impl Engine {
                 rect,
                 action,
                 long_action,
+                #[cfg(feature = "ui-canvas")]
                 drag_group: None,
+                #[cfg(feature = "ui-canvas")]
                 drag_action: None,
+                #[cfg(feature = "ui-canvas")]
                 drag_start: None,
+                #[cfg(feature = "ui-canvas")]
                 drag_end: None,
                 scrolling: self.scrolling,
                 preserve_input: false,
@@ -5955,6 +6211,7 @@ impl Engine {
     }
 }
 
+#[cfg(feature = "text-input")]
 fn text_cursor_boundary(text: &str, cursor: usize) -> usize {
     let cursor = cursor.min(text.len());
     if cursor == text.len() {
@@ -6118,25 +6375,33 @@ fn image_id(key: &RemoteImageKey) -> u64 {
 }
 
 fn stretchable(node: &Node) -> bool {
-    matches!(
-        &node.kind,
+    match &node.kind {
         NodeKind::Stack { .. }
-            | NodeKind::ConversationComposer { .. }
-            | NodeKind::Message { .. }
-            | NodeKind::MessageQuote { .. }
-            | NodeKind::RowTitle { .. }
-            | NodeKind::PlayingTransport { .. }
-            | NodeKind::Row { .. }
-            | NodeKind::Text { .. }
-            | NodeKind::TextInput { .. }
-            | NodeKind::Button { .. }
-            | NodeKind::Field { .. }
-            | NodeKind::CameraPreview { .. }
-            | NodeKind::VideoView { .. } | NodeKind::MapView { .. }
-            | NodeKind::MediaGridRow { .. }
-            | NodeKind::MediaCell { .. }
-            | NodeKind::Toggle { .. }
-    )
+        | NodeKind::RowTitle { .. }
+        | NodeKind::Row { .. }
+        | NodeKind::Text { .. }
+        | NodeKind::Button { .. }
+        | NodeKind::Field { .. }
+        | NodeKind::Toggle { .. } => true,
+        #[cfg(feature = "ui-lists")]
+        NodeKind::MediaGridRow { .. }
+        | NodeKind::MediaCell { .. } => true,
+        #[cfg(feature = "ui-messages")]
+        NodeKind::ConversationComposer { .. }
+        | NodeKind::Message { .. }
+        | NodeKind::MessageQuote { .. } => true,
+        #[cfg(feature = "ui-playing")]
+        NodeKind::PlayingTransport { .. } => true,
+        #[cfg(feature = "text-input")]
+        NodeKind::TextInput { .. } => true,
+        #[cfg(feature = "camera")]
+        NodeKind::CameraPreview { .. } => true,
+        #[cfg(feature = "video")]
+        NodeKind::VideoView { .. } => true,
+        #[cfg(feature = "maps")]
+        NodeKind::MapView { .. } => true,
+        _ => false,
+    }
 }
 
 fn full_bleed_image(node: &Node) -> bool {
@@ -6185,20 +6450,27 @@ fn constrained_axis(content_start: f32, content_size: f32, view_start: f32, view
 }
 
 fn fills_remaining_screen(node: &Node) -> bool {
-    matches!(
-        &node.kind,
-        NodeKind::PlayingLayout { .. } | NodeKind::CameraPreview { .. } | NodeKind::VideoView { .. } | NodeKind::MapView { .. }
-            | NodeKind::Image {
+    match &node.kind {
+        #[cfg(any(feature = "ui-playing", feature = "video"))]
+        NodeKind::PlayingLayout { .. } => true,
+        #[cfg(feature = "camera")]
+        NodeKind::CameraPreview { .. } => true,
+        #[cfg(feature = "video")]
+        NodeKind::VideoView { .. } => true,
+        #[cfg(feature = "maps")]
+        NodeKind::MapView { .. } => true,
+        NodeKind::Image {
                 bleed: true,
                 zoomable: true,
                 ..
             }
-            | NodeKind::Image {
+        | NodeKind::Image {
                 bleed: true,
                 swipe: Some(_),
                 ..
-            }
-    )
+            } => true,
+        _ => false,
+    }
 }
 
 fn cross_position(origin: f32, available: f32, size: f32, align: Alignment) -> f32 {

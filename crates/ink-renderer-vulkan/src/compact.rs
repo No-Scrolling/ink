@@ -150,7 +150,9 @@ struct PreparedScene {
     quads: Vec<ink_core::Quad>,
     lines: Vec<ink_core::Line>,
     masks: Vec<PreparedMaskRun>,
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     images: Vec<PreparedImageRun>,
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     preloaded_images: Vec<(u64, u64)>,
     quad_fixed: Range<u32>,
     quad_scroll: Range<u32>,
@@ -158,6 +160,7 @@ struct PreparedScene {
     line_scroll: Range<u32>,
     text_fixed: Range<u32>,
     text_scroll: Range<u32>,
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     image_draws: Vec<ImageDraw>,
     system_glyph_draws: Vec<SystemGlyphDraw>,
     text_runs: Vec<PreparedTextRun>,
@@ -188,6 +191,7 @@ impl From<&ink_core::MaskRun> for PreparedMaskRun {
     }
 }
 
+#[cfg(any(feature = "image", not(target_os = "android")))]
 #[derive(Clone, Copy, PartialEq)]
 struct PreparedImageRun {
     avatar: Option<bool>,
@@ -201,6 +205,7 @@ struct PreparedImageRun {
     transform: ink_core::ImageTransform,
 }
 
+#[cfg(any(feature = "image", not(target_os = "android")))]
 impl From<&ImageRun> for PreparedImageRun {
     fn from(run: &ImageRun) -> Self {
         Self {
@@ -273,6 +278,7 @@ struct CachedMask {
     height: u32,
 }
 
+#[cfg(any(feature = "image", not(target_os = "android")))]
 struct CachedImage {
     texture: gpu::Texture,
     bind_group: gpu::BindGroup,
@@ -283,6 +289,7 @@ struct CachedImage {
     last_used: u64,
 }
 
+#[cfg(any(feature = "image", not(target_os = "android")))]
 struct ImageCache {
     images: HashMap<u64, CachedImage>,
     transient: HashSet<u64>,
@@ -295,6 +302,7 @@ struct ImageCache {
     uploaded_bytes: u64,
 }
 
+#[cfg(any(feature = "image", not(target_os = "android")))]
 impl ImageCache {
     fn new() -> Self {
         Self {
@@ -458,6 +466,7 @@ fn decode_encoded_image(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
     Ok((image.width(), image.height(), image.into_raw()))
 }
 
+#[cfg(any(feature = "image", not(target_os = "android")))]
 struct ImageDraw {
     id: u64,
     instances: Range<u32>,
@@ -759,7 +768,9 @@ pub struct Renderer {
     line_buffer: InstanceBuffer<LineInstance>,
     text_pipeline: gpu::RenderPipeline,
     text_buffer: InstanceBuffer<TextInstance>,
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     image_buffer: InstanceBuffer<TextInstance>,
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     image_cache: ImageCache,
     system_glyph_buffer: InstanceBuffer<TextInstance>,
     system_glyph_atlas: SystemGlyphAtlas,
@@ -848,8 +859,10 @@ impl Renderer {
         let quad_buffer = InstanceBuffer::new(&device, "Ink quad instances", MAX_QUADS);
         let overlay_buffer = InstanceBuffer::new(&device, "Ink overlay instances", 3);
         let text_buffer = InstanceBuffer::new(&device, "Ink text instances", MAX_GLYPHS);
+        #[cfg(any(feature = "image", not(target_os = "android")))]
         let image_buffer = InstanceBuffer::lazy("Ink image instances");
         let system_glyph_atlas = SystemGlyphAtlas::new();
+        #[cfg(any(feature = "image", not(target_os = "android")))]
         let image_cache = ImageCache::new();
         let system_glyph_buffer = InstanceBuffer::lazy("Ink system glyph instances");
         let glyph_atlas = GlyphAtlas::new(&device, ATLAS_SIZE)?;
@@ -870,7 +883,9 @@ impl Renderer {
             line_buffer: InstanceBuffer::lazy("Ink line instances"),
             text_pipeline,
             text_buffer,
+        #[cfg(any(feature = "image", not(target_os = "android")))]
             image_buffer,
+        #[cfg(any(feature = "image", not(target_os = "android")))]
             image_cache,
             system_glyph_buffer,
             system_glyph_atlas,
@@ -980,7 +995,10 @@ impl Renderer {
             self.perf.upload_ns += elapsed_ns(upload_started);
             self.perf.uploaded_bytes +=
                 (size_of::<TransformUniform>() + _overlay_uploaded_bytes) as u64;
+            #[cfg(any(feature = "image", not(target_os = "android")))]
             let (image_misses, image_bytes) = self.image_cache.take_perf();
+            #[cfg(not(any(feature = "image", not(target_os = "android"))))]
+            let (image_misses, image_bytes) = (0, 0);
             let (glyph_misses, glyph_bytes) = self.glyph_atlas.take_perf();
             let (system_glyph_misses, system_glyph_bytes) = self.system_glyph_atlas.take_perf();
             self.perf.cache_misses += image_misses + glyph_misses + system_glyph_misses;
@@ -1028,6 +1046,7 @@ impl Renderer {
                 pass.draw(0..6, self.prepared.quad_scroll.clone());
                 reset_scissor(&mut pass, scene);
             }
+        #[cfg(any(feature = "image", not(target_os = "android")))]
             if !self.prepared.image_draws.is_empty() {
                 pass.set_pipeline(&self.text_pipeline);
                 pass.set_vertex_buffer(0, self.image_buffer.buffer());
@@ -1129,21 +1148,26 @@ impl Renderer {
                 + range_length(&self.prepared.text_fixed)
                 + range_length(&self.prepared.text_scroll)
                 + u64::from(overlay_end);
-            instances += self
+            #[cfg(any(feature = "image", not(target_os = "android")))]
+            { instances += self
                 .prepared
                 .image_draws
                 .iter()
                 .map(|draw| range_length(&draw.instances))
-                .sum::<u64>();
+                .sum::<u64>(); }
             instances += self
                 .prepared
                 .system_glyph_draws
                 .iter()
                 .map(|draw| range_length(&draw.instances))
                 .sum::<u64>();
+            #[cfg(any(feature = "image", not(target_os = "android")))]
+            let image_draw_calls = self.prepared.image_draws.len() as u64;
+            #[cfg(not(any(feature = "image", not(target_os = "android"))))]
+            let image_draw_calls = 0;
             let draw_calls = u64::from(!self.prepared.quad_fixed.is_empty())
                 + u64::from(!self.prepared.quad_scroll.is_empty())
-                + self.prepared.image_draws.len() as u64
+                + image_draw_calls
                 + self.prepared.system_glyph_draws.len() as u64
                 + u64::from(!self.prepared.text_fixed.is_empty())
                 + u64::from(!self.prepared.text_scroll.is_empty())
@@ -1201,6 +1225,13 @@ impl Renderer {
             .values().fold((0, 0), |(fallback, missing), character| {
                 (fallback + usize::from(character.font_index > 0), missing + usize::from(character.id.0 == 0))
             });
+        #[cfg(any(feature = "image", not(target_os = "android")))]
+        let (image_buffer_bytes, image_instances, image_texture_bytes) = (
+            self.image_buffer.capacity_bytes(), self.image_buffer.instances.capacity(),
+            self.image_cache.images.values().map(|image| image.bytes).sum(),
+        );
+        #[cfg(not(any(feature = "image", not(target_os = "android"))))]
+        let (image_buffer_bytes, image_instances, image_texture_bytes) = (0, 0, 0);
         RenderMemoryMetrics {
             retained_staging_buffer_capacity_bytes,
             retained_staging_memory_bytes,
@@ -1212,22 +1243,17 @@ impl Renderer {
             instance_buffer_capacity_bytes: self.quad_buffer.capacity_bytes()
                 + self.overlay_buffer.capacity_bytes()
                 + self.text_buffer.capacity_bytes()
-                + self.image_buffer.capacity_bytes()
+                + image_buffer_bytes
                 + self.system_glyph_buffer.capacity_bytes(),
             instance_snapshot_capacity_bytes: (self.quad_buffer.instances.capacity()
                 + self.overlay_buffer.instances.capacity())
                 * size_of::<QuadInstance>()
                 + (self.text_buffer.instances.capacity()
-                    + self.image_buffer.instances.capacity()
+                    + image_instances
                     + self.system_glyph_buffer.instances.capacity())
                     * size_of::<TextInstance>(),
             font_texture_bytes: self.glyph_atlas.size as usize * self.glyph_atlas.size as usize,
-            image_texture_bytes: self
-                .image_cache
-                .images
-                .values()
-                .map(|image| image.bytes)
-                .sum(),
+            image_texture_bytes,
             system_glyph_texture_bytes: self.system_glyph_atlas.texture_capacity_bytes(),
         }
     }
@@ -1378,6 +1404,7 @@ impl Renderer {
                 .extend(scene.masks.iter().map(PreparedMaskRun::from));
         }
 
+        #[cfg(any(feature = "image", not(target_os = "android")))]
         if !self.prepared.ready
             || viewport_changed
             || self.prepared.image_revision != scene.image_revision
@@ -1405,6 +1432,13 @@ impl Renderer {
         Ok(())
     }
 
+    #[cfg(not(any(feature = "image", not(target_os = "android"))))]
+    fn refresh_images(&mut self, scene: &Scene) -> Result<()> {
+        self.prepared.image_revision = scene.image_revision;
+        Ok(())
+    }
+
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     fn refresh_images(&mut self, scene: &Scene) -> Result<()> {
         let (images, draws) = self.image_scene_instances(scene)?;
         let _uploaded_bytes = self.image_buffer.write(&self.device, &self.queue, &images);
@@ -1421,6 +1455,7 @@ impl Renderer {
         Ok(())
     }
 
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     fn image_scene_instances(
         &mut self,
         scene: &Scene,
@@ -1625,6 +1660,7 @@ impl Renderer {
         Ok(instances)
     }
 
+    #[cfg(any(feature = "image", not(target_os = "android")))]
     fn image_instances(
         &mut self,
         scene: &Scene,
@@ -1666,6 +1702,7 @@ fn prepared_masks_match(prepared: &[PreparedMaskRun], current: &[ink_core::MaskR
             .all(|(prepared, current)| *prepared == PreparedMaskRun::from(current))
 }
 
+#[cfg(any(feature = "image", not(target_os = "android")))]
 fn prepared_images_match(prepared: &[PreparedImageRun], current: &[ImageRun]) -> bool {
     prepared.len() == current.len()
         && prepared

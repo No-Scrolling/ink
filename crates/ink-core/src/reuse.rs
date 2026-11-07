@@ -98,10 +98,11 @@ fn children(node: &Node) -> &[Node] {
         NodeKind::Stack { children, .. }
         | NodeKind::Row { children, .. }
         | NodeKind::Pressable { children, .. }
-        | NodeKind::Message { children, .. }
-        | NodeKind::MessageQuote { children }
         | NodeKind::LinkPreview { children }
         | NodeKind::RowTitle { children, .. } => children,
+        #[cfg(feature = "ui-messages")]
+        NodeKind::Message { children, .. }
+        | NodeKind::MessageQuote { children } => children,
         _ => &[],
     }
 }
@@ -119,15 +120,17 @@ fn reusable(node: &Node) -> bool {
         NodeKind::Stack { .. }
         | NodeKind::Row { .. }
         | NodeKind::Pressable { .. }
-        | NodeKind::Message { .. }
-        | NodeKind::MessageQuote { .. }
         | NodeKind::LinkPreview { .. }
         | NodeKind::RowTitle { .. } => children(node).iter().all(reusable),
+        #[cfg(feature = "ui-messages")]
+        NodeKind::Message { .. }
+        | NodeKind::MessageQuote { .. } => children(node).iter().all(reusable),
         _ => false,
     }
 }
 
 impl Reuse {
+    #[cfg(feature = "ui-messages")]
     pub(super) fn invalidate_hits(&mut self, changed: Range<usize>) {
         for entry in self.entries.values_mut() {
             if entry.paint.as_ref().is_some_and(|paint| {

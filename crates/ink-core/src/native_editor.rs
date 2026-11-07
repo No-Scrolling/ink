@@ -25,6 +25,7 @@ impl Engine {
         };
         let rect = input.text_rect;
         let placeholder = match self.text_input_node(state).map(|node| &node.kind) {
+            #[cfg(feature = "text-input")]
             Some(NodeKind::TextInput { placeholder, .. }) => placeholder.as_str(),
             _ => "",
         };

@@ -1,4 +1,6 @@
-use std::{collections::{HashMap, HashSet}, sync::{Arc, OnceLock}};
+use std::{collections::HashMap, sync::OnceLock};
+#[cfg(feature = "ui-lists")]
+use std::{collections::HashSet, sync::Arc};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -8,19 +10,29 @@ use crate::ReactIcon;
 use serde_json::{Map, Value as Json, json};
 
 use super::{
-    Action, Alignment, Axis, CameraPreviewKind, CaptureKind, ControllerId, Engine, ImageFit, ImageSource,
-    Justification, Mask, NativeOperation, Node, NodeIdentity, NodeKind, StateId, StateValue, Tab,
-    TextAlign, TextInputAction, Tone,
+    Action, Alignment, Axis, CaptureKind, ControllerId, Engine, ImageFit, ImageSource,
+    Justification, Mask, NativeOperation, Node, NodeIdentity, NodeKind, Tab,
+    TextAlign, Tone,
 };
+
+#[cfg(feature = "camera")]
+use super::CameraPreviewKind;
+#[cfg(feature = "text-input")]
+use super::{StateId, StateValue, TextInputAction};
 
 pub use ink_protocol::ReactCommit;
 use ink_protocol::{HostKind, Operation};
+#[cfg(feature = "ui-lists")]
 mod native_list;
+#[cfg(feature = "ui-lists")]
 use native_list::{NativeList, RowEvent};
+#[cfg(feature = "ui-playing")]
 mod playing;
+#[cfg(feature = "ui-messages")]
 mod message;
 mod row;
 
+#[cfg(feature = "ui-lists")]
 #[derive(Clone, PartialEq)]
 struct ListProps {
     props: Map<String, Json>,
@@ -28,6 +40,7 @@ struct ListProps {
     content_versions: Arc<[u64]>,
 }
 
+#[cfg(feature = "ui-lists")]
 impl ListProps {
     fn new(mut props: Map<String, Json>, previous: Option<&Self>) -> Result<Self> {
         let (keys, content_versions) = if !props.contains_key("keys") && !props.contains_key("contentVersions") {
@@ -57,6 +70,7 @@ enum HostProps {
         max_lines: Option<u32>,
         tabular_numbers: bool,
     },
+    #[cfg(feature = "ui-lists")]
     List(Box<ListProps>),
     Other(Map<String, Json>),
 }
@@ -69,6 +83,7 @@ impl Default for HostProps {
 
 impl HostProps {
     fn new(kind: HostKind, mut props: Map<String, Json>) -> Result<Self> {
+        #[cfg(feature = "ui-lists")]
         if kind == HostKind::List {
             return Ok(Self::List(Box::new(ListProps::new(props, None)?)));
         }
@@ -112,6 +127,7 @@ impl HostProps {
     fn object(&self) -> Option<&Map<String, Json>> {
         match self {
             Self::Other(props) => Some(props),
+            #[cfg(feature = "ui-lists")]
             Self::List(list) => Some(&list.props),
             _ => None,
         }
@@ -135,16 +151,25 @@ struct HostNode {
 pub struct ReactTree {
     nodes: FxHashMap<usize, HostNode>,
     icons: HashMap<String, IconVariants>,
+    #[cfg(feature = "text-input")]
     inputs: FxHashMap<usize, InputBinding>,
+    #[cfg(feature = "text-input")]
     free_input_states: Vec<StateId>,
     active_screen: Option<usize>,
     scroll_positions: FxHashMap<usize, f32>,
+    #[cfg(feature = "ui-lists")]
     list_windows: FxHashMap<usize, (usize, usize, u64)>,
+    #[cfg(feature = "ui-lists")]
     native_lists: FxHashMap<usize, NativeList>,
+    #[cfg(feature = "ui-lists")]
     list_pagination: FxHashMap<usize, super::list::ListPagination>,
+    #[cfg(feature = "ui-lists")]
     native_events: FxHashMap<usize, RowEvent>,
+    #[cfg(any(feature = "ui-lists", feature = "ui-playing", feature = "ui-messages"))]
     next_native_id: usize,
+    #[cfg(feature = "ui-playing")]
     playing_ids: FxHashMap<usize, Vec<usize>>,
+    #[cfg(feature = "ui-messages")]
     message_ids: FxHashMap<usize, Vec<usize>>,
 }
 
@@ -156,6 +181,7 @@ struct IconVariants {
     filled_bounds: OnceLock<Option<crate::Rect>>,
 }
 
+#[cfg(feature = "text-input")]
 #[derive(Clone)]
 struct InputBinding {
     state: StateId,
@@ -168,22 +194,64 @@ impl Default for ReactTree {
         Self {
             nodes: [(0, HostNode::default())].into_iter().collect(),
             icons: HashMap::new(),
+            #[cfg(feature = "text-input")]
             inputs: FxHashMap::default(),
+            #[cfg(feature = "text-input")]
             free_input_states: Vec::new(),
             active_screen: None,
             scroll_positions: FxHashMap::default(),
+            #[cfg(feature = "ui-lists")]
             list_windows: FxHashMap::default(),
+            #[cfg(feature = "ui-lists")]
             native_lists: FxHashMap::default(),
+            #[cfg(feature = "ui-lists")]
             list_pagination: FxHashMap::default(),
+            #[cfg(feature = "ui-lists")]
             native_events: FxHashMap::default(),
+            #[cfg(any(feature = "ui-lists", feature = "ui-playing", feature = "ui-messages"))]
             next_native_id: usize::MAX,
+            #[cfg(feature = "ui-playing")]
             playing_ids: FxHashMap::default(),
+            #[cfg(feature = "ui-messages")]
             message_ids: FxHashMap::default(),
         }
     }
 }
 
 impl ReactTree {
+    #[cfg(not(feature = "text-input"))]
+    fn sync_inputs(&mut self, _engine: &mut Engine) -> Result<()> { Ok(()) }
+
+    #[cfg(not(feature = "text-input"))]
+    pub fn input_events(&mut self, _engine: &Engine) -> Vec<Json> { vec![] }
+
+    #[cfg(not(feature = "text-input"))]
+    pub fn submit_event(&self, _engine: &Engine) -> Option<Json> { None }
+
+    #[cfg(any(feature = "ui-lists", feature = "ui-playing", feature = "ui-messages"))]
+    pub(super) fn native_id(&mut self) -> Result<usize> {
+        ensure!(self.next_native_id as u64 > 9_007_199_254_740_991, "native identifiers exhausted");
+        let id = self.next_native_id;
+        self.next_native_id -= 1;
+        Ok(id)
+    }
+
+
+    #[cfg(not(feature = "ui-lists"))]
+    pub fn route_native_message(&self, message: String) -> Result<String> { Ok(message) }
+
+    #[cfg(not(feature = "ui-lists"))]
+    pub fn scroll_pending(&self, _engine: &Engine) -> bool { false }
+
+    #[cfg(not(feature = "ui-lists"))]
+    pub fn viewport_events(&mut self, _engine: &mut Engine) -> Result<Vec<Json>> { Ok(vec![]) }
+
+    #[cfg(not(feature = "ui-lists"))]
+    pub fn refresh_native_lists(&mut self, _engine: &mut Engine) -> Result<()> { Ok(()) }
+
+    #[cfg(all(feature = "perf", not(feature = "ui-lists")))]
+    fn native_list_storage_diagnostics(&self) -> Json { json!({}) }
+
     #[cfg(feature = "perf")]
     pub fn memory_diagnostics(&self) -> Json {
         let mut raw_text_nodes = 0;
@@ -206,7 +274,9 @@ impl ReactTree {
                     text_nodes += 1;
                     inline_text_bytes += text.len();
                 }
-                HostProps::Other(_) | HostProps::List(_) => other_property_nodes += 1,
+                HostProps::Other(_) => other_property_nodes += 1,
+                #[cfg(feature = "ui-lists")]
+                HostProps::List(_) => other_property_nodes += 1,
             }
         }
         json!({
@@ -247,6 +317,7 @@ impl ReactTree {
     }
 
     pub fn apply(&mut self, ReactCommit(operations): ReactCommit, engine: &mut Engine) -> Result<()> {
+        #[cfg(feature = "ui-lists")]
         let operations = self.expand_native_lists(operations, engine)?;
         let structural = operations
             .iter()
@@ -269,8 +340,10 @@ impl ReactTree {
                     );
                     ensure!(self.nodes.len() < 100_000, "React tree is too large");
                     ensure!(host_enabled(r#type), "native component is not included in this build");
-                    if cfg!(feature = "ui-playing") && r#type == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
-                    if cfg!(feature = "ui-messages") && r#type == HostKind::MessageContent { self.prepare_message(id, &props)?; }
+                    #[cfg(feature = "ui-playing")]
+                    if r#type == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
+                    #[cfg(feature = "ui-messages")]
+                    if r#type == HostKind::MessageContent { self.prepare_message(id, &props)?; }
                     self.nodes.insert(
                         id,
                         HostNode {
@@ -281,9 +354,14 @@ impl ReactTree {
                     );
                 }
                 Operation::Update { id, props } => {
+                    #[cfg(feature = "ui-lists")]
                     let native_list = self.native_lists.contains_key(&id);
-                    if cfg!(feature = "ui-playing") && self.node(id)?.kind == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
-                    if cfg!(feature = "ui-messages") && self.node(id)?.kind == HostKind::MessageContent { self.prepare_message(id, &props)?; }
+                    #[cfg(not(feature = "ui-lists"))]
+                    let native_list = false;
+                    #[cfg(feature = "ui-playing")]
+                    if self.node(id)?.kind == HostKind::PlayingScreen { self.prepare_playing(id, &props)?; }
+                    #[cfg(feature = "ui-messages")]
+                    if self.node(id)?.kind == HostKind::MessageContent { self.prepare_message(id, &props)?; }
                     let node = self.node_mut(id)?;
                     inputs_changed |= node.kind == HostKind::TextInput;
                     if node.kind == HostKind::Screen && props.get("dismissKeyboard").is_some()
@@ -294,10 +372,10 @@ impl ReactTree {
                         && props.get("scrollToEnd") != node.props.get("scrollToEnd") {
                         scroll_to_end.insert(id);
                     }
-                    let next = if let HostProps::List(previous) = &node.props {
-                        HostProps::List(Box::new(ListProps::new(props, Some(previous))?))
-                    } else {
-                        HostProps::new(node.kind, props)?
+                    let next = match &node.props {
+                        #[cfg(feature = "ui-lists")]
+                        HostProps::List(previous) => HostProps::List(Box::new(ListProps::new(props, Some(previous))?)),
+                        _ => HostProps::new(node.kind, props)?,
                     };
                     if node.props == next && !native_list { continue; }
                     node.props = next;
@@ -330,6 +408,7 @@ impl ReactTree {
             }
         }
         if structural {
+            #[cfg(feature = "ui-lists")]
             engine.list_metrics.retain(|id, _| self.nodes.contains_key(id));
         }
         if inputs_changed { self.sync_inputs(engine)?; }
@@ -410,6 +489,7 @@ impl ReactTree {
                 .get(&screen_id)
                 .copied()
                 .unwrap_or_else(|| if self.nodes.get(&screen_id).is_some_and(|node| node.props.get("initialEnd") == Some(&Json::Bool(true))) { f32::MAX } else { 0.0 });
+            #[cfg(feature = "ui-lists")]
             engine.react_list_positions.clear();
             engine.pointer_screen_changed();
             engine.focused_input = None;
@@ -419,6 +499,7 @@ impl ReactTree {
         }
         if scroll_to_end.contains(&screen_id) {
             engine.scroll_offset = f32::MAX;
+            #[cfg(feature = "ui-lists")]
             engine.react_list_positions.clear();
         }
         if dismiss_keyboard.contains(&screen_id) {
@@ -451,6 +532,7 @@ impl ReactTree {
         Ok(id)
     }
 
+    #[cfg(feature = "text-input")]
     fn sync_inputs(&mut self, engine: &mut Engine) -> Result<()> {
         if !cfg!(feature = "text-input") { return Ok(()); }
         self.inputs.retain(|id, input| {
@@ -510,11 +592,13 @@ impl ReactTree {
         Ok(())
     }
 
+    #[cfg(feature = "ui-lists")]
     pub fn scroll_pending(&self, engine: &Engine) -> bool {
         engine.react_list_positions.keys().any(|id| self.nodes.get(id)
             .is_some_and(|node| node.props.get("moreAvailable") == Some(&Json::Bool(true))))
     }
 
+    #[cfg(feature = "ui-lists")]
     pub fn viewport_events(&mut self, engine: &mut Engine) -> Result<Vec<Json>> {
         self.refresh_native_lists(engine)?;
         self.list_windows
@@ -557,6 +641,7 @@ impl ReactTree {
         Ok(events)
     }
 
+    #[cfg(feature = "text-input")]
     pub fn input_events(&mut self, engine: &Engine) -> Vec<Json> {
         let mut events = Vec::new();
         for (id, input) in &mut self.inputs {
@@ -573,6 +658,7 @@ impl ReactTree {
         events
     }
 
+    #[cfg(feature = "text-input")]
     pub fn submit_event(&self, engine: &Engine) -> Option<Json> {
         let state = engine.focused_input?;
         let (id, input) = self.inputs.iter().find(|(_, input)| input.state == state)?;
@@ -628,10 +714,15 @@ impl ReactTree {
 
     fn remove(&mut self, id: usize) {
         if let Some(node) = self.nodes.remove(&id) {
+            #[cfg(feature = "ui-lists")]
             self.native_lists.remove(&id);
+            #[cfg(feature = "ui-lists")]
             self.list_pagination.remove(&id);
+            #[cfg(feature = "ui-lists")]
             self.native_events.remove(&id);
+            #[cfg(feature = "ui-playing")]
             self.playing_ids.remove(&id);
+            #[cfg(feature = "ui-messages")]
             self.message_ids.remove(&id);
             for child in node.children {
                 self.remove(child);
@@ -697,6 +788,9 @@ impl ReactTree {
         }
         let props = &host.props;
         let mut node = match host.kind {
+            #[cfg(not(feature = "ui-canvas"))]
+            HostKind::Canvas => bail!("native component is not included in this build"),
+            #[cfg(feature = "ui-canvas")]
             HostKind::Canvas => {
                 ensure!(cfg!(feature = "ui-canvas"), "native component is not included in this build");
                 let width = number(props, "width")?.context("Canvas requires width")?;
@@ -791,14 +885,17 @@ impl ReactTree {
                 }
                 Node { identity: NodeIdentity(id), kind: NodeKind::Canvas { width, height, drawings } }
             }
+            #[cfg(feature = "ui-lists")]
             HostKind::NativeList => {
                 ensure!(cfg!(feature = "ui-lists"), "native component is not included in this build");
                 return self.render_native_list(id, host, depth);
-            }
+            },
+            #[cfg(feature = "ui-playing")]
             HostKind::PlayingScreen => {
                 ensure!(cfg!(feature = "ui-playing"), "native component is not included in this build");
                 return self.render_playing(id, host);
             }
+            #[cfg(feature = "ui-lists")]
             HostKind::List => {
                 let HostProps::List(list) = props else { bail!("List requires metadata"); };
                 let keys = list.keys.clone();
@@ -817,7 +914,7 @@ impl ReactTree {
                         follow_end: props.get("followEnd") == Some(&Json::Bool(true)),
                     },
                 }
-            }
+            },
 
             HostKind::Navigator | HostKind::Tab => {
                 let mut children = self.children(host, depth)?;
@@ -862,22 +959,28 @@ impl ReactTree {
                 }
                 screen
             }
+            #[cfg(feature = "ui-messages")]
             HostKind::ConversationComposer => {
                 ensure!((2..=3).contains(&host.children.len()), "Composer requires two or three children");
                 Node { identity: NodeIdentity(id), kind: NodeKind::ConversationComposer { children: self.children(host, depth)? } }
             },
+            #[cfg(feature = "ui-messages")]
             HostKind::MessageContent => {
                 ensure!(cfg!(feature = "ui-messages"), "native component is not included in this build");
                 return self.render_message(id, host);
             }
+            #[cfg(feature = "ui-messages")]
             HostKind::Message => Node { identity: NodeIdentity(id), kind: NodeKind::Message { children: self.children(host, depth)?, outgoing: props.get("outgoing") == Some(&Json::Bool(true)) } },
+            #[cfg(feature = "ui-messages")]
             HostKind::MessageQuote => Node { identity: NodeIdentity(id), kind: NodeKind::MessageQuote { children: self.children(host, depth)? } },
             HostKind::LinkPreview => Node { identity: NodeIdentity(id), kind: NodeKind::LinkPreview { children: self.children(host, depth)? } },
+            #[cfg(feature = "ui-playing")]
             HostKind::PlayingTransport => {
                 let loading = props.get("loading") == Some(&Json::Bool(true));
                 ensure!(!loading || host.children.len() == 3, "Loading transport requires three controls");
                 Node { identity: NodeIdentity(id), kind: NodeKind::PlayingTransport { children: self.children(host, depth)?, loading } }
             },
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             HostKind::PlayingLayout => {
                 ensure!(host.children.len() == 2, "Playing layout requires content and actions");
                 Node { identity: NodeIdentity(id), kind: NodeKind::PlayingLayout {
@@ -887,6 +990,7 @@ impl ReactTree {
                     bleed: props.get("bleed") == Some(&Json::Bool(true)),
                 } }
             },
+            #[cfg(feature = "ui-playing")]
             HostKind::PlayingLabel => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingLabel {
                 text: string(&host.props, "text").unwrap_or_default().to_owned(),
                 size: number(&host.props, "size")?.unwrap_or(22.0),
@@ -913,6 +1017,7 @@ impl ReactTree {
                     Ok(cents.clamp(-50.0, 50.0) as f32)
                 }).transpose()?,
             } },
+            #[cfg(any(feature = "ui-playing", feature = "video"))]
             HostKind::PlayingProgress => Node { identity: NodeIdentity(id), kind: NodeKind::PlayingProgress {
                 position: playback_seconds(props, "position", 1.0)?, duration: playback_seconds(props, "duration", 1.0)?, seek: props.get("onSeek") == Some(&Json::Bool(true)),
                 playing: props.get("playing") == Some(&Json::Bool(true)),
@@ -939,10 +1044,12 @@ impl ReactTree {
             },
             HostKind::RowContent => self.render_row(id, props)?,
             HostKind::Avatar => self.render_avatar(id, props)?,
+            #[cfg(feature = "ui-lists")]
             HostKind::MediaGridRow => {
                 ensure!(host.children.len() <= 3, "Media grid rows have at most three cells");
                 Node { identity: NodeIdentity(id), kind: NodeKind::MediaGridRow { children: self.children(host, depth)? } }
-            }
+            },
+            #[cfg(feature = "ui-lists")]
             HostKind::MediaCell => {
                 let src = string(props, "src").context("Media cell requires a source")?;
                 ensure!(src.starts_with("ink-media://") || src.starts_with("ink-file://"), "Media cells require a media or managed file source");
@@ -956,7 +1063,7 @@ impl ReactTree {
                     action: (props.get("onPress") == Some(&Json::Bool(true))).then(|| event(id, "onPress", vec![])),
                     long_action: (props.get("onLongPress") == Some(&Json::Bool(true))).then(|| event(id, "onLongPress", vec![])),
                 } }
-            }
+            },
             HostKind::Screen | HostKind::MediaPickerScreen => {
                 let left_action = string(props, "leftIcon").map(|icon| {
                     ensure!(props.get("onLeftPress") == Some(&Json::Bool(true)), "Screen left action requires onPress");
@@ -1091,6 +1198,7 @@ impl ReactTree {
                     stack
                 }
             }
+            #[cfg(feature = "text-input")]
             HostKind::TextInput => {
                 ensure!(cfg!(feature = "text-input"), "native component is not included in this build");
                 let action = match string(props, "action").unwrap_or("search") {
@@ -1118,7 +1226,7 @@ impl ReactTree {
                     string(props, "suffix").unwrap_or("").to_owned(),
                     self.icon("close")?,
                 )
-            }
+            },
             HostKind::Barcode => {
                 let value = string(props, "value").context("Barcode requires a value")?;
                 let format = string(props, "format").context("Barcode requires a format")?;
@@ -1136,6 +1244,7 @@ impl ReactTree {
                     ImageFit::Contain,
                 )
             }
+            #[cfg(feature = "video")]
             HostKind::VideoView => {
                 ensure!(cfg!(feature = "video"), "native component is not included in this build");
                 let controller = match props.get("controller") {
@@ -1150,14 +1259,16 @@ impl ReactTree {
                     controller,
                     loading: props.get("loading").and_then(Json::as_bool).unwrap_or(false),
                 } }
-            }
+            },
+            #[cfg(feature = "maps")]
             HostKind::MapView => {
                 ensure!(cfg!(feature = "maps"), "native component is not included in this build");
                 let id = props.get("controller").and_then(Json::as_i64)
                     .context("Map requires a controller")?;
                 ensure!((1..=9_007_199_254_740_991).contains(&id), "Invalid map controller");
                 Node::map_view(ControllerId::new((-id) as usize))
-            }
+            },
+            #[cfg(feature = "camera")]
             HostKind::CameraPreview => {
                 ensure!(cfg!(feature = "camera"), "native component is not included in this build");
                 let id = props
@@ -1174,7 +1285,7 @@ impl ReactTree {
                     _ => bail!("Invalid camera preview kind"),
                 };
                 Node::camera_preview(ControllerId::new((-id) as usize), kind)
-            }
+            },
             HostKind::Image => {
                 let src = string(props, "src").context("Image requires a source")?;
                 let avatar = (props.get("avatar") == Some(&Json::Bool(true)))
@@ -1398,6 +1509,7 @@ fn string<'a>(props: &'a HostProps, key: &str) -> Option<&'a str> {
     props.get(key).and_then(Json::as_str)
 }
 
+#[cfg(any(feature = "ui-playing", feature = "video"))]
 fn playback_seconds(props: &HostProps, key: &str, units_per_second: f64) -> Result<f32> {
     let Some(value) = props.get(key) else { return Ok(0.0); };
     let value = value.as_f64().with_context(|| format!("invalid playback {key}"))? / units_per_second;
@@ -1460,19 +1572,31 @@ fn replace_nodes(node: &mut Node, ids: &[usize], patches: &mut [Option<Node>]) {
         return;
     }
     match &mut node.kind {
+        #[cfg(feature = "ui-messages")]
         NodeKind::ConversationComposer { children, .. }
         | NodeKind::Message { children, .. }
-        | NodeKind::MessageQuote { children, .. }
-        | NodeKind::PlayingTransport { children, .. }
-        | NodeKind::PlayingLayout { children, .. }
-        | NodeKind::Pressable { children, .. }
-        | NodeKind::MediaGridRow { children }
+        | NodeKind::MessageQuote { children, .. } => {
+            for child in children { replace_nodes(child, ids, patches); }
+        },
+        #[cfg(feature = "ui-playing")]
+        NodeKind::PlayingTransport { children, .. } => {
+            for child in children { replace_nodes(child, ids, patches); }
+        },
+        #[cfg(any(feature = "ui-playing", feature = "video"))]
+        NodeKind::PlayingLayout { children, .. } => {
+            for child in children { replace_nodes(child, ids, patches); }
+        },
+        NodeKind::Pressable { children, .. }
         | NodeKind::RowTitle { children, .. }
         | NodeKind::Row { children, .. }
-        | NodeKind::Stack { children, .. }
+        | NodeKind::Stack { children, .. } => {
+            for child in children { replace_nodes(child, ids, patches); }
+        },
+        #[cfg(feature = "ui-lists")]
+        NodeKind::MediaGridRow { children }
         | NodeKind::ReactList { children, .. } => {
             for child in children { replace_nodes(child, ids, patches); }
-        }
+        },
         NodeKind::Screen(screen) => {
             for child in &mut screen.children { replace_nodes(child, ids, patches); }
             for child in &mut screen.overlay { replace_nodes(child, ids, patches); }
@@ -1506,6 +1630,7 @@ fn image_source(src: &str) -> Result<ImageSource> {
     })
 }
 
+#[cfg(any(feature = "ui-playing", feature = "video"))]
 fn playback_speed(props: &HostProps) -> Result<f32> {
     let speed = props.get("speed").map(|value| value.as_f64().context("invalid playback speed")).transpose()?.unwrap_or(1.0);
     ensure!(speed.is_finite() && (0.25..=4.0).contains(&speed), "invalid playback speed");
@@ -1519,9 +1644,10 @@ fn host_enabled(kind: HostKind) -> bool {
         HostKind::CameraPreview => cfg!(feature = "camera"),
         HostKind::MapView => cfg!(feature = "maps"),
         HostKind::VideoView => cfg!(feature = "video"),
-        HostKind::NativeList => cfg!(feature = "ui-lists"),
-        HostKind::PlayingScreen => cfg!(feature = "ui-playing"),
-        HostKind::MessageContent => cfg!(feature = "ui-messages"),
+        HostKind::NativeList | HostKind::List | HostKind::MediaGridRow | HostKind::MediaCell => cfg!(feature = "ui-lists"),
+        HostKind::PlayingScreen | HostKind::PlayingTransport | HostKind::PlayingLabel => cfg!(feature = "ui-playing"),
+        HostKind::PlayingLayout | HostKind::PlayingProgress => cfg!(any(feature = "ui-playing", feature = "video")),
+        HostKind::MessageContent | HostKind::Message | HostKind::MessageQuote | HostKind::ConversationComposer => cfg!(feature = "ui-messages"),
         _ => true,
     }
 }
