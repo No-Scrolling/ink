@@ -48,6 +48,7 @@ pub enum Capability {
     UiMessages,
     UiPlaying,
     Video,
+    WebSockets,
 }
 
 impl Capability {

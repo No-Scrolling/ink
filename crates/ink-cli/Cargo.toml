@@ -25,4 +25,6 @@ owo-colors.workspace = true
 serde_json.workspace = true
 sha2 = "0.10.9"
 roxmltree = "0.20"
+toml.workspace = true
+semver = "1.0"
 zip = { version = "9.4", default-features = false, features = ["deflate"] }

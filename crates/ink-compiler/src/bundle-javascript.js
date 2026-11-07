@@ -193,6 +193,18 @@ function buildOptions(bootstrap = false) { return {
         const requirements = new Set(moduleCapabilities.get(path) ?? []);
         const families = { Canvas: "ui-canvas", CanvasIcon: "ui-canvas", CanvasPath: "ui-canvas", CanvasRectangle: "ui-canvas", CanvasText: "ui-canvas", NativeList: "ui-lists", PlayingScreen: "ui-playing", MessageContent: "ui-messages" };
         function visit(node) {
+          // The web shim installs all globals lazily. Only consumers need the
+          // optional socket transport; inspecting the shim itself would retain it.
+          if (packageName !== "@ink/network" && packageName !== "ink" && ts.isIdentifier(node)) {
+            if (node.text === "WebSocket") requirements.add("web-sockets");
+            if (node.text === "globalThis") {
+              const parent = node.parent;
+              const staticProperty = ts.isPropertyAccessExpression(parent) && parent.expression === node;
+              const staticElement = ts.isElementAccessExpression(parent) && parent.expression === node && ts.isStringLiteral(parent.argumentExpression);
+              if ((staticElement && parent.argumentExpression.text === "WebSocket") ||
+                  (!staticProperty && !staticElement && !ts.isTypeOfExpression(parent))) requirements.add("web-sockets");
+            }
+          }
           if (ts.isCallExpression(node)) {
             const callee = node.expression;
             const name = ts.isPropertyAccessExpression(callee) ? callee.name.text : ts.isIdentifier(callee) ? callee.text : "";

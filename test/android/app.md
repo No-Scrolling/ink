@@ -4,7 +4,15 @@ Run `bun run test android-app --serial emulator-5554`.
 
 The runner builds a genuine development app through the Ink CLI, installs the unique `com.vandam.ink.sdkcontracts` package and launches the production activity. Public SDK operations travel through compiled JavaScript, QuickJS, Rust/JNI and the actual Kotlin adapters. Observations return through production console messages in PID-filtered logcat; assertions live independently in the host runner.
 
-Eleven contracts cover committed schema migration, competing SDK updates, sibling subscription refresh, rejection of older schema readers, persistence without repeated migration after a process restart, binary HTTP upload/response bytes, 307 replay, 303 method/body rewriting, incremental response reading through EOF, body cancellation with subsequent request recovery, and rejection of a pre-aborted request before it reaches the server.
+Twenty-one contracts cover app Rust and Ink sharing one packaged library, a real
+app JNI call through that library, committed schema migration, competing SDK
+updates, sibling subscription refresh, rejection of older schema readers,
+persistence after a process restart, binary HTTP uploads and responses, redirect
+replay and rewriting, incremental response reading through EOF, cancellation,
+pre-aborted requests, manual and error redirect policies, HTTP error responses,
+cookie isolation, credentials across origins, timeouts, stream uploads, durable
+downloads, multipart managed-file slices, and WebSocket protocol negotiation,
+text and binary messages, and clean closure.
 
 The controlled HTTP peer is a real local Bun server. Its expected request bytes are explicit, and response bytes are authored separately from the fixture's observations. The runner maps device loopback port 18765 to a dynamic host port, refuses an existing mapping or fixture installation, and uses the same per-device lock as the adapter suite. Request records, both process observations and build/device logs remain in ignored `.test-output/android-app/`.
 

@@ -44,6 +44,15 @@ fn compiled_inline_web_supplies_globals_without_an_optional_asset_loader() {
 }
 
 fn assert_web_globals(runtime: &AppRuntime, events: &EventReceiver) {
+    command(runtime, "wpt");
+    let expected: serde_json::Value = serde_json::from_str(include_str!(
+        "../../fixtures/runtime/split-web/url-tr46-expected.json"
+    )).unwrap();
+    assert_eq!(expected.as_array().unwrap().len(), 1014);
+    assert_eq!(
+        message(events, |value| value["label"] == "wpt")["value"],
+        expected
+    );
     command(runtime, "idna");
     assert_eq!(
         message(events, |value| value["label"] == "idna")["value"],

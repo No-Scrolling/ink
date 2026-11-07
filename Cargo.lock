@@ -983,8 +983,10 @@ dependencies = [
  "ink-runtime",
  "owo-colors",
  "roxmltree",
+ "semver",
  "serde_json",
  "sha2",
+ "toml",
  "zip",
 ]
 

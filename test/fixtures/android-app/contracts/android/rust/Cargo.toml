@@ -1,0 +1,17 @@
+[package]
+name = "ink-packaging-contract"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[workspace]
+
+[profile.release]
+opt-level = "s"
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = true

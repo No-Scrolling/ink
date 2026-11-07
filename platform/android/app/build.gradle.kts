@@ -72,6 +72,7 @@ val inkUsesLightSdk = inkUses("light-sdk")
 val inkUsesLightSdkRingtone = inkUses("light-sdk-ringtone")
 val inkUsesLightSdkPush = inkUses("light-sdk-push")
 val inkUsesNetwork = inkUses("network")
+val inkUsesWebSockets = inkUses("web-sockets")
 val inkUsesCleartextNetwork = inkUses("network-cleartext")
 val inkUsesAudio = inkUses("audio")
 val inkUsesAudioPlayback = inkUses("audio-playback")
@@ -368,6 +369,7 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
     group = "rust"
     description = "Builds the Ink runtime for the LP3 arm64 ABI."
     workingDir(repositoryRoot)
+    environment("CARGO_TARGET_DIR", repositoryRoot.dir("target").asFile.absolutePath)
     inputs.property("inkBenchmark", inkBenchmark)
     inputs.property("inkBridgeTiming", inkBridgeTiming)
     inputs.property("inkPresentationTiming", inkPresentationTiming)
@@ -379,8 +381,9 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
             "cargo", "ndk", "-t", "arm64-v8a",
             "--platform", android.defaultConfig.minSdk.toString(),
             "-o", generatedJniRoot.get().dir(variant).asFile.absolutePath,
-            "build", "--locked", "-p", "ink-android",
+            "build", "--locked",
         ))
+        addAll(listOf("--manifest-path", providers.gradleProperty("inkRustManifest").get()))
         addAll(profile)
         for ((feature, enabled) in listOf(
             "ui-lists" to inkUses("ui-lists"),
@@ -417,6 +420,13 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
             "--sysroot=$sysroot -I$sysroot/usr/include/aarch64-linux-android",
         )
     }
+    doLast {
+        val directory = generatedJniRoot.get().dir("$variant/arm64-v8a").asFile
+        val combined = directory.resolve("lib${providers.gradleProperty("inkRustLibraryName").get()}.so")
+        check(combined.isFile) { "Ink Rust build did not produce ${combined.name}" }
+        combined.copyTo(directory.resolve("libink_android.so"), overwrite = true)
+        combined.delete()
+    }
 }
 
 val cargoBuildDebug = registerCargoBuild("debug", listOf("--profile", "ink-dev"))
@@ -444,7 +454,7 @@ dependencies {
     if (inkUsesMaps.get()) {
         implementation("org.maplibre.gl:android-sdk:11.11.0")
     }
-    if (inkUsesNetwork.get()) {
+    if (inkUsesWebSockets.get()) {
         implementation("com.squareup.okhttp3:okhttp:5.4.0")
     }
     implementation("androidx.core:core-splashscreen:1.0.1")

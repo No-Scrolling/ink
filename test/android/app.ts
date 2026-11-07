@@ -17,15 +17,31 @@ await mkdir(output, { recursive: true });
 const lock = resolve(root, ".test-output", `android-${serial}.lock`);
 const devicePort = 18765;
 let phase = 1;
-const requests: { path: string; method: string; bytes: number[]; contentType: string | null; fixtureHeader: string | null }[] = [];
+const requests: { path: string; method: string; bytes: number[]; contentType: string | null; fixtureHeader: string | null; authorization: string | null; cookie: string | null }[] = [];
+const multipartRequests: unknown[] = [];
 const upload = [0, 255, 99, 97, 102, 195, 169];
 const streamed = [0, 255, 13, 10, 226, 130, 172];
 const server = Bun.serve({
   hostname: "127.0.0.1", port: 0,
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path === "/socket") return server.upgrade(request, { headers: { "Sec-WebSocket-Protocol": "ink-contract" } }) ? undefined : new Response("Upgrade failed", { status: 400 });
+    if (path === "/multipart") {
+      const form = await request.formData();
+      const attachment = form.get("attachment") as File;
+      multipartRequests.push({ caption: form.get("caption"), name: attachment.name, bytes: Array.from(new Uint8Array(await attachment.arrayBuffer())) });
+      return new Response("multipart received");
+    }
     requests.push({ path, method: request.method, bytes: Array.from(new Uint8Array(await request.arrayBuffer())),
-      contentType: request.headers.get("content-type"), fixtureHeader: request.headers.get("x-ink-fixture") });
+      contentType: request.headers.get("content-type"), fixtureHeader: request.headers.get("x-ink-fixture"), authorization: request.headers.get("authorization"), cookie: request.headers.get("cookie") });
+    if (path === "/download") return new Response(new Uint8Array([0, 17, 34, 51, 255, 13, 10]), { headers: { "content-type": "application/octet-stream", etag: '"fixture-v1"' } });
+    if (path === "/stream-upload") return new Response("stream received");
+    if (path === "/missing") return new Response("Missing fixture", { status: 404 });
+    if (path === "/set-cookie") return new Response("cookie sent", { headers: { "set-cookie": "fixture=server; Path=/" } });
+    if (path === "/cookies") return new Response(request.headers.get("cookie") ?? "no cookie");
+    if (path === "/cross-origin") return new Response(null, { status: 302, headers: { location: `http://localhost:${devicePort}/credentials` } });
+    if (path === "/credentials") return new Response(JSON.stringify({ authorization: request.headers.get("authorization"), cookie: request.headers.get("cookie") }));
+    if (path === "/delayed") { await Bun.sleep(500); return new Response("late"); }
     if (path === "/phase") return new Response(String(phase));
     if (path === "/echo" || path === "/retained") return new Response(new Uint8Array(upload), { status: 201, headers: { "x-ink-reply": "received" } });
     if (path === "/redirect307") return new Response(null, { status: 307, headers: { location: "/retained" } });
@@ -42,6 +58,7 @@ const server = Bun.serve({
     if (path === "/healthy") return new Response("ready after abort");
     return new Response("Unexpected fixture request", { status: 404 });
   },
+  websocket: { message(socket, message) { socket.send(message); } },
 });
 
 async function command(argv: string[], name: string, timeoutMs = 30_000, env = process.env) {
@@ -102,12 +119,18 @@ try {
   const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? resolve(homedir(), "Library/Android/sdk");
   await command(["cargo", "run", "--profile", "ink-dev", "-p", "ink-cli", "--", "-C", fixture, "build", "--debug"], "build", 600_000,
     { ...process.env, JAVA_HOME: javaHome, ANDROID_HOME: sdk, INK_SDK_ROOT: root });
+  const apk = resolve(fixture, ".ink/build/android/outputs/apk/debug/app-debug.apk");
+  const entries = await command([resolve(javaHome!, "bin/jar"), "tf", apk], "apk-entries");
+  contract("app Rust and Ink are packaged as one shared library", () => {
+    deepStrictEqual(entries.split("\n").filter(name => name.endsWith(".so")), ["lib/arm64-v8a/libink_android.so"]);
+  });
   await adb(["reverse", `tcp:${devicePort}`, `tcp:${server.port}`], "reverse"); reversed = true;
-  await adb(["install", resolve(fixture, ".ink/build/android/outputs/apk/debug/app-debug.apk")], "install"); installed = true;
+  await adb(["install", apk], "install"); installed = true;
   const first = await observe(1);
   phase = 2;
   await adb(["shell", "am", "force-stop", packageName], "stop-between-phases");
   const reopened = await observe(2);
+  contract("app Rust JNI exports load from the combined Ink library", () => equal(first.rustPackaging, "31415"));
   contract("store migration decodes and commits the upgraded value", () => {
     equal(first.migrated, 42); equal(first.migrations, 1); equal(first.committedMigration, 42);
   });
@@ -141,6 +164,29 @@ try {
   });
   contract("pre-aborted public fetch never reaches the server", () => {
     equal(first.preAbort, "before-send"); equal(requests.filter(request => request.path === "/must-not-arrive").length, 0);
+  });
+  contract("manual and error redirect policies remain observable", () => {
+    deepStrictEqual(first.manual, { status: 303, location: "/rewritten", redirected: false });
+    match(String(first.redirectError), /redirect was not allowed/);
+  });
+  contract("HTTP error statuses return readable responses", () => deepStrictEqual(first.missing, { status: 404, ok: false, text: "Missing fixture" }));
+  contract("requests do not persist cookies and cross-origin redirects strip credentials", () => {
+    equal(first.cookies, "no cookie"); deepStrictEqual(JSON.parse(String(first.crossOrigin)), { authorization: null, cookie: null });
+    const initial = requests.find(request => request.path === "/cross-origin");
+    equal(initial?.authorization, "Bearer fixture"); equal(initial?.cookie, "fixture=1");
+  });
+  contract("public timeout aborts a pending HTTP response", () => equal(first.timeout, "TimeoutError"));
+  contract("stream request bodies preserve binary upload bytes", () => {
+    equal(first.uploadStream, "stream received"); deepStrictEqual(requests.find(request => request.path === "/stream-upload")?.bytes, [0, 13, 255, 226, 130, 172]);
+  });
+  contract("durable downloads deduplicate jobs and expose exact managed-file bytes", () => {
+    deepStrictEqual(first.download, { duplicate: true, received: 7, total: 7, bytes: [0, 17, 34, 51, 255, 13, 10] });
+  });
+  contract("multipart uploads retain native-file slices and UTF-8 text", () => {
+    equal(first.multipart, "multipart received"); deepStrictEqual(multipartRequests, [{ caption: "café", name: "slice.bin", bytes: [17, 34, 51, 255] }]);
+  });
+  contract("WebSockets negotiate protocols, echo text and binary, and close cleanly", () => {
+    deepStrictEqual(first.socket, { protocol: "ink-contract", messages: ["café", [0, 255, 13, 10]], code: 1000, reason: "Finished", clean: true });
   });
   console.log(`${passed} pass\n${failures.length} fail`);
   if (failures.length) process.exitCode = 1;

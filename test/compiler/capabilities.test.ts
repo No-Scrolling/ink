@@ -151,3 +151,24 @@ test("changing split-web mode removes the old optional asset while retaining the
     expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external"] });
   });
 }, 60_000);
+
+test.each([
+  'new WebSocket("wss://example.test/events")',
+  'new globalThis.WebSocket("wss://example.test/events")',
+  'new globalThis["WebSocket"]("wss://example.test/events")',
+  '(() => { const globals = globalThis; return globals.WebSocket; })()',
+])("WebSocket consumers retain their transport: %s", async expression => {
+  await withProject(async root => {
+    await writeFile(resolve(root, "app/index.tsx"), `import "@ink/network";\nconsole.log(${expression});\n${plainPage}`);
+    expect(await compile(root)).toMatchObject({ exitCode: 0 });
+    expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external", "network", "web-sockets"] });
+  });
+}, 60_000);
+
+test("explicit WebSocket capabilities support dynamically supplied native code", async () => {
+  await withProject(async root => {
+    await writeFile(resolve(root, "ink.toml"), 'name = "Compiler contract"\npackage = "dev.ink.compilercontract"\ncapabilities = ["web-sockets"]\n');
+    expect(await compile(root)).toMatchObject({ exitCode: 0 });
+    expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external", "network", "web-sockets"] });
+  });
+}, 60_000);

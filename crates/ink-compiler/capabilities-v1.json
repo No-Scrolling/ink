@@ -367,6 +367,17 @@
       "cost": "native player composition",
       "dependencies": [],
       "permissions": []
+    },
+    "web-sockets": {
+      "cost": "OkHttp WebSocket transport",
+      "dependencies": [
+        "network"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "webSockets",
+        "disabled": "noWebSockets"
+      }
     }
   },
   "androidCameraSources": {

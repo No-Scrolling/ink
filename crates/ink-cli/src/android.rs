@@ -204,6 +204,7 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
 
     let framework = project_framework_root(project)?;
     let android = framework.join("platform/android");
+    let app_rust = crate::android_rust::prepare(project.root(), &framework)?;
     let mut gradle = Command::new(android.join("gradlew"));
     gradle
         .current_dir(&framework)
@@ -245,6 +246,8 @@ fn gradle_command(project: &Project, profile: Profile, light_server: &str) -> Re
             .display()
         ));
 
+    gradle.arg(format!("-PinkRustManifest={}", app_rust.manifest.display()));
+    gradle.arg(format!("-PinkRustLibraryName={}", app_rust.library));
     if let Some(signing) = release_signing {
         gradle
             .arg("-PinkSigning=release")

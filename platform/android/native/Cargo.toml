@@ -7,7 +7,7 @@ rust-version.workspace = true
 build = "build.rs"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 path = "src/lib.rs"
 
 [features]

@@ -1,5 +1,6 @@
 mod apk;
 mod android;
+mod android_rust;
 mod app_agents;
 mod app_release;
 mod development;

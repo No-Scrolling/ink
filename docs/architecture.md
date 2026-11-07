@@ -41,6 +41,52 @@ Unused JavaScript can be removed from the bundle. Native SDKs may need to be inc
 
 For app-local Android code, an `android/build.gradle.kts` library can supply resources and a manifest. Ink compiles `android/kotlin/` with its Android host; that code provides `createAppNativeAdapters` for calls from `ink/native`. Adapters can send their own messages with `activity.emit`; listen for them with `onNativeMessage`, using a `type` that does not clash with Ink's own messages. This integration uses internal Android interfaces and is not a portable package API.
 
+### App-local Rust
+
+Put the app's Rust library in `android/rust/Cargo.toml` and provide an `rlib`:
+
+```toml
+[lib]
+crate-type = ["rlib"]
+```
+
+Ink generates a wrapper crate in `.ink/android/rust/` that links the app and Ink
+into `libink_android.so`. Export JNI functions with their existing names and load
+the combined library from Kotlin:
+
+```kotlin
+System.loadLibrary("ink_android")
+```
+
+Ink uses the same wrapper build for apps without local Rust. Its host crate is an
+`rlib`, so dependencies use Cargo's hashed cache files. The wrapper has a distinct
+internal library name for each app and native configuration, then Gradle packages
+it as `libink_android.so`. Switching between apps or capabilities cannot reuse a
+different configuration's shared library.
+
+When migrating a separate `cdylib`, remove its Cargo task and `jniLibs` source
+directory from the app's Gradle script. Replace calls that load the old library
+name. Ink rejects literal calls to the old name in `android/kotlin/` with migration
+guidance. Code that calculates a library name must also use `ink_android`.
+
+The app crate's default features remain enabled. Cargo unifies compatible shared
+dependencies and their features; incompatible versions can remain separate Rust
+dependencies inside the one library. Ink combines both workspace lockfiles,
+selecting the newer compatible version of shared dependencies and retaining pins
+for app-only dependencies, then asks Cargo to validate and resolve the graph.
+Gradle builds that graph with `--locked`. Keep the app's
+lockfile in version control and review dependency changes when updating either
+the app or Ink.
+
+The generated workspace combines both workspaces' Cargo patches, resolves patch
+paths relative to their original workspace, and rejects conflicting patches.
+The app workspace's profile settings override Ink's settings, including nested
+package and build overrides. For example, the app's `opt-level = "s"` and
+`lto = "thin"` apply to the combined release build. Without overrides, Ink uses
+its usual release profile. One final link allows LTO across Ink and app code.
+JNI symbol names must be unique across both crates. A combined library has one
+`JNI_OnLoad`; apps that define it must initialise all their JNI registration there.
+
 ## Running an app
 
 React runs on a dedicated JavaScript thread. It manages app state and sends UI changes to Rust. Native API calls return promises so file and network operations do not block that thread.

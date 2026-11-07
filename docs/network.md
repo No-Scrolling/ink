@@ -7,6 +7,21 @@ Use `@ink/network` for `fetch`, response streams, `Blob`, `File`, `FormData` and
 
 Import it in each module that uses these APIs.
 
+Android uses the system `HttpEngine` for fetch, uploads and remote images.
+WebSockets retain OkHttp because `HttpEngine` has no WebSocket API. Ink includes
+the WebSocket transport when surviving app or dependency code refers to
+`WebSocket`. Access through a dynamic `globalThis` lookup also retains it.
+Apps that only use Ink's HTTP APIs omit OkHttp and Okio. MapLibre retains its
+own transitive OkHttp dependency for maps. Native code or code that supplies its own
+runtime lookups can declare the capability explicitly:
+
+```toml
+capabilities = ["web-sockets"]
+```
+
+Downloads, authentication and LightOS push use Android URL connections. Media3
+playback keeps its existing data sources. These transports do not require OkHttp.
+
 `URL` converts internationalised host names to ASCII synchronously using UTS #46.
 Conversion is nontransitional: `ß` remains distinct from `ss`. It checks
 bidirectional text and joiners without enforcing DNS lengths or hyphen placement.
@@ -14,6 +29,12 @@ bidirectional text and joiners without enforcing DNS lengths or hyphen placement
 Android and host tools, including CLI exports, use the same Unicode data bundled
 with Ink. Support for newly assigned characters can change when Ink updates that
 data. Invalid punycode labels are rejected, as in Ink's previous URL implementation.
+
+The URL regression fixtures compare 1,014 WPT URL parsing and host setter cases
+against frozen results from the previous `whatwg-url` 14.2.0/tr46 parser. Both
+split and inline web runtimes run the comparison through QuickJS and Ink's native
+IDNA function. See `test/fixtures/runtime/split-web/update-url-cases.ts` for the
+pinned upstream revision and snapshot procedure.
 
 For services that require unencrypted HTTP, opt in explicitly in `ink.toml`:
 

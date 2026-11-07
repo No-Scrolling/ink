@@ -1,6 +1,7 @@
 import "@ink/network";
 import { Screen, Text } from "ink";
 import { onNativeMessage } from "ink/native";
+import urlCases from "../url-cases.json";
 
 declare const __inkPost: (source: string) => void;
 const report = (label: string, value: unknown) =>
@@ -11,7 +12,18 @@ onNativeMessage("test", message => {
 });
 
 async function inspect(command: string) {
-  if (command === "status") {
+  if (command === "wpt") {
+    report("wpt", urlCases.map(test => {
+      try {
+        const url = new URL(test.input, "base" in test ? test.base ?? undefined : undefined);
+        if ("property" in test && typeof test.value === "string") {
+          if (test.property === "host") url.host = test.value;
+          else url.hostname = test.value;
+        }
+        return url.href;
+      } catch { return null; }
+    }));
+  } else if (command === "status") {
     report("status", "running");
   } else if (command === "url") {
     const url = new URL("../café?tag=one&tag=two", "https://EXAMPLE.com/notes/");
