@@ -4,6 +4,8 @@ import type { Row } from "./image";
 import { pressHandler } from "./press";
 import { rememberListPatch, type NativeListItem } from "./list-patch";
 
+export { fixedListRow } from "./fixed-list-row";
+
 type Captured = { value: unknown; prototype?: object | null; fields?: [PropertyKey, boolean, Captured][] };
 type Scope = { identity: string; values: readonly Captured[] };
 type Capture = { identity: string; values: () => readonly unknown[]; usesIndex?: boolean };

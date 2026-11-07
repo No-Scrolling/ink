@@ -1,14 +1,18 @@
 import { createElement } from "./react";
-import { Button, Stack, Text } from "./index";
 import { keyboardArrowDown, keyboardArrowUp } from "./icons";
 import { List } from "./list";
-import { nativeListRow, nativeListTemplate } from "./native-list";
+import { fixedListRow } from "./native-list";
 
-const template = /* @__PURE__ */ nativeListTemplate((node, field) => node("Stack", { axis: "horizontal", align: "center", justify: "space-between", gap: 12 }, [
-  node("Text", { text: field("label"), maxLines: field("maxLines") }),
+type ReorderFields = {
+  label: string; maxLines?: number; first: boolean; last: boolean;
+  down: () => void; up: () => void;
+};
+
+const reorderRow = /* @__PURE__ */ fixedListRow<ReorderFields>((node, field) => node("Stack", { axis: "horizontal", align: "center", justify: "space-between", gap: 12 }, [
+  node("Text", { text: field(values => values.label), maxLines: field(values => values.maxLines) }),
   node("Stack", { axis: "horizontal", align: "center", gap: 4 }, [
-    node("Button", { icon: keyboardArrowDown, disabled: field("last"), onPress: field("down") }),
-    node("Button", { icon: keyboardArrowUp, disabled: field("first"), onPress: field("up") }),
+    node("Button", { icon: keyboardArrowDown, disabled: field(values => values.last), onPress: field(values => values.down) }),
+    node("Button", { icon: keyboardArrowUp, disabled: field(values => values.first), onPress: field(values => values.up) }),
   ]),
 ]));
 
@@ -35,15 +39,8 @@ export function ReorderList<T>({ items, keyExtractor, getLabel, onChange, multil
     keyExtractor,
     gap,
     measurementKey: multiline ? "multiline" : "single-line",
-    renderItem: nativeListRow((item: T, index: number) => createElement(Stack, {
-      axis: "horizontal", align: "center", justify: "space-between", gap: 12,
-    },
-    createElement(Text, { maxLines: multiline ? undefined : 1 }, getLabel(item)),
-    createElement(Stack, { axis: "horizontal", align: "center", gap: 4 },
-      createElement(Button, { icon: keyboardArrowDown, disabled: index === items.length - 1, onPress: () => move(index, 1) }),
-      createElement(Button, { icon: keyboardArrowUp, disabled: index === 0, onPress: () => move(index, -1) }),
-    )), (item, index) => [{ label: getLabel(item), maxLines: multiline ? undefined : 1,
+    renderItem: reorderRow((item: T, index: number) => ({ label: getLabel(item), maxLines: multiline ? undefined : 1,
       first: index === 0, last: index === items.length - 1,
-      down: () => move(index, 1), up: () => move(index, -1) }], template),
+      down: () => move(index, 1), up: () => move(index, -1) })),
   });
 }

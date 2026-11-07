@@ -1,18 +1,11 @@
 import { lightos, type PermissionStatus } from "@ink/lightos";
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EmptyState, ErrorState, List, LoadingState, Screen, Text } from "ink";
-import { nativeListRow, nativeListTemplate } from "ink/internal/list";
+import { createElement, useCallback, useEffect, useRef, useState } from "react";
+import { EmptyState, ErrorState, LoadingState, Screen, Text } from "ink";
 import { callNative, NativeError } from "ink/native";
 import { files, type FileRef } from "./index";
 import { decodeFileRef } from "./decode";
-import { check, checkCircleFilled, videoFileFilled } from "ink/icons";
-
-const mediaTemplate = nativeListTemplate((node, field) => node("MediaGridRow", {},
-  Array.from({ length: 3 }, (_, index) => node("MediaCell", {
-    hidden: field(index, "hidden"), src: field(index, "src"), selected: field(index, "selected"),
-    video: field(index, "video"), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
-    onPress: field(index, "onPress"),
-  }))));
+import { check } from "ink/icons";
+import { MediaGridView } from "./media-grid";
 
 type MediaItem = { id: string; src: string; name: string; mimeType: string; width: number; height: number };
 type MediaPage = { items: MediaItem[]; nextCursor: string | null };
@@ -129,11 +122,6 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
     }
   };
 
-  const rows = useMemo(() => {
-    const rows: MediaItem[][] = [];
-    for (let index = 0; index < items.length; index += 3) rows.push(items.slice(index, index + 3));
-    return rows;
-  }, [items]);
   if (loading) return createElement(Screen, { title }, createElement(LoadingState, { label: "Loading library…" }));
   if (error) return createElement(Screen, { title }, createElement(ErrorState, {
     message: error.message,
@@ -144,16 +132,9 @@ export function MediaPicker({ kind = "all", title = kind === "image" ? "Photos" 
   if (importing) return createElement(Screen, { title }, createElement(LoadingState, { label: "Preparing attachments…" }));
   return createElement("MediaPickerScreen", { title, rightIcon: selected.size ? check : undefined, onRightPress: selected.size ? confirm : undefined },
     items.length === 0 ? createElement(EmptyState, { title: kind === "video" ? "No videos" : kind === "image" ? "No photos" : "No photos or videos" }) :
-      createElement(List<MediaItem[]>, {
-        items: rows, keyExtractor: row => row[0].id, gap: 0, hasMore,
+      createElement(MediaGridView<MediaItem>, {
+        items, selected, selectionStyle: "selected", hasMore,
+        onPress: item => toggleSelected(item.id),
         onLoadMore: async () => { if (active.current) await loadPage(active.current.signal); },
-        renderItem: nativeListRow((row: MediaItem[]) => createElement("MediaGridRow", null, row.map(item => createElement("MediaCell", {
-          key: item.id, src: item.src, selected: selected.has(item.id), video: item.mimeType.startsWith("video/"), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
-          onPress: () => toggleSelected(item.id),
-        }))), row => [Array.from({ length: 3 }, (_, index) => {
-          const item = row[index];
-          return { hidden: !item, src: item?.src ?? row[0].src, selected: !!item && selected.has(item.id),
-            video: !!item?.mimeType.startsWith("video/"), onPress: item && (() => toggleSelected(item.id)) };
-        })], mediaTemplate),
       }));
 }

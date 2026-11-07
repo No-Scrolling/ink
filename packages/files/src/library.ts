@@ -1,8 +1,7 @@
-import { createElement, useMemo, useRef, type ReactNode } from "react";
-import { actionBarProps, List, type ActionBarItem, type IconAsset } from "ink";
-import { nativeListRow, nativeListTemplate } from "ink/internal/list";
+import { createElement, type ReactNode } from "react";
+import { actionBarProps, type ActionBarItem, type IconAsset } from "ink";
 import { callNative, NativeError, onNativeMessage } from "ink/native";
-import { checkCircleFilled, videoFileFilled } from "ink/icons";
+import { MediaGridView } from "./media-grid";
 
 export type MediaKind = "image" | "video" | "all";
 
@@ -101,13 +100,6 @@ export function contentUri(item: MediaItem) {
   return `content://media/external/${kind === "video" ? "video" : "images"}/media/${id}`;
 }
 
-const gridTemplate = nativeListTemplate((node, field) => node("MediaGridRow", {},
-  Array.from({ length: 3 }, (_, index) => node("MediaCell", {
-    hidden: field(index, "hidden"), src: field(index, "src"), dimmed: field(index, "dimmed"),
-    video: field(index, "video"), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
-    onPress: field(index, "onPress"), onLongPress: field(index, "onLongPress"),
-  }))));
-
 export type MediaGridProps = {
   items: readonly MediaItem[];
   /** A selection dims the other items. Omit it or pass null to browse normally. */
@@ -118,49 +110,11 @@ export type MediaGridProps = {
   onLoadMore?: () => Promise<void>;
 };
 
-type GridCell = { item: MediaItem; index: number; dimmed: boolean };
-type GridRow = { key: string; cells: GridCell[] };
-type GridHandlers = Pick<MediaGridProps, "onPress" | "onLongPress">;
-
-function gridCell(handlers: { current: GridHandlers }, entry: GridCell | undefined, first: GridCell) {
-  return {
-    hidden: !entry, src: (entry ?? first).item.src, dimmed: !!entry?.dimmed,
-    video: !!entry?.item.mimeType.startsWith("video/"),
-    // Handlers are read when pressed, so unchanged rows never hold stale callbacks.
-    onPress: entry && (() => handlers.current.onPress(entry.item, entry.index)),
-    onLongPress: entry && (() => handlers.current.onLongPress?.(entry.item, entry.index)),
-  };
-}
-
 /** Three-column, edge-to-edge grid of library items. Place it in `MediaGridScreen`. */
-export function MediaGrid({ items, selected, onPress, onLongPress, hasMore, onLoadMore }: MediaGridProps) {
-  const handlers = useRef<GridHandlers>({ onPress, onLongPress });
-  handlers.current = { onPress, onLongPress };
-  const cache = useRef(new Map<string, GridRow>());
-  const rows = useMemo(() => {
-    const next = new Map<string, GridRow>();
-    const rows: GridRow[] = [];
-    const count = hasMore ? items.length - items.length % 3 : items.length;
-    for (let index = 0; index < count; index += 3) {
-      const cells = items.slice(index, index + 3).map((item, offset) => ({
-        item, index: index + offset, dimmed: selected != null && !selected.has(item.id),
-      }));
-      const key = cells[0].item.id;
-      const previous = cache.current.get(key);
-      // Rows keep their identity unless an item or its selection changes, so only those rows update.
-      const row = previous && previous.cells.length === cells.length && previous.cells.every((cell, offset) =>
-        cell.item === cells[offset].item && cell.index === cells[offset].index && cell.dimmed === cells[offset].dimmed) ? previous : { key, cells };
-      next.set(key, row);
-      rows.push(row);
-    }
-    cache.current = next;
-    return rows;
-  }, [items, selected, hasMore]);
-  return createElement(List<GridRow>, {
-    items: rows, keyExtractor: row => row.key, gap: 0, hasMore, onLoadMore,
-    renderItem: nativeListRow((row: GridRow) => createElement("MediaGridRow", null, row.cells.map(entry => createElement("MediaCell", {
-      key: entry.item.id, ...gridCell(handlers, entry, row.cells[0]), checkIcon: checkCircleFilled, videoIcon: videoFileFilled,
-    }))), row => [Array.from({ length: 3 }, (_, index) => gridCell(handlers, row.cells[index], row.cells[0]))], gridTemplate),
+export function MediaGrid(props: MediaGridProps) {
+  return createElement(MediaGridView<MediaItem>, {
+    ...props, selectionStyle: "dimmed", hideIncompleteRow: true,
+    onLongPress: (item, index) => props.onLongPress?.(item, index),
   });
 }
 
