@@ -5,9 +5,7 @@ import { Button, Stack, Text } from "./index";
 import { CompiledList, nativeListPlan } from "./native-list";
 import { ScrollToEndContext } from "./scroll";
 
-const OLDER_PAGE_AHEAD_ITEMS = 8;
-
-export function ListLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+function ListLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return createElement(Stack, { gap: 24 },
     createElement(Text, { size: 18 }, message),
     createElement(Button, { onPress: onRetry }, "Try again"),
@@ -28,7 +26,65 @@ export type ListProps<T> = {
   initialPosition?: "start" | "end";
 };
 
+type PaginationProps = Pick<ListProps<unknown>, "onLoadMore" | "hasMore" | "onLoadOlder" | "hasOlder">;
+export type ListPagination = ReturnType<typeof useListPagination>;
+
+function useListPage(load: (() => Promise<void>) | undefined, available: boolean) {
+  const accepted = useRef<string | undefined>(undefined);
+  const action = useAction((edge?: string) => {
+    // useAction may decline a pending request; record acceptance only when it starts.
+    if (edge !== undefined) accepted.current = edge;
+    return load?.();
+  });
+  return {
+    available: available && action.status !== "error",
+    enabled: !!load,
+    pending: action.status === "pending",
+    error: action.status === "error" ? action.error : undefined,
+    retry: () => action.run(),
+    request(edge: string) {
+      if (available && load && action.status !== "pending" && action.status !== "error" && accepted.current !== edge) action.run(edge);
+    },
+  };
+}
+
+function useListPagination({ onLoadMore, hasMore = false, onLoadOlder, hasOlder = false }: PaginationProps) {
+  const more = useListPage(onLoadMore, hasMore);
+  const older = useListPage(onLoadOlder, hasOlder);
+  return {
+    more,
+    older,
+    wrap(list: ReactNode) {
+      return createElement(Fragment, null,
+        older.error && createElement(ListLoadError, { message: older.error.message, onRetry: older.retry }),
+        list,
+        more.error && createElement(ListLoadError, { message: more.error.message, onRetry: more.retry }),
+      );
+    },
+  };
+}
+
+export function useListPaginationEvents(pagination: ListPagination, paused: boolean, count: number, first?: string, last?: string) {
+  const [startRequest, setStartRequest] = useState<string>();
+  const [endRequest, setEndRequest] = useState<string>();
+  const start = JSON.stringify([count, first ?? null]);
+  const end = JSON.stringify([count, last ?? null]);
+  useEffect(() => {
+    if (!paused && startRequest === start) pagination.older.request(startRequest);
+    if (!paused && endRequest === end) pagination.more.request(endRequest);
+  }, [pagination, paused, startRequest, endRequest, start, end]);
+  return {
+    hasMore: !paused && pagination.more.available && !pagination.more.pending,
+    hasOlder: !paused && pagination.older.available && !pagination.older.pending,
+    moreAvailable: pagination.more.available && pagination.more.enabled,
+    // Retain notifications even when the current commit cannot start loading yet.
+    onEndReached: setEndRequest,
+    onStartReached: setStartRequest,
+  };
+}
+
 export function List<T>(props: ListProps<T>) {
+  const pagination = useListPagination(props);
   const requestEnd = useContext(ScrollToEndContext);
   const initialised = useRef(false);
   useLayoutEffect(() => {
@@ -37,10 +93,12 @@ export function List<T>(props: ListProps<T>) {
     if (props.initialPosition === "end") requestEnd?.();
   }, [props.initialPosition, props.items.length, requestEnd]);
   const plan = nativeListPlan(props.renderItem);
-  return plan ? createElement(CompiledList<T>, { ...props, plan, key: plan.template }) : createElement(ReactList<T>, props);
+  return pagination.wrap(plan
+    ? createElement(CompiledList<T>, { ...props, pagination, plan, key: plan.template })
+    : createElement(ReactList<T>, { ...props, pagination }));
 }
 
-export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, followEnd = false, measurementKey, onLoadMore, hasMore = false, onLoadOlder, hasOlder = false, initialPosition = "start" }: ListProps<T>) {
+export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, followEnd = false, measurementKey, initialPosition = "start", pagination }: ListProps<T> & { pagination: ListPagination }) {
   if (!Number.isFinite(gap) || gap < 0) {
     throw new Error("List gap must be finite and non-negative");
   }
@@ -51,11 +109,7 @@ export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, follow
     items: readonly T[]; keys: string[]; contentVersions: number[]; revision: number;
     records: Map<string, { item: T; version: number }>;
   } | null>(null);
-  const [window, setWindow] = useState({ start: initialPosition === "end" ? Math.max(0, items.length - 32) : 0, end: initialPosition === "end" ? items.length : 32, revision: 0, nearEnd: false });
-  const requested = useRef<string | null>(null);
-  const load = useAction(() => onLoadMore?.());
-  const olderRequested = useRef<string | null>(null);
-  const older = useAction(() => onLoadOlder?.());
+  const [window, setWindow] = useState({ start: initialPosition === "end" ? Math.max(0, items.length - 32) : 0, end: initialPosition === "end" ? items.length : 32, revision: 0 });
   let start = Math.min(window.start, items.length);
   let end = Math.min(window.end, items.length);
   if (initialWindow.current && items.length) {
@@ -80,12 +134,12 @@ export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, follow
       throw new Error("List metadata exceeds 128 KiB; use shorter keys or a bounded data window");
     }
     if (initialWindow.current && items.length) {
-      if (start !== window.start || end !== window.end) setWindow({ start, end, revision, nearEnd: false });
+      if (start !== window.start || end !== window.end) setWindow({ start, end, revision });
     } else if (old && window.revision !== revision && old.keys[window.start] !== undefined) {
       const mapped = keys.indexOf(old.keys[window.start]);
       start = mapped < 0 ? Math.min(window.start, Math.max(0, items.length - 1)) : mapped;
       end = Math.min(start + window.end - window.start, items.length);
-      if (start !== window.start || end !== window.end) setWindow({ start, end, revision, nearEnd: false });
+      if (start !== window.start || end !== window.end) setWindow({ start, end, revision });
     }
     data = { items, keys, keyExtractor, contentVersions, revision, records, measurementKey };
   }
@@ -95,41 +149,23 @@ export function ReactList<T>({ items, keyExtractor, renderItem, gap = 47, follow
     if (items.length) initialWindow.current = false;
   });
   const { revision, contentVersions } = data;
-  const boundary = JSON.stringify([keys.length, keys.at(-1)]);
-  useEffect(() => {
-    if (!onLoadMore || !hasMore || load.status === "pending" || load.status === "error"
-      || window.revision !== revision || !window.nearEnd || requested.current === boundary) return;
-    requested.current = boundary;
-    load.run();
-  }, [onLoadMore, hasMore, load.status, load.run, window, revision, boundary]);
-  const firstBoundary = JSON.stringify([keys.length, keys[0]]);
-  useEffect(() => {
-    if (!onLoadOlder || !hasOlder || older.status === "pending" || older.status === "error"
-      || window.revision !== revision || window.start > OLDER_PAGE_AHEAD_ITEMS || olderRequested.current === firstBoundary) return;
-    olderRequested.current = firstBoundary;
-    older.run();
-  }, [onLoadOlder, hasOlder, older.status, older.run, window, revision, firstBoundary]);
+  const paginationProps = useListPaginationEvents(pagination, window.revision !== revision, keys.length, keys[0], keys.at(-1));
   const children: ReactNode[] = [];
   for (let index = start; index < end; index++) {
     children.push(createElement("Stack", { key: keys[index], axis: "vertical", align: "stretch" }, renderItem(items[index], index)));
   }
   const props = {
-    moreAvailable: hasMore && !!onLoadMore && load.status !== "error",
+    ...paginationProps,
     keys: data.keys,
     contentVersions,
     revision,
     gap,
     followEnd,
     start,
-    onWindow(start: number, end: number, eventRevision: number, nearEnd: boolean) {
+    onWindow(start: number, end: number, eventRevision: number) {
       if (eventRevision !== revision) return;
-      setWindow(previous => previous.start === start && previous.end === end && previous.revision === eventRevision && previous.nearEnd === nearEnd ? previous : { start, end, revision: eventRevision, nearEnd });
+      setWindow(previous => previous.start === start && previous.end === end && previous.revision === eventRevision ? previous : { start, end, revision: eventRevision });
     },
   };
-  const list = createElement("List", props, children);
-  return createElement(Fragment, null,
-    older.status === "error" && createElement(ListLoadError, { message: older.error.message, onRetry: older.run }),
-    list,
-    load.status === "error" && createElement(ListLoadError, { message: load.error.message, onRetry: load.run }),
-  );
+  return createElement("List", props, children);
 }

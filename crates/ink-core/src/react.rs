@@ -139,8 +139,9 @@ pub struct ReactTree {
     free_input_states: Vec<StateId>,
     active_screen: Option<usize>,
     scroll_positions: FxHashMap<usize, f32>,
-    list_windows: FxHashMap<usize, (usize, usize, u64, bool)>,
+    list_windows: FxHashMap<usize, (usize, usize, u64)>,
     native_lists: FxHashMap<usize, NativeList>,
+    list_pagination: FxHashMap<usize, super::list::ListPagination>,
     native_events: FxHashMap<usize, RowEvent>,
     next_native_id: usize,
     playing_ids: FxHashMap<usize, Vec<usize>>,
@@ -173,6 +174,7 @@ impl Default for ReactTree {
             scroll_positions: FxHashMap::default(),
             list_windows: FxHashMap::default(),
             native_lists: FxHashMap::default(),
+            list_pagination: FxHashMap::default(),
             native_events: FxHashMap::default(),
             next_native_id: usize::MAX,
             playing_ids: FxHashMap::default(),
@@ -529,14 +531,27 @@ impl ReactTree {
             let ahead = if grid { 4.0 } else { 2.0 };
             let near_end = offset + clip.height * ahead >= metrics.total()
                 && (!grid || offset > 0.0 || metrics.total() <= clip.height);
-            if let Some(list) = self.native_lists.get_mut(id) {
-                list.boundary_events(*id, start, near_end, &mut events);
-                continue;
+            let Some(node) = self.nodes.get(id) else { continue; };
+            let more = node.props.get("onEndReached") == Some(&Json::Bool(true))
+                && node.props.get("hasMore") != Some(&Json::Bool(false));
+            let older = node.props.get("onStartReached") == Some(&Json::Bool(true))
+                && node.props.get("hasOlder") == Some(&Json::Bool(true));
+            let (load_more, load_older) = self.list_pagination.entry(*id)
+                .or_insert_with(|| super::list::ListPagination::new(node.kind == HostKind::List))
+                .requests(&metrics.keys, start, near_end, more, older);
+            if load_more {
+                let edge = json!([metrics.keys.len(), metrics.keys.last()]).to_string();
+                events.push(json!({"type":"event", "id":id, "name":"onEndReached", "args":[edge]}));
             }
-            let window = (start, end, metrics.revision, near_end);
+            if load_older {
+                let edge = json!([metrics.keys.len(), metrics.keys.first()]).to_string();
+                events.push(json!({"type":"event", "id":id, "name":"onStartReached", "args":[edge]}));
+            }
+            if self.native_lists.contains_key(id) { continue; }
+            let window = (start, end, metrics.revision);
             if self.list_windows.get(id) != Some(&window) {
                 self.list_windows.insert(*id, window);
-                events.push(json!({"type":"event", "id": id, "name":"onWindow", "args":[start, end, metrics.revision, near_end]}));
+                events.push(json!({"type":"event", "id": id, "name":"onWindow", "args":[start, end, metrics.revision]}));
             }
         }
         Ok(events)
@@ -614,6 +629,7 @@ impl ReactTree {
     fn remove(&mut self, id: usize) {
         if let Some(node) = self.nodes.remove(&id) {
             self.native_lists.remove(&id);
+            self.list_pagination.remove(&id);
             self.native_events.remove(&id);
             self.playing_ids.remove(&id);
             self.message_ids.remove(&id);

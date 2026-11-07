@@ -1,31 +1,9 @@
 use super::*;
-use ink_protocol::source::{Graph, ViewChange, ViewSnapshot};
+use crate::list::{ListChange, ListSnapshot, ListSource};
 
 // Small lists keep their cheaper flat representation. Promotion and structural
 // updates build the persistent tree; subsequent stable-key edits copy its paths.
 const AUTOMATIC_SOURCE_MIN_ROWS: usize = 1024;
-
-#[derive(Clone)]
-struct AutomaticSource {
-    graph: Graph,
-    id: u64,
-    key: String,
-}
-
-impl AutomaticSource {
-    fn replace(previous: Option<Self>, key: &str, records: Vec<Arc<Json>>) -> Option<Self> {
-        let mut source = previous.filter(|source| source.key == key);
-        if let Some(source) = &mut source {
-            let revision = source.graph.snapshot(source.id).ok()?.revision;
-            source.graph.replace_shared(source.id, revision, records).ok()?;
-        } else {
-            let mut graph = Graph::default();
-            let id = graph.create_shared(key.to_owned(), records).ok()?;
-            source = Some(Self { graph, id, key: key.to_owned() });
-        }
-        source
-    }
-}
 
 #[derive(Clone, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -56,8 +34,8 @@ pub(super) struct NativeList {
     template: Template,
     event_list: Option<usize>,
     items: FxHashMap<String, Arc<Json>>,
-    source: Option<Arc<ViewSnapshot>>,
-    automatic: Option<AutomaticSource>,
+    source: Option<Arc<ListSnapshot>>,
+    automatic: Option<ListSource>,
     keys: Arc<[String]>,
     indices: FxHashMap<String, usize>,
     versions: Arc<[u64]>,
@@ -66,10 +44,6 @@ pub(super) struct NativeList {
     rows: FxHashMap<String, Row>,
     gap: f32,
     follow_end: bool,
-    older: bool,
-    more: bool,
-    first_requested: Option<(usize, Option<String>)>,
-    last_requested: Option<(usize, Option<String>)>,
 }
 
 impl NativeList {
@@ -89,21 +63,6 @@ impl NativeList {
         let snapshot = self.source.take().expect("automatic source retains its snapshot");
         self.versions = snapshot.iter().map(|record| record.revision).collect();
         self.items = snapshot.iter().map(|record| (record.key.clone(), record.value.clone())).collect();
-    }
-
-    pub(super) fn boundary_events(&mut self, id: usize, start: usize, near_end: bool, events: &mut Vec<Json>) {
-        let last = (self.keys.len(), self.keys.last().cloned());
-        if self.more && near_end && (!self.keys.is_empty() || self.last_requested.is_none())
-            && self.last_requested.as_ref() != Some(&last) {
-            self.last_requested = Some(last);
-            events.push(json!({"type":"event", "id":id, "name":"onEndReached", "args":[]}));
-        }
-        let first = (self.keys.len(), self.keys.first().cloned());
-        if self.older && start <= 8 && (!self.keys.is_empty() || self.first_requested.is_none())
-            && self.first_requested.as_ref() != Some(&first) {
-            self.first_requested = Some(first);
-            events.push(json!({"type":"event", "id":id, "name":"onStartReached", "args":[]}));
-        }
     }
 }
 
@@ -220,10 +179,10 @@ impl ReactTree {
         Ok(())
     }
 
-    fn patch_source_list(&mut self, id: usize, list: &mut NativeList, change: ViewChange,
+    fn patch_source_list(&mut self, id: usize, list: &mut NativeList, change: ListChange,
         engine: &mut Engine, operations: &mut Vec<Operation>,
     ) -> Result<()> {
-        let ViewChange { snapshot, previous_revision, changed_keys, .. } = change;
+        let ListChange { snapshot, previous_revision, changed_keys } = change;
         let rows = changed_keys.iter().map(|key| {
             list.indices.get(key).copied().context("source patch has an unknown key")
         }).collect::<Result<Vec<_>>>()?;
@@ -274,17 +233,17 @@ impl ReactTree {
                     let mut backed = false;
                     if !rows.is_empty() && let Some(source) = &mut list.automatic {
                         let result = if source.key == key_field {
-                            source.graph.set_shared(source.id, list.revision, changes.iter().cloned().map(Arc::new).collect())
+                            source.set(list.revision, changes.iter().cloned().map(Arc::new).collect())
                         } else {
                             Err("native list key field changed".to_owned())
                         };
-                        if let Ok(changes) = result {
+                        if let Ok(change) = result {
                             backed = true;
-                            for change in changes {
+                            if let Some(change) = change {
                                 self.patch_source_list(id, &mut list, change, engine, &mut expanded)?;
                             }
                         } else {
-                            // Existing array lists accept data beyond Graph's limits.
+                            // Existing array lists accept data beyond the persistent store's limits.
                             // A rejected promotion/edit keeps that behaviour via flat storage.
                             list.flatten_automatic();
                         }
@@ -310,8 +269,6 @@ impl ReactTree {
                     ensure!(gap.is_finite() && gap >= 0.0, "native list gap must be finite and non-negative");
                     list.gap = gap;
                     list.follow_end = props.get("followEnd") == Some(&Json::Bool(true));
-                    list.more = props.get("onEndReached") == Some(&Json::Bool(true)) && props.get("hasMore") != Some(&Json::Bool(false));
-                    list.older = props.get("onStartReached") == Some(&Json::Bool(true)) && props.get("hasOlder") == Some(&Json::Bool(true));
                     let mut operation = operation;
                     if let Operation::Update { props, .. } = &mut operation {
                         props.remove("itemChanges"); props.remove("template");
@@ -379,9 +336,13 @@ impl ReactTree {
             let previous_automatic = old.as_mut().and_then(|list| list.automatic.take());
             let retained_automatic = previous_automatic.as_ref().is_some_and(|source| source.key == key_field);
             let automatic = if keys.len() >= AUTOMATIC_SOURCE_MIN_ROWS {
-                AutomaticSource::replace(previous_automatic, key_field, keys.iter().map(|key| items[key].clone()).collect())
+                let records = keys.iter().map(|key| items[key].clone()).collect();
+                match previous_automatic.filter(|source| source.key == key_field) {
+                    Some(mut source) => source.replace(source.snapshot().revision, records).ok().map(|()| source),
+                    None => ListSource::new(key_field.to_owned(), records).ok(),
+                }
             } else { None };
-            let source = automatic.as_ref().map(|source| source.graph.snapshot(source.id).expect("automatic source exists"));
+            let source = automatic.as_ref().map(|source| source.snapshot());
             let revision = source.as_ref().map_or_else(|| old.as_ref().map_or(1, |list| list.revision + 1), |snapshot| snapshot.revision);
             let versions: Arc<[u64]> = if source.is_some() {
                 items = FxHashMap::default();
@@ -417,12 +378,10 @@ impl ReactTree {
                 let indices = keys.iter().enumerate().map(|(index, key)| (key.clone(), index)).collect();
                 let keys = source.as_ref().map_or_else(|| keys.into(), |snapshot| snapshot.keys());
                 NativeList { template: template.context("NativeList requires a template")?, event_list: (props.get("onRowEvent") == Some(&Json::Bool(true))).then_some(id), items, source, automatic, indices, keys, versions, revision, start: 0, rows: FxHashMap::default(), gap,
-                    follow_end: false, older: false, more: false, first_requested: None, last_requested: None }
+                    follow_end: false }
             };
             list.gap = gap;
             list.follow_end = props.get("followEnd") == Some(&Json::Bool(true));
-            list.more = props.get("onEndReached") == Some(&Json::Bool(true)) && props.get("hasMore") != Some(&Json::Bool(false));
-            list.older = props.get("onStartReached") == Some(&Json::Bool(true)) && props.get("hasOlder") == Some(&Json::Bool(true));
             if list.rows.is_empty() && props.get("initialEnd") == Some(&Json::Bool(true)) { list.start = list.keys.len().saturating_sub(32); }
             let start = list.start;
             let end = start + list.rows.len().max(32);

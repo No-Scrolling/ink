@@ -1,6 +1,5 @@
-import { createElement, Fragment, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "./react";
-import { ListLoadError, ReactList, type ListProps } from "./list";
-import { useAction } from "./action";
+import { createElement, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "./react";
+import { ReactList, useListPaginationEvents, type ListPagination, type ListProps } from "./list";
 import type { Row } from "./image";
 import { pressHandler } from "./press";
 import { rememberListPatch, type NativeListItem } from "./list-patch";
@@ -286,11 +285,9 @@ export function nativeListPlan<T>(render: ListProps<T>["renderItem"]): Plan<T> |
   return plans.get(render) as Plan<T> | undefined;
 }
 
-export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<T> }) {
-  const { items, keyExtractor, gap = 47, followEnd, initialPosition, measurementKey, onLoadMore, onLoadOlder, hasMore = false, hasOlder = false } = props;
+export function CompiledList<T>({ plan, pagination, ...props }: ListProps<T> & { plan: Plan<T>; pagination: ListPagination }) {
+  const { items, keyExtractor, gap = 47, followEnd, initialPosition, measurementKey } = props;
   if (!Number.isFinite(gap) || gap < 0) throw new Error("List gap must be finite and non-negative");
-  const load = useAction(() => onLoadMore?.());
-  const older = useAction(() => onLoadOlder?.());
   const committed = useRef<Records<T> | null>(null);
   const committedRequest = useRef<Request<T> | null>(null);
   const committedPlan = useRef<Plan<T> | null>(null);
@@ -388,15 +385,13 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
       if (timer !== undefined) clearTimeout(timer);
     };
   }, [request]);
+  const paginationProps = useListPaginationEvents(pagination, preparing || !records,
+    records?.data.length ?? 0, records?.data[0]?.key, records?.data.at(-1)?.key);
   if (outcome?.status === "error") throw outcome.error;
-  if (!records) return createElement(ReactList<T>, props);
+  if (!records) return createElement(ReactList<T>, { ...props, pagination });
   const nativeProps = {
     items: records.data, keyField: "key", template: records.template, gap, followEnd, initialEnd: initialPosition === "end",
-    hasMore: !preparing && hasMore && load.status !== "pending" && load.status !== "error",
-    moreAvailable: hasMore && !!onLoadMore && load.status !== "error",
-    hasOlder: !preparing && hasOlder && older.status !== "pending" && older.status !== "error",
-    onEndReached: !preparing && onLoadMore ? load.run : undefined,
-    onStartReached: !preparing && onLoadOlder ? older.run : undefined,
+    ...paginationProps,
     onRowEvent(key: string, target: number, name: string, ...args: unknown[]) {
       const latest = events.current;
       const path = latest?.targets.get(target)?.[name];
@@ -433,11 +428,7 @@ export function CompiledList<T>({ plan, ...props }: ListProps<T> & { plan: Plan<
       if (typeof callback === "function") callback(...args);
     },
   };
-  return createElement(Fragment, null,
-    older.status === "error" && createElement(ListLoadError, { message: older.error.message, onRetry: older.run }),
-    createElement("NativeList", nativeProps),
-    load.status === "error" && createElement(ListLoadError, { message: load.error.message, onRetry: load.run }),
-  );
+  return createElement("NativeList", nativeProps);
 }
 
 /** @internal Fixed native descriptions for Ink's own list components. */

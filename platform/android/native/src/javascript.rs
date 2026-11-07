@@ -78,8 +78,12 @@ impl ScriptRuntime {
 
     fn notify_viewports(&mut self, engine: &mut Engine) -> Result<()> {
         for event in self.tree.viewport_events(engine)? {
-            let id = event["id"].as_u64().expect("viewport event has a list ID");
-            self.runtime.send_latest(id, event.to_string())?;
+            if event["name"] == "onWindow" {
+                let id = event["id"].as_u64().expect("viewport event has a list ID");
+                self.runtime.send_latest(id, event.to_string())?;
+            } else {
+                self.runtime.send(event.to_string())?;
+            }
         }
         Ok(())
     }

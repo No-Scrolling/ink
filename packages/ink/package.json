@@ -9,6 +9,7 @@
     "./internal/list": "./src/native-list.ts",
     "./internal/data": "./src/data-views.ts",
     "./internal/playback": "./src/playback-binding.ts",
+    "./internal/controller": "./src/controller-react.ts",
     "./native": "./src/native.ts",
     "./native/controller": "./src/controller.ts",
     "./assets": "./src/assets.ts",

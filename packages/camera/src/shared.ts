@@ -1,7 +1,7 @@
-import { createElement, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
 import { Button, Field, Image, Stack, useAction } from "ink";
 import { NativeError } from "ink/native";
-import { attachNativeController } from "ink/native/controller";
+import { useNativeController } from "ink/internal/controller";
 import type { FileRef } from "@ink/files";
 
 const previewController = Symbol("previewController");
@@ -22,12 +22,12 @@ function initial<T>(): CameraState<T> { return { status: "idle", ready: false, v
 export function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown) => T, config = "{}") {
   const [state, setState] = useState<CameraState<T>>(initial);
   const [previewId, setPreviewId] = useState<number | null>(null);
-  const controller = useRef<ReturnType<typeof attachNativeController> | null>(null);
+  const controller = useNativeController("camera");
   useEffect(() => {
     setState(initial());
     setPreviewId(null);
     const fail = (error: unknown) => setState({ ...initial<T>(), status: "error", error: error instanceof Error ? error : new Error(String(error)) });
-    const attachment = attachNativeController("camera", { kind, config: JSON.parse(config) }, value => {
+    return controller.attach({ kind, config: JSON.parse(config) }, value => {
       try {
         if (typeof value !== "object" || value === null || !("status" in value)) throw new NativeError("protocol", "Invalid camera state");
         if ("reviewSource" in value) {
@@ -49,23 +49,15 @@ export function useSession<T>(kind: "photo" | "scanner", decode: (value: unknown
           setState({ ...initial<T>(), status, ready: status === "active" });
         } else throw new NativeError("protocol", "Invalid camera status");
       } catch (error) { fail(error); }
-    });
-    controller.current = attachment;
-    void attachment.ready.then(() => {
-      if (controller.current === attachment) setPreviewId(attachment.id);
-    }, error => { if (controller.current === attachment) fail(error); });
-    return () => {
-      controller.current = null;
-      void attachment.dispose().catch(error => console.error("Could not release camera", error));
-    };
-  }, [kind, decode, config]);
+    }, fail, setPreviewId);
+  }, [kind, decode, config, controller]);
   const commands = useMemo(() => {
     const call = async (operation: string) => {
       if (!controller.current) throw new NativeError("unavailable", "Camera is not attached");
       await controller.current.call(operation);
     };
     return { capture: () => call("capture"), open: () => call("open"), retake: () => call("retake"), accept: () => call("use-photo") };
-  }, []);
+  }, [controller]);
   return { kind, state, [previewController]: previewId, ...commands };
 }
 export function CameraPreview({ controller }: { controller: ReturnType<typeof useSession<CapturedPhoto>> | ReturnType<typeof useSession<CodeScan>> }) {

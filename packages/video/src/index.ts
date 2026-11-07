@@ -1,6 +1,6 @@
-import { createElement, useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useState } from "react";
 import { ErrorState } from "ink";
-import { attachNativeController } from "ink/native/controller";
+import { useNativeController } from "ink/internal/controller";
 
 type Playback = { ready: boolean; playing: boolean; rendered: boolean; position: number; duration: number };
 const initial: Playback = { ready: false, playing: false, rendered: false, position: 0, duration: 0 };
@@ -20,15 +20,13 @@ function usePlayback(src: string | null, controls: boolean, attempt = 0) {
   const [state, setState] = useState(initial);
   const [error, setError] = useState<Error | null>(null);
   const [id, setId] = useState<number | null>(null);
-  const controller = useRef<ReturnType<typeof attachNativeController> | null>(null);
+  const controller = useNativeController("video");
   useEffect(() => {
-    let active = true;
     setState(initial);
     setError(null);
     setId(null);
     if (!src) return;
-    const attachment = attachNativeController("video", { src, controls }, value => {
-      if (!active) return;
+    return controller.attach({ src, controls }, value => {
       if (typeof value !== "object" || value === null) return;
       if ("error" in value && typeof value.error === "string") setError(new Error(value.error));
       else if ("ready" in value && typeof value.ready === "boolean"
@@ -38,15 +36,8 @@ function usePlayback(src: string | null, controls: boolean, attempt = 0) {
         && "duration" in value && typeof value.duration === "number") {
         setState({ ready: value.ready, playing: value.playing, rendered: value.rendered, position: value.position, duration: value.duration });
       }
-    });
-    controller.current = attachment;
-    void attachment.ready.then(() => { if (active) setId(attachment.id); }, failure => { if (active) setError(failure); });
-    return () => {
-      active = false;
-      controller.current = null;
-      void attachment.dispose().catch(failure => console.error("Could not release video", failure));
-    };
-  }, [src, controls, attempt]);
+    }, setError, setId);
+  }, [src, controls, attempt, controller]);
   function seek(position: number, exact = true) {
     void controller.current?.call("seek", { position, exact }).catch(setError);
   }

@@ -1,7 +1,7 @@
 import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { Field, useColourScheme } from "ink";
 import { NativeError } from "ink/native";
-import { attachNativeController } from "ink/native/controller";
+import { useNativeController } from "ink/internal/controller";
 
 export interface Coordinate { latitude: number; longitude: number }
 export interface MapCamera { centre: Coordinate; zoom: number }
@@ -15,11 +15,10 @@ function sameUpdate(previous: MapUpdate, next: MapUpdate) {
         && marker.label === other.label;
     });
 }
-type Attachment = ReturnType<typeof attachNativeController>;
 const attachmentKey = Symbol("map attachment");
 export interface MapController {
   moveTo(camera: MapCamera): Promise<void>;
-  readonly [attachmentKey]: { current: Attachment | null };
+  readonly [attachmentKey]: ReturnType<typeof useNativeController>;
 }
 
 function coordinate(value: Coordinate): Coordinate {
@@ -34,7 +33,7 @@ function zoomLevel(value: number): number {
   return value;
 }
 export function useMap(): MapController {
-  const attachment = useRef<Attachment | null>(null);
+  const attachment = useNativeController("maps", "map");
   return useMemo(() => ({
     [attachmentKey]: attachment,
     async moveTo({ centre, zoom }: MapCamera) {
@@ -42,7 +41,7 @@ export function useMap(): MapController {
       if (!attachment.current) throw new NativeError("unavailable", "Map is not attached");
       await attachment.current.call("move-to", camera);
     },
-  }), []);
+  }), [attachment]);
 }
 
 export interface MapViewProps {
@@ -80,10 +79,8 @@ export function MapView({ styleURL: customStyleURL, initialCentre, initialZoom =
     if (mapController[attachmentKey].current) throw new Error("A map controller can only belong to one MapView");
     setError(null);
     setId(null);
-    let active = true;
     sent.current = latestUpdate.current;
-    const attachment = attachNativeController("maps", { ...initial.current, ...latestUpdate.current }, value => {
-      if (!active) return;
+    return mapController[attachmentKey].attach({ ...initial.current, ...latestUpdate.current }, value => {
       if (typeof value !== "object" || value === null || !("type" in value)) {
         setError(new NativeError("protocol", "Invalid map event"));
       } else if (value.type === "ready") {
@@ -101,14 +98,7 @@ export function MapView({ styleURL: customStyleURL, initialCentre, initialZoom =
         && "message" in value.error && typeof value.error.message === "string") {
         setError(new NativeError("unexpected", value.error.message));
       } else setError(new NativeError("protocol", "Invalid map event"));
-    });
-    mapController[attachmentKey].current = attachment;
-    void attachment.ready.then(() => { if (active) setId(attachment.id); }, failure => { if (active) setError(failure); });
-    return () => {
-      active = false;
-      mapController[attachmentKey].current = null;
-      void attachment.dispose().catch(failure => console.error("Could not release map", failure));
-    };
+    }, setError, setId);
   }, [mapController]);
   useEffect(() => { setError(null); }, [styleURL]);
   useEffect(() => {

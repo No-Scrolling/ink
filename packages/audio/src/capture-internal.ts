@@ -1,7 +1,7 @@
-import { createElement, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
 import type { Snapshot, SnapshotSource } from "ink";
 import { NativeError } from "ink/native";
-import { attachNativeController } from "ink/native/controller";
+import { useNativeController } from "ink/internal/controller";
 
 const displayController = Symbol("captureController");
 export type CaptureDisplay = { readonly [displayController]: number | null };
@@ -48,7 +48,7 @@ export function useCapture<State extends { status: string; error: Error | null }
 ) {
   const [state, setState] = useState(() => selectStatus(initial));
   const [id, setId] = useState<number | null>(null);
-  const controller = useRef<ReturnType<typeof attachNativeController> | null>(null);
+  const controller = useNativeController("audio", "audio capture");
   const channel = useMemo(() => {
     let snapshot: Snapshot<State> = { status: "loading" };
     const listeners = new Set<() => void>();
@@ -75,7 +75,7 @@ export function useCapture<State extends { status: string; error: Error | null }
       },
     };
     return { source, publish, observe };
-  }, []);
+  }, [controller]);
   useEffect(() => {
     setState(selectStatus(initial));
     setId(null);
@@ -92,27 +92,18 @@ export function useCapture<State extends { status: string; error: Error | null }
       setState({ ...selectStatus(initial), status: "error", error: failure });
       channel.publish({ status: "error", error: failure });
     };
-    const attachment = attachNativeController("audio", { kind, config: referenceHz === undefined ? {} : { referenceHz } }, value => {
-      if (controller.current !== attachment) return;
+    return controller.attach({ kind, config: referenceHz === undefined ? {} : { referenceHz } }, value => {
       try { publish(decode(value)); }
       catch (error) { fail(error); }
+    }, fail, id => {
+      setId(id);
+      channel.observe();
     });
-    controller.current = attachment;
-    void attachment.ready.then(() => {
-      if (controller.current === attachment) {
-        setId(attachment.id);
-        channel.observe();
-      }
-    }, error => { if (controller.current === attachment) fail(error); });
-    return () => {
-      controller.current = null;
-      void attachment.dispose().catch(error => console.error("Could not release audio capture", error));
-    };
-  }, [kind, initial, decode, selectStatus, referenceHz, channel]);
+  }, [kind, initial, decode, selectStatus, referenceHz, channel, controller]);
   const call = useMemo(() => async (operation: string) => {
     if (!controller.current) throw new NativeError("unavailable", "Audio capture is not attached");
     return controller.current.call(operation);
-  }, []);
+  }, [controller]);
   const display = useMemo(() => ({ [displayController]: id }), [id]);
   return { state, ready: id !== null, call, display, measurements: channel.source };
 }

@@ -1,7 +1,5 @@
 pub use smol_str::SmolStr;
 
-pub mod source;
-
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 

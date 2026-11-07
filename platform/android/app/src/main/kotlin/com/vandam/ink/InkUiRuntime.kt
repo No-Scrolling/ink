@@ -65,9 +65,7 @@ internal class InkUiRuntime(
     }, scale)
     val view: InkHost.InkSurfaceView get() = host.view
     private val imageExecutor = Executors.newFixedThreadPool(4)
-    private val nativeTimeouts = mutableMapOf<Long, Runnable>()
-    private val nativeRequestStartedAt = mutableMapOf<Long, Long>()
-    private val nativeRequestLabels = mutableMapOf<Long, String>()
+    private var sceneRequests = NativeRequests(handler, NativeRequests.Policy.SCENE)
     private var refreshCompatibility: String? = null
     private var developmentIcons: ByteArray? = null
 
@@ -83,6 +81,7 @@ internal class InkUiRuntime(
         handler.removeCallbacks(drainJavaScript)
         javascriptPending.set(false)
         javascriptRequests = newJavaScriptRequests()
+        sceneRequests = NativeRequests(handler, NativeRequests.Policy.SCENE)
         check(InkNative.nativeStartJavaScript(handle, source, icons, context.assets,
             context.getDatabasePath("ink-store.db").path, context.filesDir.path, this, bundle.name)) {
             "Ink could not start JavaScript; see ink logs"
@@ -174,7 +173,7 @@ internal class InkUiRuntime(
         javascriptSession = session
         return NativeRequests(handler) { id, result ->
             onMain {
-                if (javascriptSession === session) sendJavaScriptResult(id, result)
+                if (!closed && running && javascriptSession === session) sendJavaScriptResult(id, result)
                 else disposeNativeResult(result)
             }
         }
@@ -185,7 +184,7 @@ internal class InkUiRuntime(
         javascriptSession = null
         javascriptRequests.close()
         pendingJavaScriptCalls = null
-        nativeTimeouts.keys.toList().forEach(::cancelNativeRequest)
+        sceneRequests.close()
         handler.removeCallbacks(drainNativeRequestsLater)
         javascriptControllers.toMap().forEach { (controller, module) ->
             modules.controller(0, -controller, module, "deactivate", "{}") { disposeNativeResult(it) }
@@ -313,10 +312,10 @@ internal class InkUiRuntime(
         throw error
     }
     private fun cancelNativeRequest(requestId: Long) {
-        nativeTimeouts.remove(requestId)?.let(handler::removeCallbacks)
-        nativeRequestStartedAt.remove(requestId)
-        nativeRequestLabels.remove(requestId)
-        modules.cancelScene(requestId)
+        if (!sceneRequests.cancel(requestId)) {
+            logResource("cancel $requestId  0ms")
+            modules.cancelScene(requestId)
+        }
     }
 
     private fun drainNativeRequests() {
@@ -332,11 +331,6 @@ internal class InkUiRuntime(
                 val requestId = request.getLong("id")
                 val kind = request.getInt("kind")
                 if (kind == NATIVE_REQUEST_CANCEL) {
-                    val label = nativeRequestLabels.remove(requestId).orEmpty()
-                    val elapsed = nativeRequestStartedAt.remove(requestId)?.let {
-                        SystemClock.elapsedRealtime() - it
-                    }
-                    logResource("cancel $requestId $label ${elapsed ?: 0}ms")
                     cancelNativeRequest(requestId)
                     continue
                 }
@@ -345,8 +339,7 @@ internal class InkUiRuntime(
                 val payload = request.getString("payload")
                 val controller = request.getLong("controller")
                 val label = "$module/$operation"
-                nativeRequestStartedAt[requestId] = SystemClock.elapsedRealtime()
-                nativeRequestLabels[requestId] = label
+                val startedAt = SystemClock.elapsedRealtime()
                 logResource("start $requestId $label")
                 if (BuildConfig.INK_PRESENTATION_TIMING && kind == NATIVE_REQUEST_IMAGE) {
                     val provenance = JSONObject(payload)
@@ -355,28 +348,22 @@ internal class InkUiRuntime(
                         .put("source", provenance.optString("url", provenance.optString("source")))
                         .put("ns", System.nanoTime()))
                 }
-                val timeout = Runnable {
-                    modules.cancelScene(requestId)
-                    completeNativeRequest(
-                        requestId,
-                        kind,
-                        NativeResult.Failure(
-                            NativeErrorKind.TIMEOUT,
-                            "Native request timed out",
-                            true,
-                        ),
-                    )
-                }
-                nativeTimeouts[requestId] = timeout
-                handler.postDelayed(
-                    timeout,
-                    request.getLong("timeout"),
-                )
                 val session = javascriptSession
-                modules.scene(InkSceneRequest(requestId, kind, module, operation, payload, controller)) { result ->
-                    onMain {
-                        if (javascriptSession === session) completeNativeRequest(requestId, kind, result)
-                        else disposeNativeResult(result)
+                sceneRequests.execute(
+                    requestId,
+                    request.getLong("timeout"),
+                    { modules.cancelScene(requestId) },
+                    reply = { result ->
+                        if (!closed && running && javascriptSession === session) {
+                            completeNativeRequest(requestId, kind, label, startedAt, result)
+                        } else disposeNativeResult(result)
+                    },
+                    cancelled = {
+                        logResource("cancel $requestId $label ${SystemClock.elapsedRealtime() - startedAt}ms")
+                    },
+                ) { complete ->
+                    modules.scene(InkSceneRequest(requestId, kind, module, operation, payload, controller)) { result ->
+                        onMain { complete(result) }
                     }
                 }
             }
@@ -384,16 +371,12 @@ internal class InkUiRuntime(
         } finally { drainingNativeRequests = false }
     }
 
-    private fun completeNativeRequest(requestId: Long, kind: Int, result: NativeResult) {
-        if (handle == 0L || !nativeTimeouts.containsKey(requestId)) {
+    private fun completeNativeRequest(requestId: Long, kind: Int, label: String, startedAt: Long, result: NativeResult) {
+        if (handle == 0L) {
             disposeNativeResult(result)
             return
         }
-        nativeTimeouts.remove(requestId)?.let(handler::removeCallbacks)
-        val label = nativeRequestLabels.remove(requestId).orEmpty()
-        val elapsed = nativeRequestStartedAt.remove(requestId)?.let {
-            SystemClock.elapsedRealtime() - it
-        } ?: 0L
+        val elapsed = SystemClock.elapsedRealtime() - startedAt
         val outcome = if (result is NativeResult.Failure) {
             "error:${result.kind.wireName}"
         } else {
@@ -463,7 +446,9 @@ internal class InkUiRuntime(
             stopJavaScriptSession()
             modules.close()
         } finally {
-            handler.removeCallbacksAndMessages(null)
+            // Queued result callbacks must still run to dispose resources from the retired session.
+            handler.removeCallbacks(drainJavaScript)
+            handler.removeCallbacks(drainNativeRequestsLater)
             host.close()
             imageExecutor.shutdown()
             InkNative.nativeDestroy(handle)

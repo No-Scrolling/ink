@@ -4,38 +4,49 @@ import android.os.Handler
 
 internal class NativeRequests(
     private val handler: Handler,
-    private val reply: (Long, NativeResult) -> Unit,
+    private val policy: Policy = Policy.JAVASCRIPT,
+    private val reply: ((Long, NativeResult) -> Unit)? = null,
 ) : AutoCloseable {
-    private class Request(val cancel: () -> Unit, val timeout: Runnable)
+    enum class Policy { JAVASCRIPT, SCENE }
+
+    private class Request(val cancel: () -> Unit, val cancelled: () -> Unit, val timeout: Runnable)
     private val pending = mutableMapOf<Long, Request>()
     private var closed = false
 
-    fun execute(id: Long, timeoutMs: Long, cancel: () -> Unit, start: (NativeResultHandler) -> Unit) {
+    fun execute(
+        id: Long,
+        timeoutMs: Long,
+        cancel: () -> Unit,
+        reply: NativeResultHandler = { checkNotNull(this.reply)(id, it) },
+        cancelled: () -> Unit = {},
+        start: (NativeResultHandler) -> Unit,
+    ) {
         lateinit var request: Request
         val timeout = Runnable {
             if (remove(id, request)) {
                 cancel()
-                reply(id, NativeResult.Failure(NativeErrorKind.TIMEOUT, "Native request timed out", true))
+                reply(NativeResult.Failure(NativeErrorKind.TIMEOUT, "Native request timed out", true))
             }
         }
-        request = Request(cancel, timeout)
+        request = Request(cancel, cancelled, timeout)
         val failure = synchronized(this) {
             if (closed) return
             when {
-                id <= 0 || pending.containsKey(id) ->
+                (policy == Policy.JAVASCRIPT && id <= 0) || pending.containsKey(id) ->
                     NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid native request ID", false)
-                pending.size >= 256 ->
+                policy == Policy.JAVASCRIPT && pending.size >= 256 ->
                     NativeResult.Failure(NativeErrorKind.BUSY, "Too many pending native requests", true)
                 else -> {
                     pending[id] = request
-                    handler.postDelayed(timeout, timeoutMs.coerceIn(1, 2_147_483_647))
+                    // Scene deadlines come from the native engine, without JavaScript admission limits.
+                    handler.postDelayed(timeout, if (policy == Policy.JAVASCRIPT) timeoutMs.coerceIn(1, 2_147_483_647) else timeoutMs)
                     null
                 }
             }
         }
-        if (failure != null) { reply(id, failure); return }
+        if (failure != null) { reply(failure); return }
         val complete: NativeResultHandler = { result ->
-            if (remove(id, request)) reply(id, result) else disposeNativeResult(result)
+            if (remove(id, request)) reply(result) else disposeNativeResult(result)
         }
         // Adapters can complete on a worker while holding their own lock.
         try { start(complete) } catch (error: Exception) {
@@ -51,10 +62,12 @@ internal class NativeRequests(
         return true
     }
 
-    fun cancel(id: Long) {
-        val request = synchronized(this) { pending.remove(id) } ?: return
+    fun cancel(id: Long): Boolean {
+        val request = synchronized(this) { pending.remove(id) } ?: return false
         handler.removeCallbacks(request.timeout)
+        request.cancelled()
         request.cancel()
+        return true
     }
 
     override fun close() {

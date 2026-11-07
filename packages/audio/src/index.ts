@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { attachNativeController } from "ink/native/controller";
+import { useNativeController } from "ink/internal/controller";
 import { NativeError } from "ink/native";
 import { playbackController } from "ink/internal/playback";
 
@@ -137,24 +137,21 @@ export function usePlayer(options: PlayerOptions = {}) {
   if (!Number.isSafeInteger(startupBuffer) || startupBuffer < 0 || startupBuffer > 30_000) throw new RangeError("Startup buffering must be between 0 and 30000 milliseconds");
   const [state, setState] = useState(initial);
   const current = useRef(initial);
-  const controller = useRef<ReturnType<typeof attachNativeController> | null>(null);
+  const controller = useNativeController("audio", "audio player");
   useEffect(() => {
     const publish = (next: PlayerState) => { current.current = next; setState(next); };
     publish(initial);
-    const attachment = attachNativeController("audio", { kind: "player", config: { session, playback: mode, usage, cache, preloadNext, startupBuffer } }, value => {
+    const detach = controller.attach({ kind: "player", config: { session, playback: mode, usage, cache, preloadNext, startupBuffer } }, value => {
       try { publish(decode(value)); }
       catch (error) { publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) }); }
-    });
-    controller.current = attachment;
-    void attachment.ready.catch(error => {
-      if (controller.current === attachment) publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) });
+    }, error => {
+      publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) });
     });
     return () => {
-      controller.current = null;
+      detach();
       current.current = initial;
-      void attachment.dispose().catch(error => console.error("Could not release audio player", error));
     };
-  }, [session, mode, usage, cache, preloadNext, startupBuffer]);
+  }, [session, mode, usage, cache, preloadNext, startupBuffer, controller]);
   const commands = useMemo(() => {
     const call = async (operation: string, payload: unknown = {}) => {
       if (!controller.current || !current.current.ready) throw new NativeError("unavailable", "Audio player is not ready");
@@ -224,6 +221,6 @@ export function usePlayer(options: PlayerOptions = {}) {
         return call("seekTo", { value: position });
       },
     };
-  }, []);
+  }, [controller]);
   return { state, [playbackController]: controller.current?.id, ...commands };
 }

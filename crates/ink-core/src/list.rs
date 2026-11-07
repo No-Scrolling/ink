@@ -1,11 +1,38 @@
 use std::{collections::HashMap, sync::Arc};
 
-use ink_protocol::source::ViewSnapshot;
+mod source;
+pub(super) use source::{ListChange, ListSnapshot, ListSource};
+
+#[derive(Clone)]
+pub(super) struct ListPagination {
+    // React compatibility permits another request after populated data is cleared.
+    react_window: bool,
+    first_requested: Option<(usize, Option<String>)>,
+    last_requested: Option<(usize, Option<String>)>,
+}
+
+impl ListPagination {
+    pub fn new(react_window: bool) -> Self {
+        Self { react_window, first_requested: None, last_requested: None }
+    }
+
+    pub fn requests(&mut self, keys: &[String], start: usize, near_end: bool, more: bool, older: bool) -> (bool, bool) {
+        let last = (keys.len(), keys.last().cloned());
+        let load_more = more && near_end && (self.react_window || !keys.is_empty() || self.last_requested.is_none())
+            && self.last_requested.as_ref() != Some(&last);
+        if load_more { self.last_requested = Some(last); }
+        let first = (keys.len(), keys.first().cloned());
+        let load_older = older && start <= 8 && (self.react_window || !keys.is_empty() || self.first_requested.is_none())
+            && self.first_requested.as_ref() != Some(&first);
+        if load_older { self.first_requested = Some(first); }
+        (load_more, load_older)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(super) enum ListVersions {
     Flat(Arc<[u64]>),
-    Source(Arc<ViewSnapshot>),
+    Source(Arc<ListSnapshot>),
 }
 
 impl PartialEq for ListVersions {
@@ -111,7 +138,7 @@ impl ListMetrics {
         self.reset_versions = true;
     }
 
-    pub fn patch_source(&mut self, previous_revision: u64, snapshot: &ViewSnapshot, rows: &[usize]) {
+    pub fn patch_source(&mut self, previous_revision: u64, snapshot: &ListSnapshot, rows: &[usize]) {
         if self.reset_versions || self.revision != previous_revision { return; }
         for &row in rows {
             for (width, index) in &mut self.widths {
