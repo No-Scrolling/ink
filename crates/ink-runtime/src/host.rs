@@ -6,8 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{Command, MAX_MESSAGE_BYTES, queue};
 
@@ -18,6 +18,57 @@ pub struct NativeCall {
     pub operation: String,
     pub payload: Value,
     pub timeout: Duration,
+}
+
+// Field order and escaping match the existing JSON result envelope. Count its
+// encoded bytes without retaining a second copy of the result string.
+#[derive(Serialize)]
+pub(crate) struct NativeResult {
+    id: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retryable: Option<bool>,
+    r#type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<String>,
+}
+
+impl NativeResult {
+    fn value(id: u64, value: &str) -> Self {
+        Self { id, kind: None, message: None, retryable: None, r#type: "result", value: Some(value.into()) }
+    }
+
+    fn error(id: u64, kind: &str, message: &str, retryable: bool) -> Self {
+        Self { id, kind: Some(kind.into()), message: Some(message.into()), retryable: Some(retryable), r#type: "result", value: None }
+    }
+
+    fn encoded_size(&self) -> usize {
+        struct Size(usize);
+        impl std::io::Write for Size {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 += bytes.len();
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+        let mut size = Size(0);
+        serde_json::to_writer(&mut size, self).expect("native results serialise");
+        size.0
+    }
+
+    pub(crate) fn deliver(self, ctx: &rquickjs::Ctx<'_>) -> rquickjs::Result<()> {
+        let resolver: rquickjs::Value = ctx.globals().get("__inkResolveNativeResult")?;
+        if let Some(resolver) = resolver.as_function() {
+            resolver.call((self.id, self.value, self.kind, self.message, self.retryable))
+        } else {
+            // Embedders can supply __inkReceive without loading the Ink SDK.
+            let receive: rquickjs::Function = ctx.globals().get("__inkReceive")?;
+            receive.call((serde_json::to_string(&self).expect("native results serialise"),))
+        }
+    }
 }
 
 /// Delivers results to one runtime. Safe to use from worker threads after the runtime stops.
@@ -40,11 +91,18 @@ impl Responder {
 
     /// Queue a message for `__inkReceive`. Returns false when the runtime can no longer receive it.
     pub fn send(&self, message: String) -> bool {
-        if !self.is_open() || message.len() > MAX_MESSAGE_BYTES {
-            return false;
-        }
         let bytes = message.len();
-        match self.commands.try_send(Command::Message(message, None), bytes) {
+        self.send_command(Command::Message(message, None), bytes)
+    }
+
+    fn send_result(&self, result: NativeResult) -> bool {
+        let bytes = result.encoded_size();
+        self.send_command(Command::NativeResult(result), bytes)
+    }
+
+    fn send_command(&self, command: Command, bytes: usize) -> bool {
+        if !self.is_open() || bytes > MAX_MESSAGE_BYTES { return false; }
+        match self.commands.try_send(command, bytes) {
             Ok(()) => true,
             Err(std::sync::mpsc::TrySendError::Full(_)) => {
                 *self.delivery_failed.lock().unwrap() = Some("JavaScript message queue is full; reload the runtime".into());
@@ -56,29 +114,33 @@ impl Responder {
 
     /// Resolve request `id` with a string value, or reject it when the envelope exceeds the message limit.
     pub fn resolve(&self, id: u64, value: &str) -> bool {
-        let message = json!({"type": "result", "id": id, "value": value}).to_string();
-        if message.len() > MAX_MESSAGE_BYTES {
+        let message = NativeResult::value(id, value);
+        let bytes = message.encoded_size();
+        if bytes > MAX_MESSAGE_BYTES {
             return self.reject(id, "protocol", "Native result exceeds the message limit", false);
         }
-        self.complete(id, message)
+        self.complete(message, bytes)
     }
 
     pub fn reject(&self, id: u64, kind: &str, message: &str, retryable: bool) -> bool {
-        self.complete(id, json!({"type": "result", "id": id, "kind": kind, "message": message, "retryable": retryable}).to_string())
+        let result = NativeResult::error(id, kind, message, retryable);
+        let bytes = result.encoded_size();
+        self.complete(result, bytes)
     }
 
-    fn complete(&self, id: u64, message: String) -> bool {
+    fn complete(&self, message: NativeResult, bytes: usize) -> bool {
+        let id = message.id;
         let Some(deadline) = self.pending.lock().unwrap().remove(&id) else { return false };
         if Instant::now() >= deadline {
-            self.send(timeout(id));
+            self.send_result(timeout(id));
             return false;
         }
-        self.send(message)
+        self.send_command(Command::NativeResult(message), bytes)
     }
 }
 
-fn timeout(id: u64) -> String {
-    json!({"type": "result", "id": id, "kind": "timeout", "message": "Native request timed out", "retryable": true}).to_string()
+fn timeout(id: u64) -> NativeResult {
+    NativeResult::error(id, "timeout", "Native request timed out", true)
 }
 
 /// Keeps Rust requests subject to the same deadlines and cancellation as platform requests.
@@ -106,7 +168,7 @@ impl Requests {
         };
         for id in expired {
             self.session.borrow_mut().cancel(id);
-            self.responder.send(timeout(id));
+            self.responder.send_result(timeout(id));
         }
     }
 }
@@ -177,7 +239,7 @@ pub(crate) fn intercept(requests: &Requests, message: &str) -> bool {
                 }
             };
             if let Some((kind, message, retryable)) = failure {
-                requests.responder.send(json!({"type": "result", "id": posted.id, "kind": kind, "message": message, "retryable": retryable}).to_string());
+                requests.responder.send_result(NativeResult::error(posted.id, kind, message, retryable));
                 return true;
             }
             let handled = requests.session.borrow_mut().call(NativeCall {

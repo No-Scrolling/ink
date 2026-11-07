@@ -34,6 +34,14 @@ Object.defineProperty(globalThis, "__inkReceive", {
   },
 });
 
+Object.defineProperty(globalThis, "__inkResolveNativeResult", {
+  value: (id: number, value?: string, kind?: string, message?: string, retryable?: boolean) => {
+    listeners.get("result")?.(typeof value === "string"
+      ? { id, type: "result", value }
+      : { id, kind, message, retryable, type: "result" });
+  },
+});
+
 onNativeMessage("result", message => {
   if (typeof message.id !== "number") throw new Error("Invalid native result ID");
   const request = pending.get(message.id);

@@ -77,6 +77,7 @@ pub(crate) enum Command {
     #[cfg(debug_assertions)]
     EvaluateDevelopment(String),
     Message(String, Option<Vec<u8>>),
+    NativeResult(host::NativeResult),
     LatestMessage(u64),
     Stop,
 }
@@ -516,20 +517,25 @@ fn run(
                 })?;
                 None
             }
-            Ok(Command::Message(message, bytes)) => Some((message, bytes)),
+            Ok(command @ (Command::Message(..) | Command::NativeResult(..))) => Some(command),
             Ok(Command::LatestMessage(key)) => Some(latest_messages.lock()
                 .map_err(|_| anyhow!("JavaScript message queue is unavailable"))?
-                .remove(&key).context("missing latest JavaScript message")?.take()).map(|message| (message, None)),
+                .remove(&key).context("missing latest JavaScript message")?.take()).map(|message| Command::Message(message, None)),
             Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => None,
         };
-        if let Some((message, bytes)) = message {
+        if let Some(message) = message {
             #[cfg(target_os = "android")]
             if work_affinity.is_none() {
                 work_affinity = cpu_affinity::prefer_performance();
             }
             context
                 .with(|ctx| {
+                    let (message, bytes) = match message {
+                        Command::NativeResult(result) => return result.deliver(&ctx),
+                        Command::Message(message, bytes) => (message, bytes),
+                        _ => unreachable!(),
+                    };
                     let receive: Function = ctx.globals().get("__inkReceive")?;
                     let bytes = match bytes {
                         Some(bytes) => rquickjs::TypedArray::new(ctx.clone(), bytes)?.into_value(),
