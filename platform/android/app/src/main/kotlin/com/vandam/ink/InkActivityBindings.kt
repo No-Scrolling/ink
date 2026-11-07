@@ -53,10 +53,18 @@ internal class InkActivityBindings(
     private val connectivityAdapter by lazy { ConnectivityAdapter(activity, runtime::send) }
     private val textInputAdapter: TextInputAdapter
     private val notificationsAdapter: NotificationsAdapter
+    private var adaptersWarmed = false
     override val presentation = object : InkHost.Callbacks {
         override fun changed() { syncNativePortals(); syncTextInput() }
         override fun beforeRender() { if (textInputAdapter.hasEditor) syncTextInput() }
-        override fun presented() = textInputAdapter.framePresented()
+        override fun presented() {
+            textInputAdapter.framePresented()
+            if (!adaptersWarmed) {
+                adaptersWarmed = true
+                networkAdapter.warm()
+                audioAdapter.warm()
+            }
+        }
         override fun haptic(view: View) = lightSdkAdapter.performHaptic(view)
     }
 

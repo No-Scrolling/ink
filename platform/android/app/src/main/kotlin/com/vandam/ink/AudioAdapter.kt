@@ -16,6 +16,7 @@ internal interface AudioProcessing {
 }
 
 internal interface AudioAdapter : NativeAdapter {
+    fun warm() {}
     fun executeController(
         controller: Long,
         operation: String,

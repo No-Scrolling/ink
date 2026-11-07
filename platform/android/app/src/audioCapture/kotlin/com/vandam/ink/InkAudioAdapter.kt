@@ -28,6 +28,8 @@ private class InkAudioAdapter(
         processing::activateAudioProcessor, processing::deactivateAudioProcessor, processing::setAudioProcessorEnabled) { recording.active }
     private val recording: AudioRecording = createAudioRecording(activity, ::updateCapture) { microphone.active }
 
+    override fun warm() = playback.warm()
+
     private fun updateCapture(controller: Long, value: String) {
         processing.updateCaptureState(controller, value)
         val status = JSONObject(value).optString("status")

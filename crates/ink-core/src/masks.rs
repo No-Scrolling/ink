@@ -8,11 +8,54 @@ const TOGGLE_MASK_PADDING: u32 = 1;
 const TOGGLE_SAMPLES: u32 = 4;
 
 impl Mask {
+    pub(crate) fn cropped(id: u64, width: u16, height: u16, pixels: Vec<u8>) -> Self {
+        let mut mask = Self::owned(id, width, height, pixels);
+        let (mut left, mut top, mut right, mut bottom) = (width, height, 0, 0);
+        for (index, &alpha) in mask.pixels.as_ref().iter().enumerate() {
+            if alpha == 0 { continue; }
+            let (x, y) = ((index % usize::from(width)) as u16, (index / usize::from(width)) as u16);
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x + 1);
+            bottom = bottom.max(y + 1);
+        }
+        if right == 0 { left = 0; top = 0; }
+        let crop = crate::MaskCrop { left, top, width: right - left, height: bottom - top };
+        if crop.width == width && crop.height == height { return mask; }
+        let mut pixels = Vec::with_capacity(usize::from(crop.width) * usize::from(crop.height));
+        for y in top..bottom {
+            let start = usize::from(y) * usize::from(width) + usize::from(left);
+            pixels.extend_from_slice(&mask.pixels.as_ref()[start..start + usize::from(crop.width)]);
+        }
+        mask.pixels = crate::AssetBytes::Owned(pixels.into());
+        mask.crop = Some(crop);
+        mask
+    }
+
+    /// Restore transparent borders only for the renderer's first atlas upload.
+    pub fn raster_pixels(&self) -> std::borrow::Cow<'_, [u8]> {
+        let Some(crop) = self.crop else { return self.pixels.as_ref().into(); };
+        let mut pixels = vec![0; usize::from(self.width) * usize::from(self.height)];
+        for (row, source) in self.pixels.as_ref().chunks(usize::from(crop.width).max(1)).enumerate() {
+            let start = (usize::from(crop.top) + row) * usize::from(self.width) + usize::from(crop.left);
+            pixels[start..start + source.len()].copy_from_slice(source);
+        }
+        pixels.into()
+    }
+
     pub(crate) fn solid() -> Self {
         Self::new(hash("ink_solid", 1), 1, 1, &[255])
     }
 
     pub(crate) fn content_bounds(&self) -> Option<crate::Rect> {
+        if let Some(crop) = self.crop {
+            return (crop.width > 0 && crop.height > 0).then(|| crate::Rect {
+                x: crop.left as f32 / self.width as f32,
+                y: crop.top as f32 / self.height as f32,
+                width: crop.width as f32 / self.width as f32,
+                height: crop.height as f32 / self.height as f32,
+            });
+        }
         let (mut left, mut top, mut right, mut bottom) = (self.width as usize, self.height as usize, 0, 0);
         for (index, alpha) in self.pixels.as_ref().iter().enumerate() {
             if *alpha == 0 { continue; }
@@ -78,6 +121,7 @@ fn raster_toggle(filled: bool) -> Mask {
         width: dimension as u16,
         height: dimension as u16,
         pixels: crate::AssetBytes::Owned(pixels.into()),
+        crop: None,
     }
 }
 

@@ -13,7 +13,7 @@ internal object InkNative {
     }
 
     @JvmStatic
-    external fun nativeCreate(cacheDirectory: String): Long
+    external fun nativeCreate(cacheDirectory: String, mediaPreviews: Boolean): Long
 
     @JvmStatic
     external fun nativeSetViewportScale(handle: Long, scale: Float)

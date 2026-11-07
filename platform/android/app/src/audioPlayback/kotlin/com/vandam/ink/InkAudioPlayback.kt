@@ -31,10 +31,7 @@ internal fun createAudioPlayback(
     updateController: (Long, String) -> Unit,
     bundle: InkBundle,
     clock: PlaybackClock,
-): AudioPlayback {
-    AudioDecoderCache.warm()
-    return InkAudioPlayback(activity, updateController, bundle, clock)
-}
+): AudioPlayback = InkAudioPlayback(activity, updateController, bundle, clock)
 
 @UnstableApi
 private class InkAudioPlayback(
@@ -47,7 +44,10 @@ private class InkAudioPlayback(
     private val sessions = mutableMapOf<String, Entry>()
     private val controllers = mutableMapOf<Long, String>()
 
+    override fun warm() = AudioDecoderCache.warm()
+
     override fun activate(controller: Long, config: String): NativeResult {
+        warm()
         val options = runCatching { JSONObject(config) }.getOrNull()
             ?: return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio configuration", false)
         val name = options.optString("session", "main")

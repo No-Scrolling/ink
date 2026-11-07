@@ -644,7 +644,8 @@ impl GlyphAtlas {
 
         let width = u32::from(mask.width);
         let height = u32::from(mask.height);
-        if mask.pixels.as_ref().len() != (width * height) as usize {
+        let pixels = mask.raster_pixels();
+        if pixels.len() != (width * height) as usize {
             return Err(anyhow!("an Ink mask has invalid dimensions"));
         }
         let padded_width = width + ATLAS_PADDING * 2;
@@ -665,7 +666,7 @@ impl GlyphAtlas {
             &self.texture,
             [self.cursor_x + ATLAS_PADDING, self.cursor_y + ATLAS_PADDING],
             [width, height],
-            mask.pixels.as_ref(),
+            pixels.as_ref(),
         );
 
         let cached = CachedMask {
@@ -680,7 +681,7 @@ impl GlyphAtlas {
         #[cfg(feature = "perf")]
         {
             self.cache_misses += 1;
-            self.uploaded_bytes += mask.pixels.as_ref().len() as u64;
+            self.uploaded_bytes += pixels.len() as u64;
         }
         Ok(cached)
     }

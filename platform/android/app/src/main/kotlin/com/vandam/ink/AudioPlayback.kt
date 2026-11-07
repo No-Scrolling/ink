@@ -1,6 +1,7 @@
 package com.vandam.ink
 
 internal interface AudioPlayback {
+    fun warm() {}
     fun activate(controller: Long, config: String): NativeResult
 
     fun execute(

@@ -233,7 +233,7 @@ impl ReactTree {
                 &mut variants.outlined
             };
             ensure!(slot.is_none(), "duplicate icon asset");
-            *slot = Some(Mask::owned(icon.id, icon.width, icon.height, icon.pixels));
+            *slot = Some(Mask::cropped(icon.id, icon.width, icon.height, icon.pixels));
         }
         Ok(tree)
     }

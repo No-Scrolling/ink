@@ -422,6 +422,16 @@ pub struct Mask {
     pub width: u16,
     pub height: u16,
     pub pixels: AssetBytes,
+    /// The stored alpha rectangle, relative to the full raster dimensions above.
+    pub crop: Option<MaskCrop>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MaskCrop {
+    pub left: u16,
+    pub top: u16,
+    pub width: u16,
+    pub height: u16,
 }
 
 impl Mask {
@@ -431,6 +441,7 @@ impl Mask {
             width,
             height,
             pixels: AssetBytes::Static(pixels),
+            crop: None,
         }
     }
 
@@ -440,6 +451,7 @@ impl Mask {
             width,
             height,
             pixels: AssetBytes::Owned(pixels.into()),
+            crop: None,
         }
     }
 }

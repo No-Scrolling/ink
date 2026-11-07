@@ -1,14 +1,14 @@
 //! Tiny square previews of media library items.
 //!
 //! Grid cells draw these in the same frame they appear, while the full thumbnail decodes.
-//! Previews live in one append-only pack that is memory-mapped at startup, avoiding decoding.
+//! Previews live in one append-only pack that is memory-mapped when the media library is enabled.
 
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
     io::Write,
     path::Path,
-    sync::{Arc, OnceLock, RwLock},
+    sync::{Arc, Once, OnceLock, RwLock},
 };
 
 pub const PREVIEW_SIZE: u32 = 64;
@@ -37,20 +37,23 @@ pub fn media_key(url: &str) -> Option<MediaKey> {
     Some(MediaKey { video, id: id.parse().ok()?, modified })
 }
 
+#[derive(Clone)]
 enum Location {
     Mapped(usize),
     Memory(Arc<[u8]>),
 }
 
+#[derive(Clone)]
 struct Entry {
     modified: i64,
     location: Location,
 }
 
 struct Pack {
-    map: Option<memmap2::Mmap>,
+    map: Option<Arc<memmap2::Mmap>>,
     file: Option<File>,
     index: HashMap<(bool, u64), Entry>,
+    revision: u64,
 }
 
 pub struct MediaPreviews {
@@ -61,7 +64,14 @@ static PREVIEWS: OnceLock<MediaPreviews> = OnceLock::new();
 
 /// Opens the pack in `directory`. Later calls keep the first pack.
 pub fn open(directory: &Path) -> &'static MediaPreviews {
-    PREVIEWS.get_or_init(|| MediaPreviews { pack: RwLock::new(Pack::open(directory)) })
+    let previews = PREVIEWS.get_or_init(|| MediaPreviews { pack: RwLock::new(Pack::open(directory)) });
+    static COMPACTION: Once = Once::new();
+    COMPACTION.call_once(|| {
+        let directory = directory.to_owned();
+        let _ = std::thread::Builder::new().name("ink-preview-compaction".into())
+            .spawn(move || previews.compact(&directory));
+    });
+    previews
 }
 
 pub fn previews() -> Option<&'static MediaPreviews> {
@@ -70,7 +80,7 @@ pub fn previews() -> Option<&'static MediaPreviews> {
 
 impl Pack {
     fn open(directory: &Path) -> Self {
-        let empty = Self { map: None, file: None, index: HashMap::new() };
+        let empty = Self { map: None, file: None, index: HashMap::new(), revision: 0 };
         if std::fs::create_dir_all(directory).is_err() { return empty; }
         let path = directory.join("previews-64.pack");
         let Ok(file) = OpenOptions::new().read(true).append(true).create(true).open(&path) else { return empty; };
@@ -80,7 +90,7 @@ impl Pack {
         if whole != length && file.set_len(whole as u64).is_err() { return empty; }
         let map = if whole == 0 { None } else {
             // The pack is only appended to, so mapped records never change underneath readers.
-            match unsafe { memmap2::Mmap::map(&file) } { Ok(map) => Some(map), Err(_) => return empty }
+            match unsafe { memmap2::Mmap::map(&file) } { Ok(map) => Some(Arc::new(map)), Err(_) => return empty }
         };
         let mut index = HashMap::new();
         if let Some(map) = &map {
@@ -93,19 +103,7 @@ impl Pack {
                 index.insert((video, id), Entry { modified, location: Location::Mapped(offset + HEADER_BYTES) });
             }
         }
-        let pack = Self { map, file: Some(file), index };
-        if pack.index.len() * COMPACT_RATIO < whole / RECORD_BYTES { pack.compact(&path) } else { pack }
-    }
-
-    fn compact(self, path: &Path) -> Self {
-        let temporary = path.with_extension("tmp");
-        let mut records = Vec::with_capacity(self.index.len() * RECORD_BYTES);
-        for (&(video, id), entry) in &self.index {
-            if let Some(pixels) = self.pixels(entry) { records.extend_from_slice(&record(video, id, entry.modified, pixels)); }
-        }
-        if std::fs::write(&temporary, &records).is_err() || std::fs::rename(&temporary, path).is_err() { return self; }
-        drop(self);
-        Self::open(path.parent().unwrap())
+        Self { map, file: Some(file), index, revision: 0 }
     }
 
     fn pixels<'a>(&'a self, entry: &'a Entry) -> Option<&'a [u8]> {
@@ -128,6 +126,45 @@ fn record(video: bool, id: u64, modified: i64, pixels: &[u8]) -> Vec<u8> {
 }
 
 impl MediaPreviews {
+    fn compact(&self, directory: &Path) {
+        let snapshot = {
+            let Ok(pack) = self.pack.read() else { return; };
+            let Some(file) = &pack.file else { return; };
+            let Ok(length) = file.metadata().map(|metadata| metadata.len() as usize) else { return; };
+            if pack.index.len() * COMPACT_RATIO >= length / RECORD_BYTES { return; }
+            Pack { map: pack.map.clone(), file: None, index: pack.index.clone(), revision: pack.revision }
+        };
+        let path = directory.join("previews-64.pack");
+        let temporary = path.with_extension("tmp");
+        let rewrite = || -> std::io::Result<()> {
+            let mut file = File::create(&temporary)?;
+            for (&(video, id), entry) in &snapshot.index {
+                if let Some(pixels) = snapshot.pixels(entry) {
+                    file.write_all(&record(video, id, entry.modified, pixels))?;
+                }
+            }
+            file.sync_all()?;
+            let file = OpenOptions::new().read(true).append(true).open(&temporary)?;
+            let map = if snapshot.index.is_empty() { None } else {
+                // This inode is complete and remains immutable after replacement, except for appends.
+                Some(Arc::new(unsafe { memmap2::Mmap::map(&file)? }))
+            };
+            let index = snapshot.index.iter().enumerate().map(|(index, (&key, entry))| {
+                (key, Entry { modified: entry.modified, location: Location::Mapped(index * RECORD_BYTES + HEADER_BYTES) })
+            }).collect();
+            let Ok(mut pack) = self.pack.write() else { return Ok(()); };
+            // An insert during the rewrite wins. Leave compaction for a later process launch.
+            if pack.revision != snapshot.revision { return Ok(()); }
+            std::fs::rename(&temporary, &path)?;
+            *pack = Pack { map, file: Some(file), index, revision: snapshot.revision };
+            drop(pack);
+            // A crash leaves either complete pack; existing readers retain the old mapping.
+            File::open(directory)?.sync_all()
+        };
+        let _ = rewrite();
+        let _ = std::fs::remove_file(temporary);
+    }
+
     /// RGBA pixels of a `PREVIEW_SIZE` square, when the stored preview matches `key`.
     pub fn get(&self, key: MediaKey) -> Option<Arc<[u8]>> {
         let pack = self.pack.read().ok()?;
@@ -152,6 +189,7 @@ impl MediaPreviews {
             pack.file = None;
         }
         pack.index.insert((key.video, key.id), Entry { modified: key.modified, location: Location::Memory(pixels.into()) });
+        pack.revision += 1;
     }
 }
 

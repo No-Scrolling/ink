@@ -43,7 +43,7 @@ internal class InkUiRuntime(
     scale: Float = 0f,
     private val onFailure: (String) -> Unit,
 ) : InkJavaScriptHost, AudioProcessing, PlaybackClock, AutoCloseable {
-    var handle = InkNative.nativeCreate(context.codeCacheDir.absolutePath)
+    var handle = InkNative.nativeCreate(context.codeCacheDir.absolutePath, BuildConfig.INK_MEDIA_LIBRARY_ENABLED)
         private set
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var closed = false

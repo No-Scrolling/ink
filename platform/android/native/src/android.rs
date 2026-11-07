@@ -522,11 +522,14 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeCreate(
     mut env: EnvUnowned<'_>,
     _class: JClass<'_>,
     cache_directory: JString<'_>,
+    media_previews: jboolean,
 ) -> jlong {
     let cache = env
         .with_env(|env| cache_directory.try_to_string(env))
         .resolve::<jni::errors::LogErrorAndDefault>();
-    if !cache.is_empty() { ink_core::media_previews::open(&std::path::Path::new(&cache).join("ink-media-previews")); }
+    if media_previews && !cache.is_empty() {
+        ink_core::media_previews::open(&std::path::Path::new(&cache).join("ink-media-previews"));
+    }
     let cache = (!cache.is_empty()).then(|| std::path::Path::new(&cache).join("ink-vulkan-pipelines.bin"));
     PANIC_HOOK.call_once(|| {
         std::panic::set_hook(Box::new(|panic| {

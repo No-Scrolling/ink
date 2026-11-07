@@ -13,6 +13,8 @@ internal fun createAudioAdapter(
     private val playback = createAudioPlayback(activity, updateController, bundle, clock)
     private val controllers = mutableSetOf<Long>()
 
+    override fun warm() = playback.warm()
+
     override fun execute(requestId: Long, operation: String, payload: String, complete: NativeResultHandler) {
         complete(NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Audio capture is not enabled", false))
     }

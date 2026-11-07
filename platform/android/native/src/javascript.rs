@@ -236,23 +236,7 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeStartJavaScript(
     let Some((source, icons, assets, host, vm, activity)) = result else {
         return false as jboolean;
     };
-    let icons = match icons.map_or_else(|| assets.read(c"ink-icons-v1.bin"), Ok) {
-        Ok(icons) => icons,
-        Err(error) => {
-            android_log(ANDROID_LOG_ERROR, &format!("could not read icon assets: {error:#}"));
-            return false as jboolean;
-        }
-    };
-    let tree = match ReactTree::with_icons(&icons) {
-        Ok(tree) => tree,
-        Err(error) => {
-            android_log(
-                ANDROID_LOG_ERROR,
-                &format!("invalid icon assets: {error:#}"),
-            );
-            return false as jboolean;
-        }
-    };
+    let icon_assets = assets.clone();
     let activity = std::sync::Arc::new(activity);
     #[cfg(feature = "audio")]
     let (audio_vm, audio_activity) = (vm.clone(), activity.clone());
@@ -280,6 +264,17 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeStartJavaScript(
     );
     match runtime {
         Ok((runtime, events)) => {
+            // The JS thread can initialise and evaluate while this thread prepares icons.
+            // Install the tree before draining any queued commits.
+            let tree = match icons.map_or_else(|| icon_assets.read(c"ink-icons-v1.bin"), Ok)
+                .and_then(|icons| ReactTree::with_icons(&icons))
+            {
+                Ok(tree) => tree,
+                Err(error) => {
+                    android_log(ANDROID_LOG_ERROR, &format!("could not prepare icon assets: {error:#}"));
+                    return false as jboolean;
+                }
+            };
             let Some(engine) = engine(handle) else {
                 return false as jboolean;
             };

@@ -37,8 +37,7 @@ private class InkNetworkAdapter(private val context: Context, cacheName: String?
     }
     private val engine by httpEngine
 
-    init {
-        // Build the engine off the UI thread so the first request does not pay for it.
+    override fun warm() {
         executor.execute { runCatching { engine } }
     }
 

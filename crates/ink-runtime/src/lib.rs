@@ -331,7 +331,7 @@ fn run(
     host: Option<(Arc<dyn NativeHost>, Responder)>,
 ) -> Result<()> {
     #[cfg(target_os = "android")]
-    let mut work_affinity = None;
+    let mut work_affinity = cpu_affinity::prefer_performance();
     let runtime = Runtime::new()?;
     runtime.set_memory_limit(64 * 1024 * 1024);
     runtime.set_max_stack_size(if cfg!(target_os = "android") { 512 * 1024 } else { 1024 * 1024 });
