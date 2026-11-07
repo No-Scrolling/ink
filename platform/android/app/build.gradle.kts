@@ -1,4 +1,5 @@
 import groovy.json.JsonSlurper
+import com.android.build.gradle.internal.tasks.OptimizeResourcesTask
 import org.gradle.api.tasks.Exec
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
@@ -443,6 +444,21 @@ tasks.configureEach {
             dependsOn(generateInkPermissionManifest)
         "mergeDebugJniLibFolders" -> dependsOn(cargoBuildDebug)
         "mergeReleaseJniLibFolders" -> dependsOn(cargoBuildRelease)
+        "optimizeReleaseResources" -> {
+            val optimise = this as OptimizeResourcesTask
+            inputs.property("inkCompactResourceEntries", true)
+            doLast {
+                val aapt2 = optimise.aapt2.binaryDirectory.singleFile.resolve("aapt2")
+                // Shrinking converts the table back to binary, so compact its final output.
+                outputs.files.asFileTree.matching { include("**/*.ap_") }.forEach { resource ->
+                    val compact = temporaryDir.resolve(resource.name)
+                    project.exec {
+                        commandLine(aapt2, "optimize", "--enable-compact-entries", "-o", compact, resource)
+                    }
+                    compact.copyTo(resource, overwrite = true)
+                }
+            }
+        }
     }
 }
 
