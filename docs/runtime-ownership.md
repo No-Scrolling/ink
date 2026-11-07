@@ -14,7 +14,7 @@ Canvas, text-input, camera, video and map primitives are also selected at build 
 | Text/Stack and standard Row list templates | Rust windows and identity; JS data dependencies | Supported inline declarations compile automatically. |
 | Conversation, reorder and media picker lists | Rust windows and visual templates; JS data/actions | Ink's built-ins now use native row plans automatically. Message composition is native too. |
 | Playback screen and progress labels | Rust composition and clock; native audio supplies anchors | `PlayingScreen` takes one playback binding and connects native clocks and transport commands. JS receives state changes; `getState()` reads a fresh snapshot. Source replacement and relative seeks preserve native timing. |
-| Custom React components | JavaScript execution and lifecycle; Rust resulting primitives | Preact runs hooks, effects, conditional trees and custom render functions. Ink hooks disconnect while hidden; app effects remain active. |
+| Custom React components | JavaScript execution and lifecycle; Rust resulting primitives | Preact runs hooks, effects, conditional trees and custom render functions. Ink, app and library effects imported from React disconnect while hidden and reconnect when shown. |
 | Controlled text input | Kotlin IME, Rust editor, JS value/actions | Event ordering and composition semantics remain intact. |
 | Navigation, resources, filtering, fetching decisions | JavaScript | Application responsibilities. |
 | HTTP, WebSockets and Blob | Native I/O and byte transport; JS Web API semantics | Body bytes use typed buffers, without base64/JSON byte encoding. Metadata still uses JSON. |
@@ -68,8 +68,8 @@ The effects page still explicitly reads fresh player state once a second while v
 
 ## Preact runtime
 
-The app bundler aliases React imports, JSX and compiler-runtime imports to Preact or Ink’s adapters. React types remain available to app TypeScript. Ink’s host facade keeps sibling links for constant-time insertion and removal, and emits the existing create, update, text, insert, remove and hidden operations. Rust and Kotlin require no protocol changes.
+The app bundler aliases React imports and compiler-runtime imports to Preact or Ink’s adapters. Ink’s JSX runtime creates native vnodes, and a version-checked adapter replaces Preact’s browser element driver. React types remain available to app TypeScript. Ink’s host facade keeps sibling links for constant-time insertion and removal, and emits the existing create, update, text, insert, remove and hidden operations. Rust and Kotlin require no protocol changes.
 
-Hidden screens retain state. Ink’s visibility context disconnects its hooks’ effects and resource subscriptions; native visibility hides the existing host roots. Apps’ own effects and external-store subscriptions imported from `react` continue while hidden. Preact does not implement React’s concurrent scheduling or `Activity` effect suspension. See [JavaScript compatibility](architecture.md#javascript-compatibility) and [Leaving a screen](architecture.md#leaving-a-screen).
+Hidden screens retain state and native nodes. Activity scopes disconnect Ink, app and library effects and external-store subscriptions imported from `react`; native visibility hides the existing host roots. Hidden parent prop changes are applied when shown. Preact does not implement React’s concurrent scheduling. Class lifecycles and host refs retain Preact’s behaviour. See [JavaScript compatibility](architecture.md#javascript-compatibility) and [Leaving a screen](architecture.md#leaving-a-screen).
 
 Fast refresh uses Prefresh. Oxc continues to supply the React Compiler transform and refresh hook signatures. Body edits preserve component state, while changed hook signatures reset it.

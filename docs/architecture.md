@@ -115,7 +115,7 @@ Scrolling continues natively while JavaScript is busy. New content and actions t
 
 ### JavaScript compatibility
 
-Apps keep importing from `react` and using `@types/react`. The compiler aliases React imports and JSX runtimes to Preact, and React DOM imports to Preact’s compatibility modules. Ink’s own components use Preact core; its memoised rows use a class with `shouldComponentUpdate`.
+Apps keep importing from `react` and using `@types/react`. The compiler aliases React imports to Preact and Ink adapters, and JSX runtimes to Ink’s native vnode factory, and React DOM imports to Preact’s compatibility modules. Ink’s own components use Preact core; its memoised rows use a class with `shouldComponentUpdate`.
 
 The React Compiler still targets React 19. Ink supplies the compiler’s per-component memo cache through Preact hooks. React’s reconciler and scheduler are absent from app bundles. The native operation protocol is unchanged.
 
@@ -154,14 +154,13 @@ Text and icons share a texture cache that starts at 1 MiB. When it fills, Ink cl
 | Data or work | When it ends |
 | --- | --- |
 | Component state | Component unmounts. |
-| Ink hook effects and resource subscriptions | Screen is hidden or removed. |
-| App effects and subscriptions from `react` | Component unmounts, or the app cleans them up. Hiding a screen keeps them active. |
+| Effects and subscriptions from Ink hooks or `react` | Screen is hidden or removed. |
 | Camera, microphone and foreground location | According to the module’s rules for hidden screens and app backgrounding. |
 | Shared JavaScript state | App runtime stops. |
 | Detached audio | Playback is stopped or Android terminates it. |
 | Saved settings and queued jobs | Data is deleted or app storage is cleared. |
 
-Ink keeps hidden screens mounted and sends native visibility changes without adding layout nodes. Ink’s resource, controller and native module hooks disconnect their effects and subscriptions while hidden, then reconnect when shown. Component state is retained. Unlike React’s `Activity`, this does not pause an app’s own `useEffect`, `useLayoutEffect` or `useSyncExternalStore` calls imported from `react`. Clean up work that should stop when leaving a screen, or keep that work in an Ink resource or controller hook.
+Ink keeps hidden screens mounted and sends native visibility changes without adding layout nodes. Ink hooks and app or library calls to `useEffect`, `useLayoutEffect`, `useSyncExternalStore` and `useImperativeHandle` from `react` disconnect while hidden and reconnect when shown. State and native nodes are retained. Hidden parent prop changes are applied when shown. Layout effects run before passive effects; hiding cleans up parents before children, and showing restarts children before parents. Class lifecycles and host refs retain Preact’s behaviour; see [remaining runtime differences](preact-migration.md#remaining-differences).
 
 Putting the app in the background does not unsubscribe its screen from resources. Native modules handle backgrounding separately; check the module’s page for its behaviour.
 
