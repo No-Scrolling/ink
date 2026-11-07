@@ -421,6 +421,11 @@ fun registerCargoBuild(variant: String, profile: List<String>) = tasks.register<
 
 val cargoBuildDebug = registerCargoBuild("debug", listOf("--profile", "ink-dev"))
 val cargoBuildRelease = registerCargoBuild("release", listOf("--release"))
+cargoBuildRelease.configure {
+    // cc applies target-specific CFLAGS last. Host bytecode compilers keep the parser.
+    val flags = System.getenv("CFLAGS_aarch64-linux-android").orEmpty()
+    environment("CFLAGS_aarch64-linux-android", "$flags -DQJS_DISABLE_PARSER")
+}
 
 tasks.configureEach {
     when (name) {

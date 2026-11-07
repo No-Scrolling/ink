@@ -19,6 +19,8 @@ version_code = 1
 
 Release APKs contain precompiled QuickJS bytecode, icons, assets and the required native modules. The CLI compiles the app, optional networking runtime and background worker with the same pinned QuickJS build as the Android runtime. Development builds retain JavaScript source for debugging and refresh.
 
+Cargo also precompiles Ink's built-in runtime shims on the build host, using the same pinned engine. All builds load these shims as bytecode. Function source text is omitted; filenames and line tables remain for stack traces.
+
 Rust reads installed app and networking bundles directly from APK assets. The app bundle loads on the JavaScript thread, avoiding source parsing and a Java string transfer through JNI at launch. Icons also load directly in Rust.
 
 Release builds load networking runtime code on first use. Set `INK_SPLIT_WEB=0` to disable this split for comparisons. General code splitting and downloading executable code after installation are not supported.
@@ -26,6 +28,8 @@ Release builds load networking runtime code on first use. Set `INK_SPLIT_WEB=0` 
 ### Native release builds
 
 Android releases use the speed-optimised `release` Cargo profile and the pinned toolchain's prebuilt standard library. Native libraries remain uncompressed in the APK so Android can map them directly.
+
+Gradle's `cargoBuildRelease` disables QuickJS's JavaScript parser and compiler with the target-specific C flag `QJS_DISABLE_PARSER`. Android release runtimes require precompiled Ink bytecode. Source bundles and development updates are rejected; JavaScript `eval` and `new Function` throw `TypeError: eval is not supported`. Libraries can catch this error and use a bytecode-compatible fallback. Development builds, host tools, the CLI's bytecode compiler, headless exports and host tests retain the parser.
 
 Gradle uses its configured Android NDK and the app's minimum Android API level for native compilation. Missing native symbols fail at link time instead of producing an APK that fails to load.
 

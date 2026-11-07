@@ -213,12 +213,20 @@ impl AppRuntime {
             })
     }
 
-    #[cfg(debug_assertions)]
+    /// Queue a source update in a development build; release builds return an error.
     pub fn evaluate_development(&self, source: String) -> Result<()> {
-        if source.len() > 16 * 1024 * 1024 {
-            return Err(anyhow!("development update exceeds 16 MiB"));
+        #[cfg(not(debug_assertions))]
+        {
+            let _ = source;
+            Err(anyhow!("development evaluation is unavailable in release runtimes; rebuild the app with precompiled Ink bytecode"))
         }
-        self.enqueue(Command::EvaluateDevelopment(source))
+        #[cfg(debug_assertions)]
+        {
+            if source.len() > 16 * 1024 * 1024 {
+                return Err(anyhow!("development update exceeds 16 MiB"));
+            }
+            self.enqueue(Command::EvaluateDevelopment(source))
+        }
     }
 
     pub fn request_drain(&self) { (self.wake)(); }
@@ -535,7 +543,7 @@ fn install(
             encoding::install(&ctx)?;
             array::install(&ctx)?;
             binary::install(&ctx, binary, events.clone())?;
-            ctx.eval::<(), _>(include_str!("encoding.js"))?;
+            bytecode::evaluate_bytecode::<()>(&ctx, include_bytes!(concat!(env!("OUT_DIR"), "/encoding.jsbc")))?;
             let global = ctx.globals();
             global.set("__inkIsProxy", Function::new(ctx.clone(), |value: Value<'_>| {
                 unsafe { rquickjs::qjs::JS_IsProxy(value.as_raw()) }
@@ -599,8 +607,8 @@ fn install(
                 "__inkNow",
                 Function::new(ctx.clone(), move || start.elapsed().as_secs_f64() * 1000.0)?,
             )?;
-            ctx.eval::<(), _>(include_str!("host.js"))?;
-            ctx.eval::<(), _>(include_str!("events.js"))?;
+            bytecode::evaluate_bytecode::<()>(&ctx, include_bytes!(concat!(env!("OUT_DIR"), "/host.jsbc")))?;
+            bytecode::evaluate_bytecode::<()>(&ctx, include_bytes!(concat!(env!("OUT_DIR"), "/events.jsbc")))?;
             data_views::install(&ctx)
         })
         .map_err(|error| {
