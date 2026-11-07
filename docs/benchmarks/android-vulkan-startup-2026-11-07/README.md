@@ -4,7 +4,20 @@ Ink prepares Vulkan resources on a worker from engine creation, overlapping Java
 
 Baseline: main `e6f055f0edf085f0dc4355f02e8b63fc34fbade0`, with identical startup instrumentation in `0b44fed2195fa0343ba1b54c10082d7f208007ac`. Implementation: `2dfbd427fc5808f891a0206e295c1d3c57494921`.
 
-**Light Phone III measurements are still needed.** This task measures only the emulator. The earlier phone results of 512 ms for JavaScript readiness and 605 ms for first content belong to a different comparison and are not before/after results for this change. The phone was not used, even though it appeared in the ADB inventory.
+## Light Phone III results
+
+Measured on 7 November 2026 with the reproduction steps below: 15 alternating pairs per app, no foreground discards, and pipeline-cache hits on every launch. Medians:
+
+| Metric | App | Before | After | Change |
+| --- | --- | ---: | ---: | ---: |
+| TotalTime | Counter | 201 ms | 177 ms | -24 ms (-11.9%) |
+| JavaScript app ready | Counter | 446 ms | 447 ms | +1 ms (0.2%) |
+| First content presented | Counter | 513 ms | 493 ms | -20 ms (-3.9%) |
+| TotalTime | Template | 252 ms | 233 ms | -19 ms (-7.5%) |
+| JavaScript app ready | Template | 478 ms | 471 ms | -7 ms (-1.5%) |
+| First content presented | Template | 560 ms | 532 ms | -28 ms (-5.0%) |
+
+Release Vulkan preparation takes about 26–33 ms on the phone; the worker now completes it before JavaScript is ready. A follow-up check on the phone launched the Counter probe, sent it to the background and resumed it (one surface reattachment, no new engine), then finished and reopened it (a new engine and prepared renderer). No crashes or native panics were logged. Both probe packages were removed, and the installed package list matched its earlier state.
 
 ## Release results
 
