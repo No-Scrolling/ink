@@ -1,0 +1,127 @@
+{
+  "counter": {
+    "sizes": {
+      "apk": 2873918,
+      "native_library": 2705936,
+      "native_libraries_total": 2705936,
+      "dex": 104252,
+      "resources.arsc": 3540,
+      "app.jsbc": 57135,
+      "worker_bytecode": 0,
+      "ink-web": 0
+    },
+    "sha256": "9dfe8db3b3ff6fa17b6cfd6a27f07da7bd06e866381b60096c47f0a7ec749bbe",
+    "entries": {
+      "META-INF/com/android/build/gradle/app-metadata.properties": {
+        "bytes": 57,
+        "compressed_bytes": 53,
+        "sha256": "d4ac79cd8ad9ba3ea7cf060de45cda4da89d9340e11be21193e0100e18aae8fb"
+      },
+      "META-INF/version-control-info.textproto": {
+        "bytes": 46,
+        "compressed_bytes": 48,
+        "sha256": "38d377afa76b6364e5bf551cf4ffec1a881a46102a0047f523fbf148e0df6928"
+      },
+      "classes.dex": {
+        "bytes": 104252,
+        "compressed_bytes": 104252,
+        "sha256": "3272915cd60ca35cb092739cb1a2a3d8ed2d5b790819848c13979526b5e415d3"
+      },
+      "lib/arm64-v8a/libink_android.so": {
+        "bytes": 2705936,
+        "compressed_bytes": 2705936,
+        "sha256": "f3a6da1fbb34c1307732704a409908d08f2ba123c8a482ab6df13393f18c7148"
+      },
+      "assets/app.jsbc": {
+        "bytes": 57135,
+        "compressed_bytes": 32533,
+        "sha256": "7d752bfbe4a8c56adca1bbe310e1d472a93551a47c37c6a396ce4116d0a58d37"
+      },
+      "assets/ink-capabilities-v1.json": {
+        "bytes": 41,
+        "compressed_bytes": 43,
+        "sha256": "6c7ecb370e3b8572d7d507171060524c0ea07562e5ce7f59fe7639213eb6e404"
+      },
+      "assets/ink-icons-v1.bin": {
+        "bytes": 35435,
+        "compressed_bytes": 646,
+        "sha256": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1"
+      },
+      "META-INF/androidx.core_core-splashscreen.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "44e161e4495cac2cf7858043e9e6418e9579f0ddcfae826f9a372622968ce066"
+      },
+      "AndroidManifest.xml": {
+        "bytes": 4276,
+        "compressed_bytes": 1354,
+        "sha256": "7aa079b6f07eff9feded7fbcb93ab11d1b206ca2b5531f9274dea5e3fde4ccba"
+      },
+      "res/-e.xml": {
+        "bytes": 520,
+        "compressed_bytes": 226,
+        "sha256": "85e3ba758777b84a69d35ee08b1889ab074882af988afc022b4b74b72f9e7166"
+      },
+      "res/8c.png": {
+        "bytes": 566,
+        "compressed_bytes": 566,
+        "sha256": "8f71c34f5f30d1edc14734af7222b8846acbb4ce21a9cf5e0cc294978e267521"
+      },
+      "res/9w.png": {
+        "bytes": 387,
+        "compressed_bytes": 387,
+        "sha256": "c321ea2bc65933a21ac22b36bdf4ec95e8fe766965fa0289e39d9f69815a3266"
+      },
+      "res/Bb.xml": {
+        "bytes": 616,
+        "compressed_bytes": 308,
+        "sha256": "6971913f94aac10c4e6270333a2cdb55b1600ad3f65f0fa1f929601484e9b067"
+      },
+      "res/FS.png": {
+        "bytes": 738,
+        "compressed_bytes": 738,
+        "sha256": "4618ce07a616e03ad11857b7fc3e79e0c557b1ece58a9ead265d5c7ca1b2a208"
+      },
+      "res/Gc.png": {
+        "bytes": 1380,
+        "compressed_bytes": 1380,
+        "sha256": "1835c8ad94b989d06fa1c0b130c3acd11b36a65743eda531078d1b1f3ad8c8be"
+      },
+      "res/RJ.png": {
+        "bytes": 1066,
+        "compressed_bytes": 1066,
+        "sha256": "cd321cdd018fc1d75fdec0628082a37c1cd3090390c01f41b78bf310d7e2d859"
+      },
+      "res/fO.png": {
+        "bytes": 1066,
+        "compressed_bytes": 1066,
+        "sha256": "cd321cdd018fc1d75fdec0628082a37c1cd3090390c01f41b78bf310d7e2d859"
+      },
+      "res/o-.png": {
+        "bytes": 1380,
+        "compressed_bytes": 1380,
+        "sha256": "1835c8ad94b989d06fa1c0b130c3acd11b36a65743eda531078d1b1f3ad8c8be"
+      },
+      "res/wb.png": {
+        "bytes": 738,
+        "compressed_bytes": 738,
+        "sha256": "4618ce07a616e03ad11857b7fc3e79e0c557b1ece58a9ead265d5c7ca1b2a208"
+      },
+      "res/yn.png": {
+        "bytes": 566,
+        "compressed_bytes": 566,
+        "sha256": "8f71c34f5f30d1edc14734af7222b8846acbb4ce21a9cf5e0cc294978e267521"
+      },
+      "res/zR.png": {
+        "bytes": 387,
+        "compressed_bytes": 387,
+        "sha256": "c321ea2bc65933a21ac22b36bdf4ec95e8fe766965fa0289e39d9f69815a3266"
+      },
+      "resources.arsc": {
+        "bytes": 3540,
+        "compressed_bytes": 3540,
+        "sha256": "b7fa18b2999acbabd3c0412a09d2a2f49d224b658adea6686079a4b4bddf882f"
+      }
+    }
+  }
+}

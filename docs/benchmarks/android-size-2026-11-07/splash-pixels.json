@@ -1,0 +1,42 @@
+{
+  "final_screen": {
+    "dimensions": [
+      1080,
+      1240
+    ],
+    "changed_pixels": 0,
+    "difference_bounds": null,
+    "before_nonblack_bounds": [
+      348,
+      44,
+      733,
+      780
+    ],
+    "after_nonblack_bounds": [
+      348,
+      44,
+      733,
+      780
+    ]
+  },
+  "rejected_splash": {
+    "dimensions": [
+      1080,
+      1240
+    ],
+    "changed_pixels": 4720,
+    "difference_bounds": [
+      25,
+      16,
+      996,
+      56
+    ],
+    "before_nonblack_bounds": null,
+    "after_nonblack_bounds": [
+      25,
+      16,
+      996,
+      56
+    ]
+  }
+}

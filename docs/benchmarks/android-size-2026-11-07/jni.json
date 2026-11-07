@@ -1,0 +1,727 @@
+{
+  "counter": {
+    "sizes": {
+      "apk": 2900582,
+      "native_library": 2732600,
+      "native_libraries_total": 2732600,
+      "dex": 104252,
+      "resources.arsc": 3540,
+      "app.jsbc": 57135,
+      "worker_bytecode": 0,
+      "ink-web": 0
+    },
+    "sha256": "749e1b45e5e24e55ee8c5fd4428e69512fa17b559d5c5a2a8db2b3f0ae718de9",
+    "entries": {
+      "META-INF/com/android/build/gradle/app-metadata.properties": {
+        "bytes": 57,
+        "compressed_bytes": 53,
+        "sha256": "d4ac79cd8ad9ba3ea7cf060de45cda4da89d9340e11be21193e0100e18aae8fb"
+      },
+      "META-INF/version-control-info.textproto": {
+        "bytes": 46,
+        "compressed_bytes": 48,
+        "sha256": "38d377afa76b6364e5bf551cf4ffec1a881a46102a0047f523fbf148e0df6928"
+      },
+      "classes.dex": {
+        "bytes": 104252,
+        "compressed_bytes": 104252,
+        "sha256": "3272915cd60ca35cb092739cb1a2a3d8ed2d5b790819848c13979526b5e415d3"
+      },
+      "lib/arm64-v8a/libink_android.so": {
+        "bytes": 2732600,
+        "compressed_bytes": 2732600,
+        "sha256": "b329904e2505926aa4ea77dd2de6935141cc3917e6ac5900648021a3fcbf1799"
+      },
+      "assets/app.jsbc": {
+        "bytes": 57135,
+        "compressed_bytes": 32533,
+        "sha256": "7d752bfbe4a8c56adca1bbe310e1d472a93551a47c37c6a396ce4116d0a58d37"
+      },
+      "assets/ink-capabilities-v1.json": {
+        "bytes": 41,
+        "compressed_bytes": 43,
+        "sha256": "6c7ecb370e3b8572d7d507171060524c0ea07562e5ce7f59fe7639213eb6e404"
+      },
+      "assets/ink-icons-v1.bin": {
+        "bytes": 35435,
+        "compressed_bytes": 646,
+        "sha256": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1"
+      },
+      "META-INF/androidx.core_core-splashscreen.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "44e161e4495cac2cf7858043e9e6418e9579f0ddcfae826f9a372622968ce066"
+      },
+      "AndroidManifest.xml": {
+        "bytes": 4276,
+        "compressed_bytes": 1354,
+        "sha256": "7aa079b6f07eff9feded7fbcb93ab11d1b206ca2b5531f9274dea5e3fde4ccba"
+      },
+      "res/-e.xml": {
+        "bytes": 520,
+        "compressed_bytes": 226,
+        "sha256": "85e3ba758777b84a69d35ee08b1889ab074882af988afc022b4b74b72f9e7166"
+      },
+      "res/8c.png": {
+        "bytes": 566,
+        "compressed_bytes": 566,
+        "sha256": "8f71c34f5f30d1edc14734af7222b8846acbb4ce21a9cf5e0cc294978e267521"
+      },
+      "res/9w.png": {
+        "bytes": 387,
+        "compressed_bytes": 387,
+        "sha256": "c321ea2bc65933a21ac22b36bdf4ec95e8fe766965fa0289e39d9f69815a3266"
+      },
+      "res/Bb.xml": {
+        "bytes": 616,
+        "compressed_bytes": 308,
+        "sha256": "6971913f94aac10c4e6270333a2cdb55b1600ad3f65f0fa1f929601484e9b067"
+      },
+      "res/FS.png": {
+        "bytes": 738,
+        "compressed_bytes": 738,
+        "sha256": "4618ce07a616e03ad11857b7fc3e79e0c557b1ece58a9ead265d5c7ca1b2a208"
+      },
+      "res/Gc.png": {
+        "bytes": 1380,
+        "compressed_bytes": 1380,
+        "sha256": "1835c8ad94b989d06fa1c0b130c3acd11b36a65743eda531078d1b1f3ad8c8be"
+      },
+      "res/RJ.png": {
+        "bytes": 1066,
+        "compressed_bytes": 1066,
+        "sha256": "cd321cdd018fc1d75fdec0628082a37c1cd3090390c01f41b78bf310d7e2d859"
+      },
+      "res/fO.png": {
+        "bytes": 1066,
+        "compressed_bytes": 1066,
+        "sha256": "cd321cdd018fc1d75fdec0628082a37c1cd3090390c01f41b78bf310d7e2d859"
+      },
+      "res/o-.png": {
+        "bytes": 1380,
+        "compressed_bytes": 1380,
+        "sha256": "1835c8ad94b989d06fa1c0b130c3acd11b36a65743eda531078d1b1f3ad8c8be"
+      },
+      "res/wb.png": {
+        "bytes": 738,
+        "compressed_bytes": 738,
+        "sha256": "4618ce07a616e03ad11857b7fc3e79e0c557b1ece58a9ead265d5c7ca1b2a208"
+      },
+      "res/yn.png": {
+        "bytes": 566,
+        "compressed_bytes": 566,
+        "sha256": "8f71c34f5f30d1edc14734af7222b8846acbb4ce21a9cf5e0cc294978e267521"
+      },
+      "res/zR.png": {
+        "bytes": 387,
+        "compressed_bytes": 387,
+        "sha256": "c321ea2bc65933a21ac22b36bdf4ec95e8fe766965fa0289e39d9f69815a3266"
+      },
+      "resources.arsc": {
+        "bytes": 3540,
+        "compressed_bytes": 3540,
+        "sha256": "b7fa18b2999acbabd3c0412a09d2a2f49d224b658adea6686079a4b4bddf882f"
+      }
+    }
+  },
+  "inkify": {
+    "sizes": {
+      "apk": 8705357,
+      "native_library": 6388160,
+      "native_libraries_total": 6388160,
+      "dex": 1896808,
+      "resources.arsc": 153380,
+      "app.jsbc": 208925,
+      "worker_bytecode": 0,
+      "ink-web": 163159
+    },
+    "sha256": "1eeb3e704dff28346ad3fd1a626bc57ba7e6189e37bf9d499d0fbb98f53dc8e0",
+    "entries": {
+      "META-INF/com/android/build/gradle/app-metadata.properties": {
+        "bytes": 57,
+        "compressed_bytes": 53,
+        "sha256": "d4ac79cd8ad9ba3ea7cf060de45cda4da89d9340e11be21193e0100e18aae8fb"
+      },
+      "META-INF/version-control-info.textproto": {
+        "bytes": 46,
+        "compressed_bytes": 48,
+        "sha256": "38d377afa76b6364e5bf551cf4ffec1a881a46102a0047f523fbf148e0df6928"
+      },
+      "assets/dexopt/baseline.prof": {
+        "bytes": 128,
+        "compressed_bytes": 128,
+        "sha256": "31aa51eebd57bbf6856f66a3ccb325230c5e88e168bd81296c1c06748a9b0c76"
+      },
+      "assets/dexopt/baseline.profm": {
+        "bytes": 61,
+        "compressed_bytes": 61,
+        "sha256": "24a29150becf32264e9db59aca6765c3436063124d299b10becd3c51ab151092"
+      },
+      "classes.dex": {
+        "bytes": 1896808,
+        "compressed_bytes": 1896808,
+        "sha256": "aa9a78f9c5cb7e16ae297749d82502b3b2660db2cdc5fabc00ff44925a01d33b"
+      },
+      "lib/arm64-v8a/libink_android.so": {
+        "bytes": 6388160,
+        "compressed_bytes": 6388160,
+        "sha256": "f68724f938ce64d5a255c0682d99cf0a6f4912aea9341076c6e3ee6e81a05503"
+      },
+      "assets/app.jsbc": {
+        "bytes": 208925,
+        "compressed_bytes": 103878,
+        "sha256": "8e6b138b5180f71db7fb040a751fdad040fb369e49d68562f642d488ab81592a"
+      },
+      "assets/ink-assets/ink-web.jsbc": {
+        "bytes": 163159,
+        "compressed_bytes": 73499,
+        "sha256": "75f6ee457f7c06d5824c845d7d33ede5f616f4f5ecf1d98d05b74e7ecb71a6c0"
+      },
+      "assets/ink-capabilities-v1.json": {
+        "bytes": 200,
+        "compressed_bytes": 139,
+        "sha256": "d6ccd3c19f6bfffe5221d64fb45da66db6469729c0ca5ae4e865b9f83801cdb5"
+      },
+      "assets/ink-icons-v1.bin": {
+        "bytes": 608676,
+        "compressed_bytes": 22526,
+        "sha256": "a76d1bf17bbfedad0ea4cd67127660378ab511822aa9f6c0a222272f55637323"
+      },
+      "DebugProbesKt.bin": {
+        "bytes": 1738,
+        "compressed_bytes": 782,
+        "sha256": "158a19eb94aa2f3e2f459db69ee10276c73b945dd6c5f8fc223cf2d85e2b5e33"
+      },
+      "META-INF/androidx.annotation_annotation-experimental.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "78b591400c56b7b67b8cb3b2b8a8e65e9093897f02ce0878e6b5405c68620fa7"
+      },
+      "META-INF/androidx.arch.core_core-runtime.version": {
+        "bytes": 67,
+        "compressed_bytes": 61,
+        "sha256": "1b7c606370188534dac5561fba2b2988093829697fce9e6e8832e9291d24ed00"
+      },
+      "META-INF/androidx.core_core-splashscreen.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "44e161e4495cac2cf7858043e9e6418e9579f0ddcfae826f9a372622968ce066"
+      },
+      "META-INF/androidx.core_core.version": {
+        "bytes": 7,
+        "compressed_bytes": 9,
+        "sha256": "ca0bc79c4cde0ad64e1ec9df2882425197b5ba85704a4ac6bd67f8f99936eb25"
+      },
+      "META-INF/androidx.exifinterface_exifinterface.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "f4eaae07c72dd003028a4583ee93e5146e4fb2e5ba80566d3e79d73edd39ee36"
+      },
+      "META-INF/androidx.interpolator_interpolator.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03"
+      },
+      "META-INF/androidx.lifecycle_lifecycle-runtime.version": {
+        "bytes": 72,
+        "compressed_bytes": 61,
+        "sha256": "4257cccbba3f7aea521a40937d1bfdd5949f5f3e1ed689c402a4f2977109030b"
+      },
+      "META-INF/androidx.lifecycle_lifecycle-service.version": {
+        "bytes": 72,
+        "compressed_bytes": 61,
+        "sha256": "7f6fa137a5c28f6911408a6fa6d73cb1db86b1813ac4895bfec6029326b283f0"
+      },
+      "META-INF/androidx.media_media.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "bb7320d831e7a151aa901c35e7326c752fa2ef5024f30768c42319b8bed171ed"
+      },
+      "META-INF/androidx.profileinstaller_profileinstaller.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "64d23f858ef51b0f996e4966d4e27c0371b437e2d2787890b1f7ad22d4ec5663"
+      },
+      "META-INF/androidx.startup_startup-runtime.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "cc52f678848b814373757b460383bf61960e4943c203735adde0a350b3e50989"
+      },
+      "META-INF/androidx.tracing_tracing.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03"
+      },
+      "META-INF/androidx.versionedparcelable_versionedparcelable.version": {
+        "bytes": 6,
+        "compressed_bytes": 8,
+        "sha256": "cc52f678848b814373757b460383bf61960e4943c203735adde0a350b3e50989"
+      },
+      "META-INF/kotlinx_coroutines_android.version": {
+        "bytes": 5,
+        "compressed_bytes": 7,
+        "sha256": "4f232ffa4f33d6227b6f492a7857a3fb3ea8ea0f8ab1d89fe667211326262a4a"
+      },
+      "META-INF/kotlinx_coroutines_core.version": {
+        "bytes": 5,
+        "compressed_bytes": 7,
+        "sha256": "4f232ffa4f33d6227b6f492a7857a3fb3ea8ea0f8ab1d89fe667211326262a4a"
+      },
+      "AndroidManifest.xml": {
+        "bytes": 9432,
+        "compressed_bytes": 2542,
+        "sha256": "2a694249fe494ef77284f73af2993208dd429e9e2057a28ae2df294a1327b33a"
+      },
+      "res/-e.xml": {
+        "bytes": 520,
+        "compressed_bytes": 226,
+        "sha256": "85e3ba758777b84a69d35ee08b1889ab074882af988afc022b4b74b72f9e7166"
+      },
+      "res/1T.xml": {
+        "bytes": 588,
+        "compressed_bytes": 301,
+        "sha256": "3e22efce5d1bb4a9a6e9aa8f666af39c13d13ac9945d6cc75b323675fd3fa5a7"
+      },
+      "res/1h.xml": {
+        "bytes": 932,
+        "compressed_bytes": 467,
+        "sha256": "2035a814b2cc1b200b0d1e2c61432f74937f49b27b6038e5959f29963ef4578b"
+      },
+      "res/20.png": {
+        "bytes": 2683,
+        "compressed_bytes": 2683,
+        "sha256": "38ad79c3744379b41a7cc06b034147cc48ae77b34e323f2e4d5c14ba9fc4bc55"
+      },
+      "res/2N.xml": {
+        "bytes": 964,
+        "compressed_bytes": 515,
+        "sha256": "51f1a37ba0e2bacb8ef7e3ee9a5f342bcf6ef38086e0b5e2771c76a61a154b2a"
+      },
+      "res/2T.xml": {
+        "bytes": 1272,
+        "compressed_bytes": 605,
+        "sha256": "704ff5dd638075733127676276c2ad8659fea10bae844bf4a393b7bdf44d81f7"
+      },
+      "res/3H.xml": {
+        "bytes": 1632,
+        "compressed_bytes": 728,
+        "sha256": "c8a5e63e3a98d7658b2241b4bd82e674000d9861843e2c3d2f13c8d1d0cff24e"
+      },
+      "res/56.xml": {
+        "bytes": 784,
+        "compressed_bytes": 404,
+        "sha256": "3871988673ecfc4988e4c4abb7e5cad1cae873e95a2041c8b7007577b973815c"
+      },
+      "res/6K.xml": {
+        "bytes": 636,
+        "compressed_bytes": 349,
+        "sha256": "d43737fc371eacb85b1bbdce17a62eeaa1ff3bd5f23b6f3030540620356104a1"
+      },
+      "res/6d.xml": {
+        "bytes": 1200,
+        "compressed_bytes": 578,
+        "sha256": "bbdaf4fe81236532a3ea531e5ba20c78111052fe10b30a741a7e4e5bc6ced8f9"
+      },
+      "res/6w.xml": {
+        "bytes": 1496,
+        "compressed_bytes": 667,
+        "sha256": "09db7ebd9eb5dd86bb6af967a3551a5f1224104d2e169786b76e24fde5d14963"
+      },
+      "res/7R.xml": {
+        "bytes": 1980,
+        "compressed_bytes": 885,
+        "sha256": "81b1febde6044207639b8df55f80dc06403f01d9ae3618e4666de7db0379f3be"
+      },
+      "res/7U.xml": {
+        "bytes": 1828,
+        "compressed_bytes": 676,
+        "sha256": "5777dab2e076d4617b1435c0c8d335a625ee7dcf0bcbc63289a118143cdaac70"
+      },
+      "res/8c.png": {
+        "bytes": 123,
+        "compressed_bytes": 123,
+        "sha256": "f43e43a0577658434ad8859c073d4d560a15a06f9b66c0ac4dd6e9ce7d882038"
+      },
+      "res/96.xml": {
+        "bytes": 1480,
+        "compressed_bytes": 692,
+        "sha256": "e3cf168b80e46b608fea5f0cb3d3f715aa05ab62036516f5fec7ede19b34ae8a"
+      },
+      "res/9w.png": {
+        "bytes": 109,
+        "compressed_bytes": 109,
+        "sha256": "63b0fc7c2c5a7049980a9074445af3ceb09ad6ea299d0e2ea6d97555515ee69e"
+      },
+      "res/9y.xml": {
+        "bytes": 892,
+        "compressed_bytes": 298,
+        "sha256": "8388d2d87e01fba61e68685bc45f9ac70d34a37d84cc2358559445e26016dbd4"
+      },
+      "res/Ax.xml": {
+        "bytes": 1404,
+        "compressed_bytes": 612,
+        "sha256": "1dfb9b563c0fa8074903481ca5def488d9172f6e91c77ed2c731798e26098c86"
+      },
+      "res/Az.xml": {
+        "bytes": 1284,
+        "compressed_bytes": 597,
+        "sha256": "61bc91bc710a5d9b91013c6b669e6caa6b669ed8979ceac5164516751c2fc0b9"
+      },
+      "res/BH.xml": {
+        "bytes": 896,
+        "compressed_bytes": 409,
+        "sha256": "377687ae82f139b471d4a10c8888e401b0935695c2867b16a446c14fcfb48096"
+      },
+      "res/Bb.xml": {
+        "bytes": 616,
+        "compressed_bytes": 310,
+        "sha256": "926cea9490a3cd8fa26949aab5448c39b30e2101d0a96c4afa857220036f52f9"
+      },
+      "res/D_.xml": {
+        "bytes": 816,
+        "compressed_bytes": 414,
+        "sha256": "779bc560a8a9431e498c51a806bfefcbd204fd187359414f1a2020e08d29271a"
+      },
+      "res/Da.xml": {
+        "bytes": 1800,
+        "compressed_bytes": 801,
+        "sha256": "117c57948fe382dbedec9066903101a8855a26c8bc8a5cad510fe2b17b7e1141"
+      },
+      "res/Di.xml": {
+        "bytes": 964,
+        "compressed_bytes": 506,
+        "sha256": "064a38019e8a3d8afaa4dee5ccd3ce10ba2328cd654bb8b45b127c3dd7247c87"
+      },
+      "res/Dr.xml": {
+        "bytes": 680,
+        "compressed_bytes": 355,
+        "sha256": "940f76c0679eda6a458ea167f4d2c5fbd4e4c2f12a390dd2fd0d41c713f21e4a"
+      },
+      "res/FS.png": {
+        "bytes": 147,
+        "compressed_bytes": 147,
+        "sha256": "98f3a835201b119dc7ebd30cc572dfc4451a004f769744337a5e7f0f79cf10d8"
+      },
+      "res/GJ.xml": {
+        "bytes": 624,
+        "compressed_bytes": 325,
+        "sha256": "aaf93dda6fbbd40436a338f353ae138d9aee8bcdfccd6449b9726986ff04cea5"
+      },
+      "res/Gc.png": {
+        "bytes": 226,
+        "compressed_bytes": 226,
+        "sha256": "9a0cd6e6abbe8e6e81bc68d150ba086d56f78d42dbcf7cddcb97662bf4c8d2f9"
+      },
+      "res/Gr.xml": {
+        "bytes": 580,
+        "compressed_bytes": 307,
+        "sha256": "c9d1d9320f37e3b9960f6b95104f41b563d7a66f4eb57ed84874c38b4c4d14ac"
+      },
+      "res/Hj.xml": {
+        "bytes": 828,
+        "compressed_bytes": 399,
+        "sha256": "620952054121006c0a2613e0a46e71ad08830dbd24426bc11706772c8e6a15e5"
+      },
+      "res/I3.xml": {
+        "bytes": 1108,
+        "compressed_bytes": 582,
+        "sha256": "8fda89ea12ab7aedb884fd40a12662131c808cab12b514cfa9c884558383b53d"
+      },
+      "res/I8.xml": {
+        "bytes": 928,
+        "compressed_bytes": 480,
+        "sha256": "9f146e8d53b6f77418321ad87df5512f8573667e74731519b9d018368f8368d0"
+      },
+      "res/J-.xml": {
+        "bytes": 588,
+        "compressed_bytes": 304,
+        "sha256": "430bdebe93e4b77f819e88fdaacada51c7d9003e03ec664bd08e0bde40e14ca3"
+      },
+      "res/JE.xml": {
+        "bytes": 1496,
+        "compressed_bytes": 675,
+        "sha256": "fcea56d316431418d39377b923d21781d1a88f4bb9a83d53805b6cd59d2f8db0"
+      },
+      "res/K1.xml": {
+        "bytes": 652,
+        "compressed_bytes": 326,
+        "sha256": "3ee6a1c6d99b75ba35cbca7e1cb81f58702b9f80dfa7aebf919a58c9640d32e9"
+      },
+      "res/LI.xml": {
+        "bytes": 288,
+        "compressed_bytes": 152,
+        "sha256": "3f595afeacb17cd4eaa15a7ab28d6c0b0d6b4f650e824ad9594a2f900f403aea"
+      },
+      "res/Ml.xml": {
+        "bytes": 1144,
+        "compressed_bytes": 464,
+        "sha256": "efa908052ada9488e0f4a8f80545930e873ce521a5d58df85552b60a084ee30b"
+      },
+      "res/NI.xml": {
+        "bytes": 1096,
+        "compressed_bytes": 602,
+        "sha256": "3fe86d480cb8175de50115d560f2acdfc062a334be646d07a9fb82b220b08237"
+      },
+      "res/P5.xml": {
+        "bytes": 1132,
+        "compressed_bytes": 545,
+        "sha256": "7e79e000144ebee77faa481b94e535eb6832609700896ade9aeb953a98dbd9c9"
+      },
+      "res/R-.xml": {
+        "bytes": 616,
+        "compressed_bytes": 322,
+        "sha256": "c5ac4bf6b545ca73c92e35b4b275f1662a251b4ccb406639a05bd3528cec34ed"
+      },
+      "res/RG.xml": {
+        "bytes": 1144,
+        "compressed_bytes": 578,
+        "sha256": "bae7be11b9edd3db2792b4fff734100856aac368509b65d1862538364b0acce2"
+      },
+      "res/RJ.png": {
+        "bytes": 171,
+        "compressed_bytes": 171,
+        "sha256": "4f3f307dda1d268a2fc41a892630292854dd8f662be0499baefb7c8fc4da2a59"
+      },
+      "res/Wf.xml": {
+        "bytes": 892,
+        "compressed_bytes": 406,
+        "sha256": "f99c662d7ac090059eef551a094d752182501568569281f8da4e1bf9810c30f2"
+      },
+      "res/X8.xml": {
+        "bytes": 1188,
+        "compressed_bytes": 492,
+        "sha256": "f6e5e8e60871d22a7234e7aeff1986f1cf20fae9991dbd259c55860df0ae067c"
+      },
+      "res/YV.xml": {
+        "bytes": 616,
+        "compressed_bytes": 322,
+        "sha256": "d3d2bb9c0aa356fe8247aa48f9f88bc9a635f2ace4d5551d43b9eabb896f5757"
+      },
+      "res/Zh.xml": {
+        "bytes": 632,
+        "compressed_bytes": 323,
+        "sha256": "c0a44b79dd76adca34a98192243b1f0cbd025b081a2a4453cb9df548fc303ff2"
+      },
+      "res/_3.xml": {
+        "bytes": 808,
+        "compressed_bytes": 408,
+        "sha256": "c676159416b126f08f14f6f129b6dbb763abf04ca9c4e2cfffab690ddeeb3eda"
+      },
+      "res/a6.xml": {
+        "bytes": 1560,
+        "compressed_bytes": 722,
+        "sha256": "8a51d9bfe20df329f8d72753a15ffa4023f529a1e2e6dce4a60e781623b05351"
+      },
+      "res/bB.xml": {
+        "bytes": 1088,
+        "compressed_bytes": 515,
+        "sha256": "bf0babf9ceae185cb16aa64a796c6eded06a0722624061563c566680a9426858"
+      },
+      "res/cA.xml": {
+        "bytes": 1376,
+        "compressed_bytes": 644,
+        "sha256": "de14c3b6d34650942102fa5c4205ef8ac6cdf379d00ef230d7da5ea616385a02"
+      },
+      "res/dL.xml": {
+        "bytes": 1376,
+        "compressed_bytes": 633,
+        "sha256": "d8788d04459451f11deaa8901e0fba0b3446712b3ba0479cd8bb63107e953d6b"
+      },
+      "res/eO.xml": {
+        "bytes": 744,
+        "compressed_bytes": 384,
+        "sha256": "ceb8c02d87ab1bcc2eecf5e957ee641684276166709a47933a35f76ba94102c3"
+      },
+      "res/es.xml": {
+        "bytes": 780,
+        "compressed_bytes": 385,
+        "sha256": "1c6ee3b848e4c7d4c9c726b7ed96496fc5f9cb16502305bc7e854f259692bca5"
+      },
+      "res/fO.png": {
+        "bytes": 171,
+        "compressed_bytes": 171,
+        "sha256": "4f3f307dda1d268a2fc41a892630292854dd8f662be0499baefb7c8fc4da2a59"
+      },
+      "res/fa.xml": {
+        "bytes": 668,
+        "compressed_bytes": 360,
+        "sha256": "1884fbf442e2f9fb496ca652987a1e28815dc87ef4246788a80feaafae127485"
+      },
+      "res/gi.xml": {
+        "bytes": 1204,
+        "compressed_bytes": 532,
+        "sha256": "b981ba8cd4c829f15fcc58e5f4b97b8bc0adf4a94995d5cebd7e11bc5f46ee8c"
+      },
+      "res/h0.xml": {
+        "bytes": 836,
+        "compressed_bytes": 460,
+        "sha256": "299b61c1b5d52d158a9b1360f9131c7f127120a59594efa22f351bd3cf20715e"
+      },
+      "res/i8.xml": {
+        "bytes": 1024,
+        "compressed_bytes": 553,
+        "sha256": "bab7318950dee662a291ac2d7018b4c03f976591dcdc9c407db52f5eeddabba0"
+      },
+      "res/is.xml": {
+        "bytes": 1428,
+        "compressed_bytes": 619,
+        "sha256": "690c9a2776dba51e723230e90e4b6431ba3ec7f5d84802a2e912fcdae151683d"
+      },
+      "res/jM.xml": {
+        "bytes": 780,
+        "compressed_bytes": 367,
+        "sha256": "53108ed348dbabe8a57e203df6adf62a5ac31d472bdb4b2f1aba80cca318b1dd"
+      },
+      "res/jT.xml": {
+        "bytes": 1232,
+        "compressed_bytes": 486,
+        "sha256": "540caf60a6c29098a2eec0379bd7f57074d525025cb618228868b35e472cb113"
+      },
+      "res/jb.xml": {
+        "bytes": 1208,
+        "compressed_bytes": 481,
+        "sha256": "4b2569e7ff5dda9f10bd37c27d53bd5db81feb35b623f3af2e7dc24c0f3c5cc6"
+      },
+      "res/mD.xml": {
+        "bytes": 792,
+        "compressed_bytes": 404,
+        "sha256": "21ac9e2af63f25bd86e4ec6d5263d6db88d5bb00ab2c91f38d70a96f5ca26a7c"
+      },
+      "res/mD1.xml": {
+        "bytes": 1988,
+        "compressed_bytes": 784,
+        "sha256": "28abe3f6fc696efb1490a4bf6f2ba2eef16458caedb3884664d71845cc4616cd"
+      },
+      "res/nD.xml": {
+        "bytes": 800,
+        "compressed_bytes": 439,
+        "sha256": "9229f7442a1978b63f8232c7f02a619f72afbe1efe677ab0967e140d2a91e1c9"
+      },
+      "res/nb.xml": {
+        "bytes": 1216,
+        "compressed_bytes": 548,
+        "sha256": "e0d91b72afff6bf784febfe8441f54ad0caac221ce50d80197c2d90d87f8b636"
+      },
+      "res/o-.png": {
+        "bytes": 226,
+        "compressed_bytes": 226,
+        "sha256": "9a0cd6e6abbe8e6e81bc68d150ba086d56f78d42dbcf7cddcb97662bf4c8d2f9"
+      },
+      "res/oH.xml": {
+        "bytes": 884,
+        "compressed_bytes": 469,
+        "sha256": "a86f504038e95665bce56e0fe0cdeb56324e06ebe1c54d1783a919f51b62ebbf"
+      },
+      "res/pC.xml": {
+        "bytes": 988,
+        "compressed_bytes": 534,
+        "sha256": "2e4da8a7da9ed3e56360a306a8ab6f597f47aab7bef3804e96e3b81f11010ce7"
+      },
+      "res/q2.xml": {
+        "bytes": 1156,
+        "compressed_bytes": 538,
+        "sha256": "4dededac6bd406f7e686cf85d623163f2ad3b2199ed9ea7900c737b7fbeb7e9a"
+      },
+      "res/r5.xml": {
+        "bytes": 264,
+        "compressed_bytes": 153,
+        "sha256": "ff6a4b19eab8c3c9d872dd3cbad65f1bee3f29b6e1fc7bb647e615c3bcbed759"
+      },
+      "res/rM.xml": {
+        "bytes": 1008,
+        "compressed_bytes": 518,
+        "sha256": "ead35da37f58ac838386de58ec943bf1f3006b43a20d46fcb840b47ceeafb5dc"
+      },
+      "res/rN.xml": {
+        "bytes": 624,
+        "compressed_bytes": 326,
+        "sha256": "093b92173ebba782f67f7d658157df54bfd1f2ef698b5c21b17d2495061825a7"
+      },
+      "res/re.xml": {
+        "bytes": 796,
+        "compressed_bytes": 435,
+        "sha256": "04dc5332f1c55da9f195f379fe428146081b373da2a8c0ccd246bf953b70de23"
+      },
+      "res/s9.xml": {
+        "bytes": 1620,
+        "compressed_bytes": 690,
+        "sha256": "9cf654035e481f9270d01d2b128133492e1db26346c4742dd76ab1fa710dde51"
+      },
+      "res/t6.xml": {
+        "bytes": 752,
+        "compressed_bytes": 389,
+        "sha256": "e4024f20215d5f5238cb002c1fe4261a31f243f4264edb2d689659e5825191b4"
+      },
+      "res/uD.xml": {
+        "bytes": 1692,
+        "compressed_bytes": 782,
+        "sha256": "04031568963e1b5b12aac7aa9f38e6b03b0508626bf030487a3961f5b9fa9902"
+      },
+      "res/uf.xml": {
+        "bytes": 1072,
+        "compressed_bytes": 515,
+        "sha256": "b1d45de2259092f1315cee72cad45cf152995a8221e908143aa9ddad1a643650"
+      },
+      "res/vO.xml": {
+        "bytes": 800,
+        "compressed_bytes": 402,
+        "sha256": "dea6dcc480bea4a30fdca86451323d490b909130afb0fee986fce1bdc9028f38"
+      },
+      "res/ve.xml": {
+        "bytes": 1060,
+        "compressed_bytes": 552,
+        "sha256": "65fff42103581c49daf4e7a5ecc79af8ee26068799454eac48ed5ba44df536de"
+      },
+      "res/w6.xml": {
+        "bytes": 1664,
+        "compressed_bytes": 693,
+        "sha256": "40828dc2cc1a083c6dd7a6ce8b3647348c836141019249b669366f6edd10521e"
+      },
+      "res/wb.png": {
+        "bytes": 147,
+        "compressed_bytes": 147,
+        "sha256": "98f3a835201b119dc7ebd30cc572dfc4451a004f769744337a5e7f0f79cf10d8"
+      },
+      "res/xL.xml": {
+        "bytes": 1364,
+        "compressed_bytes": 701,
+        "sha256": "fb59fdbbce872a873cff2e6a57d10385a6f3bc10cb7ee273c93fdbc811d4a654"
+      },
+      "res/xL1.xml": {
+        "bytes": 1344,
+        "compressed_bytes": 680,
+        "sha256": "965bf9e0694bd166549f2c7646cc4c27af522152719c5fdf5fb4c25a61e2997a"
+      },
+      "res/xv.xml": {
+        "bytes": 1184,
+        "compressed_bytes": 621,
+        "sha256": "d94ad230baad6ebebfada0c08a80008f9b9b45487c8fda1ab8e6cf09e44e2166"
+      },
+      "res/yG.xml": {
+        "bytes": 1144,
+        "compressed_bytes": 567,
+        "sha256": "45ad742ba92551452d3017dd78d0a2d8383942000385ac3e9cf671cd3cc6bcd4"
+      },
+      "res/yn.png": {
+        "bytes": 123,
+        "compressed_bytes": 123,
+        "sha256": "f43e43a0577658434ad8859c073d4d560a15a06f9b66c0ac4dd6e9ce7d882038"
+      },
+      "res/zR.png": {
+        "bytes": 109,
+        "compressed_bytes": 109,
+        "sha256": "63b0fc7c2c5a7049980a9074445af3ceb09ad6ea299d0e2ea6d97555515ee69e"
+      },
+      "res/zR.xml": {
+        "bytes": 1084,
+        "compressed_bytes": 510,
+        "sha256": "7288250337c9d82eb94a5fa599b5eee39b61295406d47d24cc783d9c3e34a14a"
+      },
+      "resources.arsc": {
+        "bytes": 153380,
+        "compressed_bytes": 153380,
+        "sha256": "b81b67b82f99e60a0b5006802a93db6d9098097a508ebcd10eaf182dafd92fa4"
+      }
+    }
+  }
+}

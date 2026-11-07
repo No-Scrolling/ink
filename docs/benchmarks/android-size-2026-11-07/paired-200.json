@@ -1,0 +1,1769 @@
+{
+  "version": 1,
+  "status": "passed",
+  "revision": "0885cd10498e8e8498837a7d9a4391ea87061619",
+  "dirty": true,
+  "profile": "release",
+  "bun": "1.4.4",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "rounds": 7,
+  "samples": 200,
+  "warmup": 40,
+  "executionSeconds": 154.13100208400002,
+  "bundle": {
+    "workloadHash": "c73191e3e3c5ab808fecae40ad61a1b441f9e5b8e8748c0f717f8793fd848fd6",
+    "machine": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "os": "27.3.0",
+      "cpu": "Apple M4 Pro"
+    },
+    "assets": {
+      "assets/react/app.js": "ed49f80bc448be18c164c7cbe2800ba9e6ac90c744de1afeb857098800befcd0",
+      "assets/react/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+      "assets/list/app.js": "cae692b0e094d75b9dfa78f84cb86ae3ed5e6e72efee9548fef5e4bf37a78a68",
+      "assets/list/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+      "assets/rows/app.js": "56c23fefc87d1b16308a9c7158e059f632b772e0608c9006db759d02a7ff49c7",
+      "assets/rows/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+      "assets/navigation/app.js": "0753383359d27886cf1e9fc89010243802b64f34f84cc4118a3fc1c798e294ed",
+      "assets/navigation/ink-icons-v1.bin": "4bfc3ddcb721d68b9107a465be2372f51b371ed20876fe7feeb99c16512ac0ec",
+      "assets/conversation/app.js": "e8129976c3ea461259ef66a77b1d31f488d3e2451a7d26fdcc17b37dac24a595",
+      "assets/conversation/ink-icons-v1.bin": "4a0d0d59641174de301f7c28aae393eaa2ea32f44729dc0cf575f5b84a6e881d",
+      "assets/playback/app.js": "8d3c5b82ef587140069dda5f3308bb44c8989083dd321698984c08f53878471c",
+      "assets/playback/ink-icons-v1.bin": "31f9dfd769321b02e479f12887f54d2c80bb6c5a3287df1fc872e4d05493a1e6"
+    },
+    "binarySha256": "2efc6a09a49e17aee87e1f8104762c4d3a7f92f9d19f2ab175563410f616be58"
+  },
+  "baseline": {
+    "directory": "/Users/vandam/.t3/worktrees/ink/t3-f46b1e45/.test-output/performance/2026-11-07T15-00-31.520Z-71182",
+    "bundle": {
+      "workloadHash": "c73191e3e3c5ab808fecae40ad61a1b441f9e5b8e8748c0f717f8793fd848fd6",
+      "machine": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "os": "27.3.0",
+        "cpu": "Apple M4 Pro"
+      },
+      "assets": {
+        "assets/react/app.js": "72ac2787700b4a4826558b3962aa1e399d1abaa6b76fe0a442fb4088e85c29e0",
+        "assets/react/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+        "assets/list/app.js": "2a3621f18969b051b27e928c590321ffd2c05f1be2cff3c0c7b082e12ed868df",
+        "assets/list/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+        "assets/rows/app.js": "31791b1d46c4515ee5525af78ad885681b030adcefaf12c79f105de0657ba78d",
+        "assets/rows/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+        "assets/navigation/app.js": "4d8d9d6cddb150148b8c1cf6e4142c86935e6df1b30fe5492b57ac2dcccfb514",
+        "assets/navigation/ink-icons-v1.bin": "4bfc3ddcb721d68b9107a465be2372f51b371ed20876fe7feeb99c16512ac0ec",
+        "assets/conversation/app.js": "e8129976c3ea461259ef66a77b1d31f488d3e2451a7d26fdcc17b37dac24a595",
+        "assets/conversation/ink-icons-v1.bin": "4a0d0d59641174de301f7c28aae393eaa2ea32f44729dc0cf575f5b84a6e881d",
+        "assets/playback/app.js": "00020bbeb0e43a1727a443416c1e33f9c8f5660244492a7176ad7d3795c3b469",
+        "assets/playback/ink-icons-v1.bin": "31f9dfd769321b02e479f12887f54d2c80bb6c5a3287df1fc872e4d05493a1e6"
+      },
+      "binarySha256": "38c9356f954bbc93d0ced1d59ba93a8d3ac56d899f131b78ca7f3eb3db4f79dc"
+    }
+  },
+  "executionOrder": [
+    "baseline-0",
+    "candidate-0",
+    "candidate-1",
+    "baseline-1",
+    "baseline-2",
+    "candidate-2",
+    "candidate-3",
+    "baseline-3",
+    "baseline-4",
+    "candidate-4",
+    "candidate-5",
+    "baseline-5",
+    "baseline-6",
+    "candidate-6"
+  ],
+  "summary": [
+    {
+      "name": "react-small",
+      "count": 1400,
+      "mean_ms": 1.0001269614285713,
+      "median_ms": 0.915875,
+      "p95_ms": 1.358625,
+      "p99_ms": 2.689584,
+      "round_median_ms": [
+        1.135084,
+        0.920292,
+        0.911208,
+        0.943708,
+        0.912,
+        0.903,
+        0.906209
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.003662362142857143,
+        "median_ms": 0.00175,
+        "p95_ms": 0.011,
+        "p99_ms": 0.025417
+      },
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "react-bulk",
+      "count": 1400,
+      "mean_ms": 1.1977821257142858,
+      "median_ms": 1.051209,
+      "p95_ms": 1.588167,
+      "p99_ms": 4.877334,
+      "round_median_ms": [
+        1.214583,
+        1.080334,
+        1.037125,
+        1.097167,
+        1.036125,
+        1.034875,
+        1.036542
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.08156507285714286,
+        "median_ms": 0.0715,
+        "p95_ms": 0.113209,
+        "p99_ms": 0.277834
+      },
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "react-resize",
+      "count": 1400,
+      "mean_ms": 2.152199162857143,
+      "median_ms": 2.069917,
+      "p95_ms": 2.489166,
+      "p99_ms": 3.571625,
+      "round_median_ms": [
+        2.202084,
+        2.251583,
+        2.036667,
+        2.139875,
+        2.01525,
+        2.035541,
+        2.007333
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.28769450571428573,
+        "median_ms": 0.261583,
+        "p95_ms": 0.377667,
+        "p99_ms": 0.58025
+      },
+      "mean_nodes_measured": 1551
+    },
+    {
+      "name": "list-edit-100",
+      "count": 1400,
+      "mean_ms": 0.15369532142857142,
+      "median_ms": 0.135583,
+      "p95_ms": 0.283208,
+      "p99_ms": 0.388917,
+      "round_median_ms": [
+        0.136333,
+        0.136041,
+        0.1335,
+        0.136791,
+        0.135125,
+        0.1345,
+        0.139583
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.011487132142857143,
+        "median_ms": 0.009625,
+        "p95_ms": 0.02125,
+        "p99_ms": 0.0425
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-100",
+      "count": 1400,
+      "mean_ms": 0.014060647142857142,
+      "median_ms": 0.013917,
+      "p95_ms": 0.0175,
+      "p99_ms": 0.019625,
+      "round_median_ms": [
+        0.014083,
+        0.014,
+        0.013875,
+        0.014208,
+        0.013708,
+        0.013625,
+        0.013833
+      ],
+      "mean_nodes_measured": 5.6
+    },
+    {
+      "name": "list-edit-1000",
+      "count": 1400,
+      "mean_ms": 0.2131596442857143,
+      "median_ms": 0.189917,
+      "p95_ms": 0.394375,
+      "p99_ms": 0.489542,
+      "round_median_ms": [
+        0.200708,
+        0.19775,
+        0.185875,
+        0.191166,
+        0.18625,
+        0.188209,
+        0.188333
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.011426159285714286,
+        "median_ms": 0.010875,
+        "p95_ms": 0.0175,
+        "p99_ms": 0.033334
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.014241570714285714,
+      "median_ms": 0.014083,
+      "p95_ms": 0.017625,
+      "p99_ms": 0.0205,
+      "round_median_ms": [
+        0.014209,
+        0.014083,
+        0.013958,
+        0.014459,
+        0.013917,
+        0.013792,
+        0.013959
+      ],
+      "mean_nodes_measured": 5.6
+    },
+    {
+      "name": "list-edit-10000",
+      "count": 1400,
+      "mean_ms": 0.8461043692857142,
+      "median_ms": 0.7,
+      "p95_ms": 1.997542,
+      "p99_ms": 2.425292,
+      "round_median_ms": [
+        0.746667,
+        0.711208,
+        0.68625,
+        0.717583,
+        0.682,
+        0.68125,
+        0.695083
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.015014232142857143,
+        "median_ms": 0.0125,
+        "p95_ms": 0.030292,
+        "p99_ms": 0.048208
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-10000",
+      "count": 1400,
+      "mean_ms": 0.014922190714285714,
+      "median_ms": 0.01475,
+      "p95_ms": 0.018458,
+      "p99_ms": 0.022708,
+      "round_median_ms": [
+        0.014959,
+        0.014834,
+        0.014667,
+        0.01475,
+        0.014417,
+        0.014708,
+        0.014541
+      ],
+      "mean_nodes_measured": 5.6
+    },
+    {
+      "name": "scrollbar-drag-10000",
+      "count": 1400,
+      "mean_ms": 0.07441270714285714,
+      "median_ms": 0.07625,
+      "p95_ms": 0.083541,
+      "p99_ms": 0.093417,
+      "round_median_ms": [
+        0.077,
+        0.076959,
+        0.074333,
+        0.076667,
+        0.074833,
+        0.077917,
+        0.075208
+      ],
+      "thumb_update": {
+        "count": 1400,
+        "mean_ms": 0.0068057,
+        "median_ms": 0.006916,
+        "p95_ms": 0.007542,
+        "p99_ms": 0.009166
+      },
+      "mean_nodes_measured": 212.75
+    },
+    {
+      "name": "rows-edit-100",
+      "count": 1400,
+      "mean_ms": 0.18520784714285715,
+      "median_ms": 0.170709,
+      "p95_ms": 0.267125,
+      "p99_ms": 0.384625,
+      "round_median_ms": [
+        0.1725,
+        0.1855,
+        0.169375,
+        0.174917,
+        0.169167,
+        0.170542,
+        0.168833
+      ],
+      "mean_nodes_measured": 27
+    },
+    {
+      "name": "rows-edit-1000",
+      "count": 1400,
+      "mean_ms": 0.2675686492857143,
+      "median_ms": 0.243334,
+      "p95_ms": 0.499291,
+      "p99_ms": 0.619875,
+      "round_median_ms": [
+        0.244584,
+        0.247959,
+        0.243291,
+        0.245375,
+        0.24075,
+        0.242708,
+        0.243916
+      ],
+      "mean_nodes_measured": 27
+    },
+    {
+      "name": "rows-prepend-1000",
+      "count": 1400,
+      "mean_ms": 1.6392567557142856,
+      "median_ms": 1.567583,
+      "p95_ms": 1.976958,
+      "p99_ms": 2.61375,
+      "round_median_ms": [
+        1.660791,
+        1.567209,
+        1.5465,
+        1.734542,
+        1.551,
+        1.5375,
+        1.546292
+      ],
+      "mean_nodes_measured": 742.5
+    },
+    {
+      "name": "rows-reorder-1000",
+      "count": 1400,
+      "mean_ms": 1.6216309750000002,
+      "median_ms": 1.53675,
+      "p95_ms": 1.992,
+      "p99_ms": 2.44275,
+      "round_median_ms": [
+        1.688875,
+        1.5915,
+        1.49525,
+        1.709792,
+        1.491041,
+        1.482084,
+        1.483666
+      ],
+      "mean_nodes_measured": 366
+    },
+    {
+      "name": "rows-native-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.07100462428571427,
+      "median_ms": 0.0765,
+      "p95_ms": 0.088125,
+      "p99_ms": 0.112834,
+      "round_median_ms": [
+        0.077042,
+        0.07825,
+        0.077292,
+        0.075792,
+        0.075875,
+        0.077833,
+        0.076125
+      ],
+      "mean_nodes_measured": 269.375
+    },
+    {
+      "name": "rows-react-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.7844473114285715,
+      "median_ms": 0.813083,
+      "p95_ms": 1.049083,
+      "p99_ms": 1.365125,
+      "round_median_ms": [
+        0.805291,
+        0.846333,
+        0.814625,
+        0.838042,
+        0.796833,
+        0.847167,
+        0.798375
+      ],
+      "mean_nodes_measured": 344.15
+    },
+    {
+      "name": "rows-pure-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.10370300142857143,
+      "median_ms": 0.110709,
+      "p95_ms": 0.133292,
+      "p99_ms": 0.210167,
+      "round_median_ms": [
+        0.109833,
+        0.116875,
+        0.11,
+        0.113041,
+        0.108709,
+        0.112958,
+        0.1095
+      ],
+      "mean_nodes_measured": 344.15
+    },
+    {
+      "name": "rows-decoded-image-arrival",
+      "count": 1400,
+      "mean_ms": 0.002955433571428571,
+      "median_ms": 0.002417,
+      "p95_ms": 0.006375,
+      "p99_ms": 0.010916,
+      "round_median_ms": [
+        0.001917,
+        0.004,
+        0.001833,
+        0.002208,
+        0.002791,
+        0.002,
+        0.002708
+      ],
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "startup-runtime-to-library",
+      "count": 1400,
+      "mean_ms": 3.738937298571429,
+      "median_ms": 3.692625,
+      "p95_ms": 4.167708,
+      "p99_ms": 4.458,
+      "round_median_ms": [
+        3.771916,
+        3.915334,
+        3.616917,
+        3.723708,
+        3.564333,
+        3.861375,
+        3.510208
+      ],
+      "mean_nodes_measured": 3
+    },
+    {
+      "name": "navigation-open",
+      "count": 1400,
+      "mean_ms": 1.162125447857143,
+      "median_ms": 1.098709,
+      "p95_ms": 1.458042,
+      "p99_ms": 1.611833,
+      "round_median_ms": [
+        1.062417,
+        1.21825,
+        1.048666,
+        1.085125,
+        1.049333,
+        1.210417,
+        1.081167
+      ],
+      "mean_nodes_measured": 702
+    },
+    {
+      "name": "navigation-back",
+      "count": 1400,
+      "mean_ms": 0.2990571657142857,
+      "median_ms": 0.287,
+      "p95_ms": 0.355041,
+      "p99_ms": 0.480958,
+      "round_median_ms": [
+        0.276,
+        0.309208,
+        0.279167,
+        0.293084,
+        0.284709,
+        0.289917,
+        0.288125
+      ],
+      "mean_nodes_measured": 3
+    },
+    {
+      "name": "navigation-tab",
+      "count": 1400,
+      "mean_ms": 0.21218535785714288,
+      "median_ms": 0.20825,
+      "p95_ms": 0.238209,
+      "p99_ms": 0.291875,
+      "round_median_ms": [
+        0.210208,
+        0.207958,
+        0.20775,
+        0.211833,
+        0.206292,
+        0.207958,
+        0.205125
+      ],
+      "mean_nodes_measured": 2
+    },
+    {
+      "name": "conversation-controlled-input",
+      "count": 1400,
+      "mean_ms": 0.20303787857142858,
+      "median_ms": 0.1985,
+      "p95_ms": 0.234792,
+      "p99_ms": 0.282041,
+      "round_median_ms": [
+        0.193833,
+        0.196,
+        0.19475,
+        0.204667,
+        0.199333,
+        0.200916,
+        0.199375
+      ],
+      "mean_nodes_measured": 16
+    },
+    {
+      "name": "conversation-append",
+      "count": 1400,
+      "mean_ms": 0.6722875642857143,
+      "median_ms": 0.659292,
+      "p95_ms": 0.85325,
+      "p99_ms": 1.021166,
+      "round_median_ms": [
+        0.660041,
+        0.64225,
+        0.657875,
+        0.692208,
+        0.650792,
+        0.659083,
+        0.652791
+      ],
+      "mean_nodes_measured": 882.1
+    },
+    {
+      "name": "conversation-prepend",
+      "count": 1400,
+      "mean_ms": 0.4777625742857143,
+      "median_ms": 0.453042,
+      "p95_ms": 0.663125,
+      "p99_ms": 1.05225,
+      "round_median_ms": [
+        0.46725,
+        0.449834,
+        0.449542,
+        0.452291,
+        0.4515,
+        0.4505,
+        0.45875
+      ],
+      "mean_nodes_measured": 1067
+    },
+    {
+      "name": "conversation-input-background",
+      "count": 1400,
+      "mean_ms": 0.7746498864285715,
+      "median_ms": 0.574167,
+      "p95_ms": 1.861875,
+      "p99_ms": 2.843208,
+      "round_median_ms": [
+        0.544,
+        0.482625,
+        0.546833,
+        0.491625,
+        0.658292,
+        0.624583,
+        0.722083
+      ],
+      "dispatch_lateness": {
+        "count": 1400,
+        "mean_ms": 0.1387223157142857,
+        "median_ms": 0.131041,
+        "p95_ms": 0.247166,
+        "p99_ms": 0.265666
+      },
+      "dispatch_to_ack": {
+        "count": 1400,
+        "mean_ms": 0.6359275707142857,
+        "median_ms": 0.426791,
+        "p95_ms": 1.7445,
+        "p99_ms": 2.657667
+      },
+      "input_dispatch": {
+        "count": 1400,
+        "mean_ms": 0.07897690785714286,
+        "median_ms": 0.075291,
+        "p95_ms": 0.117417,
+        "p99_ms": 0.187083
+      },
+      "mean_nodes_measured": 1590.345
+    },
+    {
+      "name": "conversation-input-under-load",
+      "count": 1400,
+      "mean_ms": 1.6149232742857145,
+      "median_ms": 1.541833,
+      "p95_ms": 2.157708,
+      "p99_ms": 2.815958,
+      "round_median_ms": [
+        1.589792,
+        1.467958,
+        1.4935,
+        1.419083,
+        1.7145,
+        1.706542,
+        1.409375
+      ],
+      "dispatch_lateness": {
+        "count": 1400,
+        "mean_ms": 0.145609525,
+        "median_ms": 0.143792,
+        "p95_ms": 0.254375,
+        "p99_ms": 0.265292
+      },
+      "dispatch_to_ack": {
+        "count": 1400,
+        "mean_ms": 1.4693137492857142,
+        "median_ms": 1.39475,
+        "p95_ms": 1.988833,
+        "p99_ms": 2.571667
+      },
+      "input_dispatch": {
+        "count": 1400,
+        "mean_ms": 0.05709451,
+        "median_ms": 0.052417,
+        "p95_ms": 0.085959,
+        "p99_ms": 0.159792
+      },
+      "mean_nodes_measured": 3930.595
+    },
+    {
+      "name": "playback-native-clock",
+      "count": 1400,
+      "mean_ms": 0.0000982707142857143,
+      "median_ms": 0.000084,
+      "p95_ms": 0.000125,
+      "p99_ms": 0.000167,
+      "round_median_ms": [
+        0.000083,
+        0.000083,
+        0.000083,
+        0.000083,
+        0.000125,
+        0.000125,
+        0.000083
+      ],
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "playback-state-change",
+      "count": 1400,
+      "mean_ms": 0.08034335142857144,
+      "median_ms": 0.071,
+      "p95_ms": 0.1155,
+      "p99_ms": 0.180416,
+      "round_median_ms": [
+        0.067208,
+        0.064,
+        0.069667,
+        0.068959,
+        0.092541,
+        0.087834,
+        0.066625
+      ],
+      "mean_nodes_measured": 26
+    },
+    {
+      "name": "conversation-input-cpu",
+      "count": 1400,
+      "mean_ms": 24.124644523571426,
+      "median_ms": 0.336125,
+      "p95_ms": 114.574875,
+      "p99_ms": 129.99425,
+      "round_median_ms": [
+        0.39775,
+        0.321459,
+        0.375375,
+        0.312792,
+        0.344459,
+        0.304875,
+        0.299416
+      ],
+      "mean_nodes_measured": null
+    }
+  ],
+  "baselineSummary": [
+    {
+      "name": "react-small",
+      "count": 1400,
+      "mean_ms": 0.9337626014285714,
+      "median_ms": 0.923541,
+      "p95_ms": 1.011,
+      "p99_ms": 1.088875,
+      "round_median_ms": [
+        0.92325,
+        0.924875,
+        0.944125,
+        0.9155,
+        0.922541,
+        0.903459,
+        0.933292
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.0021861614285714286,
+        "median_ms": 0.001958,
+        "p95_ms": 0.003375,
+        "p99_ms": 0.007916
+      },
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "react-bulk",
+      "count": 1400,
+      "mean_ms": 1.098031252142857,
+      "median_ms": 1.06775,
+      "p95_ms": 1.209792,
+      "p99_ms": 1.506209,
+      "round_median_ms": [
+        1.069917,
+        1.067833,
+        1.076458,
+        1.07225,
+        1.123,
+        1.041125,
+        1.055417
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.07503636071428571,
+        "median_ms": 0.071709,
+        "p95_ms": 0.093875,
+        "p99_ms": 0.1265
+      },
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "react-resize",
+      "count": 1400,
+      "mean_ms": 2.1238402157142855,
+      "median_ms": 2.097208,
+      "p95_ms": 2.290875,
+      "p99_ms": 2.570167,
+      "round_median_ms": [
+        2.100584,
+        2.090667,
+        2.064916,
+        2.132708,
+        2.179875,
+        2.003833,
+        2.128541
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.27869591,
+        "median_ms": 0.264833,
+        "p95_ms": 0.34525,
+        "p99_ms": 0.378667
+      },
+      "mean_nodes_measured": 1551
+    },
+    {
+      "name": "list-edit-100",
+      "count": 1400,
+      "mean_ms": 0.14431598,
+      "median_ms": 0.134958,
+      "p95_ms": 0.200417,
+      "p99_ms": 0.303542,
+      "round_median_ms": [
+        0.135291,
+        0.138667,
+        0.139416,
+        0.132292,
+        0.135917,
+        0.133709,
+        0.13225
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.010353227857142858,
+        "median_ms": 0.009334,
+        "p95_ms": 0.0135,
+        "p99_ms": 0.023666
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-100",
+      "count": 1400,
+      "mean_ms": 0.01455555857142857,
+      "median_ms": 0.014083,
+      "p95_ms": 0.017834,
+      "p99_ms": 0.023959,
+      "round_median_ms": [
+        0.014209,
+        0.014166,
+        0.0145,
+        0.013917,
+        0.013916,
+        0.013709,
+        0.014166
+      ],
+      "mean_nodes_measured": 5.6
+    },
+    {
+      "name": "list-edit-1000",
+      "count": 1400,
+      "mean_ms": 0.21450029,
+      "median_ms": 0.191375,
+      "p95_ms": 0.418917,
+      "p99_ms": 0.500958,
+      "round_median_ms": [
+        0.196708,
+        0.192667,
+        0.202792,
+        0.189542,
+        0.190333,
+        0.186959,
+        0.187875
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.011368298571428572,
+        "median_ms": 0.010541,
+        "p95_ms": 0.017333,
+        "p99_ms": 0.031958
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.014808156428571428,
+      "median_ms": 0.014291,
+      "p95_ms": 0.01825,
+      "p99_ms": 0.025584,
+      "round_median_ms": [
+        0.014709,
+        0.014333,
+        0.014791,
+        0.014292,
+        0.014042,
+        0.013834,
+        0.014167
+      ],
+      "mean_nodes_measured": 5.6
+    },
+    {
+      "name": "list-edit-10000",
+      "count": 1400,
+      "mean_ms": 0.8744971942857143,
+      "median_ms": 0.708541,
+      "p95_ms": 2.102791,
+      "p99_ms": 2.471709,
+      "round_median_ms": [
+        0.753208,
+        0.696042,
+        0.714833,
+        0.702041,
+        0.731417,
+        0.6875,
+        0.711584
+      ],
+      "apply": {
+        "count": 1400,
+        "mean_ms": 0.016581427142857146,
+        "median_ms": 0.012791,
+        "p95_ms": 0.038417,
+        "p99_ms": 0.061583
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-10000",
+      "count": 1400,
+      "mean_ms": 0.015099904285714285,
+      "median_ms": 0.014792,
+      "p95_ms": 0.018708,
+      "p99_ms": 0.024625,
+      "round_median_ms": [
+        0.015375,
+        0.014375,
+        0.014959,
+        0.014417,
+        0.014542,
+        0.015166,
+        0.014666
+      ],
+      "mean_nodes_measured": 5.6
+    },
+    {
+      "name": "scrollbar-drag-10000",
+      "count": 1400,
+      "mean_ms": 0.07618084642857142,
+      "median_ms": 0.076625,
+      "p95_ms": 0.089375,
+      "p99_ms": 0.119208,
+      "round_median_ms": [
+        0.078,
+        0.078541,
+        0.075208,
+        0.075334,
+        0.077583,
+        0.076917,
+        0.075792
+      ],
+      "thumb_update": {
+        "count": 1400,
+        "mean_ms": 0.006834122857142857,
+        "median_ms": 0.006833,
+        "p95_ms": 0.008,
+        "p99_ms": 0.011875
+      },
+      "mean_nodes_measured": 212.75
+    },
+    {
+      "name": "rows-edit-100",
+      "count": 1400,
+      "mean_ms": 0.1846435535714286,
+      "median_ms": 0.170042,
+      "p95_ms": 0.270834,
+      "p99_ms": 0.362916,
+      "round_median_ms": [
+        0.177667,
+        0.1655,
+        0.174125,
+        0.170583,
+        0.171459,
+        0.168584,
+        0.169583
+      ],
+      "mean_nodes_measured": 27
+    },
+    {
+      "name": "rows-edit-1000",
+      "count": 1400,
+      "mean_ms": 0.27181428357142856,
+      "median_ms": 0.242833,
+      "p95_ms": 0.523917,
+      "p99_ms": 0.62775,
+      "round_median_ms": [
+        0.247959,
+        0.241167,
+        0.257084,
+        0.24325,
+        0.239916,
+        0.239208,
+        0.241458
+      ],
+      "mean_nodes_measured": 27
+    },
+    {
+      "name": "rows-prepend-1000",
+      "count": 1400,
+      "mean_ms": 1.6071636592857144,
+      "median_ms": 1.558958,
+      "p95_ms": 1.949333,
+      "p99_ms": 2.165458,
+      "round_median_ms": [
+        1.561,
+        1.564875,
+        1.676292,
+        1.541833,
+        1.644417,
+        1.53375,
+        1.542417
+      ],
+      "mean_nodes_measured": 742.5
+    },
+    {
+      "name": "rows-reorder-1000",
+      "count": 1400,
+      "mean_ms": 1.5609325114285715,
+      "median_ms": 1.497792,
+      "p95_ms": 1.875208,
+      "p99_ms": 2.118209,
+      "round_median_ms": [
+        1.513208,
+        1.501666,
+        1.632,
+        1.474125,
+        1.557125,
+        1.480333,
+        1.473417
+      ],
+      "mean_nodes_measured": 366
+    },
+    {
+      "name": "rows-native-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.07128551571428572,
+      "median_ms": 0.076709,
+      "p95_ms": 0.091167,
+      "p99_ms": 0.124041,
+      "round_median_ms": [
+        0.077958,
+        0.077209,
+        0.076625,
+        0.076334,
+        0.076875,
+        0.076375,
+        0.076458
+      ],
+      "mean_nodes_measured": 269.375
+    },
+    {
+      "name": "rows-react-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.78907861,
+      "median_ms": 0.810042,
+      "p95_ms": 1.065334,
+      "p99_ms": 1.356292,
+      "round_median_ms": [
+        0.829,
+        0.808958,
+        0.85025,
+        0.800959,
+        0.821333,
+        0.806958,
+        0.79625
+      ],
+      "mean_nodes_measured": 344.15
+    },
+    {
+      "name": "rows-pure-scroll-1000",
+      "count": 1400,
+      "mean_ms": 0.10277307285714286,
+      "median_ms": 0.111125,
+      "p95_ms": 0.133833,
+      "p99_ms": 0.18775,
+      "round_median_ms": [
+        0.116459,
+        0.112708,
+        0.112209,
+        0.109917,
+        0.1105,
+        0.109792,
+        0.109875
+      ],
+      "mean_nodes_measured": 344.15
+    },
+    {
+      "name": "rows-decoded-image-arrival",
+      "count": 1400,
+      "mean_ms": 0.0024958000000000003,
+      "median_ms": 0.002125,
+      "p95_ms": 0.006125,
+      "p99_ms": 0.009084,
+      "round_median_ms": [
+        0.002417,
+        0.002041,
+        0.001917,
+        0.001709,
+        0.002833,
+        0.001875,
+        0.001833
+      ],
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "startup-runtime-to-library",
+      "count": 1400,
+      "mean_ms": 3.7269808321428575,
+      "median_ms": 3.6835,
+      "p95_ms": 4.025792,
+      "p99_ms": 4.397,
+      "round_median_ms": [
+        3.729834,
+        3.679375,
+        3.74475,
+        3.799708,
+        3.7935,
+        3.575417,
+        3.558042
+      ],
+      "mean_nodes_measured": 3
+    },
+    {
+      "name": "navigation-open",
+      "count": 1400,
+      "mean_ms": 1.1560853964285713,
+      "median_ms": 1.093958,
+      "p95_ms": 1.403541,
+      "p99_ms": 1.5975,
+      "round_median_ms": [
+        1.074625,
+        1.093958,
+        1.087417,
+        1.115667,
+        1.2055,
+        1.054667,
+        1.059709
+      ],
+      "mean_nodes_measured": 702
+    },
+    {
+      "name": "navigation-back",
+      "count": 1400,
+      "mean_ms": 0.3053764785714286,
+      "median_ms": 0.287791,
+      "p95_ms": 0.395917,
+      "p99_ms": 0.483167,
+      "round_median_ms": [
+        0.287791,
+        0.286917,
+        0.280792,
+        0.288417,
+        0.343,
+        0.287042,
+        0.28525
+      ],
+      "mean_nodes_measured": 3
+    },
+    {
+      "name": "navigation-tab",
+      "count": 1400,
+      "mean_ms": 0.21781532285714286,
+      "median_ms": 0.210084,
+      "p95_ms": 0.272416,
+      "p99_ms": 0.327084,
+      "round_median_ms": [
+        0.214125,
+        0.212333,
+        0.211166,
+        0.209125,
+        0.2125,
+        0.207708,
+        0.206791
+      ],
+      "mean_nodes_measured": 2
+    },
+    {
+      "name": "conversation-controlled-input",
+      "count": 1400,
+      "mean_ms": 0.20820152642857143,
+      "median_ms": 0.200458,
+      "p95_ms": 0.256958,
+      "p99_ms": 0.309916,
+      "round_median_ms": [
+        0.204042,
+        0.203208,
+        0.199959,
+        0.200667,
+        0.2005,
+        0.198458,
+        0.199
+      ],
+      "mean_nodes_measured": 16
+    },
+    {
+      "name": "conversation-append",
+      "count": 1400,
+      "mean_ms": 0.719217955,
+      "median_ms": 0.686083,
+      "p95_ms": 0.99775,
+      "p99_ms": 1.290958,
+      "round_median_ms": [
+        0.743666,
+        0.693375,
+        0.685792,
+        0.685041,
+        0.759375,
+        0.654125,
+        0.653458
+      ],
+      "mean_nodes_measured": 882.1
+    },
+    {
+      "name": "conversation-prepend",
+      "count": 1400,
+      "mean_ms": 0.4797744357142857,
+      "median_ms": 0.457208,
+      "p95_ms": 0.648,
+      "p99_ms": 0.804125,
+      "round_median_ms": [
+        0.462459,
+        0.453083,
+        0.455125,
+        0.460666,
+        0.500375,
+        0.451625,
+        0.451875
+      ],
+      "mean_nodes_measured": 1067
+    },
+    {
+      "name": "conversation-input-background",
+      "count": 1400,
+      "mean_ms": 0.8009314814285714,
+      "median_ms": 0.573959,
+      "p95_ms": 1.910291,
+      "p99_ms": 2.960334,
+      "round_median_ms": [
+        0.5385,
+        0.489375,
+        0.476125,
+        0.74825,
+        0.6615,
+        0.654541,
+        0.527708
+      ],
+      "dispatch_lateness": {
+        "count": 1400,
+        "mean_ms": 0.15514911071428572,
+        "median_ms": 0.134209,
+        "p95_ms": 0.254166,
+        "p99_ms": 0.633625
+      },
+      "dispatch_to_ack": {
+        "count": 1400,
+        "mean_ms": 0.6457823707142858,
+        "median_ms": 0.436333,
+        "p95_ms": 1.649792,
+        "p99_ms": 2.470333
+      },
+      "input_dispatch": {
+        "count": 1400,
+        "mean_ms": 0.08799044428571429,
+        "median_ms": 0.0765,
+        "p95_ms": 0.155209,
+        "p99_ms": 0.296042
+      },
+      "mean_nodes_measured": 1590.345
+    },
+    {
+      "name": "conversation-input-under-load",
+      "count": 1400,
+      "mean_ms": 1.7102702492857143,
+      "median_ms": 1.609417,
+      "p95_ms": 2.314041,
+      "p99_ms": 3.370166,
+      "round_median_ms": [
+        1.762541,
+        1.57425,
+        1.363,
+        1.693291,
+        1.583,
+        1.669417,
+        1.625291
+      ],
+      "dispatch_lateness": {
+        "count": 1400,
+        "mean_ms": 0.15426196214285715,
+        "median_ms": 0.140333,
+        "p95_ms": 0.257583,
+        "p99_ms": 0.314833
+      },
+      "dispatch_to_ack": {
+        "count": 1400,
+        "mean_ms": 1.556008287142857,
+        "median_ms": 1.468333,
+        "p95_ms": 2.157958,
+        "p99_ms": 2.990209
+      },
+      "input_dispatch": {
+        "count": 1400,
+        "mean_ms": 0.06252586714285714,
+        "median_ms": 0.054666,
+        "p95_ms": 0.093875,
+        "p99_ms": 0.192167
+      },
+      "mean_nodes_measured": 3930.595
+    },
+    {
+      "name": "playback-native-clock",
+      "count": 1400,
+      "mean_ms": 0.00012069142857142858,
+      "median_ms": 0.000125,
+      "p95_ms": 0.000208,
+      "p99_ms": 0.00025,
+      "round_median_ms": [
+        0.000166,
+        0.000084,
+        0.000083,
+        0.000125,
+        0.000125,
+        0.000125,
+        0.000125
+      ],
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "playback-state-change",
+      "count": 1400,
+      "mean_ms": 0.07878207071428571,
+      "median_ms": 0.077208,
+      "p95_ms": 0.106167,
+      "p99_ms": 0.143083,
+      "round_median_ms": [
+        0.066458,
+        0.066291,
+        0.063917,
+        0.070458,
+        0.085458,
+        0.083917,
+        0.085125
+      ],
+      "mean_nodes_measured": 26
+    },
+    {
+      "name": "conversation-input-cpu",
+      "count": 1400,
+      "mean_ms": 21.98414091,
+      "median_ms": 0.35425,
+      "p95_ms": 108.553834,
+      "p99_ms": 123.734417,
+      "round_median_ms": [
+        0.6325,
+        0.351541,
+        0.33125,
+        0.37625,
+        0.297625,
+        0.29575,
+        0.288708
+      ],
+      "mean_nodes_measured": null
+    }
+  ],
+  "comparison": [
+    {
+      "name": "react-small",
+      "median_change_percent": -0.8300660176429608,
+      "p95_change_percent": 34.38427299703266,
+      "round_median_change_percent": [
+        22.944381261846726,
+        -0.49552642248952283,
+        -3.4865086720508365,
+        3.0811578372474058,
+        -1.1426050441118663,
+        -0.05080474044754091,
+        -2.9018785117626567
+      ]
+    },
+    {
+      "name": "react-bulk",
+      "median_change_percent": -1.5491453992039217,
+      "p95_change_percent": 31.27603753372481,
+      "round_median_change_percent": [
+        13.521235759409379,
+        1.1706886751018164,
+        -3.6539279748954323,
+        2.323805082769881,
+        -7.735975066785395,
+        -0.6003121623244123,
+        -1.7883926448029497
+      ]
+    },
+    {
+      "name": "react-resize",
+      "median_change_percent": -1.3013015399521821,
+      "p95_change_percent": 8.655688328695366,
+      "round_median_change_percent": [
+        4.831989580040608,
+        7.69687377281989,
+        -1.368045964097342,
+        0.3360516301340821,
+        -7.552038534319627,
+        1.5823673928915039,
+        -5.694416973880223
+      ]
+    },
+    {
+      "name": "list-edit-100",
+      "median_change_percent": 0.46310704070897657,
+      "p95_change_percent": 41.30936996362584,
+      "round_median_change_percent": [
+        0.7701916609382797,
+        -1.893745447727302,
+        -4.243415389912208,
+        3.400810328666881,
+        -0.5827085647858721,
+        0.5915832142937338,
+        5.544801512287334
+      ]
+    },
+    {
+      "name": "list-scroll-100",
+      "median_change_percent": -1.1787261236952284,
+      "p95_change_percent": -1.87282718403049,
+      "round_median_change_percent": [
+        -0.886761911464562,
+        -1.1718198503458899,
+        -4.31034482758621,
+        2.090967881008843,
+        -1.49468237999425,
+        -0.6127361587278446,
+        -2.3506988564167774
+      ]
+    },
+    {
+      "name": "list-edit-1000",
+      "median_change_percent": -0.761854996734157,
+      "p95_change_percent": -5.858439738659449,
+      "round_median_change_percent": [
+        2.0334709315330324,
+        2.638230729704616,
+        -8.34204505108682,
+        0.8568021863228248,
+        -2.1451876448119855,
+        0.6685957883814098,
+        0.2437791084497709
+      ]
+    },
+    {
+      "name": "list-scroll-1000",
+      "median_change_percent": -1.4554614792526732,
+      "p95_change_percent": -3.424657534246578,
+      "round_median_change_percent": [
+        -3.399279352777218,
+        -1.7442266099211623,
+        -5.6318031235210615,
+        1.1684858662188713,
+        -0.8901865831078215,
+        -0.3035998265143891,
+        -1.4682007482176962
+      ]
+    },
+    {
+      "name": "list-edit-10000",
+      "median_change_percent": -1.2054348301650863,
+      "p95_change_percent": -5.005204987086209,
+      "round_median_change_percent": [
+        -0.8684188165818729,
+        2.178891503673608,
+        -3.9985563061582297,
+        2.2138308161488984,
+        -6.756337356118324,
+        -0.9090909090909038,
+        -2.318911049152317
+      ]
+    },
+    {
+      "name": "list-scroll-10000",
+      "median_change_percent": -0.2839372633856141,
+      "p95_change_percent": -1.3363267051528793,
+      "round_median_change_percent": [
+        -2.705691056910564,
+        3.1930434782608597,
+        -1.952002139180431,
+        2.3097731844350378,
+        -0.8595791500481398,
+        -3.019912963207172,
+        -0.8523114687031264
+      ]
+    },
+    {
+      "name": "scrollbar-drag-10000",
+      "median_change_percent": -0.4893964110929905,
+      "p95_change_percent": -6.527552447552443,
+      "round_median_change_percent": [
+        -1.2820512820512886,
+        -2.014234603582843,
+        -1.1634400595681327,
+        1.7694533676693158,
+        -3.5445909542038856,
+        1.3001027081139371,
+        -0.7705298712265107
+      ]
+    },
+    {
+      "name": "rows-edit-100",
+      "median_change_percent": 0.3922560308629697,
+      "p95_change_percent": -1.3694735520651036,
+      "round_median_change_percent": [
+        -2.908249703096244,
+        12.084592145015094,
+        -2.7279253409906667,
+        2.540698662821028,
+        -1.3367627246163694,
+        1.1614388079532967,
+        -0.4422613115701468
+      ]
+    },
+    {
+      "name": "rows-edit-1000",
+      "median_change_percent": 0.20631462774829412,
+      "p95_change_percent": -4.700362843732875,
+      "round_median_change_percent": [
+        -1.3611121193423226,
+        2.81630571346827,
+        -5.365172472810431,
+        0.8735868448098705,
+        0.3476216675836641,
+        1.4631617671649888,
+        1.0179824234442414
+      ]
+    },
+    {
+      "name": "rows-prepend-1000",
+      "median_change_percent": 0.5532541607920161,
+      "p95_change_percent": 1.4171514051216416,
+      "round_median_change_percent": [
+        6.392761050608575,
+        0.14914929307452418,
+        -7.742803759726824,
+        12.498694735422067,
+        -5.6808583224328135,
+        0.24449877750611915,
+        0.2512290774803416
+      ]
+    },
+    {
+      "name": "rows-reorder-1000",
+      "median_change_percent": 2.601028714267395,
+      "p95_change_percent": 6.228215749932797,
+      "round_median_change_percent": [
+        11.608912984863927,
+        5.982289004345831,
+        -8.37928921568627,
+        15.986907487492585,
+        -4.243975274945811,
+        0.11828419686652492,
+        0.6955939832375968
+      ]
+    },
+    {
+      "name": "rows-native-scroll-1000",
+      "median_change_percent": -0.27245825131340107,
+      "p95_change_percent": -3.3367336865313124,
+      "round_median_change_percent": [
+        -1.1749916621770717,
+        1.3482884119726979,
+        0.8704730831973873,
+        -0.7100374669216869,
+        -1.3008130081300862,
+        1.9090016366612117,
+        -0.4355332339323503
+      ]
+    },
+    {
+      "name": "rows-react-scroll-1000",
+      "median_change_percent": 0.37541263292519833,
+      "p95_change_percent": -1.5254370929680294,
+      "round_median_change_percent": [
+        -2.859951749095291,
+        4.620140971471942,
+        -4.189944134078205,
+        4.629824997284504,
+        -2.982955756069705,
+        4.982787208256201,
+        0.266875981161685
+      ]
+    },
+    {
+      "name": "rows-pure-scroll-1000",
+      "median_change_percent": -0.3743532058492649,
+      "p95_change_percent": -0.4042351288546242,
+      "round_median_change_percent": [
+        -5.689555981074879,
+        3.6971643539056798,
+        -1.968647791175393,
+        2.8421445272341916,
+        -1.6208144796380108,
+        2.883634508889532,
+        -0.34129692832765013
+      ]
+    },
+    {
+      "name": "rows-decoded-image-arrival",
+      "median_change_percent": 13.741176470588211,
+      "p95_change_percent": 4.081632653061207,
+      "round_median_change_percent": [
+        -20.68680182043855,
+        95.98236158745715,
+        -4.38184663536777,
+        29.198361614979508,
+        -1.4825273561595464,
+        6.666666666666665,
+        47.73595199127114
+      ]
+    },
+    {
+      "name": "startup-runtime-to-library",
+      "median_change_percent": 0.2477263472241198,
+      "p95_change_percent": 3.5251697057374187,
+      "round_median_change_percent": [
+        1.1282539651898738,
+        6.413018515372859,
+        -3.4136591227718727,
+        -2.0001536960208566,
+        -6.041043890865949,
+        7.997892273824281,
+        -1.344391100498532
+      ]
+    },
+    {
+      "name": "navigation-open",
+      "median_change_percent": 0.434294552441683,
+      "p95_change_percent": 3.883107084153581,
+      "round_median_change_percent": [
+        -1.1360241944864513,
+        11.36167933321024,
+        -3.56358232398426,
+        -2.7375552024035854,
+        -12.954541683948563,
+        14.767694447631353,
+        2.02489551376841
+      ]
+    },
+    {
+      "name": "navigation-back",
+      "median_change_percent": -0.27485223651887436,
+      "p95_change_percent": -10.324386171849154,
+      "round_median_change_percent": [
+        -4.097070443481554,
+        7.769145780835585,
+        -0.5787201914584372,
+        1.618143174639508,
+        -16.99446064139942,
+        1.0015955853150293,
+        1.0078878177037787
+      ]
+    },
+    {
+      "name": "navigation-tab",
+      "median_change_percent": -0.8729841396774685,
+      "p95_change_percent": -12.556898273229178,
+      "round_median_change_percent": [
+        -1.829305312317575,
+        -2.0604427950436266,
+        -1.6176846651449583,
+        1.2949193066347897,
+        -2.9214117647058835,
+        0.1203612764072659,
+        -0.805644346223966
+      ]
+    },
+    {
+      "name": "conversation-controlled-input",
+      "median_change_percent": -0.9767632122439585,
+      "p95_change_percent": -8.626312471298814,
+      "round_median_change_percent": [
+        -5.003381656717732,
+        -3.5471044447068945,
+        -2.6050340319765497,
+        1.993352170511331,
+        -0.5820448877805529,
+        1.238549214443374,
+        0.18844221105527303
+      ]
+    },
+    {
+      "name": "conversation-append",
+      "median_change_percent": -3.9049211247035753,
+      "p95_change_percent": -14.48258581809071,
+      "round_median_change_percent": [
+        -11.2449674988503,
+        -7.3733549666486375,
+        -4.070767812981191,
+        1.046214752109731,
+        -14.298995884773657,
+        0.7579591056755319,
+        -0.10207235966197548
+      ]
+    },
+    {
+      "name": "conversation-prepend",
+      "median_change_percent": -0.9111826564714542,
+      "p95_change_percent": 2.3341049382715973,
+      "round_median_change_percent": [
+        1.035983730449619,
+        -0.7170871562164116,
+        -1.2266959626476281,
+        -1.81801999713459,
+        -9.76767424431676,
+        -0.24910047052311146,
+        1.5214384508990264
+      ]
+    },
+    {
+      "name": "conversation-input-background",
+      "median_change_percent": 0.036239522335224095,
+      "p95_change_percent": -2.534482966207763,
+      "round_median_change_percent": [
+        1.0213556174559102,
+        -1.3793103448275779,
+        14.850721974271464,
+        -34.29669228199131,
+        -0.48495842781557386,
+        -4.576947815339305,
+        36.833817186777566
+      ]
+    },
+    {
+      "name": "conversation-input-under-load",
+      "median_change_percent": -4.199284585660523,
+      "p95_change_percent": -6.75584399757827,
+      "round_median_change_percent": [
+        -9.801133704123755,
+        -6.7519136096553805,
+        9.57446808510638,
+        -16.193790671538444,
+        8.307012002526836,
+        2.2238302353456474,
+        -13.284759467689167
+      ]
+    },
+    {
+      "name": "playback-native-clock",
+      "median_change_percent": -32.800000000000004,
+      "p95_change_percent": -39.903846153846146,
+      "round_median_change_percent": [
+        -50,
+        -1.1904761904761862,
+        0,
+        -33.60000000000001,
+        0,
+        0,
+        -33.60000000000001
+      ]
+    },
+    {
+      "name": "playback-state-change",
+      "median_change_percent": -8.040617552585228,
+      "p95_change_percent": 8.790867218627273,
+      "round_median_change_percent": [
+        1.1285323061181574,
+        -3.4559744158332184,
+        8.996041741633686,
+        -2.1275085866757526,
+        8.288281963069565,
+        4.667707377527774,
+        -21.732745961820854
+      ]
+    },
+    {
+      "name": "conversation-input-cpu",
+      "median_change_percent": -5.116443189837683,
+      "p95_change_percent": 5.546594512728142,
+      "round_median_change_percent": [
+        -37.11462450592885,
+        -8.557181096941747,
+        13.320754716981131,
+        -16.86591362126245,
+        15.735909281814386,
+        3.085376162299247,
+        3.7089377502528498
+      ]
+    }
+  ],
+  "completedAt": "2026-11-07T15:25:35.856Z"
+}

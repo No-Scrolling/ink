@@ -1,0 +1,67 @@
+{
+  "worker_web_sharing": {
+    "before_bytecode": 233714,
+    "after_bytecode": 65712,
+    "change": -168002
+  },
+  "worker_safe_imports": {
+    "before_bytecode": 65712,
+    "after_bytecode": 32335,
+    "change": -33377
+  },
+  "url_conversions": {
+    "before_bytecode": 170450,
+    "after_bytecode": 163159,
+    "change": -7291
+  },
+  "linkify_counter": {
+    "before_bytecode": 58050,
+    "after_bytecode": 57135,
+    "change": -915
+  },
+  "jni_opt_s": {
+    "counter_native_before": 2745008,
+    "counter_native_after": 2732600,
+    "inkify_native_before": 6428368,
+    "inkify_native_after": 6388160
+  },
+  "capability_gating": {
+    "counter": {
+      "native_before": 2732600,
+      "native_after": 2541672,
+      "change": -190928
+    },
+    "inkify": {
+      "native_before": 6388160,
+      "native_after": 6356408,
+      "change": -31752
+    }
+  },
+  "compact_resource_entries": {
+    "counter": {
+      "before": 3540,
+      "after": 3332,
+      "change": -208
+    },
+    "template": {
+      "before": 242268,
+      "after": 196968,
+      "change": -45300
+    },
+    "inkify": {
+      "before": 153380,
+      "after": 129628,
+      "change": -23752
+    }
+  },
+  "platform_splash": {
+    "status": "rejected",
+    "reason": "transient system-bar frame changed 4720 saved screenshot pixels",
+    "retained_savings": 0
+  },
+  "final_apk_change": {
+    "counter": -204144,
+    "template": -142644,
+    "inkify": -99400
+  }
+}

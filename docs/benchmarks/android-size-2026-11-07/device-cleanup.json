@@ -1,0 +1,13 @@
+{
+  "device": "emulator-5554",
+  "command": "pm list packages",
+  "before_count": 196,
+  "after_count": 195,
+  "removed": [
+    "package:com.vandam.inksize.counter"
+  ],
+  "added": [],
+  "only_owned_probe_ids_removed": true,
+  "physical_phone_installs": 0,
+  "display_or_lock_settings_changed": false
+}

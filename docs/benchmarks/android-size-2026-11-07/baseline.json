@@ -1,0 +1,618 @@
+{
+  "version": 1,
+  "status": "passed",
+  "revision": "0885cd10498e8e8498837a7d9a4391ea87061619",
+  "dirty": true,
+  "profile": "release",
+  "bun": "1.4.4",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "rounds": 5,
+  "samples": 100,
+  "warmup": 20,
+  "executionSeconds": 34.477981417,
+  "bundle": {
+    "workloadHash": "c73191e3e3c5ab808fecae40ad61a1b441f9e5b8e8748c0f717f8793fd848fd6",
+    "machine": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "os": "27.3.0",
+      "cpu": "Apple M4 Pro"
+    },
+    "assets": {
+      "assets/react/app.js": "72ac2787700b4a4826558b3962aa1e399d1abaa6b76fe0a442fb4088e85c29e0",
+      "assets/react/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+      "assets/list/app.js": "2a3621f18969b051b27e928c590321ffd2c05f1be2cff3c0c7b082e12ed868df",
+      "assets/list/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+      "assets/rows/app.js": "31791b1d46c4515ee5525af78ad885681b030adcefaf12c79f105de0657ba78d",
+      "assets/rows/ink-icons-v1.bin": "7865bd3d7064188d797b42e17f57279f0709fb9e12f25a63e2ee56ad00ca48d1",
+      "assets/navigation/app.js": "4d8d9d6cddb150148b8c1cf6e4142c86935e6df1b30fe5492b57ac2dcccfb514",
+      "assets/navigation/ink-icons-v1.bin": "4bfc3ddcb721d68b9107a465be2372f51b371ed20876fe7feeb99c16512ac0ec",
+      "assets/conversation/app.js": "e8129976c3ea461259ef66a77b1d31f488d3e2451a7d26fdcc17b37dac24a595",
+      "assets/conversation/ink-icons-v1.bin": "4a0d0d59641174de301f7c28aae393eaa2ea32f44729dc0cf575f5b84a6e881d",
+      "assets/playback/app.js": "00020bbeb0e43a1727a443416c1e33f9c8f5660244492a7176ad7d3795c3b469",
+      "assets/playback/ink-icons-v1.bin": "31f9dfd769321b02e479f12887f54d2c80bb6c5a3287df1fc872e4d05493a1e6"
+    },
+    "binarySha256": "38c9356f954bbc93d0ced1d59ba93a8d3ac56d899f131b78ca7f3eb3db4f79dc"
+  },
+  "executionOrder": [
+    "candidate-0",
+    "candidate-1",
+    "candidate-2",
+    "candidate-3",
+    "candidate-4"
+  ],
+  "summary": [
+    {
+      "name": "react-small",
+      "count": 500,
+      "mean_ms": 1.1206597420000002,
+      "median_ms": 0.938583,
+      "p95_ms": 2.42725,
+      "p99_ms": 3.416042,
+      "round_median_ms": [
+        1.086792,
+        0.923334,
+        0.922125,
+        0.906167,
+        0.968625
+      ],
+      "apply": {
+        "count": 500,
+        "mean_ms": 0.005311338,
+        "median_ms": 0.00225,
+        "p95_ms": 0.021042,
+        "p99_ms": 0.028333
+      },
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "react-bulk",
+      "count": 500,
+      "mean_ms": 1.181218318,
+      "median_ms": 1.074083,
+      "p95_ms": 1.851334,
+      "p99_ms": 3.027333,
+      "round_median_ms": [
+        1.106041,
+        1.080667,
+        1.03075,
+        1.0475,
+        1.258584
+      ],
+      "apply": {
+        "count": 500,
+        "mean_ms": 0.089663926,
+        "median_ms": 0.072709,
+        "p95_ms": 0.227667,
+        "p99_ms": 0.262083
+      },
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "react-resize",
+      "count": 500,
+      "mean_ms": 2.272262412,
+      "median_ms": 2.089417,
+      "p95_ms": 2.902833,
+      "p99_ms": 5.030625,
+      "round_median_ms": [
+        2.189375,
+        2.052417,
+        2.044125,
+        2.033875,
+        2.190041
+      ],
+      "apply": {
+        "count": 500,
+        "mean_ms": 0.311292066,
+        "median_ms": 0.26825,
+        "p95_ms": 0.417666,
+        "p99_ms": 1.034625
+      },
+      "mean_nodes_measured": 1551
+    },
+    {
+      "name": "list-edit-100",
+      "count": 500,
+      "mean_ms": 0.241754098,
+      "median_ms": 0.13775,
+      "p95_ms": 0.544667,
+      "p99_ms": 2.327875,
+      "round_median_ms": [
+        0.140042,
+        0.137,
+        0.133375,
+        0.135167,
+        0.269417
+      ],
+      "apply": {
+        "count": 500,
+        "mean_ms": 0.033990910000000006,
+        "median_ms": 0.009416,
+        "p95_ms": 0.0665,
+        "p99_ms": 0.195042
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-100",
+      "count": 500,
+      "mean_ms": 0.019144581999999997,
+      "median_ms": 0.014625,
+      "p95_ms": 0.041708,
+      "p99_ms": 0.047708,
+      "round_median_ms": [
+        0.014209,
+        0.014125,
+        0.014125,
+        0.013875,
+        0.037791
+      ],
+      "mean_nodes_measured": 5.9
+    },
+    {
+      "name": "list-edit-1000",
+      "count": 500,
+      "mean_ms": 0.556799672,
+      "median_ms": 0.1935,
+      "p95_ms": 2.003792,
+      "p99_ms": 5.879709,
+      "round_median_ms": [
+        0.198458,
+        0.192125,
+        0.185709,
+        0.187208,
+        0.918208
+      ],
+      "apply": {
+        "count": 500,
+        "mean_ms": 0.043711591999999994,
+        "median_ms": 0.009708,
+        "p95_ms": 0.095708,
+        "p99_ms": 0.42525
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-1000",
+      "count": 500,
+      "mean_ms": 0.02453642,
+      "median_ms": 0.014584,
+      "p95_ms": 0.044708,
+      "p99_ms": 0.222375,
+      "round_median_ms": [
+        0.014458,
+        0.014,
+        0.014,
+        0.014042,
+        0.033125
+      ],
+      "mean_nodes_measured": 5.9
+    },
+    {
+      "name": "list-edit-10000",
+      "count": 500,
+      "mean_ms": 1.455670256,
+      "median_ms": 0.73025,
+      "p95_ms": 4.077708,
+      "p99_ms": 10.913125,
+      "round_median_ms": [
+        0.754667,
+        0.735208,
+        0.679834,
+        0.689459,
+        2.607459
+      ],
+      "apply": {
+        "count": 500,
+        "mean_ms": 0.028757903999999997,
+        "median_ms": 0.013541,
+        "p95_ms": 0.102791,
+        "p99_ms": 0.159
+      },
+      "mean_nodes_measured": 7
+    },
+    {
+      "name": "list-scroll-10000",
+      "count": 500,
+      "mean_ms": 0.015169196,
+      "median_ms": 0.015084,
+      "p95_ms": 0.018709,
+      "p99_ms": 0.019792,
+      "round_median_ms": [
+        0.015,
+        0.015417,
+        0.014791,
+        0.014709,
+        0.015209
+      ],
+      "mean_nodes_measured": 5.9
+    },
+    {
+      "name": "scrollbar-drag-10000",
+      "count": 500,
+      "mean_ms": 0.074264562,
+      "median_ms": 0.076916,
+      "p95_ms": 0.082792,
+      "p99_ms": 0.092042,
+      "round_median_ms": [
+        0.077375,
+        0.080958,
+        0.076208,
+        0.074584,
+        0.077458
+      ],
+      "thumb_update": {
+        "count": 500,
+        "mean_ms": 0.0068046719999999995,
+        "median_ms": 0.006958,
+        "p95_ms": 0.007416,
+        "p99_ms": 0.008541
+      },
+      "mean_nodes_measured": 212.3
+    },
+    {
+      "name": "rows-edit-100",
+      "count": 500,
+      "mean_ms": 0.42340605200000003,
+      "median_ms": 0.166917,
+      "p95_ms": 1.267583,
+      "p99_ms": 4.884,
+      "round_median_ms": [
+        0.167,
+        0.1675,
+        0.161541,
+        0.162583,
+        0.651708
+      ],
+      "mean_nodes_measured": 27
+    },
+    {
+      "name": "rows-edit-1000",
+      "count": 500,
+      "mean_ms": 0.559325828,
+      "median_ms": 0.242833,
+      "p95_ms": 1.734458,
+      "p99_ms": 4.243833,
+      "round_median_ms": [
+        0.252417,
+        0.239125,
+        0.235292,
+        0.234958,
+        0.988041
+      ],
+      "mean_nodes_measured": 27
+    },
+    {
+      "name": "rows-prepend-1000",
+      "count": 500,
+      "mean_ms": 2.499383234,
+      "median_ms": 1.629083,
+      "p95_ms": 6.542791,
+      "p99_ms": 16.357125,
+      "round_median_ms": [
+        1.668292,
+        1.634708,
+        1.535209,
+        1.512583,
+        4.341708
+      ],
+      "mean_nodes_measured": 742.5
+    },
+    {
+      "name": "rows-reorder-1000",
+      "count": 500,
+      "mean_ms": 2.07016502,
+      "median_ms": 1.572917,
+      "p95_ms": 4.998709,
+      "p99_ms": 7.976584,
+      "round_median_ms": [
+        1.622208,
+        1.57725,
+        1.473791,
+        1.507208,
+        2.733
+      ],
+      "mean_nodes_measured": 366
+    },
+    {
+      "name": "rows-native-scroll-1000",
+      "count": 500,
+      "mean_ms": 0.07067705199999999,
+      "median_ms": 0.077958,
+      "p95_ms": 0.086,
+      "p99_ms": 0.090458,
+      "round_median_ms": [
+        0.078708,
+        0.078959,
+        0.077375,
+        0.076667,
+        0.078667
+      ],
+      "mean_nodes_measured": 271.6
+    },
+    {
+      "name": "rows-react-scroll-1000",
+      "count": 500,
+      "mean_ms": 1.047942648,
+      "median_ms": 0.827667,
+      "p95_ms": 2.649292,
+      "p99_ms": 3.829416,
+      "round_median_ms": [
+        0.824667,
+        0.860959,
+        0.794375,
+        0.812542,
+        1.76475
+      ],
+      "mean_nodes_measured": 347.77
+    },
+    {
+      "name": "rows-pure-scroll-1000",
+      "count": 500,
+      "mean_ms": 0.10702953999999999,
+      "median_ms": 0.113833,
+      "p95_ms": 0.127875,
+      "p99_ms": 0.146375,
+      "round_median_ms": [
+        0.114375,
+        0.115583,
+        0.111834,
+        0.113,
+        0.115708
+      ],
+      "mean_nodes_measured": 347.77
+    },
+    {
+      "name": "rows-decoded-image-arrival",
+      "count": 500,
+      "mean_ms": 0.0043463320000000005,
+      "median_ms": 0.003167,
+      "p95_ms": 0.009042,
+      "p99_ms": 0.024458,
+      "round_median_ms": [
+        0.004083,
+        0.003375,
+        0.003042,
+        0.002,
+        0.004
+      ],
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "startup-runtime-to-library",
+      "count": 500,
+      "mean_ms": 4.39889857,
+      "median_ms": 3.822041,
+      "p95_ms": 7.927833,
+      "p99_ms": 9.658167,
+      "round_median_ms": [
+        3.85025,
+        3.861125,
+        3.597333,
+        3.756625,
+        7.586792
+      ],
+      "mean_nodes_measured": 3
+    },
+    {
+      "name": "navigation-open",
+      "count": 500,
+      "mean_ms": 1.552697582,
+      "median_ms": 1.173167,
+      "p95_ms": 3.731042,
+      "p99_ms": 7.127834,
+      "round_median_ms": [
+        1.154833,
+        1.0795,
+        1.043167,
+        1.174625,
+        2.403292
+      ],
+      "mean_nodes_measured": 702
+    },
+    {
+      "name": "navigation-back",
+      "count": 500,
+      "mean_ms": 0.556813172,
+      "median_ms": 0.300959,
+      "p95_ms": 1.1705,
+      "p99_ms": 5.959,
+      "round_median_ms": [
+        0.319125,
+        0.296208,
+        0.274792,
+        0.294541,
+        0.834125
+      ],
+      "mean_nodes_measured": 3
+    },
+    {
+      "name": "navigation-tab",
+      "count": 500,
+      "mean_ms": 0.285822918,
+      "median_ms": 0.211292,
+      "p95_ms": 0.629375,
+      "p99_ms": 1.303792,
+      "round_median_ms": [
+        0.215167,
+        0.209042,
+        0.206917,
+        0.208708,
+        0.511166
+      ],
+      "mean_nodes_measured": 2
+    },
+    {
+      "name": "conversation-controlled-input",
+      "count": 500,
+      "mean_ms": 0.302303242,
+      "median_ms": 0.195875,
+      "p95_ms": 0.6425,
+      "p99_ms": 2.439292,
+      "round_median_ms": [
+        0.196833,
+        0.193625,
+        0.190584,
+        0.195583,
+        0.355375
+      ],
+      "mean_nodes_measured": 16
+    },
+    {
+      "name": "conversation-append",
+      "count": 500,
+      "mean_ms": 0.8231985159999999,
+      "median_ms": 0.606833,
+      "p95_ms": 2.085917,
+      "p99_ms": 4.327416,
+      "round_median_ms": [
+        0.61825,
+        0.595417,
+        0.574833,
+        0.604958,
+        1.176292
+      ],
+      "mean_nodes_measured": 882.7
+    },
+    {
+      "name": "conversation-prepend",
+      "count": 500,
+      "mean_ms": 0.5487531480000001,
+      "median_ms": 0.458375,
+      "p95_ms": 1.299,
+      "p99_ms": 1.772125,
+      "round_median_ms": [
+        0.455125,
+        0.45425,
+        0.44375,
+        0.466709,
+        0.6075
+      ],
+      "mean_nodes_measured": 1067
+    },
+    {
+      "name": "conversation-input-background",
+      "count": 500,
+      "mean_ms": 0.983033094,
+      "median_ms": 0.605167,
+      "p95_ms": 2.533917,
+      "p99_ms": 4.729084,
+      "round_median_ms": [
+        0.578375,
+        0.519917,
+        0.456417,
+        0.59775,
+        1.265459
+      ],
+      "dispatch_lateness": {
+        "count": 500,
+        "mean_ms": 0.260095012,
+        "median_ms": 0.146917,
+        "p95_ms": 0.361084,
+        "p99_ms": 3.225375
+      },
+      "dispatch_to_ack": {
+        "count": 500,
+        "mean_ms": 0.7229380820000001,
+        "median_ms": 0.427666,
+        "p95_ms": 1.85,
+        "p99_ms": 3.472333
+      },
+      "input_dispatch": {
+        "count": 500,
+        "mean_ms": 0.13155301800000002,
+        "median_ms": 0.084167,
+        "p95_ms": 0.267625,
+        "p99_ms": 0.758584
+      },
+      "mean_nodes_measured": 1592.13
+    },
+    {
+      "name": "conversation-input-under-load",
+      "count": 500,
+      "mean_ms": 2.3364321439999998,
+      "median_ms": 1.455,
+      "p95_ms": 6.020125,
+      "p99_ms": 17.376042,
+      "round_median_ms": [
+        1.434667,
+        1.402292,
+        1.342625,
+        1.4845,
+        4.734459
+      ],
+      "dispatch_lateness": {
+        "count": 500,
+        "mean_ms": 0.212560214,
+        "median_ms": 0.161167,
+        "p95_ms": 0.528084,
+        "p99_ms": 1.258917
+      },
+      "dispatch_to_ack": {
+        "count": 500,
+        "mean_ms": 2.12387193,
+        "median_ms": 1.304583,
+        "p95_ms": 5.728209,
+        "p99_ms": 13.136708
+      },
+      "input_dispatch": {
+        "count": 500,
+        "mean_ms": 0.083025858,
+        "median_ms": 0.054667,
+        "p95_ms": 0.1745,
+        "p99_ms": 0.332708
+      },
+      "mean_nodes_measured": 4421.99
+    },
+    {
+      "name": "playback-native-clock",
+      "count": 500,
+      "mean_ms": 0.00009019,
+      "median_ms": 0.000083,
+      "p95_ms": 0.000125,
+      "p99_ms": 0.000167,
+      "round_median_ms": [
+        0.000084,
+        0.000083,
+        0.000083,
+        0.000083,
+        0.000084
+      ],
+      "mean_nodes_measured": 0
+    },
+    {
+      "name": "playback-state-change",
+      "count": 500,
+      "mean_ms": 0.094891752,
+      "median_ms": 0.068166,
+      "p95_ms": 0.205584,
+      "p99_ms": 0.362667,
+      "round_median_ms": [
+        0.062708,
+        0.069292,
+        0.064667,
+        0.071167,
+        0.170834
+      ],
+      "mean_nodes_measured": 26
+    },
+    {
+      "name": "conversation-input-cpu",
+      "count": 500,
+      "mean_ms": 152.55719853,
+      "median_ms": 97.2045,
+      "p95_ms": 507.580416,
+      "p99_ms": 546.542083,
+      "round_median_ms": [
+        93.4955,
+        65.573,
+        65.633416,
+        67.687916,
+        458.302125
+      ],
+      "mean_nodes_measured": null
+    }
+  ],
+  "completedAt": "2026-11-07T15:02:54.650Z"
+}

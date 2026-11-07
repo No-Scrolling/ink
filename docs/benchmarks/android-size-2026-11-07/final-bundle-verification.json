@@ -1,0 +1,102 @@
+[
+  {
+    "app": "examples/counter",
+    "stem": "app",
+    "sha256": "4bac45fc322d3d1c22c5f6df76116c342c8a6c03b1c63e8d005dbd409c2f66df",
+    "capabilities": [
+      "external"
+    ],
+    "identical": true
+  },
+  {
+    "app": "examples/light-template",
+    "stem": "app",
+    "sha256": "709a300d67a70a89e2805d5668b05fb9e70053b933136ab4756c5c73d78b9067",
+    "capabilities": [
+      "audio-detached",
+      "audio-microphone",
+      "audio-recording",
+      "background",
+      "barcode-generate",
+      "camera-permission",
+      "code-scanner",
+      "connectivity",
+      "downloads",
+      "external",
+      "file-images",
+      "files",
+      "image",
+      "light-sdk",
+      "light-sdk-push",
+      "light-sdk-ringtone",
+      "location",
+      "maps",
+      "media-library",
+      "network",
+      "nfc",
+      "notifications",
+      "overlays",
+      "photo-capture",
+      "store",
+      "text-input",
+      "ui-canvas",
+      "ui-lists",
+      "ui-messages",
+      "ui-playing",
+      "video",
+      "web-sockets"
+    ],
+    "identical": true
+  },
+  {
+    "app": "examples/light-template",
+    "stem": "worker",
+    "sha256": "3d91eaaed87391de0a9345de2f5b74c91ffd80920b694eaff13e817e5ce521a9",
+    "capabilities": [
+      "background",
+      "light-sdk",
+      "light-sdk-push",
+      "location",
+      "network",
+      "notifications",
+      "store"
+    ],
+    "identical": true
+  },
+  {
+    "app": "examples/light-template",
+    "stem": "overlay",
+    "sha256": "ddacefe9dd5206dd76e0473d182b3785f837a7722b459f619fa7884f8953349d",
+    "capabilities": [
+      "external",
+      "image",
+      "network",
+      "overlays",
+      "text-input",
+      "ui-canvas",
+      "ui-lists",
+      "ui-messages",
+      "ui-playing"
+    ],
+    "identical": true
+  },
+  {
+    "app": "/tmp/ink-size-inkify-f46b1e45",
+    "stem": "app",
+    "sha256": "6657f62cbda052a9b89f24a118e8574b713e65e1b1927f4f5143564c14f539db",
+    "capabilities": [
+      "audio-detached",
+      "barcode-generate",
+      "connectivity",
+      "downloads",
+      "external",
+      "image",
+      "network",
+      "store",
+      "text-input",
+      "ui-lists",
+      "ui-playing"
+    ],
+    "identical": true
+  }
+]
