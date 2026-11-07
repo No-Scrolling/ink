@@ -101,7 +101,6 @@ export default function Units({ value }: { value: string }) {
       ]}
       value={value}
       onChange={save.run}
-      disabled={save.status === "pending"}
     />
     {save.status === "error" && <Text>{save.error.message}</Text>}
   </Screen>;

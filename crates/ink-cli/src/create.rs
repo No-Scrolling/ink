@@ -83,6 +83,7 @@ pub fn create(
         super::distribution::prepare(directory)?;
     }
     super::app_release::write(directory)?;
+    super::app_agents::write(directory)?;
     super::header::create_default(title, directory)?;
     fs::write(
         directory.join("README.md"),
@@ -91,6 +92,7 @@ pub fn create(
     println!("Ink · create");
     super::output::tree_step("Create", title, false, true);
     super::output::tree_step("Workflows", "Prepare Release and Release", false, true);
+    super::output::tree_step("Agents", "AGENTS.md", false, true);
     super::output::tree_root_field("Directory", directory.display().to_string(), true);
     println!("\nRun {} in {}", if installed { "ink dev" } else { "bun install" }, directory.display());
     Ok(())

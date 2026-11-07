@@ -27,7 +27,9 @@ Replace `com.example.myapp` with your app's Android application ID. Ink installs
 
 New apps include a README and a header with the app’s icon, name and four starter screenshots. Add `--repository your-name/my-app` to set the README's licence badge, release badge and download link, or replace `OWNER/REPO` in the README later. Replace `assets/a.png`–`d.png` with your own screenshots, then run [ink header](/design-export#generate-an-app-header).
 
-`ink check` checks formatting, lint, types and bundling. Use `ink format` to fix formatting. See [Project structure](/project-structure) for routes, assets and configuration.
+New apps also include an `AGENTS.md` that tells coding agents to follow Ink's design guide at `node_modules/ink/DESIGN.md`. To add it to an existing app, run `ink setup agents`. This keeps any existing instructions in `AGENTS.md`.
+
+`ink check` checks formatting, lint, types and bundling. Its `ink-design` lint rules reject page structures the design guide prohibits. Use `ink format` to fix formatting. See [Project structure](/project-structure) for routes, assets and configuration.
 
 ## Run on a phone
 

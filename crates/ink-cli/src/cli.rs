@@ -129,4 +129,6 @@ pub enum InkCommand {
 pub enum SetupCommand {
     /// Add GitHub workflows for preparing and publishing signed app releases
     Release,
+    /// Point coding agents to Ink's design guide in AGENTS.md
+    Agents,
 }

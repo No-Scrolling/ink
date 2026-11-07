@@ -1,4 +1,5 @@
 mod android;
+mod app_agents;
 mod app_release;
 mod development;
 mod distribution;
@@ -93,6 +94,12 @@ fn run() -> Result<()> {
         } => {
             let config = find_config(cli.directory.as_deref())?;
             app_release::setup(config.parent().expect("config has a parent"))
+        }
+        InkCommand::Setup {
+            command: Some(cli::SetupCommand::Agents),
+        } => {
+            let config = find_config(cli.directory.as_deref())?;
+            app_agents::setup(config.parent().expect("config has a parent"))
         }
         InkCommand::Update { version } => {
             distribution::run("update", None, &version.into_iter().collect::<Vec<_>>())

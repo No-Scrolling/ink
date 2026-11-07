@@ -74,7 +74,7 @@ for (const name of await readdir(`${stage}/packages`)) {
     url: `git+https://github.com/${sdk.repository}.git`,
     directory: `packages/${name}`,
   };
-  pkg.files = ["src", "*.json", "*.ts"];
+  pkg.files = ["src", "*.json", "*.ts", "*.md"];
   for (const kind of ["dependencies", "peerDependencies"]) {
     for (const key of Object.keys(pkg[kind] ?? {})) {
       if (key === "ink" || key.startsWith("@ink/")) {

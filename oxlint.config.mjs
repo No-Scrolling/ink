@@ -3,6 +3,7 @@ import { RECOMMENDED_RULES } from "oxlint-plugin-react-doctor";
 export default {
   jsPlugins: [
     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+    { name: "ink-design", specifier: "./tools/oxlint/ink-design/index.ts" },
     { name: "react-doctor", specifier: "oxlint-plugin-react-doctor" },
   ],
   settings: { "react-doctor": { portedRuleMode: "curated" } },
@@ -25,5 +26,8 @@ export default {
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "ink-design/no-empty-field": "error",
+    "ink-design/no-page-wrapper-stack": "error",
+    "ink-design/no-pending-control-changes": "error",
   },
 };
