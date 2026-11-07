@@ -103,11 +103,9 @@ A zero denotes an asset that the app does not ship.
    not APK content.
 
 These are incremental component measurements, not additive APK savings.
-`experiments.json`, `jni.json`, `gated.json`, `compact-only.json`,
-`icons-bundler.json`, and the complete before/after entry lists preserve the data.
-`canvas.json` records the earlier, smaller Canvas-only gating step. `compact.json`
-is an intermediate unsuccessful linker-flag attempt; its Inkify build overlapped
-the splash experiment and is not used to attribute resource or splash savings.
+`experiments.json`, `icons-bundler.json` and `canvas.json` preserve the summary
+data. `canvas.json` records the earlier, smaller Canvas-only gating step. Raw
+per-entry APK listings were not kept in the repository.
 
 ## Rejected platform splash replacement
 
@@ -119,10 +117,8 @@ showed a transient system-bar difference: **4,720 changed pixels** in the top
 not establish identical launch behaviour. The change was reverted.
 
 The retained final Counter screen matches the original at **all 1,339,200 pixels**
-(1080 × 1240). `splash-pixels.json` records the comparisons, and the PNG files
-preserve the original, rejected candidate and final screen. Each capture checked
-that the measurement application was in the foreground. `splash.json` records the
-rejected candidate before final compaction; do not treat it as a final build.
+(1080 × 1240). `splash-pixels.json` records the comparisons. Each capture checked that the
+measurement application was in the foreground.
 
 ## Verification
 
