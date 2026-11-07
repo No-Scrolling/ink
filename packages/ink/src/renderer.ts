@@ -1,7 +1,7 @@
 declare const process: { env: { NODE_ENV: string } };
-import { createContext, type ReactNode } from "./react";
-import Reconciler from "react-reconciler";
-import { ConcurrentRoot, DefaultEventPriority, DiscreteEventPriority } from "react-reconciler/constants";
+import { options, render as renderPreact, type ComponentChildren, type VNode } from "preact";
+import type { ReactNode } from "react";
+import { Activity } from "./visibility";
 import { onNativeMessage } from "./native";
 import { pressHandler } from "./press";
 import type { Destination } from "./navigation";
@@ -11,8 +11,71 @@ declare const __inkCommit: (operations: Operation[]) => void;
 declare const __inkPost: (message: string) => void;
 
 type Props = Record<string, unknown>;
-type Instance = { id: number; type: string; props: Props; children: Instance[]; parent: Container | undefined; hidden?: boolean };
-type Container = { id: number; children: Instance[] };
+// Preact only needs tree links and mutation methods; no browser DOM is involved.
+class HostNode {
+  id: number;
+  props: Props = {};
+  parentNode: HostNode | null = null;
+  firstChild: HostNode | null = null;
+  lastChild: HostNode | null = null;
+  previousSibling: HostNode | null = null;
+  nextSibling: HostNode | null = null;
+  hidden = false;
+  readonly nodeType: number;
+  readonly namespaceURI = "http://www.w3.org/1999/xhtml";
+  constructor(readonly type: string, text?: string) {
+    this.id = type === "#root" ? 0 : allocateHostId();
+    this.nodeType = type === "#text" ? 3 : 1;
+    if (text !== undefined) this.props = { text: String(text) };
+  }
+  get localName() { return this.type; }
+  get childNodes(): HostNode[] {
+    const nodes: HostNode[] = [];
+    for (let child = this.firstChild; child; child = child.nextSibling) nodes.push(child);
+    return nodes;
+  }
+  get data() { return this.props.text; }
+  set data(text: unknown) {
+    this.props = { text: String(text) };
+    if (mounted.has(this.id)) (textChanges ?? createTextBatch()).push(this.id, String(text));
+  }
+  // Native props and callbacks are read together from the completed host vnode.
+  setAttribute() {}
+  removeAttribute() {}
+  addEventListener() {}
+  removeEventListener() {}
+  appendChild(child: HostNode) { this.insertBefore(child, null); }
+  insertBefore(child: HostNode, before: HostNode | null) {
+    if (child === before) return;
+    if (child.parentNode) child.parentNode.unlink(child);
+    child.parentNode = this;
+    child.previousSibling = before ? before.previousSibling : this.lastChild;
+    child.nextSibling = before;
+    if (child.previousSibling) child.previousSibling.nextSibling = child;
+    else this.firstChild = child;
+    if (before) before.previousSibling = child;
+    else this.lastChild = child;
+    if (this.id === 0 || mounted.has(this.id)) {
+      publish(child);
+      queue({ op: "insert", id: child.id, parent: this.id, before: before?.id ?? null });
+    }
+  }
+  unlink(child: HostNode) {
+    if (child.previousSibling) child.previousSibling.nextSibling = child.nextSibling;
+    else this.firstChild = child.nextSibling;
+    if (child.nextSibling) child.nextSibling.previousSibling = child.previousSibling;
+    else this.lastChild = child.previousSibling;
+    child.parentNode = child.previousSibling = child.nextSibling = null;
+  }
+  removeChild(child: HostNode) {
+    this.unlink(child);
+    if (mounted.has(child.id)) {
+      queue({ op: "remove", id: child.id, parent: this.id });
+      forget(child);
+    }
+  }
+}
+type Instance = HostNode;
 type Operation =
   | { op: "create"; id: number; type: string; props: Props }
   | { op: "update"; id: number; props: Props }
@@ -26,8 +89,6 @@ let nextId = 1;
 let operations: Operation[] = [];
 let textChanges: (number | string)[] | undefined;
 let commitScheduled = false;
-let priority = DefaultEventPriority;
-const hostContext = {};
 
 function allocateHostId() {
   if (!Number.isSafeInteger(nextId)) throw new RangeError("Host identifiers exhausted");
@@ -47,7 +108,7 @@ function createTextBatch() {
 
 function textContent(type: string, props: Props): string | null {
   if (type !== "Text") return null;
-  const value = props.children;
+  const value = props.text ?? props.children;
   return typeof value === "string" ? value : typeof value === "number" || typeof value === "bigint" ? String(value) : null;
 }
 
@@ -79,32 +140,15 @@ function publish(instance: Instance) {
   mounted.set(instance.id, instance);
   queue({ op: "create", id: instance.id, type: instance.type, props: nativeProps(instance.props, instance.type) });
   if (instance.hidden) queue({ op: "hidden", id: instance.id, value: true });
-  for (const child of instance.children) {
+  for (let child = instance.firstChild; child; child = child.nextSibling) {
     publish(child);
     queue({ op: "insert", id: child.id, parent: instance.id, before: null });
   }
 }
 
-function insert(parent: Container, child: Instance, before?: Instance) {
-  // Only a moved child needs searching for; appends stay constant-time.
-  if (child.parent === parent) parent.children.splice(parent.children.indexOf(child), 1);
-  child.parent = parent;
-  if (before) parent.children.splice(parent.children.indexOf(before), 0, child);
-  else parent.children.push(child);
-  publish(child);
-  queue({ op: "insert", id: child.id, parent: parent.id, before: before?.id ?? null });
-}
-
 function forget(instance: Instance) {
   mounted.delete(instance.id);
-  instance.parent = undefined;
-  for (const child of instance.children) forget(child);
-}
-
-function remove(parent: Container, child: Instance) {
-  parent.children.splice(parent.children.indexOf(child), 1);
-  queue({ op: "remove", id: child.id, parent: parent.id });
-  forget(child);
+  for (let child = instance.firstChild; child; child = child.nextSibling) forget(child);
 }
 
 function sameListValue(a: unknown, b: unknown): boolean {
@@ -150,6 +194,7 @@ function update(instance: Instance, type: string, _oldProps: Props, props: Props
   const isText = type === "Text";
   if (isText) props = hostProps(type, props);
   instance.props = props;
+  if (!mounted.has(instance.id)) return;
   if (type === "NativeList" && props.keyField === "key" && previous.template === props.template) {
     const next = compiledListUpdate(previous, props);
     if (next) queue({ op: "update", id: instance.id, props: next }, true);
@@ -163,10 +208,11 @@ function update(instance: Instance, type: string, _oldProps: Props, props: Props
       queue({ op: "update", id: instance.id, props: nativeProps(props, type) });
       return;
     }
-    const children = props.children;
-    if (children !== previous.children) {
+    const children = props.text ?? props.children;
+    if (children !== (previous.text ?? previous.children)) {
       if (typeof children === "string") return (textChanges ?? createTextBatch()).push(instance.id, children);
       if (typeof children === "number" || typeof children === "bigint") return (textChanges ?? createTextBatch()).push(instance.id, String(children));
+      if (textContent(type, previous) !== null) (textChanges ?? createTextBatch()).push(instance.id, "");
     }
     return;
   }
@@ -204,6 +250,7 @@ function update(instance: Instance, type: string, _oldProps: Props, props: Props
 }
 
 function hide(instance: Instance, value: boolean) {
+  if (instance.hidden === value) return;
   instance.hidden = value;
   if (mounted.has(instance.id)) queue({ op: "hidden", id: instance.id, value });
 }
@@ -217,118 +264,82 @@ function report(error: unknown, info: { componentStack?: string | null }) {
   __inkPost(JSON.stringify({ type: "error", message: errorMessage(error, info) }));
 }
 
-function reportRecovered(error: unknown, info: { componentStack?: string | null }) {
-  __inkPost(JSON.stringify({ type: "log", level: "error", message: errorMessage(error, info) }));
+// These fields are the stable, mangled option-hook ABI in the pinned Preact 10.
+type HostVNode = VNode<Props> & { __e?: HostNode; __?: HostVNode; __k?: (HostVNode | null)[] };
+const hooks = options as typeof options & { __c?: (vnode: HostVNode, queue: unknown[]) => void };
+const previousDiff = options.diffed;
+options.diffed = vnode => {
+  previousDiff?.(vnode);
+  const host = vnode as HostVNode;
+  if (typeof host.type === "string" && host.__e) update(host.__e, host.type, host.__e.props, host.props);
+  if (host.__e && (typeof host.type === "string" || host.type == null)) hide(host.__e, isHidden(host));
+  if (host.type === Activity) visitVisibility(host);
+};
+
+function isHidden(vnode: HostVNode) {
+  for (let parent = vnode.__; parent; parent = parent.__) {
+    // A native ancestor already carries visibility for this entire branch.
+    if (typeof parent.type === "string") return false;
+    if (parent.type === Activity && parent.props.mode === "hidden") return true;
+  }
+  return false;
 }
 
-const reconciler = Reconciler<string, Props, Container, Instance, Instance, never, never, never,
-  Instance, object, never, ReturnType<typeof setTimeout>, -1, null>({
-  supportsMutation: true,
-  supportsPersistence: false,
-  supportsHydration: false,
-  isPrimaryRenderer: true,
-  supportsMicrotasks: true,
-  // Declare `parent` up front so every instance keeps one object shape.
-  createInstance: (type, props) => ({ id: allocateHostId(), type, props: hostProps(type, props), children: [], parent: undefined }),
-  createTextInstance: text => ({ id: allocateHostId(), type: "#text", props: { text }, children: [], parent: undefined }),
-  appendInitialChild: (parent, child) => { parent.children.push(child); child.parent = parent; },
-  finalizeInitialChildren: () => false,
-  shouldSetTextContent: (type, props) => {
-    if (type !== "Text") return false;
-    const kind = typeof props.children;
-    return kind === "string" || kind === "number" || kind === "bigint";
-  },
-  getRootHostContext: () => hostContext,
-  getChildHostContext: () => hostContext,
-  getPublicInstance: instance => instance,
-  prepareForCommit: () => null,
-  resetAfterCommit: () => {
-    if (!operations.length || commitScheduled) return;
-    commitScheduled = true;
-    queueMicrotask(() => {
-      // Revealing an Activity reconnects store subscriptions in passive effects.
-      // Include their synchronous corrections before presenting the page.
-      while (reconciler.flushPassiveEffects()) {}
-      reconciler.flushSyncWork();
-      const committed = operations;
-      operations = [];
-      textChanges = undefined;
-      commitScheduled = false;
-      if (committed.length) __inkCommit(committed);
-    });
-  },
-  preparePortalMount: () => {},
-  scheduleTimeout: setTimeout,
-  cancelTimeout: clearTimeout,
-  noTimeout: -1,
-  scheduleMicrotask: queueMicrotask,
-  getInstanceFromNode: () => null,
-  beforeActiveInstanceBlur: () => {},
-  afterActiveInstanceBlur: () => {},
-  prepareScopeUpdate: () => {},
-  getInstanceFromScope: () => null,
-  detachDeletedInstance: () => {},
-  appendChild: insert,
-  appendChildToContainer: insert,
-  insertBefore: insert,
-  insertInContainerBefore: insert,
-  removeChild: remove,
-  removeChildFromContainer: remove,
-  resetTextContent: instance => { (textChanges ?? createTextBatch()).push(instance.id, ""); },
-  commitTextUpdate: (instance, _oldText, text) => {
-    instance.props = { text };
-    (textChanges ?? createTextBatch()).push(instance.id, text);
-  },
-  commitUpdate: update,
-  hideInstance: instance => hide(instance, true),
-  hideTextInstance: instance => hide(instance, true),
-  unhideInstance: instance => hide(instance, false),
-  unhideTextInstance: instance => hide(instance, false),
-  clearContainer: container => {
-    for (const child of [...container.children]) remove(container, child);
-  },
-  NotPendingTransition: null,
-  // React's public Context type omits the fields consumed by its reconciler.
-  HostTransitionContext: createContext(null) as unknown as Reconciler.ReactContext<null>,
-  setCurrentUpdatePriority: value => { priority = value; },
-  getCurrentUpdatePriority: () => priority,
-  resolveUpdatePriority: () => priority,
-  resetFormInstance: () => {},
-  requestPostPaintCallback: callback => { setTimeout(() => callback(performance.now()), 0); },
-  shouldAttemptEagerTransition: () => false,
-  trackSchedulerEvent: () => {},
-  resolveEventType: () => null,
-  resolveEventTimeStamp: () => performance.now(),
-  maySuspendCommit: () => false,
-  preloadInstance: () => true,
-  startSuspendingCommit: () => {},
-  suspendInstance: () => {},
-  waitForCommitToBeReady: () => null,
-});
+function visitVisibility(vnode: HostVNode) {
+  if (typeof vnode.type === "string" || vnode.type == null) {
+    if (vnode.__e) hide(vnode.__e, isHidden(vnode));
+    return;
+  }
+  for (const child of vnode.__k ?? []) if (child) visitVisibility(child);
+}
+
+const previousVNode = options.vnode;
+options.vnode = vnode => {
+  // Compat normalises DOM attributes and event names. Ink hosts use the
+  // native prop protocol directly; component vnodes still use its hook chain.
+  if (typeof vnode.type === "string") {
+    (vnode as VNode & { $typeof?: symbol }).$typeof = Symbol.for("react.element");
+  } else previousVNode?.(vnode);
+  if (vnode.type === "Text") {
+    const props = vnode.props as Props;
+    const text = textContent("Text", props);
+    if (text !== null) (vnode as HostVNode).props = { ...props, text, children: undefined };
+  }
+};
+
+// QuickJS has no browser paint cycle. Run effects before presenting queued ops.
+options.requestAnimationFrame = callback => { queueMicrotask(callback); };
+options.debounceRendering = queueMicrotask;
+const previousCommit = hooks.__c;
+hooks.__c = (vnode, components) => {
+  previousCommit?.(vnode, components);
+  if (commitScheduled) return;
+  commitScheduled = true;
+  queueMicrotask(() => queueMicrotask(() => {
+    const committed = operations;
+    operations = [];
+    textChanges = undefined;
+    commitScheduled = false;
+    if (committed.length) __inkCommit(committed);
+  }));
+};
+
+// Preact creates nodes through document, but all layout and painting stay native.
+Object.assign(globalThis, { document: {
+  createElementNS: (_namespace: string, type: string) => new HostNode(type),
+  createElement: (type: string) => new HostNode(type),
+  createTextNode: (text: string) => new HostNode("#text", text),
+} });
 
 export function dispatchEvent(id: number, name: string, args: unknown[]) {
   const handler = mounted.get(id)?.props[name];
-  if (typeof handler !== "function") return;
-  const previous = priority;
-  priority = DiscreteEventPriority;
-  try {
-    handler(...args);
-  } finally {
-    priority = previous;
-  }
+  if (typeof handler === "function") handler(...args);
 }
 
-let developmentRoot: ReturnType<typeof reconciler.createContainer> | undefined;
-if (process.env.NODE_ENV === "development") {
-  reconciler.injectIntoDevTools({ bundleType: 1, version: "19.2.8", rendererPackageName: "ink" });
-}
-
+let developmentRoot: HostNode | undefined;
 export function render(element: ReactNode) {
-  if (process.env.NODE_ENV === "development" && developmentRoot) {
-    const root = developmentRoot;
-    reconciler.updateContainer(element, root, null, null);
-    return () => reconciler.updateContainer(null, root, null, null);
-  }
+  const container = process.env.NODE_ENV === "development" && developmentRoot || new HostNode("#root");
+  if (process.env.NODE_ENV === "development") developmentRoot = container;
   onNativeMessage("event", message => {
     if (typeof message.id !== "number" || !Number.isSafeInteger(message.id)
       || typeof message.name !== "string" || !Array.isArray(message.args)) {
@@ -336,9 +347,16 @@ export function render(element: ReactNode) {
     }
     dispatchEvent(message.id, message.name, message.args);
   });
-  const container: Container = { id: 0, children: [] };
-  const root = reconciler.createContainer(container, ConcurrentRoot, null, false, null, "", report, reportRecovered, reportRecovered, () => {});
-  if (process.env.NODE_ENV === "development") developmentRoot = root;
-  reconciler.updateContainer(element, root, null, null);
-  return () => reconciler.updateContainer(null, root, null, null);
+  const updateRoot = () => {
+    try {
+      renderPreact(element as ComponentChildren, container as unknown as Parameters<typeof renderPreact>[1]);
+    } catch (error) {
+      report(error, {});
+    }
+  };
+  // Prefresh replaces mounted component types at the end of the bundle.
+  // Apply the new root afterwards so matching components keep their state.
+  if (process.env.NODE_ENV === "development") queueMicrotask(updateRoot);
+  else updateRoot();
+  return () => renderPreact(null, container as unknown as Parameters<typeof renderPreact>[1]);
 }

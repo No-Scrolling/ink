@@ -1,4 +1,4 @@
-import { createElement, useLayoutEffect, useMemo, useRef } from "react";
+import { createElement, useLayoutEffect, useMemo, useRef } from "ink/internal/react";
 import { List } from "ink";
 import { fixedListRow } from "ink/internal/list";
 import { checkCircleFilled, videoFileFilled } from "ink/icons";

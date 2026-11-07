@@ -162,7 +162,7 @@ function buildOptions(bootstrap = false) { return {
   entrypoints: [entry], target: "browser", format: development && !bootstrap ? "cjs" : "iife", minify: !development,
   sourcemap: development ? "external" : "none",
   metafile: true,
-  define: { "process.env.NODE_ENV": JSON.stringify(development ? "development" : "production"), "import.meta.env": JSON.stringify(publicEnvironment) },
+  define: { self: "globalThis", "process.env.NODE_ENV": JSON.stringify(development ? "development" : "production"), "import.meta.env": JSON.stringify(publicEnvironment) },
   plugins: [{ name: "ink-resolved-inputs", setup(build) {
     build.onLoad({ filter: /\.svg$/i }, async ({ path }) => {
       return { contents: `export default ${JSON.stringify(await svgReference(path))}`, loader: "js" };
@@ -174,7 +174,17 @@ function buildOptions(bootstrap = false) { return {
         await inspect(replacement);
         return { path: replacement };
       }
-      const resolved = await realpath(Bun.resolveSync(path, /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
+      const aliases = {
+        react: resolve(frameworkDirectory, "react-compat.ts"),
+        "react-dom": "preact/compat",
+        "react-dom/client": "preact/compat/client",
+        "react-dom/test-utils": "preact/test-utils",
+        "react/jsx-runtime": "preact/jsx-runtime",
+        "react/jsx-dev-runtime": "preact/jsx-dev-runtime",
+        "react/compiler-runtime": resolve(frameworkDirectory, "compiler-runtime.ts"),
+      };
+      const target = aliases[path] ?? path;
+      const resolved = await realpath(Bun.resolveSync(target, /^@prefresh(?:\/|$)/.test(path) ? toolingDirectory : path in aliases || /^preact(?:\/|$)/.test(path) ? frameworkDirectory : /^(?:react|ink)(?:\/|$)/.test(path) ? root : importer ? dirname(importer) : root));
       const name = await inspect(resolved);
       if (development && !bootstrap && importer && (name === "ink" || name === "react" || name?.startsWith("@ink/") || resolved.includes("/node_modules/"))) {
         shared.set(path, resolved);
@@ -374,8 +384,8 @@ if (!development) {
 let devRuntimeHash;
 if (development) {
   const bootstrapEntry = resolve(dirname(output), "framework-entry.js");
-  const refreshPath = Bun.resolveSync("react-refresh/runtime", toolingDirectory);
-  let bootstrapSource = 'import Refresh from ' + JSON.stringify(refreshPath) + ';\nRefresh.injectIntoGlobalHook(globalThis);\nglobalThis.__inkFramework = {refresh: Refresh, modules: Object.create(null), appModules: Object.create(null)};\n';
+  const refreshPath = resolve(frameworkDirectory, "refresh.ts");
+  let bootstrapSource = 'import * as Refresh from ' + JSON.stringify(refreshPath) + ';\nglobalThis.__inkFramework = {refresh: Refresh, modules: Object.create(null), appModules: Object.create(null)};\n';
   for (const path of [...shared.keys()].sort()) bootstrapSource += 'globalThis.__inkFramework.modules[' + JSON.stringify(path) + '] = require(' + JSON.stringify(shared.get(path)) + ');\n';
   await Bun.write(bootstrapEntry, bootstrapSource);
   const options = buildOptions(true);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "ink/internal/react";
 import { callNative, NativeError } from "ink/native";
 import { attachNativeController } from "ink/native/controller";
 

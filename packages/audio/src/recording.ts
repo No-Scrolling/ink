@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo } from "ink/internal/react";
 import { NativeError } from "ink/native";
 import type { FileRef } from "@ink/files";
 import { captureReadout, fields, useCapture, type CaptureDisplay } from "./capture-internal";

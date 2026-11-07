@@ -1,4 +1,4 @@
-import { createElement, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useRef, useState } from "ink/internal/react";
 import { Field, useColourScheme } from "ink";
 import { NativeError } from "ink/native";
 import { useNativeController } from "ink/internal/controller";

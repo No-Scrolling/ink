@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement } from "ink/internal/react";
 
 export const supportedFormats = ["qr", "aztec", "data-matrix", "pdf417", "ean-13", "ean-8", "upc-a", "upc-e", "code-39", "code-93", "code-128", "itf", "codabar"] as const;
 export type BarcodeFormat = typeof supportedFormats[number];

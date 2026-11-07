@@ -1,5 +1,5 @@
 import { lightos, type PermissionStatus } from "@ink/lightos";
-import { createElement, useCallback, useEffect, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useRef, useState } from "ink/internal/react";
 import { EmptyState, ErrorState, LoadingState, Screen, Text } from "ink";
 import { callNative, NativeError } from "ink/native";
 import { files, type FileRef } from "./index";

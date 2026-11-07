@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import { createElement, type ReactNode } from "ink/internal/react";
 import { actionBarProps, type ActionBarItem, type IconAsset } from "ink";
 import { callNative, NativeError, onNativeMessage } from "ink/native";
 import { MediaGridView } from "./media-grid";

@@ -1,4 +1,4 @@
-import { Activity, createElement, useMemo, type ComponentType, type ReactNode } from "react";
+import { Activity, createElement, useMemo, type ComponentType, type ReactNode } from "./react";
 import { back, LayoutContext, NavigationStack, RouteContext, type Destination, type Entry } from "./navigation";
 
 export type FileRoute = { name: string; path: string; component: ComponentType };

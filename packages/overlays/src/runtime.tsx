@@ -1,4 +1,4 @@
-import { createElement, useSyncExternalStore } from "react";
+import { createElement, useSyncExternalStore } from "ink/internal/react";
 import { render } from "ink/renderer";
 import { overlayComponents, overlayContent } from "./internal";
 

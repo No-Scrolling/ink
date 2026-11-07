@@ -1,4 +1,4 @@
-import { createElement, type ComponentType } from "react";
+import { createElement, type ComponentType } from "ink/internal/react";
 import type { Snapshot, SnapshotSource } from "ink";
 import { callNative, onNativeMessage } from "ink/native";
 import { overlayComponents } from "./internal";
