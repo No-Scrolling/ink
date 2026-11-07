@@ -69,7 +69,9 @@ Scrolling continues natively while JavaScript is busy. New content and actions t
 
 ### Updating the screen
 
-Changes to existing elements update the affected parts of the native tree. Structural and navigation changes rebuild the tree. Both recalculate layout.
+Changes to existing elements update the affected parts of the native tree. Structural and navigation changes rebuild the tree. Layout reuses measurements and scene ranges for unchanged static subtrees when their available rectangles and drawing context match. Changed content, bounds, clipping, scale or appearance takes the normal layout path.
+
+Lists, images, text inputs, platform surfaces and animated readouts retain their layout side effects. Static children inside these compositions can still reuse their output. Ink keeps the previous primitive buffers and remaps cached text indices and copies hit regions as it builds the next scene.
 
 Text changes send just the node ID and new text. Rust combines overlapping updates so rebuilding a parent also handles its changed children, then replaces the affected branches in one tree traversal. Text input synchronisation runs when inputs or the tree structure change, rather than on every text update.
 

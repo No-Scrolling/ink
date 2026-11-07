@@ -62,4 +62,6 @@ Further compiler coverage should prove equivalence for pure wrappers. Dropping t
 
 Rust now owns the standard continuously changing displays covered by this audit. JS still executes app functions, hooks, effects, callbacks and general React reconciliation. Keeping that compatibility path is deliberate. Further pure-row compiler coverage and native template allocation work need workload-specific evidence, not a blanket language migration.
 
+Static subtree layout now retains measurements and ranges into the previous scene. Native node content includes the applied React operations, generated list rows and event actions; changes invalidate the affected cached subtree. Reuse also requires matching bounds, clipping, scrolling mode, scale and appearance. Stateful list, image, editor, portal, capture and playback nodes continue to register their live state through normal layout. See the [layout reuse evaluation](layout-reuse-evaluation.md) for measurements and the decision to retain the current text stack.
+
 The effects page still explicitly reads fresh player state once a second while visible. This is an app-specific statistic subscription, not a playback animation loop. A custom tuner can likewise retain JS measurements for its own note display policy. Kotlin remains appropriate for Android services and platform integration.
