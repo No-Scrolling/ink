@@ -151,6 +151,8 @@ struct Core {
     queue: vk::Queue,
     memory: vk::PhysicalDeviceMemoryProperties,
     pipeline_cache: vk::PipelineCache,
+    #[cfg(feature = "presentation-timing")]
+    pipeline_feedback: bool,
     commands: vk::CommandPool,
     upload: vk::CommandBuffer,
     descriptors: vk::DescriptorPool,
@@ -941,21 +943,31 @@ impl Device {
             let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&attachment);
             let dynamic = vk::PipelineDynamicStateCreateInfo::default()
                 .dynamic_states(&[vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
-            let result = d.create_graphics_pipelines(
-                self.0.pipeline_cache,
-                &[vk::GraphicsPipelineCreateInfo::default()
-                    .stages(&stages)
-                    .vertex_input_state(&vertex_input)
-                    .input_assembly_state(&assembly)
-                    .viewport_state(&viewport)
-                    .rasterization_state(&raster)
-                    .multisample_state(&multisample)
-                    .color_blend_state(&blend)
-                    .dynamic_state(&dynamic)
-                    .layout(self.0.pipeline_layout)
-                    .render_pass(pass)],
-                None,
-            );
+            let info = vk::GraphicsPipelineCreateInfo::default()
+                .stages(&stages)
+                .vertex_input_state(&vertex_input)
+                .input_assembly_state(&assembly)
+                .viewport_state(&viewport)
+                .rasterization_state(&raster)
+                .multisample_state(&multisample)
+                .color_blend_state(&blend)
+                .dynamic_state(&dynamic)
+                .layout(self.0.pipeline_layout)
+                .render_pass(pass);
+            #[cfg(feature = "presentation-timing")]
+            let mut feedback = vk::PipelineCreationFeedback::default();
+            #[cfg(feature = "presentation-timing")]
+            let mut feedback_info = vk::PipelineCreationFeedbackCreateInfo::default().pipeline_creation_feedback(&mut feedback);
+            #[cfg(feature = "presentation-timing")]
+            let info = if self.0.pipeline_feedback { info.push_next(&mut feedback_info) } else { info };
+            let result = d.create_graphics_pipelines(self.0.pipeline_cache, &[info], None);
+            #[cfg(feature = "presentation-timing")]
+            {
+                let cache = if !feedback.flags.contains(vk::PipelineCreationFeedbackFlags::VALID) { "unknown" }
+                    else if feedback.flags.contains(vk::PipelineCreationFeedbackFlags::APPLICATION_PIPELINE_CACHE_HIT) { "hit" }
+                    else { "miss" };
+                crate::startup_marker(&format!("pipeline={} cache={} driver_ns={}", vname.to_string_lossy(), cache, feedback.duration));
+            }
             let pipeline = result.map_err(|(pipelines, error)| {
                 for pipeline in pipelines {
                     d.destroy_pipeline(pipeline, None);
@@ -1204,6 +1216,7 @@ impl Surface {
         };
         let presentable = !matches!(target, Presentation::Offscreen);
         unsafe {
+            let instance_span = crate::StartupSpan::new("instance");
             let entry = &runtime.entry;
             let app = vk::ApplicationInfo::default()
                 .application_name(c"Ink direct Vulkan")
@@ -1238,6 +1251,8 @@ impl Surface {
                     .enabled_extension_names(&extensions),
                 None,
             )?;
+            drop(instance_span);
+            let device_span = crate::StartupSpan::new("device");
             let cleanup_instance = Cleanup(Some(|| instance.destroy_instance(None)));
             let loader = ash::khr::surface::Instance::new(entry, &instance);
             let android = ash::khr::android_surface::Instance::new(entry, &instance);
@@ -1312,6 +1327,15 @@ impl Surface {
                 }
                 (extensions, supported)
             };
+            #[cfg(feature = "presentation-timing")]
+            let (extensions, pipeline_feedback) = {
+                let supported = instance.enumerate_device_extension_properties(physical)?.iter().any(|extension| {
+                    extension.extension_name_as_c_str().ok() == Some(ash::ext::pipeline_creation_feedback::NAME)
+                });
+                let mut extensions = extensions;
+                if supported { extensions.push(ash::ext::pipeline_creation_feedback::NAME.as_ptr()); }
+                (extensions, supported)
+            };
             let device = instance.create_device(
                 physical,
                 &vk::DeviceCreateInfo::default()
@@ -1321,6 +1345,7 @@ impl Surface {
                     .enabled_extension_names(&extensions),
                 None,
             )?;
+            drop(device_span);
             let cleanup_device = Cleanup(Some(|| device.destroy_device(None)));
             let queue = device.get_device_queue(family, 0);
             let memory = instance.get_physical_device_memory_properties(physical);
@@ -1409,6 +1434,7 @@ impl Surface {
             )?;
             let cleanup_sampler = Cleanup(Some(|| device.destroy_sampler(sampler, None)));
             // Drivers ignore incompatible cache data and start empty.
+            crate::startup_marker(if pipeline_cache.is_empty() { "pipeline_cache=miss" } else { "pipeline_cache=provided" });
             let cache = device.create_pipeline_cache(
                 &vk::PipelineCacheCreateInfo::default().initial_data(pipeline_cache),
                 None,
@@ -1466,6 +1492,8 @@ impl Surface {
                 queue,
                 memory,
                 pipeline_cache: cache,
+                #[cfg(feature = "presentation-timing")]
+                pipeline_feedback,
                 commands,
                 upload: buffers[0],
                 descriptors,
@@ -1558,6 +1586,7 @@ impl Surface {
         }
     }
     fn recreate(&mut self) -> Result<()> {
+        let _span = crate::StartupSpan::new("swapchain");
         if self.surface == vk::SurfaceKHR::null() {
             #[cfg(feature = "offscreen")]
             if self.windowless {
@@ -1898,6 +1927,8 @@ impl RenderPass<'_> {
             #[cfg(feature = "perf")]
             drop(submit_trace);
             s.submitted = true;
+            #[cfg(feature = "presentation-timing")]
+            if s.present_id == 0 { crate::startup_marker("first_frame_submitted"); }
             let semaphores = [s.rendered[self.index as usize]];
             let chains = [s.chain];
             let indices = [self.index];

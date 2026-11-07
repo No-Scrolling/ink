@@ -843,8 +843,10 @@ impl Renderer {
             height,
             format: surface.format(),
         };
+        let pipeline_span = crate::StartupSpan::new("pipelines");
         let quad_pipeline = device.pipeline(config.format, gpu::PipelineKind::Quad)?;
         let text_pipeline = device.pipeline(config.format, gpu::PipelineKind::Text)?;
+        drop(pipeline_span);
         let fixed_transform_buffer = transform_buffer(&device, "Ink fixed transform");
         let scroll_transform_buffer = transform_buffer(&device, "Ink scroll transform");
         let fixed_transform = fixed_transform_buffer.bind_group();
@@ -865,7 +867,9 @@ impl Renderer {
         #[cfg(any(feature = "image", not(target_os = "android")))]
         let image_cache = ImageCache::new();
         let system_glyph_buffer = InstanceBuffer::lazy("Ink system glyph instances");
+        let atlas_span = crate::StartupSpan::new("atlas");
         let glyph_atlas = GlyphAtlas::new(&device, ATLAS_SIZE)?;
+        drop(atlas_span);
 
         Ok(Self {
             surface,

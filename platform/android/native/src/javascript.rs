@@ -28,6 +28,8 @@ pub(super) struct ScriptRuntime {
     events: ink_runtime::EventReceiver,
     tree: ReactTree,
     calls: Vec<String>,
+    #[cfg(feature = "presentation-timing")]
+    first_commit_applied: bool,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +115,11 @@ impl ScriptRuntime {
             &format!("ReactApply ns={}", super::benchmark_time_ns()),
         );
         self.tree.apply(commit, engine)?;
+        #[cfg(feature = "presentation-timing")]
+        if !self.first_commit_applied {
+            ink_renderer_vulkan::startup_marker("first_commit_applied");
+            self.first_commit_applied = true;
+        }
         #[cfg(feature = "bridge-timing")]
         android_log(
             ANDROID_LOG_INFO,
@@ -250,6 +257,7 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeStartJavaScript(
     let runtime = AppRuntime::spawn_script(
         script,
         move || {
+            ink_renderer_vulkan::startup_marker("javascript_wake");
             #[cfg(feature = "bridge-timing")]
             android_log(
                 ANDROID_LOG_INFO,
@@ -296,6 +304,8 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeStartJavaScript(
                 events,
                 tree,
                 calls: Vec::new(),
+                #[cfg(feature = "presentation-timing")]
+                first_commit_applied: false,
             });
             true as jboolean
         }
