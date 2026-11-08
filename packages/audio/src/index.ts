@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "ink/internal/react";
 import { useNativeController } from "ink/internal/controller";
 import { NativeError } from "ink/native";
 import { playbackController } from "ink/internal/playback";
+import { decodePlayerState } from "./decode";
 
 export interface AudioItem {
   id: string;
@@ -11,6 +12,7 @@ export interface AudioItem {
   album?: string;
   artwork?: string;
   duration?: number;
+  usage?: "music" | "speech";
 }
 export type SourceReplacement = { prepare?: boolean } & ({ position?: number; offset?: never } | { offset: number; position?: never });
 
@@ -48,18 +50,9 @@ export interface PlayerState {
 }
 const initial: PlayerState = { ready: false, playing: false, playWhenReady: false, buffering: false, loading: false, ended: false, queue: [], current: null, index: -1, position: 0, duration: 0, speed: 1, shuffle: false, repeat: "off", skipSilence: false, voiceBoost: false, silenceSaved: 0, error: null };
 
-function decodeItem(value: unknown): AudioItem {
-  if (typeof value !== "object" || value === null) throw new NativeError("protocol", "Invalid audio queue item");
-  const text = (name: string): string => {
-    const result: unknown = Reflect.get(value, name);
-    if (typeof result !== "string") throw new NativeError("protocol", `Invalid audio item ${name}`);
-    return result;
-  };
-  const duration: unknown = Reflect.get(value, "duration");
-  if (duration !== undefined && (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0)) {
-    throw new NativeError("protocol", "Invalid audio item duration");
-  }
-  return { id: text("id"), src: text("src"), title: text("title"), artist: text("artist"), album: text("album"), artwork: text("artwork"), duration };
+function validateItem(item: AudioItem) {
+  validateId(item.id);
+  if (item.usage !== undefined && item.usage !== "music" && item.usage !== "speech") throw new TypeError("Audio usage must be music or speech");
 }
 
 function validateId(id: string) {
@@ -70,69 +63,16 @@ function validateQueue(items: readonly AudioItem[]) {
   if (items.length === 0) throw new RangeError("Audio queues cannot be empty");
   const ids = new Set<string>();
   for (const item of items) {
-    validateId(item.id);
+    validateItem(item);
     if (ids.has(item.id)) throw new TypeError("Audio queue item IDs must be unique");
     ids.add(item.id);
   }
 }
 
-function decode(value: unknown): PlayerState {
-  if (typeof value !== "object" || value === null) throw new NativeError("protocol", "Invalid player state");
-  const field = (name: string): unknown => Reflect.get(value, name);
-  const text = (name: string) => {
-    const result = field(name);
-    if (typeof result !== "string") throw new NativeError("protocol", `Invalid player ${name}`);
-    return result;
-  };
-  const number = (name: string) => {
-    const result = field(name);
-    if (typeof result !== "number" || !Number.isFinite(result) || result < 0) throw new NativeError("protocol", `Invalid player ${name}`);
-    return result;
-  };
-  const status = text("status");
-  if (!["idle", "loading", "playing", "paused", "ended", "error"].includes(status) || typeof field("ready") !== "boolean") {
-    throw new NativeError("protocol", "Invalid player status");
-  }
-  let error: Error | null = null;
-  if (status === "error") {
-    const detail = field("error");
-    if (typeof detail !== "object" || detail === null
-      || !("message" in detail) || typeof detail.message !== "string"
-      || !("kind" in detail) || typeof detail.kind !== "string") throw new NativeError("protocol", "Invalid player error");
-    error = new NativeError(detail.kind, detail.message, "retryable" in detail && detail.retryable === true);
-  }
-  const src = text("src");
-  const index = field("index");
-  if (typeof index !== "number" || !Number.isSafeInteger(index) || index < -1) {
-    throw new NativeError("protocol", "Invalid player queue index");
-  }
-  const duration = number("durationMs");
-  const queue = field("queue");
-  const repeat = field("repeat");
-  if (repeat !== "off" && repeat !== "queue" && repeat !== "track") throw new NativeError("protocol", "Invalid repeat mode");
-  const shuffle = field("shuffle");
-  if (typeof shuffle !== "boolean") throw new NativeError("protocol", "Invalid shuffle mode");
-  if (!Array.isArray(queue)) throw new NativeError("protocol", "Invalid audio queue");
-  return {
-    ready: field("ready") === true,
-    playing: status === "playing",
-    playWhenReady: field("playWhenReady") === true,
-    buffering: status === "loading",
-    loading: field("loading") === true,
-    ended: status === "ended",
-    queue: queue.map(decodeItem),
-    index,
-    current: src ? { id: text("id"), src, title: text("title"), artist: text("artist"), album: text("album"), artwork: text("artwork"), duration } : null,
-    position: number("positionMs"), duration, speed: number("speed"),
-    shuffle, repeat,
-    skipSilence: field("skipSilence") === true, voiceBoost: field("voiceBoost") === true,
-    silenceSaved: number("silenceSavedMs"), error,
-  };
-}
-
 export function usePlayer(options: PlayerOptions = {}) {
   const { session = "main", mode = "attached", usage = "music", cache = false, preloadNext = 0, startupBuffer = 1000 } = options;
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(session)) throw new TypeError("Audio session names must be 1–64 letters, numbers, dots, underscores or hyphens");
+  if (usage !== "music" && usage !== "speech") throw new TypeError("Audio usage must be music or speech");
   if (!Number.isSafeInteger(preloadNext) || preloadNext < 0 || preloadNext > 30_000) throw new RangeError("Next-item preloading must be between 0 and 30000 milliseconds");
   if (!Number.isSafeInteger(startupBuffer) || startupBuffer < 0 || startupBuffer > 30_000) throw new RangeError("Startup buffering must be between 0 and 30000 milliseconds");
   const [state, setState] = useState(initial);
@@ -142,7 +82,7 @@ export function usePlayer(options: PlayerOptions = {}) {
     const publish = (next: PlayerState) => { current.current = next; setState(next); };
     publish(initial);
     const detach = controller.attach({ kind: "player", config: { session, playback: mode, usage, cache, preloadNext, startupBuffer } }, value => {
-      try { publish(decode(value)); }
+      try { publish(decodePlayerState(value)); }
       catch (error) { publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) }); }
     }, error => {
       publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) });
@@ -161,7 +101,7 @@ export function usePlayer(options: PlayerOptions = {}) {
       async getState(): Promise<PlayerState> {
         const active = controller.current;
         if (!active || !current.current.ready) throw new NativeError("unavailable", "Audio player is not ready");
-        return decode(JSON.parse(await active.call("getState")));
+        return decodePlayerState(JSON.parse(await active.call("getState")));
       },
       seekBy(offset: number) {
         if (!Number.isSafeInteger(offset)) return Promise.reject(new RangeError("Seek offset must be a safe integer in milliseconds"));
@@ -183,7 +123,7 @@ export function usePlayer(options: PlayerOptions = {}) {
         await call("setQueue", { items, startIndex: options.startIndex ?? 0, startPosition, prepare: options.prepare ?? true });
       },
       async add(item: AudioItem, options: { at?: number | "next" } = {}) {
-        validateId(item.id);
+        validateItem(item);
         if (options.at !== undefined && options.at !== "next" && (!Number.isSafeInteger(options.at) || options.at < 0)) {
           throw new RangeError("Audio insertion index must be a non-negative integer");
         }
@@ -195,7 +135,7 @@ export function usePlayer(options: PlayerOptions = {}) {
         await call("move", { id, index });
       },
       async replace(id: string, item: AudioItem) {
-        validateId(item.id);
+        validateItem(item);
         await call("replace", { id, item });
       },
       async play(id?: string) {

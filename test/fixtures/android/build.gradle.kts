@@ -24,11 +24,18 @@ android {
 kotlin {
     compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     sourceSets.getByName("main").kotlin.apply {
-        setSrcDirs(listOf("src", "../../../platform/android/app/src/main/kotlin", "../../../platform/android/app/src/network/kotlin"))
+        setSrcDirs(listOf("src", "../../../platform/android/app/src/main/kotlin", "../../../platform/android/app/src/network/kotlin",
+            "../../../platform/android/app/src/audioPlayback/kotlin"))
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
             "**/NativeRequests.kt", "**/InkFetchStreams.kt", "**/InkManagedFiles.kt", "**/SecureStoreAdapter.kt",
             "**/SplineFling.kt", "**/SplineFlingContracts.kt",
+            "**/AudioUsage.kt", "**/AudioQueue.kt", "**/AudioQueuePersistence.kt", "**/AudioEffects.kt", "**/AudioContracts.kt",
         )
     }
+}
+
+dependencies {
+    implementation("androidx.media3:media3-exoplayer:1.10.1")
+    implementation("androidx.media3:media3-session:1.10.1")
 }

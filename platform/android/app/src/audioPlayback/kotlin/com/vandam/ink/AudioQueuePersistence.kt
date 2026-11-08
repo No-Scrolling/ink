@@ -52,9 +52,13 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
                         .setDurationMs(item.optLong("duration", 0).takeIf { it > 0 })
                         .setAlbumTitle(item.optString("album"))
                         .apply { item.optString("artwork").takeIf(String::isNotEmpty)?.let { setArtworkUri(Uri.parse(it)) } }
-                        .setExtras(Bundle().apply { putString("ink.source", item.getString("source")) })
+                        .setExtras(Bundle().apply {
+                            putString("ink.source", item.getString("source"))
+                            if (item.has("usage")) putString(ITEM_USAGE_EXTRA, AudioUsage.from(item.getString("usage")).value)
+                        })
                         .build())
                     .build()
+                    .withAudioUsageTag()
             }
             if (queue.isNotEmpty()) {
                 player.setMediaItems(queue, state.optInt("index", 0).coerceIn(queue.indices), state.optLong("position", 0L).coerceAtLeast(0))
@@ -130,7 +134,8 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
                 .put("artist", metadata.artist?.toString().orEmpty())
                 .put("album", metadata.albumTitle?.toString().orEmpty())
                 .put("artwork", metadata.artworkUri?.toString().orEmpty())
-                .put("duration", metadata.durationMs))
+                .put("duration", metadata.durationMs)
+                .put("usage", item.itemUsage()?.value))
         }
         preferences.edit().putString(name, items.toString()).apply()
     }

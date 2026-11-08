@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaItem.RequestMetadata
@@ -53,6 +52,7 @@ private class InkAudioPlayback(
         val name = options.optString("session", "main")
         val mode = options.optString("playback", "attached")
         val usage = options.optString("usage", "music")
+        if (usage != "music" && usage != "speech") return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio usage must be music or speech", false)
         val cache = options.optBoolean("cache", false)
         val preloadNext = options.optLong("preloadNext", 0)
         val startupBuffer = options.optInt("startupBuffer", 1000)
@@ -123,7 +123,7 @@ private class AudioSessionPlayback(
     }
     private val controllers = mutableSetOf<Long>()
     private var persistence: AudioQueuePersistence? = null
-    private var contentType = C.AUDIO_CONTENT_TYPE_MUSIC
+    private var usage = AudioUsage.MUSIC
     private var detached = false
     private var player: Player? = null
     private var connection: ListenableFuture<MediaController>? = null
@@ -138,11 +138,7 @@ private class AudioSessionPlayback(
         }
         val configuredUsage = runCatching { JSONObject(config).optString("usage", "music") }
             .getOrDefault("music")
-        contentType = if (configuredUsage == "speech") {
-            C.AUDIO_CONTENT_TYPE_SPEECH
-        } else {
-            C.AUDIO_CONTENT_TYPE_MUSIC
-        }
+        usage = AudioUsage.from(configuredUsage)
         detached = runCatching {
             JSONObject(config).optString("playback", "attached") == "detached"
         }.getOrDefault(false)
@@ -376,16 +372,12 @@ private class AudioSessionPlayback(
             .setLoadControl(audioLoadControl(startupBuffer))
             .setMediaSourceFactory(audioMediaSourceFactory(activity, cache))
             .setHandleAudioBecomingNoisy(true)
+            .setSeekBackIncrementMs(AUDIO_SEEK_INCREMENT_MS)
+            .setSeekForwardIncrementMs(AUDIO_SEEK_INCREMENT_MS)
             .build()
             .apply {
                 preloadConfiguration = ExoPlayer.PreloadConfiguration(preloadNext * 1000)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(C.USAGE_MEDIA)
-                        .setContentType(contentType)
-                        .build(),
-                    true,
-                )
+                followAudioUsage(this, usage)
             }
         readiness = AudioReadiness { publish() }.also { created.addListener(it) }
         persistence = AudioQueuePersistence(activity, name, created, effects).apply { restore() }
@@ -420,7 +412,7 @@ private class AudioSessionPlayback(
             .setConnectionHints(Bundle().apply {
                 putBoolean(CONTROLLER_HINT, true)
                 putString("ink.session", name)
-                putInt(CONTENT_TYPE_HINT, contentType)
+                putString(USAGE_HINT, usage.value)
                 putBoolean(CACHE_HINT, cache)
                 putLong(PRELOAD_NEXT_HINT, preloadNext)
                 putInt(STARTUP_BUFFER_HINT, startupBuffer)
@@ -496,7 +488,7 @@ private class AudioSessionPlayback(
             }.toLong() else player.currentPosition + body.optLong("offset", 0)
             val replacement = Item(current.mediaId, body.getString("src"), metadata.title?.toString().orEmpty(),
                 metadata.artist?.toString().orEmpty(), metadata.albumTitle?.toString().orEmpty(),
-                metadata.artworkUri?.toString().orEmpty(), duration.takeIf { it > 0 }).mediaItem(activity, bundle)
+                metadata.artworkUri?.toString().orEmpty(), duration.takeIf { it > 0 }, current.itemUsage()).mediaItem(activity, bundle)
             val index = player.currentMediaItemIndex
             val prepare = body.optBoolean("prepare", true)
             val playWhenReady = player.playWhenReady && player.playbackState != Player.STATE_ENDED
@@ -564,6 +556,7 @@ private class AudioSessionPlayback(
             .put("artist", metadata?.artist?.toString().orEmpty())
             .put("album", metadata?.albumTitle?.toString().orEmpty())
             .put("artwork", metadata?.artworkUri?.toString().orEmpty())
+            .put("usage", mediaItem?.itemUsage()?.value)
             .put("index", index)
             .put("queue", JSONArray().apply {
                 if (player != null) repeat(player.mediaItemCount) { put(player.getMediaItemAt(it).audioItemJson()) }
@@ -631,6 +624,7 @@ private class AudioSessionPlayback(
         val album: String,
         val artwork: String,
         val duration: Long?,
+        val usage: AudioUsage?,
     ) {
         fun mediaItem(activity: Activity, bundle: InkBundle): MediaItem {
             val uri = when {
@@ -659,7 +653,10 @@ private class AudioSessionPlayback(
                 .setArtist(artist.ifEmpty { null })
                 .setAlbumTitle(album.ifEmpty { null })
                 .apply { if (artwork.isNotEmpty()) setArtworkUri(Uri.parse(artwork)) }
-                .setExtras(Bundle().apply { putString(SOURCE_METADATA_KEY, src) })
+                .setExtras(Bundle().apply {
+                    putString(SOURCE_METADATA_KEY, src)
+                    usage?.let { putString(ITEM_USAGE_EXTRA, it.value) }
+                })
                 .build()
             return MediaItem.Builder()
                 .setMediaId(id)
@@ -667,6 +664,7 @@ private class AudioSessionPlayback(
                 .setRequestMetadata(RequestMetadata.Builder().setMediaUri(uri).build())
                 .setMediaMetadata(metadata)
                 .build()
+                .withAudioUsageTag()
         }
 
         companion object {
@@ -682,6 +680,7 @@ private class AudioSessionPlayback(
                     duration = if (value.has("duration")) value.getDouble("duration").also {
                         require(it.isFinite() && it >= 0) { "Audio duration must be non-negative milliseconds" }
                     }.toLong() else null,
+                    usage = if (value.has("usage")) AudioUsage.from(value.getString("usage")) else null,
                 )
             }
 
@@ -698,7 +697,7 @@ private class AudioSessionPlayback(
         private const val RECORDING_PREFIX = "ink://audio/recordings/"
         private const val SOURCE_METADATA_KEY = "ink.source"
         private const val CONTROLLER_HINT = "ink.controller"
-        private const val CONTENT_TYPE_HINT = "ink.contentType"
+        private const val USAGE_HINT = "ink.usage"
         private const val CACHE_HINT = "ink.cache"
         private const val PRELOAD_NEXT_HINT = "ink.preloadNext"
         private const val STARTUP_BUFFER_HINT = "ink.startupBuffer"

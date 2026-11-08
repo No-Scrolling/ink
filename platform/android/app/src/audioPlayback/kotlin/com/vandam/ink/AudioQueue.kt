@@ -15,7 +15,7 @@ internal val AUDIO_QUEUE_OPERATIONS = setOf("add", "remove", "move", "replace", 
 @UnstableApi
 internal fun executeAudioQueue(player: ExoPlayer, args: Bundle, takeFocus: () -> Unit = {}) {
     val body = JSONObject(requireNotNull(args.getString("payload")))
-    val item = args.getBundle("item")?.let { MediaItem.fromBundle(it, MediaLibraryInfo.INTERFACE_VERSION) }
+    val item = args.getBundle("item")?.let { MediaItem.fromBundle(it, MediaLibraryInfo.INTERFACE_VERSION).withAudioUsageTag() }
     fun indexOf(id: String): Int = (0 until player.mediaItemCount)
         .firstOrNull { player.getMediaItemAt(it).mediaId == id }
         ?: error("Audio item is not in the queue: $id")
@@ -105,4 +105,5 @@ internal fun MediaItem.audioItemJson(): JSONObject {
         .put("album", metadata.albumTitle?.toString().orEmpty())
         .put("artwork", metadata.artworkUri?.toString().orEmpty())
         .put("duration", metadata.durationMs)
+        .put("usage", itemUsage()?.value)
 }

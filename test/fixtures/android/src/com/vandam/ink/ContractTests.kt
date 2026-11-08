@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class ContractTests(private val context: Context) {
     fun run(test: (String, () -> Unit) -> Unit) {
         SplineFlingContracts(context).run(test)
+        AudioContracts(context).run(test)
         test("native requests cancel and dispose late owned resources", ::requestCancellation)
         test("native requests timeout, close and suppress duplicate completion", ::requestLifetime)
         test("native requests enforce capacity and request identity", ::requestIdentity)

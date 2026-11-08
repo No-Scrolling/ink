@@ -84,8 +84,8 @@ Detached playback continues after leaving the screen.
 | --- | --- |
 | `mode: "attached"` (default) | Stops when the last screen using the session releases it. |
 | `mode: "detached"` | Keeps playing through a native media service. Call `stop()` to stop it. |
-| `usage: "music"` (default) | Music playback. |
-| `usage: "speech"` | Spoken audio. |
+| [`usage: "music"`](#choose-a-usage) (default) | Music playback. |
+| [`usage: "speech"`](#choose-a-usage) | Spoken audio. |
 | `cache: true` | Reuses cached HTTP(S) audio. Off by default. |
 | `preloadNext: 1500` | Targets 1,500 ms of buffered audio for the next queued item when the current item is not loading. Off by default; accepts 0–30,000 ms. |
 | `startupBuffer: 300` | Buffers 300 ms before streamed audio starts. Defaults to 1,000 ms; accepts 0–30,000 ms. Smaller values can start sooner but provide less protection against a slow connection. Does not change normal buffering or buffering after an interruption. |
@@ -99,6 +99,43 @@ await player.prepare();
 ```
 
 Queue changes, seeks and pauses save immediately; progress saves every 30 seconds. `stop()` clears the queue and saved position.
+
+### Choose a usage
+
+`usage` tells LightOS what kind of audio a detached session plays. It drives the now-playing layout and lock screen controls.
+
+| Usage | Lock screen controls | Use for |
+| --- | --- | --- |
+| `"music"` (default) | Previous and next | Albums and playlists |
+| `"speech"` | Back 15 s and forward 15 s | Podcasts and audiobooks |
+
+```ts
+import { usePlayer } from "@ink/audio";
+
+const player = usePlayer({ session: "podcasts", mode: "detached", usage: "speech" });
+```
+
+Your own screens can still call every player command regardless of usage, including `player.seekBy(-15_000)` and `player.seekBy(15_000)` to seek by an offset in milliseconds.
+
+Session usage is fixed for the session's life. Every player sharing the session must request the same usage, including when reconnecting to detached playback.
+
+Queue items can override the session usage with `usage: "music"` or `usage: "speech"`. The current item's usage drives audio processing and, for detached playback, the LightOS layout and lock screen controls. Items without a usage follow the session usage. After `player.state.ready` is true, call `setQueue` from an action:
+
+```ts
+await player.setQueue([
+  {
+    id: "episode-1",
+    src: "https://example.com/podcasts/episode-1.mp3",
+    title: "Episode 1",
+  },
+  {
+    id: "bonus-track",
+    src: "https://example.com/music/bonus-track.mp3",
+    title: "Bonus track",
+    usage: "music",
+  },
+]);
+```
 
 ### Cache streamed audio
 
