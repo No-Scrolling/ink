@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<familyset version="23">
+  <!-- A missing file must not change subsequent atlas indices. -->
+  <family name="sans-serif"><font weight="400" style="normal">missing.ttf</font></family>
+  <family name="serif"><font>named-only.ttf</font></family>
+  <family ignore="true"><font>ignored.ttf</font></family>
+  <family><font weight="400">fallback.ttc</font></family>
+  <!-- Compact precedes elegant deliberately: selection must not depend on that order. -->
+  <family lang="und-Thai" variant="compact"><font>compact.ttf</font></family>
+  <family lang="und-Thai" variant="elegant">
+    <font weight="400" style="italic">fallback.ttc</font>
+    <font weight="700" style="normal">fallback.ttc</font>
+    <font weight="400" fallbackFor="serif">fallback.ttc</font>
+    <font weight = '400' style = 'normal' index = '1'>
+      fall&#98;ack.ttc <!-- Filename text must survive comments and child elements. -->
+      <axis tag="wght" stylevalue="400" />
+    </font>
+  </family>
+  <family><font>never-opened.ttf</font></family>
+</familyset>

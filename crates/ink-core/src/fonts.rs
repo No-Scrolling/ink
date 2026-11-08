@@ -5,6 +5,9 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{PUBLIC_SANS, is_emoji_grapheme};
 
+#[cfg(any(target_os = "android", test))]
+mod android;
+
 pub fn text_graphemes(text: &str) -> impl Iterator<Item = &str> {
     enum Graphemes<'a> {
         Ascii(&'a str),
@@ -51,6 +54,14 @@ fn glyph_for_character(character: char) -> (usize, &'static FontArc, GlyphId) {
     if glyph.0 != 0 {
         return (0, primary, glyph);
     }
+    #[cfg(target_os = "android")]
+    {
+        static FONTS: OnceLock<android::SystemFonts> = OnceLock::new();
+        if let Some(resolved) = FONTS.get_or_init(android::SystemFonts::load).resolve(character) {
+            return resolved;
+        }
+    }
+    #[cfg(not(target_os = "android"))]
     for (index, font) in system_fonts() {
         let glyph = font.glyph_id(character);
         if glyph.0 != 0 {
@@ -58,43 +69,6 @@ fn glyph_for_character(character: char) -> (usize, &'static FontArc, GlyphId) {
         }
     }
     (0, primary, glyph)
-}
-
-#[cfg(target_os = "android")]
-fn system_fonts() -> impl Iterator<Item = (usize, &'static FontArc)> {
-    struct SystemFont {
-        path: &'static str,
-        data: OnceLock<Option<memmap2::Mmap>>,
-        font: OnceLock<Option<FontArc>>,
-    }
-
-    impl SystemFont {
-        const fn new(path: &'static str) -> Self {
-            Self { path, data: OnceLock::new(), font: OnceLock::new() }
-        }
-
-        fn get(&'static self) -> Option<&'static FontArc> {
-            self.font.get_or_init(|| {
-                let data = self.data.get_or_init(|| {
-                    let file = std::fs::File::open(self.path).ok()?;
-                    // Android's system fonts are read-only. Keep the mapping for the
-                    // cached font's lifetime, and let the OS page in only what is used.
-                    unsafe { memmap2::Mmap::map(&file).ok() }
-                }).as_ref()?;
-                FontArc::try_from_slice(data).ok()
-            }).as_ref()
-        }
-    }
-
-    static FONTS: [SystemFont; 6] = [
-        SystemFont::new("/system/fonts/NotoSansSymbols-Regular-Subsetted.ttf"),
-        SystemFont::new("/system/fonts/NotoSansSymbols-Regular-Subsetted2.ttf"),
-        SystemFont::new("/system/fonts/NotoSansSymbols-Regular.ttf"),
-        SystemFont::new("/system/fonts/NotoSansSymbols2-Regular.ttf"),
-        SystemFont::new("/system/fonts/NotoSansCJK-Regular.ttc"),
-        SystemFont::new("/system/fonts/NotoNaskhArabic-Regular.ttf"),
-    ];
-    FONTS.iter().enumerate().filter_map(|(index, font)| font.get().map(|font| (index + 1, font)))
 }
 
 #[cfg(all(not(target_os = "android"), not(feature = "design-fonts")))]
