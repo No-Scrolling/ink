@@ -2,6 +2,7 @@ package com.vandam.ink
 
 import android.app.Activity
 import android.content.ComponentName
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -16,6 +17,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.session.SessionCommand
@@ -39,7 +41,7 @@ private class InkAudioPlayback(
     private val bundle: InkBundle,
     private val clock: PlaybackClock,
 ) : AudioPlayback {
-    private data class Entry(val mode: String, val usage: String, val cache: Boolean, val preloadNext: Long, val startupBuffer: Int, val playback: AudioSessionPlayback)
+    private data class Entry(val mode: String, val usage: String, val cache: Boolean, val offload: Boolean, val preloadNext: Long, val startupBuffer: Int, val playback: AudioSessionPlayback)
     private val sessions = mutableMapOf<String, Entry>()
     private val controllers = mutableMapOf<Long, String>()
 
@@ -54,6 +56,7 @@ private class InkAudioPlayback(
         val usage = options.optString("usage", "music")
         if (usage != "music" && usage != "speech") return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio usage must be music or speech", false)
         val cache = options.optBoolean("cache", false)
+        val offload = options.optBoolean("offload", false)
         val preloadNext = options.optLong("preloadNext", 0)
         val startupBuffer = options.optInt("startupBuffer", 1000)
         if (startupBuffer !in 0..30_000) return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio startup buffer", false)
@@ -62,13 +65,13 @@ private class InkAudioPlayback(
             return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Invalid audio session name", false)
         }
         val existing = sessions[name]
-        if (existing != null && (existing.mode != mode || existing.usage != usage || existing.cache != cache || existing.preloadNext != preloadNext || existing.startupBuffer != startupBuffer)) {
+        if (existing != null && (existing.mode != mode || existing.usage != usage || existing.cache != cache || existing.offload != offload || existing.preloadNext != preloadNext || existing.startupBuffer != startupBuffer)) {
             return NativeResult.Failure(NativeErrorKind.PROTOCOL, "Audio session options must agree", false)
         }
         if (existing == null && sessions.size >= 8) {
             return NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Too many audio sessions", false)
         }
-        val entry = existing ?: Entry(mode, usage, cache, preloadNext, startupBuffer, AudioSessionPlayback(activity, updateController, bundle, clock, name, cache, preloadNext, startupBuffer) {
+        val entry = existing ?: Entry(mode, usage, cache, offload, preloadNext, startupBuffer, AudioSessionPlayback(activity, updateController, bundle, clock, name, cache, offload, preloadNext, startupBuffer) {
             sessions.filterKeys { it != name }.values.forEach { it.playback.pauseForFocus() }
         }).also { sessions[name] = it }
         controllers[controller] = name
@@ -108,6 +111,7 @@ private class AudioSessionPlayback(
     private val clock: PlaybackClock,
     private val name: String,
     private val cache: Boolean,
+    private val offload: Boolean,
     private val preloadNext: Long,
     private val startupBuffer: Int,
     private val takeFocus: () -> Unit,
@@ -323,7 +327,10 @@ private class AudioSessionPlayback(
     override fun onPlaybackStateChanged(playbackState: Int) = publish()
 
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-        if (!detached) effects.countSavings = playWhenReady
+        if (!detached) {
+            effects.countSavings = playWhenReady
+            if (playWhenReady) takeFocus()
+        }
         publish()
     }
 
@@ -365,6 +372,9 @@ private class AudioSessionPlayback(
 
     private val effects = AudioEffects.get(activity, name)
     private var readiness: AudioReadiness? = null
+    private var audioOffload: AudioOffload? = null
+    private var mediaSession: MediaSession? = null
+    private val mediaButtons = AudioMediaButtons(activity)
 
     private fun attachedPlayer(): Player {
         player?.let { return it }
@@ -379,6 +389,13 @@ private class AudioSessionPlayback(
                 preloadConfiguration = ExoPlayer.PreloadConfiguration(preloadNext * 1000)
                 followAudioUsage(this, usage)
             }
+        audioOffload = AudioOffload(activity, created, effects, offload)
+        mediaSession = MediaSession.Builder(activity, created)
+            .setId("${activity.packageName}:$name:attached")
+            .setCallback(object : MediaSession.Callback {
+                override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean =
+                    mediaButtons.onMediaButtonEvent(session, controllerInfo, intent)
+            }).build()
         readiness = AudioReadiness { publish() }.also { created.addListener(it) }
         persistence = AudioQueuePersistence(activity, name, created, effects).apply { restore() }
         connect(created)
@@ -414,6 +431,7 @@ private class AudioSessionPlayback(
                 putString("ink.session", name)
                 putString(USAGE_HINT, usage.value)
                 putBoolean(CACHE_HINT, cache)
+                putBoolean(OFFLOAD_HINT, offload)
                 putLong(PRELOAD_NEXT_HINT, preloadNext)
                 putInt(STARTUP_BUFFER_HINT, startupBuffer)
             })
@@ -602,6 +620,11 @@ private class AudioSessionPlayback(
         connection = null
         persistence?.close()
         persistence = null
+        mediaButtons.close()
+        mediaSession?.release()
+        mediaSession = null
+        audioOffload?.close()
+        audioOffload = null
         player?.removeListener(this)
         player?.release()
         player = null

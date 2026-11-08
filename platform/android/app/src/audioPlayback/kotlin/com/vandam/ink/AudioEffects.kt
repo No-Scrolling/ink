@@ -7,6 +7,7 @@ internal const val SKIP_SILENCE_COMMAND = "ink.audio.skipSilence"
 internal const val SKIP_SILENCE_EXTRA = "ink.skipSilence"
 internal const val VOICE_BOOST_COMMAND = "ink.audio.voiceBoost"
 internal const val VOICE_BOOST_EXTRA = "ink.voiceBoost"
+internal const val OFFLOAD_HINT = "ink.offload"
 
 internal class AudioEffects private constructor(context: Context, private val name: String) {
     private val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
@@ -16,6 +17,7 @@ internal class AudioEffects private constructor(context: Context, private val na
     @Volatile var countSavings = false
     private val savedUs = AtomicLong(preferences.getLong("silenceSavedUs:$name", 0))
     private var persistedUs = savedUs.get()
+    private val listeners = mutableSetOf<() -> Unit>()
     val silenceSavedMs: Long get() = savedUs.get() / 1000
 
     fun addSavedTime(microseconds: Long) {
@@ -30,9 +32,14 @@ internal class AudioEffects private constructor(context: Context, private val na
     }
 
     fun setVoiceBoost(enabled: Boolean) {
+        if (voiceBoost == enabled) return
         voiceBoost = enabled
+        listeners.toList().forEach { it() }
         preferences.edit().putBoolean("voiceBoost:$name", enabled).apply()
     }
+
+    fun addListener(listener: () -> Unit) { listeners += listener }
+    fun removeListener(listener: () -> Unit) { listeners -= listener }
 
     companion object {
         private val sessions = mutableMapOf<String, AudioEffects>()

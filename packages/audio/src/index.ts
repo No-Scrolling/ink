@@ -22,6 +22,8 @@ export interface PlayerOptions {
   usage?: "music" | "speech";
   /** Reuse HTTP(S) audio in a shared 256 MiB disc cache. Off by default. */
   cache?: boolean;
+  /** Allow hardware audio offload when effects and speed changes are inactive. Off by default. */
+  offload?: boolean;
   /** Milliseconds to buffer for the next queued item. Off by default. */
   preloadNext?: number;
   /** Milliseconds of audio to buffer before streaming starts. Defaults to 1000. */
@@ -70,7 +72,7 @@ function validateQueue(items: readonly AudioItem[]) {
 }
 
 export function usePlayer(options: PlayerOptions = {}) {
-  const { session = "main", mode = "attached", usage = "music", cache = false, preloadNext = 0, startupBuffer = 1000 } = options;
+  const { session = "main", mode = "attached", usage = "music", cache = false, offload = false, preloadNext = 0, startupBuffer = 1000 } = options;
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(session)) throw new TypeError("Audio session names must be 1–64 letters, numbers, dots, underscores or hyphens");
   if (usage !== "music" && usage !== "speech") throw new TypeError("Audio usage must be music or speech");
   if (!Number.isSafeInteger(preloadNext) || preloadNext < 0 || preloadNext > 30_000) throw new RangeError("Next-item preloading must be between 0 and 30000 milliseconds");
@@ -81,7 +83,7 @@ export function usePlayer(options: PlayerOptions = {}) {
   useEffect(() => {
     const publish = (next: PlayerState) => { current.current = next; setState(next); };
     publish(initial);
-    const detach = controller.attach({ kind: "player", config: { session, playback: mode, usage, cache, preloadNext, startupBuffer } }, value => {
+    const detach = controller.attach({ kind: "player", config: { session, playback: mode, usage, cache, offload, preloadNext, startupBuffer } }, value => {
       try { publish(decodePlayerState(value)); }
       catch (error) { publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) }); }
     }, error => {
@@ -91,7 +93,7 @@ export function usePlayer(options: PlayerOptions = {}) {
       detach();
       current.current = initial;
     };
-  }, [session, mode, usage, cache, preloadNext, startupBuffer, controller]);
+  }, [session, mode, usage, cache, offload, preloadNext, startupBuffer, controller]);
   const commands = useMemo(() => {
     const call = async (operation: string, payload: unknown = {}) => {
       if (!controller.current || !current.current.ready) throw new NativeError("unavailable", "Audio player is not ready");

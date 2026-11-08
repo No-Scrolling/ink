@@ -1,6 +1,12 @@
 package com.vandam.ink
 
 import android.content.Context
+import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.session.MediaController
+import android.os.SystemClock
+import android.view.KeyEvent
+import android.view.ViewConfiguration
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +15,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaLibraryInfo
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
+import androidx.media3.session.MediaSession
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.FutureTask
@@ -21,6 +33,9 @@ internal class AudioContracts(private val context: Context) {
         test("audio external commands follow music and speech controls", ::externalCommands)
         test("audio attributes follow transitions, replacements and session fallback", ::itemUsage)
         test("audio item usage survives the media bridge and queue persistence", ::persistence)
+        test("audio offload excludes effects, speed, pitch and unsuitable routes", ::offloadPreferences)
+        test("audio offload remembers PCM fallback for each track and route", ::offloadFallback)
+        test("audio headset single, double and triple presses use Media3 commands", ::mediaButtons)
     }
 
     private fun equal(expected: Any?, actual: Any?) {
@@ -84,6 +99,162 @@ internal class AudioContracts(private val context: Context) {
             onMain { player.clearMediaItems() }
             expectUsage("music", C.AUDIO_CONTENT_TYPE_MUSIC)
         } finally { onMain { player.release() } }
+    }
+
+    private fun offloadFallback() {
+        val policy = AudioOffloadPolicy(true)
+        val bluetooth = AudioOffloadRoute("8", false)
+        val other = AudioOffloadRoute("26", false)
+        check(policy.allows("first", bluetooth, false))
+        policy.rememberFallback("first", bluetooth)
+        check(!policy.allows("first", other, false))
+        check(!policy.allows("second", bluetooth, false))
+        check(policy.allows("second", other, false))
+        check(!policy.allows(null, other, false))
+        check(!AudioOffloadPolicy(false).allows("second", other, false))
+    }
+
+    private fun offloadPreferences() = onMain {
+        val effects = AudioEffects.get(context, "offload-contract")
+        effects.setVoiceBoost(false)
+        val player = ExoPlayer.Builder(context, InkAudioRenderersFactory(context, effects)).build()
+        var route = AudioOffloadRoute(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP.toString(), false)
+        val offload = AudioOffload(context, player, effects, true) { route }
+        fun expect(enabled: Boolean) {
+            val preferences = player.trackSelectionParameters.audioOffloadPreferences
+            equal(if (enabled) AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED else AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED,
+                preferences.audioOffloadMode)
+            equal(enabled, preferences.isGaplessSupportRequired)
+            equal(false, preferences.isSpeedChangeSupportRequired)
+        }
+        try {
+            expect(false)
+            player.setMediaItems(listOf(item("first"), item("second")))
+            expect(true)
+            player.skipSilenceEnabled = true
+            expect(false)
+            player.skipSilenceEnabled = false
+            expect(true)
+            effects.setVoiceBoost(true)
+            expect(false)
+            effects.setVoiceBoost(false)
+            expect(true)
+            player.playbackParameters = PlaybackParameters(1.5f)
+            expect(false)
+            player.playbackParameters = PlaybackParameters(1f, 1.2f)
+            expect(false)
+            player.playbackParameters = PlaybackParameters.DEFAULT
+            expect(true)
+            route = AudioOffloadRoute("2", true)
+            player.seekTo(1, 0)
+            expect(false)
+            route = AudioOffloadRoute("8", false)
+            player.seekTo(0, 0)
+            expect(true)
+        } finally {
+            offload.close()
+            player.release()
+            effects.setVoiceBoost(false)
+        }
+        val speaker = ExoPlayer.Builder(context).build()
+        val disabled = AudioOffload(context, speaker, effects, false)
+        try {
+            speaker.setMediaItem(item("default-disabled"))
+            equal(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED, speaker.trackSelectionParameters.audioOffloadPreferences.audioOffloadMode)
+        } finally { disabled.close(); speaker.release() }
+        val routed = ExoPlayer.Builder(context).build()
+        val actualRoute = AudioOffload(context, routed, effects, true)
+        try {
+            routed.setMediaItem(item("speaker"))
+            val devices = context.getSystemService(android.media.AudioManager::class.java)
+                .getAudioDevicesForAttributes(routed.audioAttributes.platformAudioAttributes)
+            if (devices.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }) {
+                equal(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED, routed.trackSelectionParameters.audioOffloadPreferences.audioOffloadMode)
+            }
+        } finally { actualRoute.close(); routed.release() }
+    }
+
+    private fun eventually(description: String, predicate: () -> Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + 5000
+        while (!onMain(predicate)) {
+            check(SystemClock.elapsedRealtime() < deadline) { "Timed out: $description" }
+            SystemClock.sleep(10)
+        }
+    }
+
+    private fun mediaButtons() {
+        val file = File(context.cacheDir, "headset-contract.wav")
+        val pcmBytes = 30 * 8000 * 2
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16)
+            .put("data".toByteArray()).putInt(pcmBytes).array()
+        file.outputStream().use { it.write(header); it.write(ByteArray(pcmBytes)) }
+        val buttons = AudioMediaButtons(context)
+        val receivedPresses = LinkedBlockingQueue<Unit>()
+        val player = onMain { ExoPlayer.Builder(context).build().apply {
+            setMediaItems((0..2).map { MediaItem.Builder().setMediaId("track-$it").setUri(file.toURI().toString()).build() }, 1, 0)
+        } }
+        val session = onMain { MediaSession.Builder(context, player).setId("headset-contract")
+            .setCallback(object : MediaSession.Callback {
+                override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean {
+                    val handled = buttons.onMediaButtonEvent(session, controllerInfo, intent)
+                    val event = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+                    if (event?.keyCode == KeyEvent.KEYCODE_HEADSETHOOK && event.action == KeyEvent.ACTION_DOWN) receivedPresses.add(Unit)
+                    return handled
+                }
+            }).build() }
+        val controller = MediaController(context, session.platformToken)
+        fun key(code: Int) {
+            controller.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+            controller.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        }
+        fun presses(count: Int) {
+            repeat(count) { key(KeyEvent.KEYCODE_HEADSETHOOK); if (it + 1 < count) SystemClock.sleep(40) }
+        }
+        try {
+            presses(1)
+            SystemClock.sleep(100)
+            onMain { equal(false, player.playWhenReady) }
+            eventually("single press plays") { player.isPlaying }
+            presses(1)
+            eventually("single press pauses") { !player.playWhenReady }
+            onMain { player.seekTo(1, 0) }
+            presses(2)
+            eventually("double press skips next") { player.currentMediaItemIndex == 2 }
+            onMain { player.seekTo(1, 0) }
+            presses(3)
+            eventually("triple press skips previous without first skipping next") { player.currentMediaItemIndex == 0 }
+            onMain { player.seekTo(1, 4000) }
+            presses(3)
+            eventually("triple press restarts after three seconds") { player.currentMediaItemIndex == 1 && player.currentPosition == 0L }
+            key(KeyEvent.KEYCODE_MEDIA_NEXT)
+            eventually("dedicated next") { player.currentMediaItemIndex == 2 }
+            key(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            eventually("dedicated previous") { player.currentMediaItemIndex == 1 }
+            key(KeyEvent.KEYCODE_MEDIA_PLAY)
+            eventually("dedicated play") { player.isPlaying }
+            key(KeyEvent.KEYCODE_MEDIA_PAUSE)
+            eventually("dedicated pause") { !player.playWhenReady }
+            onMain { player.seekTo(2, 30_000); player.play() }
+            eventually("end of queue") { player.playbackState == Player.STATE_ENDED }
+            presses(1)
+            eventually("single press restarts an ended queue") { player.isPlaying && player.currentPosition < 5000 }
+            key(KeyEvent.KEYCODE_MEDIA_PAUSE)
+            eventually("pause restarted queue") { !player.playWhenReady }
+            key(KeyEvent.KEYCODE_MEDIA_STOP)
+            eventually("dedicated stop keeps the queue") { player.playbackState == Player.STATE_IDLE && player.mediaItemCount == 3 }
+            // A release must discard a pending gesture rather than act on a released player.
+            receivedPresses.clear()
+            presses(1)
+            check(receivedPresses.poll(5, TimeUnit.SECONDS) != null) { "Pending press did not reach the session" }
+            onMain { buttons.close() }
+            SystemClock.sleep(ViewConfiguration.getDoubleTapTimeout().toLong() + 50)
+            onMain { equal(false, player.playWhenReady) }
+        } finally {
+            onMain { buttons.close(); session.release(); player.release() }
+            file.delete()
+        }
     }
 
     private fun persistence() {

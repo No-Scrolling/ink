@@ -31,6 +31,7 @@ kotlin {
             "**/NativeRequests.kt", "**/InkFetchStreams.kt", "**/InkManagedFiles.kt", "**/SecureStoreAdapter.kt",
             "**/SplineFling.kt", "**/SplineFlingContracts.kt",
             "**/AudioUsage.kt", "**/AudioQueue.kt", "**/AudioQueuePersistence.kt", "**/AudioEffects.kt", "**/AudioContracts.kt",
+            "**/AudioOffload.kt", "**/AudioMediaButtons.kt", "**/InkAudioRenderersFactory.kt", "**/VoiceAudioProcessor.kt", "**/QuietAudioProcessor.kt",
         )
     }
 }

@@ -19,7 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture
 
 @UnstableApi
 internal class InkAudioService : MediaSessionService() {
-    private data class Session(val player: ExoPlayer, val session: MediaSession, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val preloadNext: Long, val startupBuffer: Int)
+    private data class Session(val player: ExoPlayer, val session: MediaSession, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val offload: Boolean, val preloadNext: Long, val startupBuffer: Int, val audioOffload: AudioOffload, val mediaButtons: AudioMediaButtons)
     private val sessions = mutableMapOf<String, Session>()
     private val handler = Handler(Looper.getMainLooper())
     private val controllers = mutableSetOf<MediaSession.ControllerInfo>()
@@ -45,12 +45,13 @@ internal class InkAudioService : MediaSessionService() {
         if (!Regex("[A-Za-z0-9._-]{1,64}").matches(name)) return null
         val usage = runCatching { AudioUsage.from(controllerInfo.connectionHints.getString(USAGE_HINT, "music")) }.getOrNull() ?: return null
         val cache = controllerInfo.connectionHints.getBoolean(CACHE_HINT, false)
+        val offload = controllerInfo.connectionHints.getBoolean(OFFLOAD_HINT, false)
         val preloadNext = controllerInfo.connectionHints.getLong(PRELOAD_NEXT_HINT, 0)
         val startupBuffer = controllerInfo.connectionHints.getInt(STARTUP_BUFFER_HINT, 1000)
         if (startupBuffer !in 0..30_000) return null
         if (preloadNext !in 0..30_000) return null
         sessions[name]?.let {
-            return if (it.cache == cache && it.preloadNext == preloadNext && it.startupBuffer == startupBuffer && it.usage == usage) it.session else null
+            return if (it.cache == cache && it.offload == offload && it.preloadNext == preloadNext && it.startupBuffer == startupBuffer && it.usage == usage) it.session else null
         }
         if (sessions.size >= 8) return null
         val effects = AudioEffects.get(this, name)
@@ -71,6 +72,8 @@ internal class InkAudioService : MediaSessionService() {
                     override fun onIsPlayingChanged(isPlaying: Boolean) = refreshIdleStop()
                 })
             }
+        val audioOffload = AudioOffload(this, player, effects, offload)
+        val mediaButtons = AudioMediaButtons(this)
         val persistence = AudioQueuePersistence(this, name, player, effects).apply { restore() }
         lateinit var readiness: AudioReadiness
         var effectiveUsage = player.currentMediaItem?.itemUsage() ?: usage
@@ -85,6 +88,9 @@ internal class InkAudioService : MediaSessionService() {
         val sessionBuilder = MediaSession.Builder(this, player)
             .setId("$packageName:$name")
             .setCallback(object : MediaSession.Callback {
+                override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean =
+                    mediaButtons.onMediaButtonEvent(session, controllerInfo, intent)
+
                 override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
                     val ownController = isInkController(controller)
                     if (ownController) controllers += controller
@@ -150,7 +156,7 @@ internal class InkAudioService : MediaSessionService() {
             }
         }
         publishEffects(session)
-        sessions[name] = Session(player, session, persistence, usage, cache, preloadNext, startupBuffer)
+        sessions[name] = Session(player, session, persistence, usage, cache, offload, preloadNext, startupBuffer, audioOffload, mediaButtons)
         addSession(session)
         return session
     }
@@ -159,7 +165,9 @@ internal class InkAudioService : MediaSessionService() {
         handler.removeCallbacks(idleStop)
         sessions.values.forEach {
             it.persistence.close()
+            it.mediaButtons.close()
             it.session.release()
+            it.audioOffload.close()
             it.player.release()
         }
         sessions.clear()
