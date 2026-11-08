@@ -84,6 +84,7 @@ internal class PermissionContracts(private val instrumentation: Instrumentation)
 
     // The endpoint is controlled; routing and Android permission checks use production code.
     private class Server(private val version: NativeResult, private val deferVersion: Boolean = false) : LightSdkAdapter {
+        override val hapticsEnabled = true
         val calls = mutableListOf<String>()
         val denied = NativeResult.Failure(NativeErrorKind.PERMISSION_DENIED, "Host denied notification access", false)
         var versionComplete: NativeResultHandler? = null

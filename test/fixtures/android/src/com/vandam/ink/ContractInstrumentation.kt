@@ -29,6 +29,7 @@ class ContractInstrumentation : Instrumentation() {
         PermissionContracts(this).run(test)
         PushContracts(this).run(test)
         ToolManagerContracts(targetContext).run(test)
+        VibrationContracts(this).run(test)
         ContractTests(targetContext).run(test)
         finish(Activity.RESULT_OK, Bundle().apply {
             putString("ink.summary", JSONObject().put("passed", passed).put("failures", JSONArray(failures)).toString())

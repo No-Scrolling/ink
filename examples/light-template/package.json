@@ -21,6 +21,7 @@
     "@ink/overlays": "workspace:*",
     "@ink/secure-store": "workspace:*",
     "@ink/store": "workspace:*",
+    "@ink/vibration": "workspace:*",
     "@ink/video": "workspace:*",
     "ink": "workspace:*",
     "react": "19.2.8",

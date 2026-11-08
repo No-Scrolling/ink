@@ -14,6 +14,7 @@ android {
         versionName = "1"
         buildConfigField("boolean", "INK_CLEARTEXT_NETWORK_ENABLED", "false")
         buildConfigField("boolean", "INK_LIGHT_SDK_ENABLED", "true")
+        buildConfigField("String", "INK_LIGHT_SDK_VERSION", "\"0.2.3\"")
         buildConfigField("String", "INK_LIGHT_SERVER_PACKAGE", "\"com.vandam.ink.contracttests\"")
     }
     buildFeatures { buildConfig = true }
@@ -29,7 +30,9 @@ kotlin {
         setSrcDirs(listOf("src", "../../../platform/android/app/src/main/kotlin", "../../../platform/android/app/src/network/kotlin",
             "../../../platform/android/app/src/audioPlayback/kotlin", "../../../platform/android/app/src/audioDetached/kotlin", "../../../platform/android/app/src/lightSdkPush/kotlin",
             "../../../platform/android/app/src/notifications/kotlin", "../../../platform/android/app/src/crypto/kotlin",
-            "../../../platform/android/app/src/noBackground/kotlin", "../../../platform/android/app/src/lightSdkToolManager/kotlin"))
+            "../../../platform/android/app/src/noBackground/kotlin", "../../../platform/android/app/src/lightSdkToolManager/kotlin",
+            "../../../platform/android/app/src/vibration/kotlin", "../../../platform/android/app/src/lightSdk/kotlin",
+            "../../../platform/android/app/src/noLightSdkRingtone/kotlin"))
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
             "**/PermissionsAdapter.kt", "**/LightSdkAdapter.kt", "**/PermissionContracts.kt",
@@ -42,6 +45,8 @@ kotlin {
             "**/InkNotificationsAdapter.kt", "**/NotificationsAdapter.kt", "**/InkCipher.kt",
             "**/ToolManagerContracts.kt", "**/ToolManagerAdapter.kt", "**/InkSharedFiles.kt", "**/InkToolManagerAdapter.kt",
             "**/NoBackgroundAdapter.kt", "**/BackgroundAdapter.kt",
+            "**/VibrationContracts.kt", "**/VibrationAdapter.kt", "**/InkVibrationAdapter.kt",
+            "**/InkLightSdkAdapter.kt", "**/RingtoneFiles.kt", "**/NoRingtoneFiles.kt",
         )
     }
 }

@@ -69,6 +69,21 @@ test("surviving package code keeps its declared native requirement and discarded
   });
 }, 60_000);
 
+test("vibration is opt-in and does not require LightOS", async () => {
+  await withProject(async root => {
+    await symlink(resolve(repository, "packages/vibration"), resolve(root, "node_modules/@ink/vibration"));
+    await writeFile(resolve(root, "app/index.tsx"), `import { vibrate } from "@ink/vibration";
+import { Button, Screen } from "ink";
+export default function Page() { return <Screen><Button onPress={() => vibrate(200)}>Vibrate</Button></Screen>; }
+`);
+    expect(await compile(root)).toMatchObject({ exitCode: 0 });
+    expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external", "vibration"] });
+    await writeFile(resolve(root, "app/index.tsx"), plainPage);
+    expect(await compile(root)).toMatchObject({ exitCode: 0 });
+    expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external"] });
+  });
+}, 60_000);
+
 test.each([
   { declaration: { version: 2, modules: { "index.ts": ["crypto"] } }, message: "Unsupported native requirements declaration" },
   { declaration: { version: 1, modules: { "index.ts": [123] } }, message: "Unsupported native requirements declaration" },

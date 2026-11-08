@@ -4,6 +4,7 @@ import android.view.KeyEvent
 import android.view.View
 
 internal interface LightSdkAdapter : NativeAdapter {
+    val hapticsEnabled: Boolean
     fun start()
     fun refresh()
     fun stop()

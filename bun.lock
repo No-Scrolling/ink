@@ -52,6 +52,7 @@
         "@ink/overlays": "workspace:*",
         "@ink/secure-store": "workspace:*",
         "@ink/store": "workspace:*",
+        "@ink/vibration": "workspace:*",
         "@ink/video": "workspace:*",
         "ink": "workspace:*",
         "react": "19.2.8",
@@ -210,6 +211,13 @@
       "version": "0.1.0-alpha.13",
       "peerDependencies": {
         "ink": "0.1.0-alpha.12",
+      },
+    },
+    "packages/vibration": {
+      "name": "@ink/vibration",
+      "version": "0.1.0-alpha.13",
+      "peerDependencies": {
+        "ink": "0.1.0-alpha.13",
       },
     },
     "packages/video": {
@@ -519,6 +527,8 @@
     "@ink/secure-store": ["@ink/secure-store@workspace:packages/secure-store"],
 
     "@ink/store": ["@ink/store@workspace:packages/store"],
+
+    "@ink/vibration": ["@ink/vibration@workspace:packages/vibration"],
 
     "@ink/video": ["@ink/video@workspace:packages/video"],
 

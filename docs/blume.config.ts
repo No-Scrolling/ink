@@ -94,6 +94,7 @@ export default defineConfig({
           "/overlays",
           "/secure-store",
           "/store",
+          "/vibration",
         ],
       },
       {

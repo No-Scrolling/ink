@@ -48,6 +48,7 @@ pub enum Capability {
     UiLists,
     UiMessages,
     UiPlaying,
+    Vibration,
     Video,
     WebSockets,
 }

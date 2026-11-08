@@ -18,6 +18,7 @@ export default function Modules() {
       <Button href="/modules/notifications">Notifications</Button>
       <Button href="/modules/overlays">Overlays</Button>
       <Button href="/modules/secure-store">Secure store</Button>
+      <Button href="/modules/vibration">Vibration</Button>
     </Screen>
   );
 }

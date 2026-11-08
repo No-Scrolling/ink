@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -7,6 +8,9 @@
     <application android:label="Ink Android contracts" android:usesCleartextTraffic="true">
         <activity android:name="com.vandam.ink.PermissionContractActivity" android:exported="false" />
         <activity android:name="com.vandam.ink.MainActivity" android:exported="false" />
+        <service android:name="com.vandam.ink.VibrationLightService" android:exported="false">
+            <intent-filter><action android:name="com.thelightphone.sdk.action.BIND_SERVICE" /></intent-filter>
+        </service>
         <service android:name="com.vandam.ink.InkAudioService" android:exported="false" android:foregroundServiceType="mediaPlayback">
             <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
         </service>

@@ -9,6 +9,8 @@ internal fun createLightSdkAdapter(
     _activity: Activity,
     _updateController: (Long, String) -> Unit,
 ): LightSdkAdapter = object : LightSdkAdapter {
+    override val hapticsEnabled = true
+
     override fun start() = Unit
 
     override fun refresh() = Unit

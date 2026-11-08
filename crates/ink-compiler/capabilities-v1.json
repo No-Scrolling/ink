@@ -337,6 +337,15 @@
         "disabled": "noTextInput"
       }
     },
+    "vibration": {
+      "cost": "vibration adapter and hardware permission",
+      "dependencies": [],
+      "permissions": ["android.permission.VIBRATE"],
+      "androidSourceGroup": {
+        "enabled": "vibration",
+        "disabled": "noVibration"
+      }
+    },
     "video": {
       "cost": "Android video playback",
       "dependencies": [],

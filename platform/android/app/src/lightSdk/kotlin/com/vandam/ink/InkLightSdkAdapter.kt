@@ -38,7 +38,8 @@ private class InkLightSdkAdapter(
     private val ringtoneFiles = createRingtoneFiles(context)
 
     @Volatile
-    private var hapticsEnabled = false
+    override var hapticsEnabled = false
+        private set
 
     override fun start() = bind()
 
