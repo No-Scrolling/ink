@@ -78,6 +78,7 @@ export type TextProps<D extends Destination = Destination> = PressProps<D> & {
   align?: "start" | "center" | "end" | "justify";
   maxLines?: number;
   tabularNumbers?: boolean;
+  strikethrough?: boolean;
 }
 
 // Keep text as a host element while checking literal route parameters in JSX.

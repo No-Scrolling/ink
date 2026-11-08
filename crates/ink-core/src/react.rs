@@ -69,6 +69,7 @@ enum HostProps {
         align: TextAlign,
         max_lines: Option<u32>,
         tabular_numbers: bool,
+        strikethrough: bool,
     },
     #[cfg(feature = "ui-lists")]
     List(Box<ListProps>),
@@ -119,6 +120,7 @@ impl HostProps {
                 align,
                 max_lines,
                 tabular_numbers: props.get("tabularNumbers") == Some(&Json::Bool(true)),
+                strikethrough: props.get("strikethrough") == Some(&Json::Bool(true)),
             });
         }
         Ok(props)
@@ -763,6 +765,7 @@ impl ReactTree {
             align,
             max_lines,
             tabular_numbers,
+            strikethrough,
             text: content,
             on_press,
         } = &host.props
@@ -779,9 +782,10 @@ impl ReactTree {
                 text.into()
             };
             let mut node = Node::text(text, *size, *align, *max_lines, *tabular_numbers);
-            if let NodeKind::Text { width: node_width, links, .. } = &mut node.kind {
+            if let NodeKind::Text { width: node_width, links, strikethrough: node_strikethrough, .. } = &mut node.kind {
                 *node_width = *width;
                 *links = text_links;
+                *node_strikethrough = *strikethrough;
             }
             node.identity = NodeIdentity(id);
             return Ok(Some(node));
@@ -1470,7 +1474,7 @@ impl Engine {
         let mut result = Vec::with_capacity(patches.len());
         for patch in patches {
             let node = patch.as_ref()?;
-            let NodeKind::Text { width: Some(width), text, font_size, align, max_lines: Some(1), tabular_numbers, links } = &node.kind else { return None; };
+            let NodeKind::Text { width: Some(width), text, font_size, align, max_lines: Some(1), tabular_numbers, links, strikethrough: false } = &node.kind else { return None; };
             let previous = self.fixed_text_runs.get(&node.identity)?;
             if !links.is_empty() || *align == TextAlign::Justify || previous.width != *width || previous.font_size != *font_size
                 || previous.align != *align || previous.tabular_numbers != *tabular_numbers { return None; }

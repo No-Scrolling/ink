@@ -75,6 +75,31 @@ import { Text } from "ink";
 </div>
 </div>
 
+## Strikethrough
+
+<div className="pattern-example">
+<div>
+
+<p>Set <code>strikethrough</code> to draw a line through each visible line of text, including truncated text.</p>
+
+```tsx
+import { Text } from "ink";
+
+<Text strikethrough>
+  Take the coastal path past the harbour and follow the signs to the lighthouse.
+</Text>
+<Text strikethrough maxLines={1}>
+  Take the coastal path past the harbour and follow the signs to the lighthouse.
+</Text>
+<Text strikethrough align="center" size={24}>Completed</Text>
+```
+
+</div>
+<div className="pattern-preview">
+<img src="/images/patterns/text-strikethrough.png" alt="Strikethrough across wrapped text, a truncated line and smaller centred text." width="1080" height="1240" />
+</div>
+</div>
+
 ## Alignment
 
 <div className="pattern-example">

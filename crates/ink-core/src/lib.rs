@@ -706,6 +706,7 @@ enum NodeKind {
         align: TextAlign,
         max_lines: Option<u32>,
         tabular_numbers: bool,
+        strikethrough: bool,
     },
     #[cfg(feature = "text-input")]
     TextInput {
@@ -883,6 +884,7 @@ impl Node {
                 align,
                 max_lines,
                 tabular_numbers,
+                strikethrough: false,
             },
         }
     }
@@ -3713,6 +3715,7 @@ impl Engine {
                 max_lines,
                 tabular_numbers,
                 links,
+                ..
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font_size = self.scaled_font(size);
@@ -4077,7 +4080,7 @@ impl Engine {
                 }
                 for (index, line) in lines.iter().enumerate() {
                     let inset = if index == 0 { inset } else { 0.0 };
-                    self.layout_text_lines(std::slice::from_ref(line), *size, TextAlign::Start, false, Rect {
+                    self.layout_text_lines(std::slice::from_ref(line), *size, TextAlign::Start, false, false, Rect {
                         x: rect.x + inset, y: rect.y + index as f32 * line_height,
                         width: (rect.width - inset).max(0.0), height: line_height.min((rect.height - index as f32 * line_height).max(0.0)),
                     });
@@ -4313,6 +4316,7 @@ impl Engine {
                 max_lines,
                 tabular_numbers,
                 links, width,
+                strikethrough,
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font = self.scaled_font(size);
@@ -4346,8 +4350,8 @@ impl Engine {
                     }
                 }
                 let run = self.scene.text.len();
-                self.layout_text_lines(&lines, size, *align, *tabular_numbers, rect);
-                if node.identity.0 != 0 && *max_lines == Some(1) && links.is_empty() && self.scene.text.len() == run + 1 {
+                self.layout_text_lines(&lines, size, *align, *tabular_numbers, *strikethrough, rect);
+                if node.identity.0 != 0 && *max_lines == Some(1) && links.is_empty() && !strikethrough && self.scene.text.len() == run + 1 {
                     if let Some(width) = width { let fixed = FixedTextRun {
                         run, width: *width, font_size: *font_size, align: *align, tabular_numbers: *tabular_numbers,
                     };
@@ -5208,12 +5212,18 @@ impl Engine {
         let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
         let font_size = self.scaled_font(size);
         let lines = self.wrap_text(text, font_size, rect.width, max_lines, tabular_numbers);
-        self.layout_text_lines(&lines, size, align, tabular_numbers, rect);
+        self.layout_text_lines(&lines, size, align, tabular_numbers, false, rect);
     }
 
-    fn layout_text_lines(&mut self, lines: &[WrappedLine], size: f32, align: TextAlign, tabular_numbers: bool, rect: Rect) {
+    fn layout_text_lines(&mut self, lines: &[WrappedLine], size: f32, align: TextAlign, tabular_numbers: bool, strikethrough: bool, rect: Rect) {
         let font_size = self.scaled_font(size);
         let line_height = self.text_line_height(size);
+        let midline = strikethrough.then(|| {
+            let scaled = self.font.as_scaled(PxScale::from(font_size));
+            let bounds = scaled.outline_glyph(scaled.scaled_glyph('x'))
+                .expect("Public Sans has an x glyph").px_bounds();
+            scaled.ascent() + (bounds.min.y + bounds.max.y) / 2.0 - scaled.height() / 2.0
+        });
         for (index, line) in lines.iter().enumerate() {
             let mut line_rect = Rect {
                 y: rect.y + line_height * index as f32,
@@ -5239,6 +5249,27 @@ impl Engine {
                 },
                 scrolling: self.scrolling,
             });
+            if let Some(midline) = midline {
+                let width = if align == TextAlign::Justify && line.wrapped && line.text.chars().any(char::is_whitespace) {
+                    line_rect.width
+                } else { line.width.min(line_rect.width) };
+                let inset = match align {
+                    TextAlign::Centre => (line_rect.width - width).max(0.0) / 2.0,
+                    TextAlign::End => (line_rect.width - width).max(0.0),
+                    _ => 0.0,
+                };
+                let height = self.control_line_height();
+                self.scene.quads.push(Quad {
+                    rect: Rect {
+                        x: line_rect.x + inset,
+                        y: (line_rect.y + line_rect.height / 2.0 + midline - height / 2.0).round(),
+                        width, height,
+                    },
+                    clip: line_rect.intersection(self.clip),
+                    colour: self.scene.colour(Colour::WHITE),
+                    scrolling: self.scrolling,
+                });
+            }
         }
     }
 
