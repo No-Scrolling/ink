@@ -680,9 +680,10 @@ enum NodeKind {
         title: String,
         upper: String,
     },
-    /// A row's one-line subtitle, sized and toned by the theme's `subtitle` setting.
+    /// A row's subtitle, sized and toned by the theme's `subtitle` setting.
     RowSubtitle {
         text: SmolStr,
+        wrap: bool,
     },
     Text {
         links: Vec<(std::ops::Range<usize>, Action)>,
@@ -3501,7 +3502,6 @@ impl Engine {
                 match axis {
                     Axis::Vertical => {
                         let measured = self.measure_vertical_children(children, available);
-                        let entries = measured.len();
                         MeasuredSize {
                             width: measured
                                 .iter()
@@ -3509,7 +3509,7 @@ impl Engine {
                                 .fold(0.0, f32::max)
                                 .min(available.width),
                             height: (measured.iter().map(|measure| measure.height).sum::<f32>()
-                                + gap * entries.saturating_sub(1) as f32)
+                                + self.vertical_gaps(children, gap).sum::<f32>())
                                 .min(available.height),
                         }
                     }
@@ -3589,8 +3589,8 @@ impl Engine {
                     height: self.scaled(BUTTON_HEIGHT).min(available.height),
                 }
             }
-            NodeKind::RowSubtitle { text } => {
-                let text = Node::text(text.clone(), Some(self.toggle_subtitle_size()), TextAlign::Start, Some(1), true);
+            NodeKind::RowSubtitle { text, wrap } => {
+                let text = Node::text(text.clone(), Some(self.toggle_subtitle_size()), TextAlign::Start, (!wrap).then_some(1), true);
                 self.measure(&text, available)
             }
             // The rest of the content gap sits above the title, so titles group with their rows.
@@ -4264,9 +4264,9 @@ impl Engine {
                 );
             }
             NodeKind::Tabs { value, tabs } => self.layout_tabs(value, tabs, rect),
-            NodeKind::RowSubtitle { text } => {
+            NodeKind::RowSubtitle { text, wrap } => {
                 let start = self.scene.text.len();
-                let text = Node::text(text.clone(), Some(self.toggle_subtitle_size()), TextAlign::Start, Some(1), true);
+                let text = Node::text(text.clone(), Some(self.toggle_subtitle_size()), TextAlign::Start, (!wrap).then_some(1), true);
                 self.layout(&text, rect);
                 if self.theme.subtitle_muted == Some(true) {
                     let muted = self.scene.colour(Colour::MUTED);
@@ -4781,9 +4781,8 @@ impl Engine {
         gap: f32,
     ) -> (Vec<MeasuredSize>, f32) {
         let sizes = self.measure_vertical_children(children, available);
-        let entries = sizes.len();
         let height = sizes.iter().map(|measure| measure.height).sum::<f32>()
-            + gap * entries.saturating_sub(1) as f32;
+            + self.vertical_gaps(children, gap).sum::<f32>();
         (sizes, height)
     }
 
@@ -4827,10 +4826,11 @@ impl Engine {
     ) {
         let entries = sizes.len();
         let content_height = sizes.iter().map(|measure| measure.height).sum::<f32>()
-            + gap * entries.saturating_sub(1) as f32;
-        let (mut cursor, actual_gap) =
-            distribution(rect.y, rect.height, content_height, gap, entries, justify);
-        for (child, size) in children.iter().zip(sizes) {
+            + self.vertical_gaps(children, gap).sum::<f32>();
+        let (mut cursor, extra_gap) =
+            distribution(rect.y, rect.height, content_height, 0.0, entries, justify);
+        let gaps = self.vertical_gaps(children, gap).chain(std::iter::once(0.0));
+        for ((child, size), gap_after) in children.iter().zip(sizes).zip(gaps) {
             let bleed = full_bleed_image(child);
             let width = if bleed {
                 self.viewport.width as f32
@@ -4866,14 +4866,26 @@ impl Engine {
                     height: size.height,
                 },
             );
-            cursor += size.height + actual_gap;
+            cursor += size.height + gap_after + extra_gap;
         }
+    }
+
+    fn vertical_gaps<'a>(&self, children: &'a [Node], gap: f32) -> impl Iterator<Item = f32> + use<'a> {
+        let row_gap = self.theme.row_gap.map_or(gap, |row_gap| self.scaled(row_gap).min(gap));
+        children.windows(2).map(move |pair| {
+            if matches!(pair[0].kind, NodeKind::Row { .. }) && matches!(pair[1].kind, NodeKind::Row { .. }) {
+                row_gap
+            } else {
+                gap
+            }
+        })
     }
 
     fn measure_horizontal_children(&mut self, children: &[Node], gap: f32, rect: Rect) -> Vec<MeasuredSize> {
         let mut sizes: Vec<_> = children.iter().map(|child| self.measure(child, rect)).collect();
         let shrinkable = |child: &Node| matches!(child.kind,
-            NodeKind::Text { width: None, .. } | NodeKind::Stack { axis: Axis::Vertical, .. } | NodeKind::Row { .. });
+            NodeKind::Text { width: None, .. } | NodeKind::Stack { axis: Axis::Vertical, .. }
+            | NodeKind::Row { .. } | NodeKind::RowSubtitle { wrap: true, .. });
         let label_width: f32 = children.iter().zip(&sizes)
             .filter(|(child, _)| shrinkable(child)).map(|(_, size)| size.width).sum();
         let total = sizes.iter().map(|size| size.width).sum::<f32>()

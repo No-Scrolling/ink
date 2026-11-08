@@ -112,6 +112,8 @@ export interface Theme {
     inset?: number;
     /** Gap between screen items and section rows, in pixels. Default: 120 at the default text size. */
     gap?: number;
+    /** Maximum vertical gap between consecutive `Row` elements, in pixels. */
+    rowGap?: number;
   };
   header?: {
     /** `"centred"`: a small centred title (default). `"large"`: a large title aligned with the content, with an optional subtitle. */

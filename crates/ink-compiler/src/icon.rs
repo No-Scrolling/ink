@@ -14,9 +14,17 @@ const ICONS: [(&str, u32); 5] = [
 ];
 const PUBLIC_SANS: &[u8] = include_bytes!("../../../assets/fonts/PublicSans-Regular.ttf");
 
-pub fn generate(name: &str, resources: &Path) -> Result<()> {
+pub fn generate(name: &str, resources: &Path, artwork: Option<&Path>) -> Result<()> {
+    let artwork = artwork.map(|path| {
+        let image = image::open(path).with_context(|| format!("could not load launcher icon {}", path.display()))?;
+        anyhow::ensure!(image.width() == image.height(), "launcher icon artwork must be square");
+        Ok::<_, anyhow::Error>(image.to_rgba8())
+    }).transpose()?;
     for (directory, size) in ICONS {
-        let image = generate_image(name, size)?;
+        let image = match &artwork {
+            Some(image) => image::imageops::resize(image, size, size, image::imageops::FilterType::Lanczos3),
+            None => generate_image(name, size)?,
+        };
         let output_directory = resources.join(directory);
         std::fs::create_dir_all(&output_directory)
             .with_context(|| format!("could not create {}", output_directory.display()))?;

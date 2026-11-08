@@ -29,7 +29,7 @@ const shape = {
   fonts: { body: null, display: null, input: null },
   colours: { background: null, foreground: null, muted: null, light: { background: null, foreground: null, muted: null } },
   text: { size: null },
-  spacing: { inset: null, gap: null },
+  spacing: { inset: null, gap: null, rowGap: null },
   header: { layout: null, size: null, top: null, bottom: null, cutout: null, back: { position: null, icon: null }, iconSize: null },
   section: { uppercase: null, size: null, gap: null },
   scrollBar: { colour: null, visibility: null, track: null, width: null, inset: null },
@@ -205,6 +205,7 @@ async function describe(theme) {
     spacing: {
       inset: number(theme.spacing?.inset, "spacing.inset", { max: 400 }),
       gap: number(theme.spacing?.gap, "spacing.gap", { max: 600 }),
+      rowGap: number(theme.spacing?.rowGap, "spacing.rowGap", { max: 600 }),
     },
     header: {
       layout: choice(theme.header?.layout, "header.layout", ["centred", "large"]),

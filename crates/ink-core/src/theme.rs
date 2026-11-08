@@ -125,6 +125,7 @@ pub struct Theme {
     pub variants: BTreeMap<String, Arc<Theme>>,
     pub inset: Option<f32>,
     pub gap: Option<f32>,
+    pub row_gap: Option<f32>,
     pub palette: Palette,
     pub header: HeaderLayout,
     pub header_size: Option<f32>,
@@ -164,6 +165,7 @@ impl Default for Theme {
             variants: BTreeMap::new(),
             inset: None,
             gap: None,
+            row_gap: None,
             palette: Palette::default(),
             header: HeaderLayout::Centred,
             header_size: None,
@@ -272,10 +274,11 @@ pub struct SourceText {
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourceSpacing {
     pub inset: Option<f32>,
     pub gap: Option<f32>,
+    pub row_gap: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -447,6 +450,7 @@ impl ThemeSource {
             variants: BTreeMap::new(),
             inset: self.spacing.inset.map(units),
             gap: self.spacing.gap.map(units),
+            row_gap: self.spacing.row_gap.map(units),
             palette: Palette { dark, light },
             header: match self.header.layout.as_deref() {
                 None | Some("centred") => HeaderLayout::Centred,
@@ -584,7 +588,7 @@ mod tests {
     fn pixel_sizes_become_reference_units_at_the_theme_scale() {
         let source = ThemeSource {
             text: SourceText { size: Some(DEFAULT_TEXT_PX / 2.0) },
-            spacing: SourceSpacing { inset: Some(51.0), gap: None },
+            spacing: SourceSpacing { inset: Some(51.0), ..Default::default() },
             ..Default::default()
         };
         let theme = decode(source, &[]).unwrap().theme;

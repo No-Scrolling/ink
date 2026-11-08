@@ -9,6 +9,7 @@ export function TextInput(props: HitAreaProps & {
   onSubmit?: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  autoCapitalise?: boolean;
   action?: "return" | "search" | "done";
   inputMode?: "text" | "numeric";
   prefix?: string;

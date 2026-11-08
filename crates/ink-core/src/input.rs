@@ -155,6 +155,7 @@ pub(super) struct InputOptions {
     pub appearance: InputAppearance,
     pub disabled: bool,
     pub read_only: bool,
+    pub auto_capitalise: bool,
     pub invalid: bool,
     pub clearable: bool,
     pub min_lines: usize,
@@ -167,7 +168,7 @@ pub(super) struct InputOptions {
 
 impl Default for InputOptions {
     fn default() -> Self {
-        Self { appearance: InputAppearance::default(), disabled: false, read_only: false, invalid: false,
+        Self { appearance: InputAppearance::default(), disabled: false, read_only: false, auto_capitalise: true, invalid: false,
             clearable: true, min_lines: 1, max_lines: TEXT_INPUT_MAX_LINES, leading_icon: None,
             label: String::new(), description: String::new(), error: String::new() }
     }

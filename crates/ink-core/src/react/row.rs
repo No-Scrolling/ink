@@ -15,7 +15,10 @@ impl ReactTree {
         } else { Node::text(title.into(), Some(26.0), TextAlign::Start, max_lines, false) }];
         let mut subtitle = Vec::new();
         if let Some(name) = string(props, "subtitleIcon") { subtitle.push(icon(name, 16.0)?); }
-        if let Some(text) = string(props, "subtitle") { subtitle.push(Node { identity: NodeIdentity(0), kind: NodeKind::RowSubtitle { text: text.into() } }); }
+        if let Some(text) = string(props, "subtitle") {
+            let wrap = props.get("wrapSubtitle") == Some(&Json::Bool(true));
+            subtitle.push(Node { identity: NodeIdentity(0), kind: NodeKind::RowSubtitle { text: text.into(), wrap } });
+        }
         if !subtitle.is_empty() { content.push(Node::stack(subtitle, Axis::Horizontal, Some(6.0), Alignment::Centre, Justification::Start)); }
         let mut children = Vec::new();
         let image = string(props, "image");

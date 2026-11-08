@@ -3,13 +3,15 @@ import { createElement, memo } from "./react";
 import type { Destination } from "./navigation";
 import { pressHandler, type HitAreaProps, type PressProps } from "./press";
 
-function RowComponent<const D extends Destination>({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, endIcon, endAction, href, url, onPress, onLongPress, hitSlop }: PressProps<D> & {
+function RowComponent<const D extends Destination>({ image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, wrapSubtitle, endIcon, endAction, href, url, onPress, onLongPress, hitSlop }: PressProps<D> & {
   image?: string;
   title: string;
   titleMaxLines?: number;
   titleIcon?: IconAsset;
   subtitle?: string;
   subtitleIcon?: IconAsset;
+  /** Let the subtitle wrap onto multiple lines. */
+  wrapSubtitle?: boolean;
   /** A muted icon at the end of the row, such as an arrow for a link. Pressing it presses the row. */
   endIcon?: IconAsset;
   /** A separate button at the end of the row, such as one that removes the item. */
@@ -17,7 +19,7 @@ function RowComponent<const D extends Destination>({ image, title, titleMaxLines
   onLongPress?: () => void;
 }) {
   return createElement("RowContent", {
-    image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon,
+    image, title, titleMaxLines, titleIcon, subtitle, subtitleIcon, wrapSubtitle,
     endIcon: endAction?.icon ?? endIcon,
     onEndPress: endAction?.onPress,
     onPress: pressHandler({ href, url, onPress }) ?? (onLongPress ? () => {} : undefined),

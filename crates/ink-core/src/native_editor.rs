@@ -53,6 +53,7 @@ impl Engine {
             "align": match style.align.unwrap_or(input::InputAlign::Start) { input::InputAlign::Start => "start", input::InputAlign::Center => "center", input::InputAlign::End => "end" },
             "minLines": options.min_lines,
             "maxLines": options.max_lines,
+            "autoCapitalise": options.auto_capitalise,
             "label": options.label,
             "description": options.description,
             "error": options.error,

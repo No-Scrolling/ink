@@ -49,7 +49,7 @@ export function Screen({ header, children, leftAction, rightAction, rightActions
 export interface StackProps extends HitAreaProps {
   children?: ReactNode;
   axis?: "vertical" | "horizontal";
-  gap?: number;
+  gap?: number | "content" | "section";
   align?: "start" | "center" | "end" | "stretch";
   justify?: "start" | "center" | "end" | "space-between";
   onPress?: () => void;

@@ -46,6 +46,7 @@ private class SystemKeyboardAdapter(
     private var active = false
     private var action = -1
     private var numeric = false
+    private var autoCapitalise = true
     private var inputId = -1
     private var nativeText = ""
     private var nativeCursor = 0
@@ -280,6 +281,7 @@ private class SystemKeyboardAdapter(
         editor.removeCallbacks(hideEditor)
         if (pending) return
         val data = JSONObject(context)
+        autoCapitalise = data.optBoolean("autoCapitalise", true)
         minEditorLines = data.getInt("minLines")
         maxEditorLines = data.getInt("maxLines")
         editor.maxLines = if (action == 0) maxEditorLines else 1
@@ -363,7 +365,7 @@ private class SystemKeyboardAdapter(
 
     private fun inputType(): Int = if (numeric) InputType.TYPE_CLASS_NUMBER else InputType.TYPE_CLASS_TEXT or
         (if (action == 0) InputType.TYPE_TEXT_FLAG_MULTI_LINE else 0) or
-        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        InputType.TYPE_TEXT_FLAG_AUTO_CORRECT or (if (autoCapitalise) InputType.TYPE_TEXT_FLAG_CAP_SENTENCES else 0)
 
     override fun dismiss(): Boolean {
         if (!active) return false

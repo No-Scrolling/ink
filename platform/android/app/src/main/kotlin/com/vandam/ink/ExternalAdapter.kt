@@ -76,7 +76,7 @@ internal class ExternalAdapter(private val activity: Activity) : NativeAdapter, 
                         "mailto", "sms", "smsto", "mms", "mmsto" -> Intent.ACTION_SENDTO
                         else -> Intent.ACTION_VIEW
                     }
-                    intent = Intent(action, uri).addCategory(Intent.CATEGORY_BROWSABLE)
+                    intent = Intent(action, uri)
                 }
             }
             activity.startActivity(intent)

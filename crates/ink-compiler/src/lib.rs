@@ -255,7 +255,8 @@ pub fn compile_theme(project: &Project) -> Result<Option<Vec<u8>>> {
 }
 
 pub fn generate_icon(project: &Project) -> Result<()> {
-    icon::generate(&project.config.name, &project.config.android_resources)
+    let artwork = project.root().join("assets/icon.png");
+    icon::generate(&project.config.name, &project.config.android_resources, artwork.is_file().then_some(artwork.as_path()))
 }
 
 fn write_if_changed(path: &Path, contents: &[u8]) -> Result<()> {
