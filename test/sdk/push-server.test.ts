@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 
-test("development push server queues before waking and removes only acknowledged deliveries", async () => {
+test("development push server queues before waking, retries failed wakes and removes only acknowledged deliveries", async () => {
   let base = "";
   const wakes: { body: string; pending: unknown }[] = [];
+  let failures = 1;
   const gateway = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -12,6 +13,7 @@ test("development push server queues before waking and removes only acknowledged
         body: await request.text(),
         pending: await (await fetch(base + "/phone")).json(),
       });
+      if (failures-- > 0) return new Response("", { status: 500 });
       return new Response("", { status: 202 });
     },
   });
@@ -52,8 +54,10 @@ test("development push server queues before waking and removes only acknowledged
     };
     const first = await (await request("/phone/send", "POST", event)).json();
     expect(first.wakeStatus).toBe(202);
+    const pending = { messages: [{ version: 1, events: [event], id: first.queued }] };
     expect(wakes).toEqual([
-      { body: "{}", pending: { messages: [{ version: 1, events: [event], id: first.queued }] } },
+      { body: "{}", pending },
+      { body: "{}", pending },
     ]);
     const clear = {
       version: 1,

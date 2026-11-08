@@ -2,6 +2,27 @@
 const subscriptions = new Map<string, { endpoint: string; messages: Record<string, unknown>[] }>();
 const base = "/v1/push/subscriptions/";
 const port = Number(process.env.PORT ?? 18080);
+
+// Light's gateway sometimes returns 5xx; retry after 1, 2 and 4 seconds.
+async function sendWake(endpoint: string) {
+  for (const delay of [1_000, 2_000, 4_000, 0]) {
+    try {
+      const wake = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (wake.status < 500 || !delay) return wake;
+      console.log(`Wake ${wake.status}; retrying in ${delay / 1000}s`);
+    } catch (error) {
+      if (!delay) throw error;
+      console.log(`Wake failed; retrying in ${delay / 1000}s`);
+    }
+    await Bun.sleep(delay);
+  }
+  throw new Error("unreachable");
+}
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port,
@@ -27,12 +48,7 @@ const server = Bun.serve({
         }
         const receipt = crypto.randomUUID();
         subscription.messages.push({ ...envelope, id: receipt });
-        const wake = await fetch(subscription.endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-          signal: AbortSignal.timeout(10_000),
-        });
+        const wake = await sendWake(subscription.endpoint);
         console.log(`Wake ${wake.status}; queued ${receipt} for ${id}`);
         return Response.json(
           { queued: receipt, wakeStatus: wake.status },

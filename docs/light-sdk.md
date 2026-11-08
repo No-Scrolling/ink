@@ -186,7 +186,7 @@ curl -X POST "http://127.0.0.1:18080/v1/push/subscriptions/<installationId>/send
   -d '{"operation":"show","id":"test-1","groupKey":"test","title":"Test push","body":"Wake-and-fetch works","route":"/modules/light-sdk/push"}'
 ```
 
-The server queues the event before posting `{}` to the registered LightOS endpoint. It keeps pending events if the wake fails. Use a new event ID for each test. You can also send a complete `{"version":1,"events":[...]}` envelope, including `clear` events. Subscriptions and events are lost when you stop the server.
+The server queues the event before posting `{}` to the registered LightOS endpoint. If the endpoint returns a server error or cannot be reached, the server retries after 1, 2 and 4 seconds. Pending events stay in the inbox if every attempt fails. Use a new event ID for each test. You can also send a complete `{"version":1,"events":[...]}` envelope, including `clear` events. Subscriptions and events are lost when you stop the server.
 
 Select **Unregister** before stopping the server, then remove the port forward:
 
@@ -247,6 +247,8 @@ New messages replace notifications in the same group. Ink applies the whole batc
 The optional top-level `expiresAtMs` sets an expiry as a Unix timestamp in milliseconds. Ink ignores expired payloads and duplicate event IDs. Without it, notifications do not expire.
 
 Use `operation: "clear"` with an `id` and `groupKey` to remove a notification. In the app, use `dismiss` and `clear` to manage the inbox.
+
+The LightOS push gateway sometimes returns a `5xx` error. Retry the wake-up with backoff when it fails. Events stay in the inbox, so a failed wake-up delays delivery until the next one succeeds.
 
 ### Delivery limits
 
