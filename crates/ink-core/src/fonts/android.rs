@@ -88,8 +88,12 @@ impl SystemFonts {
         let resolved = cached.unwrap_or_else(|| {
             // Cache misses too: unsupported characters must not scan the chain each frame.
             let resolved = self.fonts.iter().enumerate().find_map(|(index, font)| {
-                let glyph = font.get()?.glyph_id(character);
-                (glyph.0 != 0).then_some((index + 1, glyph))
+                let font = font.get()?;
+                let glyph = font.glyph_id(character);
+                // Colour emoji fonts precede some symbol fonts in Android's chain, but
+                // their bitmap glyphs have no outline to rasterise; keep looking.
+                let drawable = character.is_whitespace() || font.outline(glyph).is_some();
+                (glyph.0 != 0 && drawable).then_some((index + 1, glyph))
             });
             self.characters.write().unwrap().insert(character, resolved);
             resolved
@@ -149,6 +153,18 @@ mod tests {
         assert_eq!(fonts.resolve('ฅ').unwrap().0, 2);
         assert_eq!(fonts.resolve('A').unwrap().0, 3);
         assert_eq!(fonts.fonts.len(), 3, "duplicate file/face pairs share an atlas index");
+    }
+
+    #[test]
+    fn symbols_skip_an_earlier_colour_emoji_font_without_outlines() {
+        let fonts = fixture(r#"<familyset>
+            <family name="sans-serif"><font>missing.ttf</font></family>
+            <family lang="und-Zsye"><font index="2">fallback.ttc</font></family>
+            <family lang="und-Zsym"><font index="3">fallback.ttc</font></family>
+        </familyset>"#);
+        let (index, font, glyph) = fonts.resolve('♥').expect("the symbol font draws the heart");
+        assert_eq!(index, 3);
+        assert!(font.outline(glyph).is_some());
     }
 
     #[test]

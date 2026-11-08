@@ -6,7 +6,9 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection
 
 fonts = []
-for name, character in [('Latin', 'A'), ('Thai', 'ฅ')]:
+# Emoji stands in for a colour font: its glyph exists but has no outline.
+for name, character, outline in [('Latin', 'A', True), ('Thai', 'ฅ', True),
+                                 ('Emoji', '♥', False), ('Symbols', '♥', True)]:
     builder = FontBuilder(1000, isTTF=True)
     builder.setupGlyphOrder(['.notdef', 'triangle'])
     builder.setupCharacterMap({ord(character): 'triangle'})
@@ -15,6 +17,8 @@ for name, character in [('Latin', 'A'), ('Thai', 'ฅ')]:
     pen.lineTo((550, 0))
     pen.lineTo((300, 700))
     pen.closePath()
+    if not outline:
+        pen = TTGlyphPen(None)
     builder.setupGlyf({'.notdef': TTGlyphPen(None).glyph(), 'triangle': pen.glyph()})
     builder.setupHorizontalMetrics({'.notdef': (600, 0), 'triangle': (600, 50)})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
