@@ -4,10 +4,8 @@
 - Use `emulator -avd Light_Phone_III -writable-system` for the emulator
 - Before reporting a visual defect or changing rendering code, verify the saved screenshot by comparing pixels in the affected region. An image preview alone is not sufficient evidence. If the preview and file evidence disagree, investigate the inspection tooling first.
 - When updating docs use the Cloudflare Style guide (https://developers.cloudflare.com/style-guide/)
-
-## Design exports and wireframes
-
 - Use [ink export](docs/design-export.md) for actual routes or Ink compositions with repeatable fixtures. Freeze changing state and keep frames at 1080 × 1240 without scaling, added padding or borders.
+- Use conventional commit prefixes (feat:, fix:, perf:, docs:, refactor:, test:, chore:) with an optional scope for the area, e.g. feat(cli):, fix(audio):. Common scopes: cli, compiler, runtime, renderer, android, template, or a package name (audio, lightos, files, …). Focus the message on why, not what.
 
 If the user uses the tldraw plugin:
 
