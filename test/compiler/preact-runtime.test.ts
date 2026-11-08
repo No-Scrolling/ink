@@ -403,3 +403,28 @@ export default function App() {
     expect(app.batches.flat().some(op => op.props?.text === "Ready content")).toBe(true);
   });
 });
+
+test("15-second transport controls select their filled icons and seek in milliseconds", async () => {
+  await project(async (_root, build) => {
+    const app = runtime();
+    app.evaluate(await build(`
+import { PlayingScreen } from "ink";
+export default function App() {
+  return <PlayingScreen title="Seek contract" artists={[]}
+    previous={{kind: "skip", seconds: 15}} next={{kind: "skip", seconds: 15}}
+    playback={{state: {position: 42000, duration: 213000, playWhenReady: false},
+      toggle() {}, seek() {}, seekBy(offset) { __inkPost(JSON.stringify({offset})); }}} />;
+}`));
+    await app.settle();
+    const screen = app.batches.flat().find(op => op.type === "PlayingScreen")!;
+    expect(screen.props).toMatchObject({
+      previousIcon: "filled:replay_15", nextIcon: "filled:forward_15",
+      previousDisabled: false, nextDisabled: false,
+    });
+    for (const name of ["onPreviousPress", "onNextPress"]) {
+      app.evaluate(`__inkReceive(${JSON.stringify(JSON.stringify({ type: "event", id: screen.id, name, args: [] }))})`);
+      await app.settle();
+    }
+    expect(app.messages.filter(message => "offset" in message)).toEqual([{ offset: -15000 }, { offset: 15000 }]);
+  });
+});

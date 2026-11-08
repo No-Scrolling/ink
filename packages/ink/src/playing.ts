@@ -2,7 +2,7 @@ import { createElement, useRef } from "./react";
 import { Screen, ErrorState, type IconAsset } from "./index";
 import { useAction } from "./action";
 import { playbackController } from "./playback-binding";
-import { forward10Filled, forward30Filled, forward5Filled, pauseFilled, playArrowFilled, replay10Filled, replay30Filled, replay5Filled, skipNextFilled, skipPreviousFilled } from "./icons";
+import { forward10Filled, forward15Filled, forward30Filled, forward5Filled, pauseFilled, playArrowFilled, replay10Filled, replay15Filled, replay30Filled, replay5Filled, skipNextFilled, skipPreviousFilled } from "./icons";
 
 type PlaybackAction = () => void | Promise<void>;
 export interface Playback {
@@ -17,7 +17,7 @@ export interface Playback {
 
 export type TransportControl = { onLongPress?: PlaybackAction; disabled?: boolean } & (
   | { kind: "track"; seconds?: never; icon?: never; onPress?: never }
-  | { kind: "skip"; seconds: 5 | 10 | 30; icon?: never; onPress?: never }
+  | { kind: "skip"; seconds: 5 | 10 | 15 | 30; icon?: never; onPress?: never }
   | { kind: "custom"; icon: IconAsset; onPress: PlaybackAction; seconds?: never }
 );
 export type PlayingScreenProps = {
@@ -32,8 +32,8 @@ export type PlayingScreenProps = {
   actions?: readonly (({ icon: IconAsset; label?: never } | { label: string; icon?: never }) & { selected?: boolean; disabled?: boolean; onPress: PlaybackAction })[];
 };
 
-const replayIcons = { 5: replay5Filled, 10: replay10Filled, 30: replay30Filled };
-const forwardIcons = { 5: forward5Filled, 10: forward10Filled, 30: forward30Filled };
+const replayIcons = { 5: replay5Filled, 10: replay10Filled, 15: replay15Filled, 30: replay30Filled };
+const forwardIcons = { 5: forward5Filled, 10: forward10Filled, 15: forward15Filled, 30: forward30Filled };
 
 export function PlayingScreen({ image, preloadImages = [], title, onTitlePress, artists, playback, previous = { kind: "track" }, next = { kind: "track" }, actions = [] }: PlayingScreenProps) {
   const retry = useRef<PlaybackAction>(() => {});

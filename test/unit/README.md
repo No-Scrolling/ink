@@ -1,9 +1,10 @@
-# Existing Rust test review
+# Rust test review
 
-These eight tests were moved from inline modules without changing production behaviour. The crate modules load them with `#[cfg(test)]` and `#[path]`, preserving private access without adding public test APIs.
+The crate modules load the tests with `#[cfg(test)]` and `#[path]`, preserving private access without adding public test APIs.
 
 | Cases | Contract and realistic failure |
 | --- | --- |
+| Seek icons (1) | Both 15-second filled icons rasterise with opaque pixels, retain the 10-second upper ring and arrow, and have distinct numerals and asset IDs. Catches missing codepoints, the wrong font and accidental reuse of the 10-second icon. |
 | Binary transport (2) | Typed-array subranges retain their bytes after mutation, payloads are consumed once, replies survive transfer, and rejected requests cannot replace accepted bytes. Catches borrowing the original buffer, accepting duplicates and retaining rejected payloads. |
 | Native lists (4) | Sparse edits change the correct content/heights, scrolling bounds retained rows without JS window callbacks, keyed mutations preserve anchors/actions, and boundary requests deduplicate and release empty rows. Catches full-list mounting, stale content/heights, index-based routing and leaked row ownership. |
 | Playing controls (2) | A native clock drives displayed time, speed, pause and seek without React commits; playback durations retain their units and reject invalid values. Catches a stale clock, ignored speed and treating long recordings as bounded layout dimensions. |

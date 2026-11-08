@@ -1640,6 +1640,7 @@ fort eaad
 forum e8af
 forward f57a
 forward_10 e056
+forward_15 e006
 forward_30 e057
 forward_5 e058
 forward_circle f6f5
@@ -3092,6 +3093,7 @@ replace_image f450
 replace_video f44f
 replay e042
 replay_10 e059
+replay_15 e005
 replay_30 e05a
 replay_5 e05b
 replay_circle_filled e9d8

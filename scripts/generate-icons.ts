@@ -19,6 +19,7 @@ for (const [name, codepoint] of symbols) {
   if (/^\d/.test(identifier)) identifier = `icon${identifier}`;
   if (reserved.has(identifier) || identifier.endsWith("Filled")) identifier += "Icon";
   for (const filled of [false, true]) {
+    if (!filled && (name === "replay_15" || name === "forward_15")) continue;
     const key = identifier + (filled ? "Filled" : "");
     if (exports.has(key)) throw new Error(`Duplicate icon export: ${key}`);
     exports.add(key);

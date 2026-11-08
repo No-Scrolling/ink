@@ -172,3 +172,21 @@ test("explicit WebSocket capabilities support dynamically supplied native code",
     expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external", "network", "web-sockets"] });
   });
 }, 60_000);
+
+test("PlayingScreen accepts 15-second skips and bundles both derived filled icons", async () => {
+  await withProject(async root => {
+    await writeFile(resolve(root, "app/index.tsx"), `
+import { PlayingScreen, type TransportControl } from "ink";
+const skip: TransportControl = { kind: "skip", seconds: 15 };
+export default function Page() {
+  return <PlayingScreen title="Seek contract" artists={[]} previous={skip} next={skip}
+    playback={{ state: { position: 42000, duration: 213000, playWhenReady: false },
+      toggle() {}, seek() {}, seekBy() {} }} />;
+}`);
+    const result = await compile(root);
+    expect(result).toMatchObject({ exitCode: 0 });
+    const assets = await readFile(resolve(root, ".ink/android/assets/ink-icons-v1.bin"));
+    expect(assets.includes(Buffer.from("forward_15"))).toBe(true);
+    expect(assets.includes(Buffer.from("replay_15"))).toBe(true);
+  });
+}, 60_000);

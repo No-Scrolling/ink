@@ -56,7 +56,7 @@ fn raster_variant(name: &str, logical_size: f32, filled: bool) -> Result<RasterI
         bail!("Material Symbol {name:?} exceeds Ink's maximum size");
     }
 
-    let seek = filled && matches!(name, "replay_5" | "replay_10" | "replay_30" | "forward_5" | "forward_10" | "forward_30");
+    let seek = filled && matches!(name, "replay_5" | "replay_10" | "replay_15" | "replay_30" | "forward_5" | "forward_10" | "forward_15" | "forward_30");
     let font = material_symbols_font(filled, seek)?;
     let scaled = font.as_scaled(PxScale::from(dimension as f32));
     let glyph = scaled.glyph_id(character).with_scale(dimension as f32);
@@ -135,3 +135,7 @@ fn hash(name: &str, dimension: u32) -> u64 {
     }
     value
 }
+
+#[cfg(test)]
+#[path = "../../../test/unit/compiler-icons.rs"]
+mod tests;
