@@ -32,6 +32,7 @@ kotlin {
             "**/SplineFling.kt", "**/SplineFlingContracts.kt",
             "**/AudioUsage.kt", "**/AudioQueue.kt", "**/AudioQueuePersistence.kt", "**/AudioEffects.kt", "**/AudioContracts.kt",
             "**/AudioOffload.kt", "**/AudioMediaButtons.kt", "**/InkAudioRenderersFactory.kt", "**/VoiceAudioProcessor.kt", "**/QuietAudioProcessor.kt",
+            "**/AudioSource.kt", "**/InkAudioMediaSource.kt", "**/InkMediaSources.kt", "**/AudioContractProvider.kt",
         )
     }
 }

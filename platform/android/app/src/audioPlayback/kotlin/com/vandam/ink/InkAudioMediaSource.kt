@@ -5,9 +5,11 @@ import android.net.Uri
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -58,7 +60,16 @@ internal fun audioMediaSourceFactory(context: Context, cache: Boolean = false): 
     val upstream = if (cache) {
         DataSource.Factory { CachedHttpDataSource(context.applicationContext, http) }
     } else http
-    val defaults = DefaultDataSource.Factory(context, upstream)
+    val defaults = DataSource.Factory {
+        val source = DefaultDataSource(context, upstream.createDataSource())
+        object : DataSource by source {
+            override fun open(dataSpec: DataSpec): Long = try {
+                source.open(dataSpec)
+            } catch (error: SecurityException) {
+                throw DataSourceException(error, PlaybackException.ERROR_CODE_IO_NO_PERMISSION)
+            }
+        }
+    }
     val fallback = DefaultMediaSourceFactory(defaults)
     return object : MediaSource.Factory {
         private var drm: DrmSessionManagerProvider? = null

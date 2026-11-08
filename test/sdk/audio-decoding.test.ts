@@ -8,6 +8,13 @@ const state = {
   positionMs: 0, durationMs: 120_000, speed: 1, shuffle: false, repeat: "off", silenceSavedMs: 0,
 };
 
+test("audio state preserves content URIs in the current item and queue", () => {
+  const src = "content://media/external/audio/media/42";
+  const decoded = decodePlayerState({ ...state, src, queue: [{ ...item, src }] });
+  expect(decoded.current?.src).toBe("content://media/external/audio/media/42");
+  expect(decoded.queue[0]?.src).toBe("content://media/external/audio/media/42");
+});
+
 test("audio state preserves each item's usage and an omitted session fallback", () => {
   const decoded = decodePlayerState({ ...state, usage: "speech", queue: [
     { ...item, usage: "speech" }, { ...item, id: "music", usage: "music" }, { ...item, id: "fallback" },

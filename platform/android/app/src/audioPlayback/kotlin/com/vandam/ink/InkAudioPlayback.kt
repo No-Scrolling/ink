@@ -23,7 +23,6 @@ import androidx.media3.session.SessionToken
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.ListenableFuture
-import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -650,26 +649,7 @@ private class AudioSessionPlayback(
         val usage: AudioUsage?,
     ) {
         fun mediaItem(activity: Activity, bundle: InkBundle): MediaItem {
-            val uri = when {
-                src.startsWith("ink-source://") -> Uri.parse(src).also { InkMediaSources.source(activity, it) }
-                src.startsWith("https://") -> Uri.parse(src)
-                src.startsWith("http://") -> {
-                    require(BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED) {
-                        "HTTP audio requires the network-cleartext capability"
-                    }
-                    Uri.parse(src)
-                }
-                src.startsWith("asset:///") -> bundle.audioUri(src)
-                src.startsWith("ink-file://") -> Uri.fromFile(InkManagedFiles(activity).resolve(src))
-                src.startsWith(RECORDING_PREFIX) -> {
-                    val recordingId = src.removePrefix(RECORDING_PREFIX)
-                    require(RECORDING_ID.matches(recordingId)) { "Invalid Ink recording source" }
-                    Uri.fromFile(File(activity.filesDir, "recordings/$recordingId.m4a"))
-                }
-                else -> error(
-                    "Audio sources must be bundled assets, HTTPS URLs or Ink recordings",
-                )
-            }
+            val uri = audioSourceUri(activity, src, bundle::audioUri)
             val metadata = MediaMetadata.Builder()
                 .setTitle(title)
                 .setDurationMs(duration)
@@ -717,14 +697,12 @@ private class AudioSessionPlayback(
         private const val SKIP_INTERVAL_MS = 15_000L
         private const val MIN_SPEED = 0.25f
         private const val MAX_SPEED = 4f
-        private const val RECORDING_PREFIX = "ink://audio/recordings/"
         private const val SOURCE_METADATA_KEY = "ink.source"
         private const val CONTROLLER_HINT = "ink.controller"
         private const val USAGE_HINT = "ink.usage"
         private const val CACHE_HINT = "ink.cache"
         private const val PRELOAD_NEXT_HINT = "ink.preloadNext"
         private const val STARTUP_BUFFER_HINT = "ink.startupBuffer"
-        private val RECORDING_ID = Regex("[0-9a-f-]{36}")
 
         private fun Long.validTime() = takeIf { it != C.TIME_UNSET && it >= 0 } ?: 0
     }

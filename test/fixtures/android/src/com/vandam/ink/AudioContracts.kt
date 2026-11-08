@@ -16,6 +16,7 @@ import androidx.media3.common.MediaLibraryInfo
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.session.MediaSession
 import java.io.File
@@ -36,6 +37,7 @@ internal class AudioContracts(private val context: Context) {
         test("audio offload excludes effects, speed, pitch and unsuitable routes", ::offloadPreferences)
         test("audio offload remembers PCM fallback for each track and route", ::offloadFallback)
         test("audio headset single, double and triple presses use Media3 commands", ::mediaButtons)
+        test("audio content sources play, persist and report access failures", ::contentSources)
     }
 
     private fun equal(expected: Any?, actual: Any?) {
@@ -253,6 +255,79 @@ internal class AudioContracts(private val context: Context) {
             onMain { equal(false, player.playWhenReady) }
         } finally {
             onMain { buttons.close(); session.release(); player.release() }
+            file.delete()
+        }
+    }
+
+    private fun contentSources() {
+        val name = "audio-content-contract"
+        val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
+        val positions = context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE)
+        val file = File(context.cacheDir, "audio-content-contract.wav")
+        val pcmBytes = 30 * 8000 * 2
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16)
+            .put("data".toByteArray()).putInt(pcmBytes).array()
+        file.outputStream().use { it.write(header); it.write(ByteArray(pcmBytes)) }
+        val src = "content://com.vandam.ink.contracttests.audio/track"
+        val uri = audioSourceUri(context, src) { error("Content must not resolve a bundled asset") }
+        equal(src, uri.toString())
+        for (unsupported in listOf("ftp://example.com/track.mp3", "file:///sdcard/track.mp3", "data:audio/wav;base64,AAAA")) {
+            check(runCatching { audioSourceUri(context, unsupported) { error("Unexpected asset") } }.isFailure) {
+                "Unsupported audio source accepted: $unsupported"
+            }
+        }
+        val errors = LinkedBlockingQueue<PlaybackException>()
+        fun player() = ExoPlayer.Builder(context).setMediaSourceFactory(audioMediaSourceFactory(context, true)).build()
+        val player = onMain { player().apply {
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) { errors.add(error) }
+            })
+        } }
+        val saved = onMain { AudioQueuePersistence(context, name, player, AudioEffects.get(context, name)) }
+        val cache = File(context.cacheDir, "ink-audio")
+        val cacheExisted = cache.exists()
+        try {
+            onMain {
+                player.setMediaItem(item("content-track").buildUpon().setUri(uri)
+                    .setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build())
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle("Local track").setExtras(Bundle().apply {
+                        putString("ink.source", src)
+                    }).build()).build())
+                player.prepare()
+                player.play()
+            }
+            eventually("content playback advances") { player.isPlaying && player.currentPosition > 100 }
+            equal(null, errors.poll())
+            equal(cacheExisted, cache.exists())
+            onMain {
+                player.pause()
+                saved.close()
+                val restored = player()
+                val persistence = AudioQueuePersistence(context, name, restored, AudioEffects.get(context, name))
+                try {
+                    persistence.restore()
+                    equal(1, restored.mediaItemCount)
+                    equal(src, restored.currentMediaItem?.localConfiguration?.uri.toString())
+                    equal(src, restored.currentMediaItem?.requestMetadata?.mediaUri.toString())
+                    equal(src, restored.currentMediaItem?.audioItemJson()?.getString("src"))
+                    equal("content-track", restored.currentMediaItem?.mediaId)
+                    equal(false, restored.playWhenReady)
+                } finally { persistence.close(); restored.release() }
+            }
+            for ((path, code) in listOf("denied" to PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+                    "missing" to PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND)) {
+                onMain {
+                    player.setMediaItem(MediaItem.fromUri(audioSourceUri(context, "content://com.vandam.ink.contracttests.audio/$path") { error("Unexpected asset") }))
+                    player.prepare()
+                }
+                equal(code, checkNotNull(errors.poll(10, TimeUnit.SECONDS)) { "No playback error for $path" }.errorCode)
+            }
+        } finally {
+            onMain { saved.close(); player.release() }
+            preferences.edit().remove(name).commit()
+            positions.edit().remove(name).commit()
             file.delete()
         }
     }

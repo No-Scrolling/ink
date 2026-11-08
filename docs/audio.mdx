@@ -16,8 +16,9 @@ Use `@ink/audio` to play audio and manage queues.
 | Permission | Required for |
 | --- | --- |
 | `microphone` | Recording, sound levels and pitch detection. |
+| `audio-files` | Audio files in the device media library, including MediaStore content URIs. |
 
-Playback does not require microphone access.
+Playback does not require microphone access. Content URIs require access to the underlying media. For MediaStore audio, request `audio-files` through `@ink/lightos` before playback. If permission is revoked or an item is deleted, playback reports a source error.
 
 ```ts
 import { lightos } from "@ink/lightos";
@@ -314,7 +315,7 @@ async function playAlbum() {
 }
 ```
 
-`setQueue` replaces the current queue. Each item needs a unique ID that is not blank. Use your own audio URLs or bundled audio for `src`. Items can also include artwork and a `duration` in milliseconds to display while loading.
+`setQueue` replaces the current queue. Each item needs a unique ID that is not blank. For `src`, use HTTPS URLs, bundled assets, `content://` URIs, managed `ink-file://` files or Ink recordings. Items can also include artwork and a `duration` in milliseconds to display while loading.
 
 To set a queue without loading audio until playback or seeking, pass `prepare: false`:
 
