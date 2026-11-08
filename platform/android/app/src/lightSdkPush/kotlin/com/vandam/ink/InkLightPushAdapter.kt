@@ -162,7 +162,6 @@ private class InkLightPushAdapter(
                 "Bearer token is invalid"
             }
             val key = if (request.isNull("encryptionKey")) null else request.getString("encryptionKey")
-            require(!fetchOnWake || key != null) { "Fetching push notifications requires an encryption key" }
             val credentials = SecureValues(activity)
             if (key != null) {
                 InkCipher(key)
@@ -321,74 +320,79 @@ class InkLightPushReceiver : MessagingReceiver() {
         val pending = goAsync()
         LIGHT_PUSH_EXECUTOR.execute {
             try {
-                val store = InkLightPushStore(context)
-                val registration = store.registration()
-                var receipts = emptyList<String>()
-                val effects = runCatching {
-                    require(message.content.size <= MAX_ENCRYPTED_PAYLOAD_BYTES) { "Push payload is too large" }
-                    val key = SecureValues(context).get("ink.push.key")
-                    val events = if (key == null) parseEnvelope(message.content) else {
-                        val raw = message.content.toString(Charsets.UTF_8).trim()
-                        // Some LightOS gateways deliver only a wake-up, without the POST body.
-                        val encrypted = if (registration.fetchOnWake && (raw.isEmpty() || raw == "null" || raw == "{}")) {
-                            check(registration.desired) { "Push notifications are unregistered" }
-                            val inbox = InkLightPushRegistrar.receive(registration)
-                            require(inbox.length() <= MAX_INBOX_MESSAGES) { "Push inbox is too large" }
-                            List(inbox.length()) { inbox.getJSONObject(it).getString("encrypted") }
-                        } else listOf(JSONObject(raw).getString("encrypted"))
-                        if (registration.fetchOnWake) {
-                            receipts = encrypted.map { payload ->
-                                MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
-                                    .joinToString("") { "%02x".format(it) }
-                            }
-                        }
-                        val cipher = InkCipher(key)
-                        encrypted.flatMap { payload ->
-                            require(payload.toByteArray().size <= MAX_ENCRYPTED_PAYLOAD_BYTES) { "Push payload is too large" }
-                            parseEnvelope(cipher.decrypt(payload).toByteArray(Charsets.UTF_8))
-                        }
-                    }
-                    if (store.registration().generation != registration.generation) return@execute
-                    store.apply(events)
-                }.getOrElse { error ->
-                    Log.w(TAG, "Rejected Light push payload: ${error.message}")
-                    runCatching {
-                        store.fail(
-                            "protocol",
-                            error.message ?: "Rejected Light push payload",
-                            false,
-                        )
-                    }
-                    notifyLightPushStateChanged(context)
-                    return@execute
-                }
-                effects.cancelled.forEach { InkNotificationPresenter.cancelPush(context, it) }
-                effects.shown.forEach {
-                    if (ForegroundPush.matches(it.groupKey)) {
-                        store.dismiss(it.groupKey)
-                        InkNotificationPresenter.cancelPush(context, it.groupKey)
-                    } else presentPush(context, it)
-                }
-                if (effects.shown.isNotEmpty() || effects.cleared.isNotEmpty()) {
-                    val background = createBackgroundAdapter(context)
-                    try {
-                        val delivery = JSONObject().put("messages", JSONArray().apply { effects.shown.forEach { put(it.json()) } })
-                            .put("cancelled", JSONArray(effects.cleared.toList()))
-                        background.enqueuePush(delivery)
-                    } catch (error: Exception) {
-                        Log.e(TAG, "Could not enqueue push handler", error)
-                    } finally { background.stop() }
-                }
-
-                notifyLightPushStateChanged(context)
-                if (receipts.isNotEmpty()) {
-                    runCatching { InkLightPushRegistrar.acknowledge(registration, receipts) }
-                        .onFailure { Log.w(TAG, "Could not acknowledge push delivery: ${it.message}") }
-                }
+                receiveLightPush(context, message.content)
             } finally {
                 pending.finish()
             }
         }
+    }
+}
+
+internal fun receiveLightPush(context: Context, content: ByteArray) {
+    val store = InkLightPushStore(context)
+    val registration = store.registration()
+    var receipts = emptyList<String>()
+    val effects = runCatching {
+        require(content.size <= MAX_ENCRYPTED_PAYLOAD_BYTES) { "Push payload is too large" }
+        val key = SecureValues(context).get("ink.push.key")
+        val direct = runCatching { decodeEnvelope(content, key) }
+        val events = if (direct.isSuccess) {
+            if (key != null && registration.fetchOnWake) {
+                receipts = listOf(encryptedReceipt(JSONObject(content.toString(Charsets.UTF_8)).getString("encrypted")))
+            }
+            direct.getOrThrow()
+        } else {
+            // LightOS can discard the POST body. Treat an unusable envelope as a wake-up.
+            check(registration.desired && registration.baseUrl.isNotEmpty()) {
+                "Push body is not an envelope and no inbox is configured; dropping wake-up"
+            }
+            val inbox = InkLightPushRegistrar.receive(registration)
+            require(inbox.length() <= MAX_INBOX_MESSAGES) { "Push inbox is too large" }
+            val entries = List(inbox.length()) { inbox.getJSONObject(it) }
+            receipts = entries.map { entry ->
+                if (key != null) encryptedReceipt(entry.getString("encrypted"))
+                else entry.getString("id").also {
+                    require(validOpaque(it, MAX_ID_BYTES)) { "Invalid push receipt ID" }
+                }
+            }
+            entries.flatMap { decodeEnvelope(it.toString().toByteArray(Charsets.UTF_8), key) }
+        }
+        if (store.registration().generation != registration.generation) return
+        store.apply(events)
+    }.getOrElse { error ->
+        Log.w(TAG, "Rejected Light push payload: ${error.message}")
+        runCatching {
+            store.fail(
+                "protocol",
+                error.message ?: "Rejected Light push payload",
+                false,
+            )
+        }
+        notifyLightPushStateChanged(context)
+        return
+    }
+    effects.cancelled.forEach { InkNotificationPresenter.cancelPush(context, it) }
+    effects.shown.forEach {
+        if (ForegroundPush.matches(it.groupKey)) {
+            store.dismiss(it.groupKey)
+            InkNotificationPresenter.cancelPush(context, it.groupKey)
+        } else presentPush(context, it)
+    }
+    if (effects.shown.isNotEmpty() || effects.cleared.isNotEmpty()) {
+        val background = createBackgroundAdapter(context)
+        try {
+            val delivery = JSONObject().put("messages", JSONArray().apply { effects.shown.forEach { put(it.json()) } })
+                .put("cancelled", JSONArray(effects.cleared.toList()))
+            background.enqueuePush(delivery)
+        } catch (error: Exception) {
+            Log.e(TAG, "Could not enqueue push handler", error)
+        } finally { background.stop() }
+    }
+
+    notifyLightPushStateChanged(context)
+    if (receipts.isNotEmpty()) {
+        runCatching { InkLightPushRegistrar.acknowledge(registration, receipts) }
+            .onFailure { Log.w(TAG, "Could not acknowledge push delivery: ${it.message}") }
     }
 }
 
@@ -875,6 +879,17 @@ private fun parseEnvelope(bytes: ByteArray): List<LightPushEvent> {
     }
 }
 
+private fun decodeEnvelope(bytes: ByteArray, key: String?): List<LightPushEvent> {
+    require(bytes.size <= MAX_ENCRYPTED_PAYLOAD_BYTES) { "Push payload is too large" }
+    if (key == null) return parseEnvelope(bytes)
+    val encrypted = JSONObject(bytes.toString(Charsets.UTF_8)).getString("encrypted")
+    return parseEnvelope(InkCipher(key).decrypt(encrypted).toByteArray(Charsets.UTF_8))
+}
+
+private fun encryptedReceipt(payload: String): String =
+    MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+
 private fun validateBaseUrl(value: String) {
     require(value.toByteArray().size in 1..MAX_BASE_URL_BYTES) { "Subscription base URL is invalid" }
     val uri = URI(value)
@@ -884,7 +899,7 @@ private fun validateBaseUrl(value: String) {
     val loopback = uri.host == "localhost" || uri.host == "127.0.0.1" ||
         uri.host == "::1" || uri.host == "10.0.2.2"
     require(uri.scheme == "https" || (uri.scheme == "http" && loopback)) {
-        "Subscription base URL must use HTTPS (HTTP is allowed only for an emulator loopback)"
+        "Subscription base URL must use HTTPS (HTTP is allowed only for local development)"
     }
 }
 

@@ -27,7 +27,9 @@ kotlin {
     compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     sourceSets.getByName("main").kotlin.apply {
         setSrcDirs(listOf("src", "../../../platform/android/app/src/main/kotlin", "../../../platform/android/app/src/network/kotlin",
-            "../../../platform/android/app/src/audioPlayback/kotlin"))
+            "../../../platform/android/app/src/audioPlayback/kotlin", "../../../platform/android/app/src/lightSdkPush/kotlin",
+            "../../../platform/android/app/src/notifications/kotlin", "../../../platform/android/app/src/crypto/kotlin",
+            "../../../platform/android/app/src/noBackground/kotlin"))
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
             "**/PermissionsAdapter.kt", "**/LightSdkAdapter.kt", "**/PermissionContracts.kt",
@@ -36,11 +38,15 @@ kotlin {
             "**/AudioUsage.kt", "**/AudioQueue.kt", "**/AudioQueuePersistence.kt", "**/AudioEffects.kt", "**/AudioContracts.kt",
             "**/AudioOffload.kt", "**/AudioMediaButtons.kt", "**/InkAudioRenderersFactory.kt", "**/VoiceAudioProcessor.kt", "**/QuietAudioProcessor.kt",
             "**/AudioSource.kt", "**/InkAudioMediaSource.kt", "**/InkMediaSources.kt", "**/AudioContractProvider.kt",
+            "**/PushContracts.kt", "**/InkLightPushAdapter.kt", "**/LightPushAdapter.kt",
+            "**/InkNotificationsAdapter.kt", "**/NotificationsAdapter.kt", "**/InkCipher.kt",
+            "**/NoBackgroundAdapter.kt", "**/BackgroundAdapter.kt",
         )
     }
 }
 
 dependencies {
+    implementation("org.unifiedpush.android:connector:3.3.2")
     implementation("androidx.media3:media3-exoplayer:1.10.1")
     implementation("androidx.media3:media3-session:1.10.1")
 }

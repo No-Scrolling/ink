@@ -18,7 +18,12 @@ export default function Push() {
       <Button
         disabled={disabled}
         onPress={() =>
-          command.run(() => push.register({ url: "http://127.0.0.1:18080/v1/push/subscriptions" }))
+          command.run(() =>
+            push.register({
+              url: "http://127.0.0.1:18080/v1/push/subscriptions",
+              fetchOnWake: true,
+            }),
+          )
         }
       >
         Register Push

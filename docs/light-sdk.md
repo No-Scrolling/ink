@@ -91,9 +91,12 @@ import { usePush } from "@ink/lightos/push";
 
 const push = usePush();
 const register = useAction(() => push.register({
-  url: "https://api.example.com/push",
+  url: "https://api.example.com/v1/push/subscriptions",
+  fetchOnWake: true,
 }));
 ```
+
+LightOS does not deliver push bodies to your app. Treat each push as a wake-up signal: queue events in your subscription server’s inbox, then POST a wake-up to the registered UnifiedPush endpoint. Ink fetches the inbox, applies the events, displays notifications and acknowledges the deliveries.
 
 Call `register.run()` once `push.ready` is true. Set `bearerToken` if your server requires authentication.
 
@@ -101,19 +104,20 @@ Registration sends `PUT {url}/{installationId}` with `{ "endpoint": "…" }`. Yo
 
 ### Encrypted notifications
 
-Set the same encryption key on your server and in registration:
+Use encryption for private content. Set the same encryption key on your server and in registration:
 
 ```ts
 await push.register({
-  url: "https://api.example.com/push",
+  url: "https://api.example.com/v1/push/subscriptions",
   bearerToken,
   encryptionKey,
+  fetchOnWake: true,
 });
 ```
 
 Ink saves the key in secure storage and decrypts notifications on Android, even when the app is closed. The key is not sent to the subscription server. Unregistering removes it.
 
-Encrypt the [notification payload](#send-a-notification) using the [Ink cipher format](/crypto#server-format). Send this wrapper with `Content-Type: application/json`:
+Encrypt the [notification envelope](#send-a-notification) using the [Ink cipher format](/crypto#server-format). Store this wrapper in the server inbox:
 
 ```json
 { "encrypted": "ink1.…" }
@@ -123,18 +127,72 @@ When encryption is enabled, plaintext notifications are rejected.
 
 ### Retrieve notifications after a wake-up
 
-Set `fetchOnWake: true` in registration to retrieve encrypted notifications when
-LightOS delivers an empty payload, `null` or `{}`. This option requires
-`encryptionKey` and is disabled by default.
+Set `fetchOnWake: true` to enable wake-and-fetch delivery. You can use it with or without `encryptionKey`. Ink also fetches automatically when the push body is empty, `null` or cannot be parsed as an envelope, provided you have an active subscription server registration. Without an inbox, Ink logs the rejected wake-up and drops it.
 
-Your subscription server must support `GET {url}/{installationId}` and return
-`{ "messages": [{ "id": "…", "encrypted": "ink1.…" }] }`. Retain the encrypted
-envelopes sent through UnifiedPush until the receiver acknowledges them.
+Use HTTPS for your subscription server. HTTP is allowed for local development at `localhost`, `127.0.0.1` or the emulator host `10.0.2.2`.
 
-After processing a notification, Ink sends `POST` to the same URL with
-`{ "ids": ["…"] }`. Each ID is the lowercase hexadecimal SHA-256 hash of the
-encrypted string's UTF-8 bytes. Remove only the acknowledged envelopes. Both
-requests use the registration's bearer token.
+Your server must implement these requests at `{url}/{installationId}`:
+
+| Method | Request | Response |
+| --- | --- | --- |
+| `PUT` | `{ "endpoint": "…" }` | `{ "success": true }` |
+| `GET` | No body. Fetch pending deliveries. | `{ "messages": [...] }` |
+| `POST` | `{ "ids": ["receipt-42"] }` | `{ "success": true }` |
+| `DELETE` | No body. Remove the subscription. | `{ "success": true }` |
+
+Return a successful HTTP status for each request. All four methods use `Authorization: Bearer <bearerToken>` when you provide a token. Ink does not follow redirects.
+
+For a plaintext inbox, each message contains a unique receipt `id` and a version-1 envelope:
+
+```json
+{
+  "messages": [{
+    "id": "receipt-42",
+    "version": 1,
+    "events": [{
+      "operation": "show",
+      "id": "message-42",
+      "groupKey": "conversation-7",
+      "title": "New message",
+      "body": "Your message is ready",
+      "route": "/inbox"
+    }]
+  }]
+}
+```
+
+For an encrypted inbox, return `{ "messages": [{ "encrypted": "ink1.…" }] }`. Ink computes each receipt ID as the lowercase hexadecimal SHA-256 hash of the encrypted string’s UTF-8 bytes. This preserves the encrypted delivery contract; an optional server-supplied `id` is ignored.
+
+Retain deliveries until Ink acknowledges them with `POST`. Remove only acknowledged receipt IDs. Keep event IDs stable when retrying so Ink can remove duplicates. Ink acknowledges after applying the whole inbox; it does not acknowledge a batch that fails validation or decryption. An empty inbox returns `{ "messages": [] }`. Limit each response to 128 messages and 1 MiB.
+
+### Test with the template
+
+From the repository root, start the in-memory development server and forward the phone’s port:
+
+```sh
+bun scripts/push-server.ts
+# In another terminal:
+adb -s LP3LHMA531900140 reverse tcp:18080 tcp:18080
+```
+
+Open **Light SDK > Push** in the template and select **Register Push**. The example registers `http://127.0.0.1:18080/v1/push/subscriptions` with `fetchOnWake: true` and no encryption key. The development server supports plaintext inboxes only; use encrypted inboxes for private production content.
+
+List installation IDs, then replace `<installationId>` with your ID to queue an event and wake the phone:
+
+```sh
+curl http://127.0.0.1:18080/v1/push/subscriptions
+curl -X POST "http://127.0.0.1:18080/v1/push/subscriptions/<installationId>/send" \
+  -H 'Content-Type: application/json' \
+  -d '{"operation":"show","id":"test-1","groupKey":"test","title":"Test push","body":"Wake-and-fetch works","route":"/modules/light-sdk/push"}'
+```
+
+The server queues the event before posting `{}` to the registered LightOS endpoint. It keeps pending events if the wake fails. Use a new event ID for each test. You can also send a complete `{"version":1,"events":[...]}` envelope, including `clear` events. Subscriptions and events are lost when you stop the server.
+
+Select **Unregister** before stopping the server, then remove the port forward:
+
+```sh
+adb -s LP3LHMA531900140 reverse --remove tcp:18080
+```
 
 ### Foreground notifications
 
@@ -168,7 +226,7 @@ This sends `DELETE` to the same URL.
 
 ### Send a notification
 
-Your server sends a JSON payload:
+Queue a JSON envelope in your server inbox before sending the wake-up:
 
 ```json
 {
@@ -193,6 +251,8 @@ Use `operation: "clear"` with an `id` and `groupKey` to remove a notification. I
 ### Delivery limits
 
 Notification JSON is limited to 4 KiB and 16 events, before encryption. Ink keeps 64 inbox entries and 512 recent event IDs to recognise duplicates.
+
+A force-stopped app receives no pushes until you open it again. This includes apps stopped with `adb shell am force-stop`. Open the app after installation or a force-stop before testing delivery.
 
 Ink saves and displays notifications natively. A [background task](#background-push-tasks) can process deliveries without opening the app. Push can be delayed, duplicated or unavailable, so also sync data independently.
 
