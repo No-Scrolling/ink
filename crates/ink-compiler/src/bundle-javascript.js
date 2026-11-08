@@ -35,6 +35,9 @@ function nativePreact(contents) {
     return dom;
   }`;
   contents = contents.slice(0, start) + driver + contents.slice(end);
+  // React omits empty string children, including conditional expressions and
+  // component returns. Preact otherwise creates native text outside Text.
+  contents = contents.replace('null!=(o=l[r])&&"boolean"!=typeof o', 'null!=(o=l[r])&&""!==o&&"boolean"!=typeof o');
   // Host nodes have no hooks, refresh signatures or component lifecycles.
   contents = contents.replace("(s=l.__b)&&s(u);n:if", '"function"==typeof j&&(s=l.__b)&&s(u);n:if');
   contents = contents.replace("return(s=l.diffed)&&s(u),128&u.__u", 'return("function"==typeof j||j==null)&&(s=l.diffed)&&s(u),128&u.__u');

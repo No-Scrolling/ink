@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { createContext, runInContext } from "node:vm";
 
 const repository = resolve(import.meta.dir, "../..");
-type Operation = { op: string; id: number; type?: string; props?: Record<string, unknown>; changes?: (number | string)[]; value?: boolean };
+type Operation = { op: string; id: number; type?: string; props?: Record<string, unknown>; changes?: (number | string)[]; value?: boolean; parent?: number };
 
 async function project(run: (root: string, build: (source: string, development?: boolean) => Promise<string>) => Promise<void>) {
   await mkdir(resolve(repository, ".test-output"), { recursive: true });
@@ -54,6 +54,51 @@ export default function App() {
   useEffect(() => onNativeMessage("contract", () => setCount(value => value + 1)), []);
   return <Screen><Text>{${JSON.stringify(label)} + ": " + count}</Text></Screen>;
 }`;
+
+test("empty React children stay absent across conditional updates and component returns", async () => {
+  await project(async (_root, build) => {
+    for (const development of [false, true]) {
+      const app = runtime();
+      app.evaluate(await build(`
+import { useEffect, useState } from "react";
+import { Button, Screen, Text } from "ink";
+import { onNativeMessage } from "ink/native";
+function Empty() { return ""; }
+export default function App() {
+  const [error, setError] = useState("");
+  useEffect(() => onNativeMessage("contract", message => setError(message.value)), []);
+  return <Screen>
+    {error && <Text>{error}</Text>}
+    <Empty />
+    {["", null, false, ["", undefined]]}
+    <Text key="mixed">Count {0}{""}{" "}</Text>
+    <Button key="action">Continue</Button>
+  </Screen>;
+}`, development));
+      await app.settle();
+      const initial = app.batches.splice(0).flat();
+      const creates = initial.filter(op => op.op === "create");
+      expect(creates.filter(op => op.type === "#text").map(op => op.props?.text)).toEqual(["Count ", "0", " ", "Continue"]);
+      const screen = creates.find(op => op.type === "Screen")!.id;
+      const mixed = creates.find(op => op.type === "Text")!.id;
+      const button = creates.find(op => op.type === "Button")!.id;
+      expect(initial.filter(op => op.op === "insert" && op.parent === screen).map(op => op.id)).toEqual([mixed, button]);
+      for (const value of ["Offline", "", "Reconnected"]) {
+        app.send("error", { value }); await app.settle();
+        const updates = app.batches.splice(0).flat();
+        expect(updates.filter(op => op.op === "create").map(op => [op.type, op.props?.text])).toEqual(value ? [["Text", value]] : []);
+        if (value) {
+          const text = updates.find(op => op.op === "create")!.id;
+          expect(updates).toContainEqual({ op: "insert", id: text, parent: screen, before: mixed });
+        } else {
+          expect(updates.filter(op => op.op === "remove")).toHaveLength(1);
+        }
+        expect(updates.some(op => (op.op === "create" || op.op === "remove") && (op.id === mixed || op.id === button))).toBe(false);
+      }
+      expect(app.messages).toEqual([]);
+    }
+  });
+});
 
 test("production JSX and compiler caches deliver current callbacks and batched text edits", async () => {
   await project(async (_root, build) => {
