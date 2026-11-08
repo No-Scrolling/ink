@@ -82,6 +82,10 @@ class MainActivity : Activity() {
 
     internal fun openBundleAsset(path: String) = runtime.bundle.open(path)
     internal fun emit(message: String) = runtime.send(message)
+    internal fun updateController(controller: Long, value: String) = runtime.updateController(controller, value)
+    internal fun updatePlaybackClock(controller: Long, position: Long, duration: Long, playing: Boolean, speed: Float) =
+        runtime.updatePlaybackClock(controller, position, duration, playing, speed)
+    internal fun removePlaybackClock(controller: Long) = runtime.removePlaybackClock(controller)
 
     private fun handleBack() { if (!bindings.back()) finish() }
 
