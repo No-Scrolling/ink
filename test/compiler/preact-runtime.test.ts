@@ -428,3 +428,36 @@ export default function App() {
     expect(app.messages.filter(message => "offset" in message)).toEqual([{ offset: -15000 }, { offset: 15000 }]);
   });
 });
+
+test("notification navigation releases the push inbox before attaching its replacement", async () => {
+  await project(async (root, build) => {
+    await mkdir(resolve(root, "node_modules/@ink"));
+    await symlink(resolve(repository, "packages/lightos"), resolve(root, "node_modules/@ink/lightos"));
+    const app = runtime();
+    app.evaluate("globalThis.__inkNextId = (() => { let id = 0; return () => ++id; })()");
+    app.evaluate(await build(`
+import { Text } from "ink";
+import { FileNavigator } from "ink/file-router";
+import { usePush } from "@ink/lightos/push";
+function Inbox() {
+  const push = usePush();
+  return <Text>{push.ready ? "Ready" : "Connecting"}</Text>;
+}
+const tree = { name: "", children: [], pages: [
+  { name: "index", path: "/", component: () => <Text>Home</Text> },
+  { name: "inbox", path: "/inbox", component: Inbox },
+] };
+export default function App() { return <FileNavigator tree={tree} initialDestination="/inbox" />; }
+`));
+    await app.settle();
+    const first = app.messages.find(message => message.operation === "activate")!;
+    app.evaluate(`__inkResolveNativeResult(${first.id}, "")`);
+    await app.settle();
+    app.evaluate(`__inkReceive(${JSON.stringify(JSON.stringify({ type: "navigate", path: "/inbox" }))})`);
+    await app.settle();
+    const lifecycle = app.messages.filter(message => message.operation === "activate" || message.operation === "deactivate");
+    expect(lifecycle.map(message => message.operation)).toEqual(["activate", "deactivate", "activate"]);
+    expect(lifecycle[1].controller).toBe(first.controller);
+    expect(lifecycle[2].controller).not.toBe(first.controller);
+  });
+});

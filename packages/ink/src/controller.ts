@@ -16,8 +16,12 @@ export function attachNativeController(
   if (observers.size >= 256) throw new NativeError("busy", "Too many native controllers");
   const id = __inkNextId();
   let disposed = false;
+  let activated = false;
   observers.set(id, observe);
-  const ready = callNative(module, "activate", recipe, { controller: id }).catch(error => {
+  const ready = callNative(module, "activate", recipe, { controller: id }).then(value => {
+    activated = true;
+    return value;
+  }).catch(error => {
     disposed = true;
     observers.delete(id);
     throw error;
@@ -36,7 +40,10 @@ export function attachNativeController(
       if (disposed) return;
       disposed = true;
       observers.delete(id);
-      try { await ready; } catch { return; }
+      // Release an active owner before the next effect attaches its replacement.
+      if (!activated) {
+        try { await ready; } catch { return; }
+      }
       await callNative(module, "deactivate", {}, { controller: id });
     },
   };
