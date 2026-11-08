@@ -29,6 +29,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.FutureTask
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.net.ServerSocket
+import java.net.InetAddress
+import java.util.concurrent.atomic.AtomicInteger
 
 @UnstableApi
 internal class AudioContracts(private val context: Context) {
@@ -40,6 +43,7 @@ internal class AudioContracts(private val context: Context) {
         test("audio offload remembers PCM fallback for each track and route", ::offloadFallback)
         test("audio headset single, double and triple presses use Media3 commands", ::mediaButtons)
         test("audio content sources play, persist and report access failures", ::contentSources)
+        test("audio cache follows item identity across URL changes", ::cachedIdentity)
     }
 
     private fun equal(expected: Any?, actual: Any?) {
@@ -369,6 +373,64 @@ internal class AudioContracts(private val context: Context) {
             positions.edit().remove(name).commit()
             file.delete()
         }
+    }
+
+    private fun cachedIdentity() {
+        val pcmBytes = 8000 * 2
+        val audio = ByteBuffer.allocate(44 + pcmBytes).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16)
+            .put("data".toByteArray()).putInt(pcmBytes).put(ByteArray(pcmBytes)).array()
+        val requests = AtomicInteger()
+        val server = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
+        val serving = Thread {
+            while (!server.isClosed) {
+                try {
+                    server.accept().use { socket ->
+                        val reader = socket.getInputStream().bufferedReader()
+                        while (!reader.readLine().isNullOrEmpty()) Unit
+                        requests.incrementAndGet()
+                        socket.getOutputStream().apply {
+                            write("HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: ${audio.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                            write(audio)
+                            flush()
+                        }
+                    }
+                } catch (error: java.io.IOException) {
+                    if (!server.isClosed) throw error
+                }
+            }
+        }.apply { start() }
+        val id = "cache-contract-${System.nanoTime()}"
+        fun play(id: String, path: String, session: String = "main", cache: Boolean = true) {
+            val errors = LinkedBlockingQueue<PlaybackException>()
+            val player = onMain {
+                ExoPlayer.Builder(context).setMediaSourceFactory(audioMediaSourceFactory(context, cache, session)).build().apply {
+                    addListener(object : Player.Listener {
+                        override fun onPlayerError(error: PlaybackException) { errors.add(error) }
+                    })
+                    setMediaItem(MediaItem.Builder().setMediaId(id).setUri("http://127.0.0.1:${server.localPort}/$path.wav").build())
+                    prepare()
+                    play()
+                }
+            }
+            try {
+                eventually("cached audio finishes buffering") { player.playbackState == Player.STATE_READY && player.bufferedPosition == 1000L }
+                equal(null, errors.poll())
+            } finally { onMain { player.release() } }
+        }
+        try {
+            play(id, "original")
+            equal(1, requests.get())
+            play(id, "renewed")
+            equal(1, requests.get())
+            play("$id-new", "renewed")
+            equal(2, requests.get())
+            play(id, "renewed", session = "other")
+            equal(3, requests.get())
+            play(id, "renewed", cache = false)
+            equal(4, requests.get())
+        } finally { server.close(); serving.join(5000); check(!serving.isAlive) }
     }
 
     private fun persistence() {

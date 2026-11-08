@@ -151,6 +151,8 @@ const player = usePlayer({ session: "podcasts", mode: "detached", usage: "speech
 
 Attached and detached players share a 256 MiB disc cache private to the app. Ink opens the cache on the first HTTP(S) request with caching enabled. When the cache reaches its limit, Ink removes the least recently used chunks. Local files, bundled assets and content URIs bypass the cache.
 
+Cached audio is keyed by item ID within each player session, so give an item a new `id` if its audio changes.
+
 Cached audio remains after `stop()` and app restarts, but Android can clear cache storage. If Ink cannot open the cache, streaming uses the network.
 
 The cache stores only audio fetched during playback and buffering. It does not download complete files in the background. Use [Downloads](/downloads) to save complete files for offline playback. Deleting a saved download does not clear cached stream data.

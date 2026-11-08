@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.util.Util
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
@@ -54,7 +55,7 @@ private class ProviderAudioErrorPolicy : DefaultLoadErrorHandlingPolicy() {
 }
 
 @UnstableApi
-internal fun audioMediaSourceFactory(context: Context, cache: Boolean = false): MediaSource.Factory {
+internal fun audioMediaSourceFactory(context: Context, cache: Boolean = false, session: String = "main"): MediaSource.Factory {
     val http = DefaultHttpDataSource.Factory()
         .setAllowCrossProtocolRedirects(BuildConfig.INK_CLEARTEXT_NETWORK_ENABLED)
     val upstream = if (cache) {
@@ -83,7 +84,12 @@ internal fun audioMediaSourceFactory(context: Context, cache: Boolean = false): 
             fallback.setLoadErrorHandlingPolicy(policy)
         }
         override fun getSupportedTypes(): IntArray = fallback.supportedTypes
-        override fun createMediaSource(item: MediaItem): MediaSource {
+        override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+            val configuration = mediaItem.localConfiguration
+            val item = if (cache && configuration != null &&
+                Util.inferContentTypeForUriAndMimeType(configuration.uri, configuration.mimeType) == C.CONTENT_TYPE_OTHER) {
+                mediaItem.buildUpon().setCustomCacheKey("$session:${mediaItem.mediaId}").build()
+            } else mediaItem
             if (item.localConfiguration?.uri?.scheme != "ink-source") return fallback.createMediaSource(item)
             val pending = mutableListOf<ProviderAudioDataSource>()
             val readers = IdentityHashMap<MediaPeriod, List<ProviderAudioDataSource>>()

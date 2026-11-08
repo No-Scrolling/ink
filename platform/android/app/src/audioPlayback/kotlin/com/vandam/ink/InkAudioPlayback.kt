@@ -379,7 +379,7 @@ private class AudioSessionPlayback(
         player?.let { return it }
         val created = ExoPlayer.Builder(activity, InkAudioRenderersFactory(activity, effects))
             .setLoadControl(audioLoadControl(startupBuffer))
-            .setMediaSourceFactory(audioMediaSourceFactory(activity, cache))
+            .setMediaSourceFactory(audioMediaSourceFactory(activity, cache, name))
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(AUDIO_SEEK_INCREMENT_MS)
             .setSeekForwardIncrementMs(AUDIO_SEEK_INCREMENT_MS)

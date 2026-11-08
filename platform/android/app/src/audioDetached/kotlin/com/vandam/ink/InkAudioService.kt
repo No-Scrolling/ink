@@ -57,7 +57,7 @@ internal class InkAudioService : MediaSessionService() {
         val effects = AudioEffects.get(this, name)
         val player = ExoPlayer.Builder(this, InkAudioRenderersFactory(this, effects))
             .setLoadControl(audioLoadControl(startupBuffer))
-            .setMediaSourceFactory(audioMediaSourceFactory(this, cache))
+            .setMediaSourceFactory(audioMediaSourceFactory(this, cache, name))
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(AUDIO_SEEK_INCREMENT_MS)
             .setSeekForwardIncrementMs(AUDIO_SEEK_INCREMENT_MS)
