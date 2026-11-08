@@ -951,10 +951,20 @@ impl ReactTree {
                     ensure!(props.get("onLeftPress") == Some(&Json::Bool(true)), "Screen left action requires onPress");
                     Ok((self.icon(icon)?, event(id, "onLeftPress", vec![])))
                 }).transpose()?;
-                let right_action = string(props, "rightIcon").map(|icon| {
-                    ensure!(props.get("onRightPress") == Some(&Json::Bool(true)), "Screen right action requires onPress");
-                    Ok((self.icon(icon)?, event(id, "onRightPress", vec![])))
-                }).transpose()?;
+                // Several end actions arrive as `rightIcons`; each press reports its index.
+                let right_actions = if let Some(icons) = props.get("rightIcons") {
+                    let icons = icons.as_array().context("Screen rightIcons must be an array")?;
+                    ensure!(icons.is_empty() || props.get("onRightPress") == Some(&Json::Bool(true)), "Screen right actions require onPress");
+                    icons.iter().enumerate().map(|(index, icon)| {
+                        let icon = icon.as_str().context("Screen rightIcons must be icon names")?;
+                        Ok((self.icon(icon)?, event(id, "onRightPress", vec![json!(index)])))
+                    }).collect::<Result<Vec<_>>>()?
+                } else {
+                    string(props, "rightIcon").map(|icon| {
+                        ensure!(props.get("onRightPress") == Some(&Json::Bool(true)), "Screen right action requires onPress");
+                        Ok((self.icon(icon)?, event(id, "onRightPress", vec![])))
+                    }).transpose()?.into_iter().collect()
+                };
                 let background = canvas_colour(props, "background")?.map(super::Colour::to_linear);
                 let props = props.object().context("invalid Screen properties")?;
                 let props = ScreenProps::deserialize(serde::de::value::MapDeserializer::<_, serde_json::Error>::new(
@@ -997,7 +1007,7 @@ impl ReactTree {
                     screen.pinned_header = state.is_none() && props.pinned_header;
                     screen.pinned_footer = state.is_none() && props.pinned_footer;
                     screen.left_action = left_action;
-                    screen.right_action = right_action;
+                    screen.right_actions = right_actions;
                     screen.media_picker = host.kind == HostKind::MediaPickerScreen;
                 }
                 screen

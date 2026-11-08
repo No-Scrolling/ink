@@ -15,7 +15,7 @@ export { useAction, type Action } from "./action";
 export { NativeError } from "./native";
 export { Tabs, Slot, navigate, replace, back, useRouteParams, type Destination } from "./navigation";
 
-export function Screen({ header, children, leftAction, rightAction, ...props }: {
+export function Screen({ header, children, leftAction, rightAction, rightActions, ...props }: {
   children?: ReactNode;
   header?: ReactNode;
   title?: string;
@@ -33,10 +33,14 @@ export function Screen({ header, children, leftAction, rightAction, ...props }: 
   bottomInset?: boolean;
   leftAction?: HitAreaProps & { icon: IconAsset; onPress: () => void };
   rightAction?: HitAreaProps & { icon: IconAsset; onPress: () => void };
+  /** Several end actions in reading order; the last sits at the end edge. Replaces `rightAction`. */
+  rightActions?: readonly { icon: IconAsset; onPress: () => void }[];
 }) {
   const [scrollToEnd, setScrollToEnd] = useState(0);
   const requestEnd = useMemo(() => () => setScrollToEnd(value => value + 1), []);
-  return createElement(ScrollToEndContext.Provider, { value: requestEnd }, createElement("Screen", { ...props, scrollToEnd, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, leftHitSlop: leftAction?.hitSlop, rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress, rightHitSlop: rightAction?.hitSlop },
+  return createElement(ScrollToEndContext.Provider, { value: requestEnd }, createElement("Screen", { ...props, scrollToEnd, pinnedHeader: header != null, leftIcon: leftAction?.icon, onLeftPress: leftAction?.onPress, leftHitSlop: leftAction?.hitSlop, ...(rightActions
+    ? { rightIcons: rightActions.map(action => action.icon), onRightPress: (index: number) => rightActions[index]?.onPress() }
+    : { rightIcon: rightAction?.icon, onRightPress: rightAction?.onPress, rightHitSlop: rightAction?.hitSlop }) },
     header != null && createElement(Stack, { gap: 47 }, header),
     children,
   ));

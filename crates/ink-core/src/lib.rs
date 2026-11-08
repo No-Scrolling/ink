@@ -122,6 +122,8 @@ const LARGE_HEADER_BOTTOM: f32 = 22.0;
 const HEADER_HORIZONTAL_INSET: f32 = 22.0;
 const HEADER_BUTTON_SIZE: f32 = 32.0;
 const HEADER_BACK_ICON_SIZE: f32 = 28.0;
+/// Space between neighbouring end actions in a header, as a share of the header icon size.
+const HEADER_ACTION_GAP: f32 = 0.75;
 const HEADER_BACK_OFFSET_X: f32 = -7.0;
 const HEADER_CONTENT_TOP: f32 = 6.0;
 const NAV_HEIGHT: f32 = 70.0;
@@ -783,7 +785,8 @@ struct ScreenNode {
     wide: bool,
     bottom_inset: bool,
     left_action: Option<(Mask, Action)>,
-    right_action: Option<(Mask, Action)>,
+    /// End actions in reading order; the last sits at the end edge.
+    right_actions: Vec<(Mask, Action)>,
     media_picker: bool,
 }
 
@@ -806,7 +809,7 @@ impl Node {
                 wide: false,
                 bottom_inset: true,
                 left_action: None,
-                right_action: None,
+                right_actions: Vec::new(),
                 media_picker: false,
             })),
         }
@@ -4048,7 +4051,7 @@ impl Engine {
                     pinned_footer,
                     wide,
                     left_action,
-                    right_action,
+                    right_actions,
                     media_picker,
                     bottom_inset,
                     background,
@@ -4076,7 +4079,7 @@ impl Engine {
                     *pinned_footer,
                     *wide,
                     left_action.as_ref(),
-                    right_action.as_ref(),
+                    right_actions,
                     *media_picker,
                     screen_bottom_inset && *bottom_inset,
                     rect,
@@ -4320,7 +4323,7 @@ impl Engine {
         pinned_footer: bool,
         wide: bool,
         left_action: Option<&(Mask, Action)>,
-        right_action: Option<&(Mask, Action)>,
+        right_actions: &[(Mask, Action)],
         media_picker: bool,
         bottom_inset: bool,
         rect: Rect,
@@ -4336,7 +4339,7 @@ impl Engine {
             rect
         };
         let automatic_back = left_action.is_none();
-        let has_header = title.is_some() || self.back_icon.is_some() || left_action.is_some() || right_action.is_some();
+        let has_header = title.is_some() || self.back_icon.is_some() || left_action.is_some() || !right_actions.is_empty();
         let large = self.theme.header == HeaderLayout::Large && title.is_some();
         let title_size = self.theme.header_size.unwrap_or(if large { LARGE_HEADER_TEXT_SIZE } else { HEADER_TEXT_SIZE });
         let subtitle = subtitle.filter(|_| large);
@@ -4356,6 +4359,7 @@ impl Engine {
         let header_inset = self.scaled(HEADER_HORIZONTAL_INSET);
         let header_icon = self.theme.header_icon_size.unwrap_or(HEADER_BACK_ICON_SIZE);
         let header_button_size = self.scaled(HEADER_BUTTON_SIZE.max(header_icon));
+        let action_stride = header_button_size + self.scaled(header_icon * HEADER_ACTION_GAP);
         let back_visible = self.back_icon.is_some() && automatic_back;
         let back_at_end = back_visible && self.theme.back_at_end;
         let subtitle_line_height = self.scaled(self.header_subtitle_size() * 1.4);
@@ -4374,7 +4378,8 @@ impl Engine {
             let end_x = header.x + header.width - end_inset - header_button_size * if back_at_end { 2.0 } else { 1.0 };
             let x = (header.x + self.scaled(self.content_inset()))
                 .max(if has_left { header.x + header_inset + header_button_size } else { 0.0 });
-            let end = if right_action.is_some() { end_x } else if back_at_end { back_x }
+            let end = if !right_actions.is_empty() { end_x - action_stride * (right_actions.len() - 1) as f32 }
+                else if back_at_end { back_x }
                 else { header.x + header.width - self.scaled(self.content_inset()) };
             let width = (end - x).max(0.0);
             let lines = subtitle.map(|text| self.wrap_text(text, subtitle_font_size, width, None, false));
@@ -4399,10 +4404,10 @@ impl Engine {
                 Action::Back,
             );
         }
-        for (is_left, action) in [(true, left_action), (false, right_action)] {
-            let Some((icon, action)) = action else { continue };
+        let ends = right_actions.iter().enumerate().map(|(index, action)| (Some(right_actions.len() - 1 - index), action));
+        for (from_end, (icon, action)) in left_action.map(|action| (None, action)).into_iter().chain(ends) {
             let action_rect = Rect {
-                x: if is_left { header.x + header_inset } else { end_x },
+                x: from_end.map_or(header.x + header_inset, |from_end| end_x - action_stride * from_end as f32),
                 y: header_centre - header_button_size / 2.0,
                 width: header_button_size,
                 height: header_button_size,
@@ -4410,7 +4415,7 @@ impl Engine {
             self.push_hit_region(action_rect, action.clone());
             let size = self.scaled(header_icon);
             // In large headers, the outermost end icon's drawn edge meets the content edge.
-            let optical = if large && !is_left && !back_at_end { self.icon_trailing_space(icon) * size } else { 0.0 };
+            let optical = if large && from_end == Some(0) && !back_at_end { self.icon_trailing_space(icon) * size } else { 0.0 };
             self.scene.masks.push(MaskRun {
                 mask: icon.clone(),
                 rect: Rect { x: action_rect.x + (header_button_size - size) / 2.0 + optical, y: action_rect.y + (header_button_size - size) / 2.0, width: size, height: size },
@@ -4450,7 +4455,7 @@ impl Engine {
             }
         } else if let Some(title) = title {
             let title_inset = header_inset
-                + if self.back_icon.is_some() || left_action.is_some() || right_action.is_some() {
+                + if self.back_icon.is_some() || left_action.is_some() || !right_actions.is_empty() {
                     header_button_size
                 } else {
                     0.0
