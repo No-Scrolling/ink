@@ -1,5 +1,6 @@
 package com.vandam.ink
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.media.AudioDeviceInfo
@@ -19,6 +20,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionToken
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -192,21 +194,30 @@ internal class AudioContracts(private val context: Context) {
             .putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16)
             .put("data".toByteArray()).putInt(pcmBytes).array()
         file.outputStream().use { it.write(header); it.write(ByteArray(pcmBytes)) }
-        val buttons = AudioMediaButtons(context)
-        val receivedPresses = LinkedBlockingQueue<Unit>()
-        val player = onMain { ExoPlayer.Builder(context).build().apply {
-            setMediaItems((0..2).map { MediaItem.Builder().setMediaId("track-$it").setUri(file.toURI().toString()).build() }, 1, 0)
-        } }
-        val session = onMain { MediaSession.Builder(context, player).setId("headset-contract")
-            .setCallback(object : MediaSession.Callback {
-                override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean {
-                    val handled = buttons.onMediaButtonEvent(session, controllerInfo, intent)
-                    val event = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
-                    if (event?.keyCode == KeyEvent.KEYCODE_HEADSETHOOK && event.action == KeyEvent.ACTION_DOWN) receivedPresses.add(Unit)
-                    return handled
-                }
-            }).build() }
-        val controller = MediaController(context, session.platformToken)
+        val service = Intent(context, InkAudioService::class.java)
+        val connection = onMain {
+            androidx.media3.session.MediaController.Builder(context, SessionToken(context, ComponentName(context, InkAudioService::class.java)))
+                .setConnectionHints(Bundle().apply {
+                    putBoolean("ink.controller", true)
+                    putString("ink.session", "headset-contract")
+                    putString("ink.usage", "speech")
+                }).buildAsync()
+        }
+        val player = connection.get(10, TimeUnit.SECONDS)
+        // Media3 exposes the platform token on MediaSession, but not on a connected controller.
+        val token = SessionToken::class.java.getDeclaredMethod("getPlatformToken").apply { isAccessible = true }
+            .invoke(onMain { player.connectedToken }) as android.media.session.MediaSession.Token
+        val controller = MediaController(context, token)
+        val plainConnection = onMain {
+            androidx.media3.session.MediaController.Builder(context, checkNotNull(player.connectedToken)).buildAsync()
+        }
+        val plain = plainConnection.get(10, TimeUnit.SECONDS)
+        onMain {
+            player.setMediaItems((0..2).map { index -> MediaItem.Builder().setMediaId("track-$index")
+                .setUri(file.toURI().toString()).setMediaMetadata(MediaMetadata.Builder().setExtras(Bundle().apply {
+                    putString(ITEM_USAGE_EXTRA, "speech")
+                }).build()).build() }, 1, 0)
+        }
         fun key(code: Int) {
             controller.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
             controller.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_UP, code))
@@ -215,6 +226,7 @@ internal class AudioContracts(private val context: Context) {
             repeat(count) { key(KeyEvent.KEYCODE_HEADSETHOOK); if (it + 1 < count) SystemClock.sleep(40) }
         }
         try {
+            eventually("speech session ready") { player.sessionExtras.getString(SESSION_USAGE_EXTRA) == "speech" }
             presses(1)
             SystemClock.sleep(100)
             onMain { equal(false, player.playWhenReady) }
@@ -230,6 +242,18 @@ internal class AudioContracts(private val context: Context) {
             onMain { player.seekTo(1, 4000) }
             presses(3)
             eventually("triple press restarts after three seconds") { player.currentMediaItemIndex == 1 && player.currentPosition == 0L }
+            onMain { player.replaceMediaItem(1, player.getMediaItemAt(1).buildUpon()
+                .setMediaMetadata(MediaMetadata.Builder().setExtras(Bundle().apply { putString(ITEM_USAGE_EXTRA, "music") }).build()).build())
+                player.seekTo(1, 0) }
+            eventually("music usage applied") { player.sessionExtras.getString(SESSION_USAGE_EXTRA) == "music" }
+            presses(2)
+            eventually("double press transitions music to speech") { player.currentMediaItemIndex == 2 && player.sessionExtras.getString(SESSION_USAGE_EXTRA) == "speech" }
+            onMain {
+                check(plain.availableCommands.contains(Player.COMMAND_SEEK_TO_PREVIOUS)) { "Same-app controller lost previous after usage refresh" }
+                check(plain.availableCommands.contains(Player.COMMAND_SEEK_FORWARD)) { "Same-app controller lost seek after usage refresh" }
+            }
+            presses(3)
+            eventually("triple press works after music to speech refresh") { player.currentMediaItemIndex == 1 }
             key(KeyEvent.KEYCODE_MEDIA_NEXT)
             eventually("dedicated next") { player.currentMediaItemIndex == 2 }
             key(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
@@ -246,17 +270,32 @@ internal class AudioContracts(private val context: Context) {
             eventually("pause restarted queue") { !player.playWhenReady }
             key(KeyEvent.KEYCODE_MEDIA_STOP)
             eventually("dedicated stop keeps the queue") { player.playbackState == Player.STATE_IDLE && player.mediaItemCount == 3 }
-            // A release must discard a pending gesture rather than act on a released player.
-            receivedPresses.clear()
-            presses(1)
+        } finally {
+            onMain { plain.release(); player.release() }
+            context.stopService(service)
+            file.delete()
+            context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE).edit().remove("headset-contract").apply()
+            context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE).edit().remove("headset-contract").apply()
+        }
+        val buttons = AudioMediaButtons(context)
+        val receivedPresses = LinkedBlockingQueue<Unit>()
+        val pendingPlayer = onMain { ExoPlayer.Builder(context).build() }
+        val pendingSession = onMain { MediaSession.Builder(context, pendingPlayer).setId("pending-gesture-contract")
+            .setCallback(object : MediaSession.Callback {
+                override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean {
+                    val handled = buttons.onMediaButtonEvent(session, controllerInfo, intent)
+                    receivedPresses.add(Unit)
+                    return handled
+                }
+            }).build() }
+        try {
+            MediaController(context, pendingSession.platformToken)
+                .dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_HEADSETHOOK))
             check(receivedPresses.poll(5, TimeUnit.SECONDS) != null) { "Pending press did not reach the session" }
             onMain { buttons.close() }
             SystemClock.sleep(ViewConfiguration.getDoubleTapTimeout().toLong() + 50)
-            onMain { equal(false, player.playWhenReady) }
-        } finally {
-            onMain { buttons.close(); session.release(); player.release() }
-            file.delete()
-        }
+            onMain { equal(false, pendingPlayer.playWhenReady) }
+        } finally { onMain { buttons.close(); pendingSession.release(); pendingPlayer.release() } }
     }
 
     private fun contentSources() {

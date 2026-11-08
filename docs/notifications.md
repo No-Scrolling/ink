@@ -106,7 +106,7 @@ Handle duplicate taps and records that have since been deleted. Update reminders
 
 Use [`@ink/lightos/push`](/light-sdk#push-notifications) for remote push notifications. LightOS does not deliver push bodies: your server queues version-1 event envelopes, then sends a wake-up signal to the registered endpoint. Ink fetches events from your server inbox, displays or clears notifications and acknowledges the deliveries.
 
-Register with `fetchOnWake: true`; encryption is recommended and optional. See the [inbox GET and acknowledgement contract](/light-sdk#retrieve-notifications-after-a-wake-up), [show and clear event format](/light-sdk#send-a-notification), and [encrypted `ink1.` envelopes](/light-sdk#encrypted-notifications).
+Register your subscription server URL. Ink fetches and acknowledges deliveries automatically. Use encryption for private content. See the [inbox GET and acknowledgement contract](/light-sdk#retrieve-notifications-after-a-wake-up), [show and clear event format](/light-sdk#send-a-notification), and [encrypted `ink1.` envelopes](/light-sdk#encrypted-notifications).
 
 A force-stopped app receives no pushes until you open it again, including after `adb shell am force-stop`.
 

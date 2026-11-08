@@ -155,7 +155,6 @@ private class InkLightPushAdapter(
         }
         val baseUrl = request.optString("url").trimEnd('/')
         val token = request.optString("bearerToken")
-        val fetchOnWake = request.optBoolean("fetchOnWake")
         val error = runCatching {
             validateBaseUrl(baseUrl)
             require(token.toByteArray().size <= MAX_TOKEN_BYTES && token.none { Character.isISOControl(it.code) }) {
@@ -173,7 +172,7 @@ private class InkLightPushAdapter(
             store.fail("protocol", error.message ?: "Invalid Light push registration", false)
             return
         }
-        store.configure(baseUrl, token, fetchOnWake)
+        store.configure(baseUrl, token)
         registerConnector()
     }
 
@@ -337,7 +336,7 @@ internal fun receiveLightPush(context: Context, content: ByteArray) {
         val key = SecureValues(context).get("ink.push.key")
         val direct = runCatching { decodeEnvelope(content, key) }
         val events = if (direct.isSuccess) {
-            if (key != null && registration.fetchOnWake) {
+            if (key != null && registration.desired && registration.baseUrl.isNotEmpty()) {
                 receipts = listOf(encryptedReceipt(JSONObject(content.toString(Charsets.UTF_8)).getString("encrypted")))
             }
             direct.getOrThrow()
@@ -502,7 +501,6 @@ private data class PushRegistration(
     val generation: Long,
     val desired: Boolean,
     val status: String,
-    val fetchOnWake: Boolean,
 )
 
 private data class LightPushRecord(
@@ -555,12 +553,11 @@ private class InkLightPushStore(context: Context) {
 
     fun registration(): PushRegistration = locked { read().registration() }
 
-    fun configure(baseUrl: String, token: String, fetchOnWake: Boolean) = mutate { state ->
+    fun configure(baseUrl: String, token: String) = mutate { state ->
         state.generation += 1
         state.desired = true
         state.baseUrl = baseUrl
         state.bearerToken = token
-        state.fetchOnWake = fetchOnWake
         state.status = "registering"
         state.clearError()
     }
@@ -738,7 +735,6 @@ private data class PushState(
     var baseUrl: String = "",
     var bearerToken: String = "",
     var endpoint: String = "",
-    var fetchOnWake: Boolean = false,
     var registeredAtMs: Long = 0,
     var status: String = "idle",
     var errorKind: String = "",
@@ -756,7 +752,6 @@ private data class PushState(
         generation,
         desired,
         status,
-        fetchOnWake,
     )
 
     fun clearError() {
@@ -777,7 +772,6 @@ private data class PushState(
         baseUrl = ""
         bearerToken = ""
         endpoint = ""
-        fetchOnWake = false
         registeredAtMs = 0
         status = "idle"
         clearError()
@@ -798,7 +792,6 @@ private data class PushState(
         .put("desired", desired)
         .put("baseUrl", baseUrl)
         .put("bearerToken", bearerToken)
-        .put("fetchOnWake", fetchOnWake)
         .put("recentIds", JSONArray(recentIds))
 
     companion object {
@@ -813,7 +806,6 @@ private data class PushState(
                 baseUrl = root.optString("baseUrl"),
                 bearerToken = root.optString("bearerToken"),
                 endpoint = root.optString("endpoint"),
-                fetchOnWake = root.optBoolean("fetchOnWake"),
                 registeredAtMs = root.optLong("registeredAtMs"),
                 status = root.optString("status", "idle"),
                 errorKind = error?.optString("kind") ?: root.optString("errorKind"),

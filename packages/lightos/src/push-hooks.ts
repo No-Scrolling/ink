@@ -15,8 +15,6 @@ export interface PushRegistration {
   url: string;
   bearerToken?: string;
   encryptionKey?: string;
-  /** Fetch the server inbox after a wake-up, with or without encryption. Unusable bodies also trigger a fetch. */
-  fetchOnWake?: boolean;
 }
 export interface PushOptions {
   foregroundGroup?: string | null;

@@ -1,5 +1,5 @@
 {
-  "serial": "LP3LHMA531900140",
+  "serial": "<device-serial>",
   "uninstall": "Success",
   "removed": [
     "package:com.vandam.ink.startupprobe"

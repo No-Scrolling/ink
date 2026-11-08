@@ -114,12 +114,12 @@ bun "$BENCHMARK_TOOLS/build-probes.ts" /tmp/ink-vulkan-apks/after
 Connect the phone and pass its ADB serial explicitly:
 
 ```sh
-bun "$BENCHMARK_TOOLS/measure.ts" LP3LHMA531900140 \
+bun "$BENCHMARK_TOOLS/measure.ts" <device-serial> \
   com.vandam.ink.vulkanprobe.counter \
   /tmp/ink-vulkan-apks/before/counter.apk \
   /tmp/ink-vulkan-apks/after/counter.apk /tmp/ink-vulkan-phone-counter
 
-bun "$BENCHMARK_TOOLS/measure.ts" LP3LHMA531900140 \
+bun "$BENCHMARK_TOOLS/measure.ts" <device-serial> \
   com.vandam.ink.vulkanprobe.template \
   /tmp/ink-vulkan-apks/before/template.apk \
   /tmp/ink-vulkan-apks/after/template.apk /tmp/ink-vulkan-phone-template

@@ -161,17 +161,13 @@ Enable caching only when a URL continues to identify the same audio. Leave it of
 
 ### Reduce playback power use
 
-Set `offload: true` to let compatible audio hardware decode compressed audio. This can reduce CPU use and improve battery life during playback. The option works in attached and detached mode.
+Set `offload: true` to let compatible hardware decode audio to save power. The option works in attached and detached mode.
 
 ```ts
 const player = usePlayer({ session: "music", mode: "detached", offload: true });
 ```
 
-Offload depends on the device, audio format and current output route. Ink uses pulse-code modulation (PCM) playback for the built-in speaker, wired headphones and USB audio. Media3 also checks format and gapless playback support before selecting offload.
-
-Offloaded audio bypasses app audio processors. Ink therefore disables offload while skip silence or voice boost is enabled, or playback speed differs from 1. It can enable offload again when processing is inactive.
-
-If an offloaded audio track starts but its position does not advance, Ink retries with PCM at the same queue position. It remembers the affected track and output route for that player's lifetime and uses PCM for either on subsequent playback. Unsupported formats and devices also use PCM automatically.
+Offload works only over Bluetooth outputs. Ink disables it while playback speed differs from 1, skip silence is enabled or voice boost is active. Ink falls back to normal playback automatically when offload is unavailable or fails.
 
 ### Headset buttons
 

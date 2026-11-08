@@ -17,11 +17,11 @@ class MainActivity : Activity()
 
 internal class PushContracts(private val instrumentation: Instrumentation) {
     fun run(test: (String, () -> Unit) -> Unit) {
-        test("null Light push fetches a plaintext inbox without opting in") { receive("null", false) }
-        test("empty Light push fetches a plaintext inbox without opting in") { receive("", false) }
-        test("unparseable Light push fetches a plaintext inbox") { receive("not an envelope", false) }
-        test("fetch-on-wake registration works without an encryption key") { receive("{}", true) }
-        test("encrypted wake fetches and acknowledges the ciphertext hash") { receive("null", true, true) }
+        test("null Light push fetches a plaintext inbox without opting in") { receive("null") }
+        test("empty Light push fetches a plaintext inbox without opting in") { receive("") }
+        test("unparseable Light push fetches a plaintext inbox") { receive("not an envelope") }
+        test("persisted legacy wake flags are ignored") { receive("{}", legacy = false); receive("{}", legacy = true) }
+        test("encrypted inbox and direct delivery acknowledge the ciphertext hash") { receive("null", encrypted = true); receive("", encrypted = true, direct = true) }
         test("wake without an inbox is dropped without crashing", ::noInbox)
     }
 
@@ -46,7 +46,7 @@ internal class PushContracts(private val instrumentation: Instrumentation) {
         }
     }
 
-    private fun receive(body: String, fetchOnWake: Boolean, encrypted: Boolean = false) = withAdapter { adapter ->
+    private fun receive(body: String, encrypted: Boolean = false, direct: Boolean = false, legacy: Boolean? = null) = withAdapter { adapter ->
         val key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         val envelope = """{"version":1,"events":[{"operation":"show","id":"event-42","groupKey":"thread-7","title":"Inbox contract","body":"Fetched from the subscription server","route":"/inbox"}]}"""
         // Fixed AES-GCM fixture generated independently with Node crypto.
@@ -58,7 +58,7 @@ internal class PushContracts(private val instrumentation: Instrumentation) {
         val server = ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")).apply { soTimeout = 10_000 }
         val thread = Thread {
             try {
-                repeat(2) { index ->
+                repeat(if (direct) 1 else 2) { index ->
                     server.accept().use { socket ->
                         socket.soTimeout = 10_000
                         val reader = socket.getInputStream().bufferedReader()
@@ -72,7 +72,7 @@ internal class PushContracts(private val instrumentation: Instrumentation) {
                         var offset = 0
                         while (offset < bytes.size) { val count = reader.read(bytes, offset, bytes.size - offset); check(count > 0); offset += count }
                         requests.add(Triple(line, headers, String(bytes)))
-                        val response = if (index == 0) """{"messages":[$entry]}""" else """{"success":true}"""
+                        val response = if (!direct && index == 0) """{"messages":[$entry]}""" else """{"success":true}"""
                         socket.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${response.toByteArray().size}\r\nConnection: close\r\n\r\n$response").toByteArray())
                     }
                 }
@@ -80,19 +80,22 @@ internal class PushContracts(private val instrumentation: Instrumentation) {
         }.apply { start() }
         try {
             val registration = JSONObject().put("url", "http://127.0.0.1:${server.localPort}/v1/push/subscriptions")
-                .put("bearerToken", "contract-token").put("fetchOnWake", fetchOnWake)
+                .put("bearerToken", "contract-token")
             if (encrypted) registration.put("encryptionKey", key)
             instrumentation.runOnMainSync { adapter.executeController(1, "register", registration.toString()) }
             val state = JSONObject(stateFile.readText())
             check(state.getBoolean("desired")) { "Registration rejected: $state" }
-            check(state.getBoolean("fetchOnWake") == fetchOnWake)
+            check(!state.has("fetchOnWake"))
+            if (legacy != null) stateFile.writeText(state.put("fetchOnWake", legacy).toString())
             check((SecureValues(context).get("ink.push.key") != null) == encrypted)
-            receiveLightPush(context, body.toByteArray())
+            receiveLightPush(context, (if (direct) entry.toString() else body).toByteArray())
             run {
-                val get = checkNotNull(requests.poll(10, TimeUnit.SECONDS)) { "Inbox GET did not arrive: ${errors.peek()}" }
                 val path = "/v1/push/subscriptions/${state.getString("installationId")}"
-                check(get.first == "GET $path HTTP/1.1") { get.first }
-                check(get.second["authorization"] == "Bearer contract-token")
+                if (!direct) {
+                    val get = checkNotNull(requests.poll(10, TimeUnit.SECONDS)) { "Inbox GET did not arrive: ${errors.peek()}" }
+                    check(get.first == "GET $path HTTP/1.1") { get.first }
+                    check(get.second["authorization"] == "Bearer contract-token")
+                }
                 val post = checkNotNull(requests.poll(10, TimeUnit.SECONDS)) { "Acknowledgement did not arrive: ${errors.peek()}" }
                 check(post.first == "POST $path HTTP/1.1") { post.first }
                 check(post.second["authorization"] == "Bearer contract-token")

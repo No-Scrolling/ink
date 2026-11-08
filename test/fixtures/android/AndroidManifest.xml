@@ -2,9 +2,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <application android:label="Ink Android contracts" android:usesCleartextTraffic="true">
         <activity android:name="com.vandam.ink.PermissionContractActivity" android:exported="false" />
         <activity android:name="com.vandam.ink.MainActivity" android:exported="false" />
+        <service android:name="com.vandam.ink.InkAudioService" android:exported="false" android:foregroundServiceType="mediaPlayback">
+            <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
+        </service>
         <provider android:name="com.vandam.ink.AudioContractProvider" android:authorities="com.vandam.ink.contracttests.audio" android:exported="false" />
     </application>
     <instrumentation android:name="com.vandam.ink.ContractInstrumentation" android:targetPackage="com.vandam.ink.contracttests" />

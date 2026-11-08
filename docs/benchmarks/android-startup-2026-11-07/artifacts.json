@@ -8,7 +8,7 @@
   "bothAppBytecodeSha256": "ffc21e96c3e415ad86e50c5ac30cd15945c2f95d848abadc6c712245fc8ec709",
   "bothIconAssetSha256": "135e9d3da0bdac14a396d1034addc34cf36d6c904a8bd1c3e69d7e6cf0df3189",
   "phone": {
-    "serial": "LP3LHMA531900140",
+    "serial": "<device-serial>",
     "model": "TLP301",
     "fingerprint": "Light/LightPhoneIII/LightPhoneIII:14/UKQ1.240321.001/00WW_1_440000:user/release-keys",
     "cpu0Capacity": 478,

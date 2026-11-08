@@ -21,7 +21,6 @@ export default function Push() {
           command.run(() =>
             push.register({
               url: "http://127.0.0.1:18080/v1/push/subscriptions",
-              fetchOnWake: true,
             }),
           )
         }

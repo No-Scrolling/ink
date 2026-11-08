@@ -92,7 +92,6 @@ import { usePush } from "@ink/lightos/push";
 const push = usePush();
 const register = useAction(() => push.register({
   url: "https://api.example.com/v1/push/subscriptions",
-  fetchOnWake: true,
 }));
 ```
 
@@ -111,7 +110,6 @@ await push.register({
   url: "https://api.example.com/v1/push/subscriptions",
   bearerToken,
   encryptionKey,
-  fetchOnWake: true,
 });
 ```
 
@@ -127,7 +125,7 @@ When encryption is enabled, plaintext notifications are rejected.
 
 ### Retrieve notifications after a wake-up
 
-Set `fetchOnWake: true` to enable wake-and-fetch delivery. You can use it with or without `encryptionKey`. Ink also fetches automatically when the push body is empty, `null` or cannot be parsed as an envelope, provided you have an active subscription server registration. Without an inbox, Ink logs the rejected wake-up and drops it.
+Ink fetches your configured subscription inbox when the push body is empty, `null` or cannot be parsed as an envelope. This works with or without `encryptionKey`. Without an inbox, Ink logs the rejected wake-up and drops it.
 
 Use HTTPS for your subscription server. HTTP is allowed for local development at `localhost`, `127.0.0.1` or the emulator host `10.0.2.2`.
 
@@ -163,19 +161,19 @@ For a plaintext inbox, each message contains a unique receipt `id` and a version
 
 For an encrypted inbox, return `{ "messages": [{ "encrypted": "ink1.…" }] }`. Ink computes each receipt ID as the lowercase hexadecimal SHA-256 hash of the encrypted string’s UTF-8 bytes. This preserves the encrypted delivery contract; an optional server-supplied `id` is ignored.
 
-Retain deliveries until Ink acknowledges them with `POST`. Remove only acknowledged receipt IDs. Keep event IDs stable when retrying so Ink can remove duplicates. Ink acknowledges after applying the whole inbox; it does not acknowledge a batch that fails validation or decryption. An empty inbox returns `{ "messages": [] }`. Limit each response to 128 messages and 1 MiB.
+Retain deliveries until Ink acknowledges them with `POST`. Remove only acknowledged receipt IDs. Keep event IDs stable when retrying so Ink can remove duplicates. Ink also acknowledges directly delivered encrypted envelopes when an inbox is configured. Ink acknowledges after applying the whole inbox; it does not acknowledge a batch that fails validation or decryption. An empty inbox returns `{ "messages": [] }`. Limit each response to 128 messages and 1 MiB.
 
 ### Test with the template
 
-From the repository root, start the in-memory development server and forward the phone’s port:
+Get your device serial from `adb devices`. From the repository root, start the in-memory development server and forward the phone’s port. Replace `<device-serial>` with your serial:
 
 ```sh
 bun scripts/push-server.ts
 # In another terminal:
-adb -s LP3LHMA531900140 reverse tcp:18080 tcp:18080
+adb -s <device-serial> reverse tcp:18080 tcp:18080
 ```
 
-Open **Light SDK > Push** in the template and select **Register Push**. The example registers `http://127.0.0.1:18080/v1/push/subscriptions` with `fetchOnWake: true` and no encryption key. The development server supports plaintext inboxes only; use encrypted inboxes for private production content.
+Open **Light SDK > Push** in the template and select **Register Push**. The example registers `http://127.0.0.1:18080/v1/push/subscriptions` without an encryption key. The development server supports plaintext inboxes only; use encrypted inboxes for private production content.
 
 List installation IDs, then replace `<installationId>` with your ID to queue an event and wake the phone:
 
@@ -186,12 +184,12 @@ curl -X POST "http://127.0.0.1:18080/v1/push/subscriptions/<installationId>/send
   -d '{"operation":"show","id":"test-1","groupKey":"test","title":"Test push","body":"Wake-and-fetch works","route":"/modules/light-sdk/push"}'
 ```
 
-The server queues the event before posting `{}` to the registered LightOS endpoint. If the endpoint returns a server error or cannot be reached, the server retries after 1, 2 and 4 seconds. Pending events stay in the inbox if every attempt fails. Use a new event ID for each test. You can also send a complete `{"version":1,"events":[...]}` envelope, including `clear` events. Subscriptions and events are lost when you stop the server.
+The server queues the event before posting `{}` to the registered LightOS endpoint. If the endpoint returns a server error or cannot be reached, the server retries after 1, 2 and 4 seconds. If every attempt fails, the server returns `502` with the queued receipt and keeps the event in the inbox. Use a new event ID for each test. You can also send a complete `{"version":1,"events":[...]}` envelope, including `clear` events. Subscriptions and events are lost when you stop the server.
 
 Select **Unregister** before stopping the server, then remove the port forward:
 
 ```sh
-adb -s LP3LHMA531900140 reverse --remove tcp:18080
+adb -s <device-serial> reverse --remove tcp:18080
 ```
 
 ### Foreground notifications

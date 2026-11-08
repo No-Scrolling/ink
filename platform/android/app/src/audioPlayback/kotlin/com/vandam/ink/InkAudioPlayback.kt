@@ -388,7 +388,7 @@ private class AudioSessionPlayback(
                 preloadConfiguration = ExoPlayer.PreloadConfiguration(preloadNext * 1000)
                 followAudioUsage(this, usage)
             }
-        audioOffload = AudioOffload(activity, created, effects, offload)
+        audioOffload = if (offload) AudioOffload(activity, created, effects, true) else null
         mediaSession = MediaSession.Builder(activity, created)
             .setId("${activity.packageName}:$name:attached")
             .setCallback(object : MediaSession.Callback {

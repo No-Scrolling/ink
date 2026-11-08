@@ -26,7 +26,7 @@ Measured on 7 November 2026 against `ee69e257f7e469a33882b74dd1b1ea9bd36c6b01`. 
 - Restart the app, wait 1.6 seconds, then run `adb -s SERIAL shell input swipe 540 1000 540 300 60`.
 - Capture three swipes per build and device. All measured swipes produced an initial velocity of 11,666 px/s and a planned distance of 6,161 px.
 
-The emulator uses `emulator -avd Light_Phone_III -writable-system -vsync-rate 120 -no-snapshot-load -no-snapshot-save`. Emulator-only minimum and peak refresh settings select 120 Hz. The LP3, serial `LP3LHMA531900140`, was already at 120 Hz. Its display, refresh-rate, lock and accessibility settings were not changed. Device control used direct ADB, with no accessibility automation.
+The emulator uses `emulator -avd Light_Phone_III -writable-system -vsync-rate 120 -no-snapshot-load -no-snapshot-save`. Emulator-only minimum and peak refresh settings select 120 Hz. The LP3 was already at 120 Hz. Its display, refresh-rate, lock and accessibility settings were not changed. Device control used direct ADB, with no accessibility automation.
 
 ## 120 Hz results
 

@@ -20,7 +20,7 @@ test("development push server queues before waking, retries failed wakes and rem
   const child = Bun.spawn(
     [process.execPath, resolve(import.meta.dir, "../../scripts/push-server.ts")],
     {
-      env: { ...process.env, PORT: "0" },
+      env: { ...process.env, PORT: "0", PUSH_WAKE_RETRY_DELAY_MS: "1" },
       stdout: "pipe",
       stderr: "pipe",
     },
@@ -75,6 +75,32 @@ test("development push server queues before waking, retries failed wakes and rem
     expect(await (await request("/phone", "GET")).json()).toEqual({
       messages: [{ ...clear, id: second.queued }],
     });
+    failures = 10;
+    const wakeCount = wakes.length;
+    const rejected = await request("/phone/send", "POST", event);
+    expect(rejected.status).toBe(502);
+    const rejectedWake = await rejected.json();
+    expect(rejectedWake.wakeStatus).toBe(500);
+    expect(wakes.slice(wakeCount).map((wake) => wake.body)).toEqual(["{}", "{}", "{}", "{}"]);
+    expect((await (await request("/phone", "GET")).json()).messages).toContainEqual({
+      version: 1, events: [event], id: rejectedWake.queued,
+    });
+    const endpoint = gateway.url.toString();
+    gateway.stop(true);
+    await request("/phone", "PUT", { endpoint });
+    const failed = await request("/phone/send", "POST", event);
+    expect(failed.status).toBe(502);
+    const failedWake = await failed.json();
+    expect(failedWake).toEqual({ queued: expect.any(String), wakeStatus: null });
+    expect((await (await request("/phone", "GET")).json()).messages).toContainEqual({
+      version: 1, events: [event], id: failedWake.queued,
+    });
+    for (const input of [null, [], 42, {}, { version: 1, events: [] }]) {
+      expect((await request("/phone/send", "POST", input)).status).toBe(400);
+    }
+    expect((await fetch(base + "/phone/send", { method: "POST", body: "{" })).status).toBe(400);
+    expect((await request("/phone", "PUT", { endpoint: "invalid" })).status).toBe(400);
+    expect((await request("/phone", "POST", { ids: [42] })).status).toBe(400);
     expect(await (await request("/phone", "DELETE")).json()).toEqual({ success: true });
     expect((await request("/phone", "GET")).status).toBe(404);
   } finally {

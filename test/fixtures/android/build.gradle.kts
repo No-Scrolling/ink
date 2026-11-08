@@ -27,7 +27,7 @@ kotlin {
     compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     sourceSets.getByName("main").kotlin.apply {
         setSrcDirs(listOf("src", "../../../platform/android/app/src/main/kotlin", "../../../platform/android/app/src/network/kotlin",
-            "../../../platform/android/app/src/audioPlayback/kotlin", "../../../platform/android/app/src/lightSdkPush/kotlin",
+            "../../../platform/android/app/src/audioPlayback/kotlin", "../../../platform/android/app/src/audioDetached/kotlin", "../../../platform/android/app/src/lightSdkPush/kotlin",
             "../../../platform/android/app/src/notifications/kotlin", "../../../platform/android/app/src/crypto/kotlin",
             "../../../platform/android/app/src/noBackground/kotlin", "../../../platform/android/app/src/lightSdkToolManager/kotlin"))
         include(
@@ -36,7 +36,7 @@ kotlin {
             "**/NativeRequests.kt", "**/InkFetchStreams.kt", "**/InkManagedFiles.kt", "**/SecureStoreAdapter.kt",
             "**/SplineFling.kt", "**/SplineFlingContracts.kt",
             "**/AudioUsage.kt", "**/AudioQueue.kt", "**/AudioQueuePersistence.kt", "**/AudioEffects.kt", "**/AudioContracts.kt",
-            "**/AudioOffload.kt", "**/AudioMediaButtons.kt", "**/InkAudioRenderersFactory.kt", "**/VoiceAudioProcessor.kt", "**/QuietAudioProcessor.kt",
+            "**/InkAudioService.kt", "**/AudioReadiness.kt", "**/AudioOffload.kt", "**/AudioMediaButtons.kt", "**/InkAudioRenderersFactory.kt", "**/VoiceAudioProcessor.kt", "**/QuietAudioProcessor.kt",
             "**/AudioSource.kt", "**/InkAudioMediaSource.kt", "**/InkMediaSources.kt", "**/AudioContractProvider.kt",
             "**/PushContracts.kt", "**/InkLightPushAdapter.kt", "**/LightPushAdapter.kt",
             "**/InkNotificationsAdapter.kt", "**/NotificationsAdapter.kt", "**/InkCipher.kt",

@@ -50,7 +50,7 @@ INK_KEYSTORE_PASSWORD=<throwaway-key-password> INK_PRESENTATION_TIMING=1 \
 Each measured pair installs baseline and candidate APKs in that order with `adb install -r`. Each measured launch uses:
 
 ```sh
-adb -s LP3LHMA531900140 shell am start -W -S \
+adb -s <device-serial> shell am start -W -S \
   -n com.vandam.ink.startupprobe/com.vandam.ink.MainActivity
 ```
 

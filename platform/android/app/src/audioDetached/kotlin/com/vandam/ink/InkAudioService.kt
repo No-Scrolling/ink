@@ -19,7 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture
 
 @UnstableApi
 internal class InkAudioService : MediaSessionService() {
-    private data class Session(val player: ExoPlayer, val session: MediaSession, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val offload: Boolean, val preloadNext: Long, val startupBuffer: Int, val audioOffload: AudioOffload, val mediaButtons: AudioMediaButtons)
+    private data class Session(val player: ExoPlayer, val session: MediaSession, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val offload: Boolean, val preloadNext: Long, val startupBuffer: Int, val audioOffload: AudioOffload?, val mediaButtons: AudioMediaButtons)
     private val sessions = mutableMapOf<String, Session>()
     private val handler = Handler(Looper.getMainLooper())
     private val controllers = mutableSetOf<MediaSession.ControllerInfo>()
@@ -72,7 +72,7 @@ internal class InkAudioService : MediaSessionService() {
                     override fun onIsPlayingChanged(isPlaying: Boolean) = refreshIdleStop()
                 })
             }
-        val audioOffload = AudioOffload(this, player, effects, offload)
+        val audioOffload = if (offload) AudioOffload(this, player, effects, true) else null
         val mediaButtons = AudioMediaButtons(this)
         val persistence = AudioQueuePersistence(this, name, player, effects).apply { restore() }
         lateinit var readiness: AudioReadiness
@@ -98,7 +98,7 @@ internal class InkAudioService : MediaSessionService() {
                     val result = super.onConnect(session, controller)
                     if (!ownController) return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                         .setAvailableSessionCommands(result.availableSessionCommands)
-                        .setAvailablePlayerCommands(externalAudioCommands(effectiveUsage))
+                        .setAvailablePlayerCommands(if (controller.uid == android.os.Process.myUid()) result.availablePlayerCommands else externalAudioCommands(effectiveUsage))
                         .build()
                     return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                         .setAvailablePlayerCommands(result.availablePlayerCommands)
@@ -151,7 +151,7 @@ internal class InkAudioService : MediaSessionService() {
         followAudioUsage(player, usage) { next ->
             effectiveUsage = next
             publishEffects(session)
-            session.connectedControllers.filterNot(::isInkController).forEach { controller ->
+            session.connectedControllers.filter { it.uid != android.os.Process.myUid() }.forEach { controller ->
                 session.setAvailableCommands(controller, MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS, externalAudioCommands(next))
             }
         }
@@ -167,7 +167,7 @@ internal class InkAudioService : MediaSessionService() {
             it.persistence.close()
             it.mediaButtons.close()
             it.session.release()
-            it.audioOffload.close()
+            it.audioOffload?.close()
             it.player.release()
         }
         sessions.clear()
