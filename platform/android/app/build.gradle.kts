@@ -71,6 +71,7 @@ val inkCapabilities = providers.provider {
 fun inkUses(capability: String) = inkCapabilities.map { capability in it }
 val inkUsesLightSdk = inkUses("light-sdk")
 val inkUsesLightSdkRingtone = inkUses("light-sdk-ringtone")
+val inkUsesToolManager = inkUses("light-sdk-tool-manager")
 val inkUsesLightSdkPush = inkUses("light-sdk-push")
 val inkUsesNetwork = inkUses("network")
 val inkUsesWebSockets = inkUses("web-sockets")
@@ -96,7 +97,7 @@ val inkUsesDownloads = inkUses("downloads")
 val inkUsesMaps = inkUses("maps")
 val inkUsesFiles = inkUses("files")
 val inkAuthRedirectUri = providers.gradleProperty("inkAuthRedirectUri").orElse("")
-val inkLightSdkVersion = "0.1.2"
+val inkLightSdkVersion = "0.2.3"
 val inkCapabilityFingerprint = inkCapabilities.map { it.sorted().joinToString(",") }
 val inkPermissions = inkCapabilities.get().flatMap { name ->
     val declaration = inkCapabilityCatalogue[name] as Map<*, *>
@@ -122,6 +123,7 @@ val generateInkPermissionManifest by tasks.registering {
             inkUsesNotifications.get(),
             inkUsesLightSdkRingtone.get(),
             inkUsesLightSdkPush.get(),
+            inkUsesToolManager.get(),
         ).joinToString(","),
     )
     outputs.file(inkPermissionManifest)
@@ -148,7 +150,7 @@ val generateInkPermissionManifest by tasks.registering {
             val hasInkComponents = inkUsesDetachedAudio.get() || inkUsesBackground.get() ||
                 inkUsesOverlays.get() ||
                 inkUsesNotifications.get() ||
-                inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get() ||
+                inkUsesLightSdkRingtone.get() || inkUsesLightSdkPush.get() || inkUsesToolManager.get() ||
                 inkUsesLocation.get() || inkUsesNfc.get() || inkUsesNetwork.get() ||
                 inkUsesDownloads.get() || inkUsesFiles.get() || inkAuthRedirectUri.get().isNotEmpty()
             if (hasInkComponents) {
@@ -208,6 +210,11 @@ val generateInkPermissionManifest by tasks.registering {
                 appendLine("                <action android:name=\"android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED\" />")
                 appendLine("            </intent-filter>")
                 appendLine("        </receiver>")
+            }
+            if (inkUsesToolManager.get()) {
+                appendLine("        <provider android:name=\"com.vandam.ink.InkToolManagerProvider\" android:authorities=\"${inkApplicationId.get()}.lightfileprovider\" android:exported=\"true\">")
+                appendLine("            <meta-data android:name=\"com.thelightphone.toolmanager.TOOL_MANAGER_PROVIDER\" android:value=\"true\" />")
+                appendLine("        </provider>")
             }
             if (inkUsesLightSdkRingtone.get()) {
                 appendLine("        <provider android:name=\"com.vandam.ink.InkLightFileProvider\" android:authorities=\"${inkApplicationId.get()}.lightfiles\" android:exported=\"true\" />")
@@ -463,6 +470,9 @@ tasks.configureEach {
 }
 
 dependencies {
+    if (inkUsesToolManager.get()) {
+        implementation("com.thelightphone.toolmanager:client-android:0.0.17")
+    }
     rootProject.findProject(":app-native")?.let { implementation(project(it.path)) }
     if (inkUsesFiles.get()) {
         implementation("androidx.core:core:1.13.1")

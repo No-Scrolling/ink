@@ -190,3 +190,57 @@ export default function Page() {
     expect(assets.includes(Buffer.from("replay_15"))).toBe(true);
   });
 }, 60_000);
+
+test("Tool Manager configuration publishes a cold-start manifest and removes it after opt-out", async () => {
+  await withProject(async root => {
+    const base = 'name = "Compiler contract"\npackage = "dev.ink.compilercontract"\n';
+    await writeFile(resolve(root, "ink.toml"), base + `
+[tool_manager]
+title = "Music"
+[[tool_manager.folders]]
+label = "Tracks"
+path = "tracks"
+read_only = true
+show_hidden_files = true
+[[tool_manager.folders]]
+label = "Playlists"
+path = "playlists"
+`);
+    const result = await compile(root);
+    expect(result, result.output).toMatchObject({ exitCode: 0 });
+    expect((await manifest(root)).capabilities).toEqual(["background", "external", "light-sdk", "light-sdk-tool-manager", "network"]);
+    const path = resolve(root, ".ink/android/assets/ink-tool-manager.json");
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
+      title: "Music",
+      folders: [
+        { label: "Tracks", path: "tracks", header_text: null, read_only: true, show_hidden_files: true },
+        { label: "Playlists", path: "playlists", header_text: null, read_only: false, show_hidden_files: false },
+      ],
+    });
+    await writeFile(resolve(root, "ink.toml"), base);
+    expect(await compile(root)).toMatchObject({ exitCode: 0 });
+    expect(await Bun.file(path).exists()).toBe(false);
+    expect((await manifest(root)).capabilities).toEqual(["external"]);
+  });
+}, 60_000);
+
+test.each([
+  { extra: 'on_change = "app.import"', path: "imports", message: "unknown field" },
+  { extra: "", path: "../private", message: "single relative segments without traversal" },
+  { extra: "", path: "/private", message: "single relative segments without traversal" },
+])("rejects invalid Tool Manager configuration: $message $path", async ({ extra, path, message }) => {
+  await withProject(async root => {
+    await writeFile(resolve(root, "ink.toml"), `name = "Compiler contract"
+package = "dev.ink.compilercontract"
+[tool_manager]
+title = "Files"
+${extra}
+[[tool_manager.folders]]
+label = "Imports"
+path = "${path}"
+`);
+    const result = await compile(root);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.output).toContain(message);
+  });
+}, 60_000);

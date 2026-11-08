@@ -201,6 +201,12 @@ fn install_bundle(
         )?;
     }
     let capabilities = bundle.capabilities;
+    let tool_manager_path = project.android_assets_path().join("ink-tool-manager.json");
+    if let Some(config) = &project.config.tool_manager {
+        write_if_changed(&tool_manager_path, &serde_json::to_vec(config)?)?;
+    } else {
+        remove_obsolete_output(&tool_manager_path)?;
+    }
     let worker_path = project.android_assets_path().join("worker.js");
     if let Some(worker) = &bundle.worker {
         write_if_changed(&worker_path, worker)?;

@@ -27,3 +27,10 @@ export const workerReport = createStore({
   initial: "Worker APIs have not run yet",
   decode: v.parser(v.string()),
 });
+
+export const toolManagerResult = createStore({
+  key: "template.tool-manager",
+  version: 1,
+  initial: { changes: 0, files: "No remote changes yet" },
+  decode: v.parser(v.object({ changes: v.number(), files: v.string() })),
+});

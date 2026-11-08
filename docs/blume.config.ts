@@ -83,6 +83,7 @@ export default defineConfig({
           "/crypto",
           "/files",
           "/light-sdk",
+          "/tool-manager",
           "/location",
           {
             label: "Network",

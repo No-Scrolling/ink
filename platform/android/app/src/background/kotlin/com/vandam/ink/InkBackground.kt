@@ -46,7 +46,7 @@ private class InkBackgroundAdapter(private val context: Context) : BackgroundAda
         payload: String,
         complete: NativeResultHandler,
     ) {
-        if (operation in setOf("task-state", "observe-task-state", "set-push-task", "enqueue-task", "cancel-task")) {
+        if (operation in setOf("task-state", "observe-task-state", "set-push-task", "set-shared-files-task", "enqueue-task", "cancel-task")) {
             val task = FutureTask<Unit> {
                 if (!Thread.currentThread().isInterrupted) executeWorkerOperation(requestId, operation, payload) { result ->
                     if (requests.remove(requestId) != null) complete(result)
@@ -60,13 +60,13 @@ private class InkBackgroundAdapter(private val context: Context) : BackgroundAda
     }
 
     private fun executeWorkerOperation(requestId: Long, operation: String, payload: String, complete: NativeResultHandler) {
-        if (operation == "task-state" || operation == "observe-task-state" || operation == "set-push-task") {
+        if (operation == "task-state" || operation == "observe-task-state" || operation == "set-push-task" || operation == "set-shared-files-task") {
             try {
                 val request = JSONObject(payload)
-                if (operation == "set-push-task") {
+                if (operation == "set-push-task" || operation == "set-shared-files-task") {
                     val task = if (request.isNull("task")) null else request.getString("task")
-                    require(task == null || task.matches(Regex("[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}"))) { "Invalid push task ID" }
-                    check(context.getSharedPreferences("ink-worker-state", Context.MODE_PRIVATE).edit().putString("push-task", task).commit())
+                    require(task == null || task.matches(Regex("[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}"))) { "Invalid background task ID" }
+                    check(context.getSharedPreferences("ink-worker-state", Context.MODE_PRIVATE).edit().putString(if (operation == "set-push-task") "push-task" else "shared-files-task", task).commit())
                     complete(NativeResult.Success("null"))
                 } else {
                     val state = InkWorkerState.snapshot(context)

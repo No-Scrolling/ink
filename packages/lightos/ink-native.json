@@ -15,6 +15,9 @@
     ],
     "src/push-delivery.ts": [
       "light-sdk-push"
+    ],
+    "src/tool-manager.ts": [
+      "light-sdk-tool-manager"
     ]
   }
 }

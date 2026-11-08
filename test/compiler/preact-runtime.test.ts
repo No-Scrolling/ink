@@ -32,7 +32,7 @@ function runtime() {
   const batches: Operation[][] = [];
   const messages: Record<string, unknown>[] = [];
   const context = createContext({
-    queueMicrotask, setTimeout, clearTimeout, performance,
+    queueMicrotask, setTimeout, clearTimeout, performance, AbortController,
     __inkCommit: (batch: Operation[]) => batches.push(JSON.parse(JSON.stringify(batch))),
     __inkPost: (source: string) => messages.push(JSON.parse(source)),
   });
@@ -504,5 +504,54 @@ export default function App() { return <FileNavigator tree={tree} initialDestina
     expect(lifecycle.map(message => message.operation)).toEqual(["activate", "deactivate", "activate"]);
     expect(lifecycle[1].controller).toBe(first.controller);
     expect(lifecycle[2].controller).not.toBe(first.controller);
+  });
+});
+
+test("shared file hooks refresh, report malformed files and cancel observation when hidden", async () => {
+  await project(async (root, build) => {
+    await mkdir(resolve(root, "node_modules/@ink"));
+    await symlink(resolve(repository, "packages/lightos"), resolve(root, "node_modules/@ink/lightos"));
+    const app = runtime();
+    app.evaluate("globalThis.__inkNextId = (() => { let id = 0; return () => ++id; })()");
+    app.evaluate(await build(`
+import { Activity, useState } from "react";
+import { Button, Text } from "ink";
+import { useSharedFiles } from "@ink/lightos/tool-manager";
+function Files() {
+  const { files, loading, error } = useSharedFiles("tracks");
+  return <Text>{loading ? "Loading" : error ? error.message : files.map(file => file.name).join(", ")}</Text>;
+}
+export default function App() {
+  const [visible, setVisible] = useState(true);
+  return <><Button onPress={() => setVisible(value => !value)}>Hide</Button><Activity mode={visible ? "visible" : "hidden"}><Files /></Activity></>;
+}
+`));
+    const respond = async (operation: string, value: string) => {
+      const message = app.messages.findLast(message => message.operation === operation)!;
+      app.evaluate(`__inkResolveNativeResult(${message.id}, ${JSON.stringify(value)})`);
+      await app.settle();
+    };
+    await app.settle();
+    expect(app.messages.filter(message => message.operation === "observe").map(message => message.payload)).toEqual([{ revision: -1 }]);
+    await respond("observe", "3");
+    expect(app.messages.findLast(message => message.operation === "list")?.payload).toEqual({ path: "tracks" });
+    await respond("list", JSON.stringify([{ name: "First.flac", path: "tracks/First.flac", uri: "content://music/tracks/First.flac", isFile: true, size: 42, lastModified: 1000 }]));
+    expect(app.batches.flat().some(op => op.changes?.includes("First.flac"))).toBe(true);
+    await respond("observe", "4");
+    await respond("list", "[]");
+    expect(app.batches.flat().some(op => op.changes?.includes(""))).toBe(true);
+    const waiting = app.messages.findLast(message => message.operation === "observe")!;
+    const button = app.batches.flat().find(op => op.type === "Button")!.id;
+    const press = async () => {
+      app.evaluate(`__inkReceive(${JSON.stringify(JSON.stringify({ type: "event", id: button, name: "onPress", args: [] }))})`);
+      await app.settle();
+    };
+    await press();
+    expect(app.messages).toContainEqual({ type: "cancel", id: waiting.id });
+    await press();
+    expect(app.messages.findLast(message => message.operation === "observe")?.payload).toEqual({ revision: -1 });
+    await respond("observe", "5");
+    await respond("list", '[{"name":42}]');
+    expect(app.batches.flat().some(op => op.changes?.includes("Invalid shared file"))).toBe(true);
   });
 });

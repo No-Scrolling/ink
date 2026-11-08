@@ -70,6 +70,7 @@ Workers can use:
 
 - `fetch`, including response streams and multipart uploads, and `WebSocket`.
 - Store and task scheduling or state.
+- [Tool Manager shared files](/tool-manager).
 - Notification scheduling, cancellation and status.
 - One-off location reads with permission already granted.
 

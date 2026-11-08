@@ -11,3 +11,11 @@ entry = "./overlays.tsx"
 
 [auth]
 redirect_uri = "ink-template://oauth/callback"
+
+[tool_manager]
+title = "Ink Template"
+
+[[tool_manager.folders]]
+label = "Shared files"
+path = "imports"
+header_text = "Upload files, then open Light SDK > Tool Manager in Ink."

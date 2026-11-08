@@ -161,6 +161,9 @@ pub(super) fn bundle_entry(project: &Project, development: bool, entry_source: O
         .args(["--noEmit", "--project", "tsconfig.json"]))?;
 
     capabilities.resolve_dependencies()?;
+    if capabilities.iter().any(|capability| capability == Capability::LightSdkToolManager) && project.config.tool_manager.is_none() {
+        anyhow::bail!("Tool Manager support requires a [tool_manager] manifest in ink.toml");
+    }
     let mut icons = BTreeMap::<(String, bool), f32>::new();
     let mut add = |name: String, size: f32, filled| -> Result<()> {
         anyhow::ensure!(

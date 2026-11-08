@@ -29,6 +29,7 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
         val connectivity by lazy { ConnectivityAdapter(context) {} }
         var downloads: DownloadsAdapter? = null
         var network: NetworkAdapter? = null
+        var toolManager: ToolManagerAdapter? = null
         var background: BackgroundAdapter? = null
         var notifications: NativeAdapter? = null
         var location: LocationAdapter? = null
@@ -64,6 +65,7 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
                             "permissions" -> if (operation == "status" && event.optJSONObject("payload")?.optString("permission") == "notifications") {
                                 notifications ?: createWorkerNotificationsAdapter(context).also { notifications = it }
                             } else null
+                            "tool-manager" -> toolManager ?: createToolManagerAdapter(context).also { toolManager = it }
                             "background" -> background ?: createBackgroundAdapter(context).also { background = it }
                             "notifications" -> notifications ?: createWorkerNotificationsAdapter(context).also { notifications = it }
                             "location" -> if (operation == "current") location ?: createWorkerLocationAdapter(context).also { location = it } else null
@@ -91,6 +93,7 @@ internal class InkWorker(private val context: Context, private val bundle: Strin
             throw InterruptedException("Background worker was cancelled")
         } finally {
             close()
+            toolManager?.stop()
             background?.stop()
             location?.stop()
             network?.stop()

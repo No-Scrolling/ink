@@ -296,6 +296,10 @@ Registration remains until cleared. Android may delay the task; each run has a t
 
 Scheduling failures are logged but do not prevent notifications appearing. Regular syncing should recover missed work.
 
+## Tool Manager
+
+Use [Tool Manager](/tool-manager) to expose shared folders and process remote file changes from LightOS’s browser interface.
+
 ## Device setup
 
 Use `ink dev --device <serial>` when switching devices. An APK built for the emulator’s LightOS host cannot connect to the LP3 host. `ink info` reports integration requirements. Missing host services report unavailable errors.

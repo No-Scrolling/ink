@@ -378,6 +378,18 @@
         "enabled": "webSockets",
         "disabled": "noWebSockets"
       }
+    },
+    "light-sdk-tool-manager": {
+      "cost": "LightOS shared-file provider and background tasks",
+      "dependencies": [
+        "light-sdk",
+        "background"
+      ],
+      "permissions": [],
+      "androidSourceGroup": {
+        "enabled": "lightSdkToolManager",
+        "disabled": "noLightSdkToolManager"
+      }
     }
   },
   "androidCameraSources": {

@@ -1,3 +1,4 @@
+import { sharedFiles } from "@ink/lightos/tool-manager";
 import * as v from "valibot";
 import { lightos } from "@ink/lightos";
 import "@ink/network";
@@ -5,7 +6,7 @@ import { notifications } from "@ink/notifications/commands";
 import { location } from "@ink/location";
 import { defineTask, jobs } from "@ink/background";
 import { decodePushDelivery } from "@ink/lightos/push/delivery";
-import { backgroundResult, pushResult, workerReport } from "./data/background";
+import { backgroundResult, pushResult, workerReport, toolManagerResult } from "./data/background";
 import { decodeTodo } from "./data/todos";
 
 export const refreshTodo = defineTask({
@@ -71,6 +72,20 @@ export const inspectWorker = defineTask({
     await workerReport.set(
       `Notifications: ${permission}. Exact alarms: ${exact}. Jobs: ${scheduledJobs.length}. Location: ${position}`,
     );
+    return { status: "success" };
+  },
+});
+
+export const toolManagerChange = defineTask({
+  id: "template.tool-manager-change",
+  decode: v.parser(v.null()),
+  async run({ signal }) {
+    signal.throwIfAborted();
+    const files = await sharedFiles.list("imports");
+    await toolManagerResult.update(previous => ({
+      changes: previous.changes + 1,
+      files: files.map(file => file.name).join(", ") || "No files",
+    }));
     return { status: "success" };
   },
 });

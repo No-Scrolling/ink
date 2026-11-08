@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -18,6 +18,7 @@ struct AppConfig {
     background: Option<BackgroundConfig>,
     overlays: Option<BackgroundConfig>,
     auth: Option<AuthConfig>,
+    tool_manager: Option<ToolManagerConfig>,
     #[serde(default)]
     capabilities: Vec<crate::Capability>,
 }
@@ -56,6 +57,41 @@ struct AuthConfig {
     redirect_uri: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ToolManagerConfig {
+    title: String,
+    folders: Vec<ToolManagerFolder>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ToolManagerFolder {
+    label: String,
+    path: String,
+    header_text: Option<String>,
+    #[serde(default)]
+    read_only: bool,
+    #[serde(default)]
+    show_hidden_files: bool,
+}
+
+impl ToolManagerConfig {
+    fn validate(&self) -> Result<()> {
+        anyhow::ensure!(!self.title.trim().is_empty(), "tool_manager.title must not be empty");
+        anyhow::ensure!(!self.folders.is_empty(), "tool_manager.folders must not be empty");
+        let mut paths = std::collections::BTreeSet::new();
+        for folder in &self.folders {
+            anyhow::ensure!(!folder.label.trim().is_empty(), "Tool Manager labels must not be empty");
+            let path = &folder.path;
+            anyhow::ensure!(!path.is_empty() && path != "." && path != ".."
+                && !path.contains(['/', '\\', '\0']), "Tool Manager paths must be single relative segments without traversal");
+            anyhow::ensure!(paths.insert(path), "Duplicate Tool Manager path: {path}");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ReleaseSigning {
     pub keystore: PathBuf,
@@ -77,6 +113,7 @@ pub(crate) struct ResolvedConfig {
     pub(crate) worker_entry: Option<PathBuf>,
     pub(crate) overlay_entry: Option<PathBuf>,
     pub(crate) auth_redirect_uri: Option<String>,
+    pub(crate) tool_manager: Option<ToolManagerConfig>,
 }
 
 impl ResolvedConfig {
@@ -88,6 +125,9 @@ impl ResolvedConfig {
         let directory = path.parent().expect("a canonical config path has a parent");
         validate(&config)?;
         let mut capabilities = config.capabilities;
+        if config.tool_manager.is_some() {
+            capabilities.push(crate::Capability::LightSdkToolManager);
+        }
         if config.network.as_ref().is_some_and(|network| network.allow_cleartext) {
             capabilities.push(crate::Capability::NetworkCleartext);
         }
@@ -98,6 +138,7 @@ impl ResolvedConfig {
             version: config.version,
             version_code: config.version_code,
             capabilities,
+            tool_manager: config.tool_manager,
             auth_redirect_uri: config.auth.map(|auth| auth.redirect_uri),
             worker_entry: config
                 .background
@@ -118,6 +159,9 @@ impl ResolvedConfig {
 }
 
 fn validate(config: &AppConfig) -> Result<()> {
+    if let Some(tool_manager) = &config.tool_manager {
+        tool_manager.validate()?;
+    }
     if let Some(auth) = &config.auth {
         let scheme = auth.redirect_uri.split_once(':').map(|(scheme, _)| scheme).unwrap_or("");
         if scheme.is_empty() || scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")

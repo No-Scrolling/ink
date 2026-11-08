@@ -29,7 +29,7 @@ kotlin {
         setSrcDirs(listOf("src", "../../../platform/android/app/src/main/kotlin", "../../../platform/android/app/src/network/kotlin",
             "../../../platform/android/app/src/audioPlayback/kotlin", "../../../platform/android/app/src/lightSdkPush/kotlin",
             "../../../platform/android/app/src/notifications/kotlin", "../../../platform/android/app/src/crypto/kotlin",
-            "../../../platform/android/app/src/noBackground/kotlin"))
+            "../../../platform/android/app/src/noBackground/kotlin", "../../../platform/android/app/src/lightSdkToolManager/kotlin"))
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
             "**/PermissionsAdapter.kt", "**/LightSdkAdapter.kt", "**/PermissionContracts.kt",
@@ -40,6 +40,7 @@ kotlin {
             "**/AudioSource.kt", "**/InkAudioMediaSource.kt", "**/InkMediaSources.kt", "**/AudioContractProvider.kt",
             "**/PushContracts.kt", "**/InkLightPushAdapter.kt", "**/LightPushAdapter.kt",
             "**/InkNotificationsAdapter.kt", "**/NotificationsAdapter.kt", "**/InkCipher.kt",
+            "**/ToolManagerContracts.kt", "**/ToolManagerAdapter.kt", "**/InkSharedFiles.kt", "**/InkToolManagerAdapter.kt",
             "**/NoBackgroundAdapter.kt", "**/BackgroundAdapter.kt",
         )
     }

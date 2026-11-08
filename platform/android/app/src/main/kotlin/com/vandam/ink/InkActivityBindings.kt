@@ -43,6 +43,7 @@ internal class InkActivityBindings(
     private var cameraPortal: CameraPortal? = null
     private var videoPortal: VideoPortal? = null
     private var mapPortal: MapPortal? = null
+    private val toolManagerAdapter by lazy { createToolManagerAdapter(activity) }
     private val filesAdapter by lazy { createFilesAdapter(activity, runtime::send) }
     private val appNativeAdapters by lazy(createAppAdapters)
     private val secureStoreAdapter by lazy { SecureStoreAdapter(activity) }
@@ -104,6 +105,7 @@ internal class InkActivityBindings(
         "permissions" -> { usesPermissions = true; permissionsAdapter }
         "clipboard" -> clipboardAdapter
         "connectivity" -> connectivityAdapter
+        "tool-manager" -> toolManagerAdapter
         "files" -> filesAdapter
         "secure-store" -> secureStoreAdapter
         "auth" -> authAdapter
@@ -326,6 +328,7 @@ internal class InkActivityBindings(
         backgroundAdapter.cancel(requestId)
         notificationsAdapter.cancel(requestId)
         cameraAdapter.cancel(requestId)
+        toolManagerAdapter.cancel(requestId)
         filesAdapter.cancel(requestId)
     }
 
@@ -340,6 +343,7 @@ internal class InkActivityBindings(
             (operation == PERMISSION_STATUS_OPERATION ||
                 operation == REQUEST_PERMISSION_OPERATION)
         val adapter = when (module) {
+            "tool-manager" -> toolManagerAdapter
             "files" -> filesAdapter
             LIGHT_SDK_MODULE -> lightSdkAdapter
             "assets" -> assetsAdapter
@@ -482,6 +486,7 @@ internal class InkActivityBindings(
         cameraAdapter.stop()
         mapsAdapter.stop()
         videoAdapter.stop()
+        toolManagerAdapter.stop()
         filesAdapter.stop()
         externalAdapter.close()
         authAdapter.close()

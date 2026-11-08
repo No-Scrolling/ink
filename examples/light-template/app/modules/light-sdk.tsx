@@ -7,6 +7,7 @@ export default function LightSdk() {
       <Button href="/modules/light-sdk/dialler">Dialler</Button>
       <Button href="/modules/light-sdk/ringtone">Ringtone</Button>
       <Button href="/modules/light-sdk/push">Push</Button>
+      <Button href="/modules/light-sdk/tool-manager">Tool Manager</Button>
     </Screen>
   );
 }

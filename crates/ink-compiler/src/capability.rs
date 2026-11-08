@@ -29,6 +29,7 @@ pub enum Capability {
     LightSdk,
     LightSdkPush,
     LightSdkRingtone,
+    LightSdkToolManager,
     Location,
     Maps,
     MediaLibrary,
