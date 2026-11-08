@@ -13,6 +13,8 @@ android {
         versionCode = 1
         versionName = "1"
         buildConfigField("boolean", "INK_CLEARTEXT_NETWORK_ENABLED", "false")
+        buildConfigField("boolean", "INK_LIGHT_SDK_ENABLED", "true")
+        buildConfigField("String", "INK_LIGHT_SERVER_PACKAGE", "\"com.vandam.ink.contracttests\"")
     }
     buildFeatures { buildConfig = true }
     sourceSets.getByName("main") { manifest.srcFile("AndroidManifest.xml") }
@@ -28,6 +30,7 @@ kotlin {
             "../../../platform/android/app/src/audioPlayback/kotlin"))
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
+            "**/PermissionsAdapter.kt", "**/LightSdkAdapter.kt", "**/PermissionContracts.kt",
             "**/NativeRequests.kt", "**/InkFetchStreams.kt", "**/InkManagedFiles.kt", "**/SecureStoreAdapter.kt",
             "**/SplineFling.kt", "**/SplineFlingContracts.kt",
             "**/AudioUsage.kt", "**/AudioQueue.kt", "**/AudioQueuePersistence.kt", "**/AudioEffects.kt", "**/AudioContracts.kt",

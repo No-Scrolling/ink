@@ -11,7 +11,7 @@ internal class PermissionsAdapter(
     private val lightSdk: LightSdkAdapter,
 ) : NativeAdapter {
     private data class Permission(val name: String, val android: Array<String>)
-    private data class Pending(val id: Long, val permission: Permission, val complete: NativeResultHandler, var cancelled: Boolean = false)
+    private data class Pending(val id: Long, val permission: Permission, val complete: NativeResultHandler, var cancelled: Boolean = false, var routing: Boolean = true)
     private var pending: Pending? = null
     private val history = activity.getSharedPreferences("ink-permissions", Context.MODE_PRIVATE)
     private val usesLightOs = try {
@@ -38,50 +38,72 @@ internal class PermissionsAdapter(
         }
         val request = Pending(id, permission, complete)
         pending = request
-        if (usesLightPermission(permission)) {
-            lightSdk.execute(id, "request-permission", permission.name) { result ->
-                if (result is NativeResult.Failure || result is NativeResult.Success && result.value == "granted") activity.runOnUiThread {
-                    if (pending === request) finish(result)
+        usesLightPermission(id, permission) { useLightPermission ->
+            if (pending !== request) return@usesLightPermission
+            request.routing = false
+            if (useLightPermission) {
+                lightSdk.execute(id, "request-permission", permission.name) { result ->
+                    if (result is NativeResult.Failure || result is NativeResult.Success && result.value == "granted") activity.runOnUiThread {
+                        if (pending === request) finish(result)
+                    }
                 }
-            }
-        } else {
-            val permissions = permission.android
-            if (permissions.all { activity.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
-                finish(NativeResult.Success("granted"))
-                return
-            }
-            history.edit().apply { permissions.forEach { putBoolean(it, true) } }.apply()
-            try {
-                activity.requestPermissions(permissions, REQUEST_CODE)
-            } catch (error: Exception) {
-                finish(NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Could not request permission", false))
+            } else {
+                val permissions = permission.android
+                if (permissions.all { activity.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
+                    finish(NativeResult.Success("granted"))
+                    return@usesLightPermission
+                }
+                history.edit().apply { permissions.forEach { putBoolean(it, true) } }.apply()
+                try {
+                    activity.requestPermissions(permissions, REQUEST_CODE)
+                } catch (error: Exception) {
+                    finish(NativeResult.Failure(NativeErrorKind.UNEXPECTED, error.message ?: "Could not request permission", false))
+                }
             }
         }
     }
 
-    private fun usesLightPermission(permission: Permission): Boolean {
-        if (!BuildConfig.INK_LIGHT_SDK_ENABLED || !usesLightOs || permission.name !in setOf("camera", "microphone", "audio-files", "location-approximate", "location-precise")) return false
+    private fun usesLightPermission(id: Long, permission: Permission, complete: (Boolean) -> Unit) {
+        if (!BuildConfig.INK_LIGHT_SDK_ENABLED || !usesLightOs) {
+            complete(false)
+            return
+        }
+        if (permission.name == "notifications") {
+            // POST_NOTIFICATIONS joined the server's default grants after 0.2.3.
+            lightSdk.execute(id, "version", "") { result ->
+                val version = (result as? NativeResult.Success)?.value
+                val parts = version?.takeIf { it.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?")) }
+                    ?.substringBefore('+')?.split('.')?.mapNotNull { it.toIntOrNull() }
+                val supported = parts != null && parts.size == 3 &&
+                    (parts[0] > 0 || parts[1] > 2 || parts[1] == 2 && parts[2] >= 4)
+                activity.runOnUiThread { complete(supported) }
+            }
+            return
+        }
         // Older emulator SDK versions cannot grant location permissions.
-        return BuildConfig.INK_LIGHT_SERVER_PACKAGE != "com.thelightphone.sdk.emulator" ||
-            Manifest.permission.ACCESS_COARSE_LOCATION !in permission.android
+        complete(permission.name in setOf("camera", "microphone", "audio-files", "location-approximate", "location-precise") &&
+            (BuildConfig.INK_LIGHT_SERVER_PACKAGE != "com.thelightphone.sdk.emulator" ||
+                Manifest.permission.ACCESS_COARSE_LOCATION !in permission.android))
     }
 
     private fun status(id: Long, permission: Permission, complete: NativeResultHandler) {
-        if (usesLightPermission(permission)) {
-            lightSdk.execute(id, "permission-status", permission.name, complete)
-            return
+        usesLightPermission(id, permission) { useLightPermission ->
+            if (useLightPermission) {
+                lightSdk.execute(id, "permission-status", permission.name, complete)
+                return@usesLightPermission
+            }
+            val permissions = permission.android
+            val denied = permissions.filter { activity.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+            val status = when {
+                denied.isEmpty() -> "granted"
+                denied.any {
+                    (history.getBoolean(it, false) || history.getBoolean(permission.name, false)) &&
+                        !activity.shouldShowRequestPermissionRationale(it)
+                } -> "blocked"
+                else -> "denied"
+            }
+            complete(NativeResult.Success(status))
         }
-        val permissions = permission.android
-        val denied = permissions.filter { activity.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        val status = when {
-            denied.isEmpty() -> "granted"
-            denied.any {
-                (history.getBoolean(it, false) || history.getBoolean(permission.name, false)) &&
-                    !activity.shouldShowRequestPermissionRationale(it)
-            } -> "blocked"
-            else -> "denied"
-        }
-        complete(NativeResult.Success(status))
     }
 
     fun result(requestCode: Int) {
@@ -99,7 +121,10 @@ internal class PermissionsAdapter(
     }
 
     override fun cancel(requestId: Long) {
-        pending?.takeIf { it.id == requestId }?.cancelled = true
+        pending?.takeIf { it.id == requestId }?.let { request ->
+            request.cancelled = true
+            if (request.routing) pending = null
+        }
         if (usesLightOs) lightSdk.cancel(requestId)
     }
 

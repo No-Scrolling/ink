@@ -15,7 +15,7 @@ class ContractInstrumentation : Instrumentation() {
     override fun onStart() {
         var passed = 0
         val failures = mutableListOf<String>()
-        ContractTests(targetContext).run { name, test ->
+        val test: (String, () -> Unit) -> Unit = { name, test ->
             try {
                 test()
                 passed++
@@ -26,6 +26,8 @@ class ContractInstrumentation : Instrumentation() {
                 sendStatus(0, Bundle().apply { putString("stream", "FAIL $detail\n") })
             }
         }
+        PermissionContracts(this).run(test)
+        ContractTests(targetContext).run(test)
         finish(Activity.RESULT_OK, Bundle().apply {
             putString("ink.summary", JSONObject().put("passed", passed).put("failures", JSONArray(failures)).toString())
         })

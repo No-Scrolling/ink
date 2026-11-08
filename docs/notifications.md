@@ -20,6 +20,8 @@ const permission = await lightos.requestPermission("notifications");
 
 Use `lightos.getPermission("notifications")` to check without a prompt. See [Request a permission](/permissions-guide) for the returned statuses.
 
+Ink checks and requests notification access through LightOS on hosts with Light SDK server 0.2.4 or later. Older hosts, including server 0.1.1, and devices without LightOS use Android.
+
 ### Exact reminders
 
 Android requires separate access to schedule reminders at an exact time:

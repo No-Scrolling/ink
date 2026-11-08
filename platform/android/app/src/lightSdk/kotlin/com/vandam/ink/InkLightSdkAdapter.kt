@@ -186,6 +186,7 @@ private class InkLightSdkAdapter(
                 payload == CAMERA ||
                     payload == MICROPHONE ||
                     payload == AUDIO_FILES ||
+                    payload == NOTIFICATIONS ||
                     payload == LOCATION_APPROXIMATE ||
                     payload == LOCATION_PRECISE
             OPEN_DIALLER_OPERATION -> runCatching {
@@ -391,6 +392,7 @@ private class InkLightSdkAdapter(
         CAMERA -> android.Manifest.permission.CAMERA
         MICROPHONE -> android.Manifest.permission.RECORD_AUDIO
         AUDIO_FILES -> android.Manifest.permission.READ_MEDIA_AUDIO
+        NOTIFICATIONS -> android.Manifest.permission.POST_NOTIFICATIONS
         LOCATION_APPROXIMATE -> android.Manifest.permission.ACCESS_COARSE_LOCATION
         LOCATION_PRECISE -> android.Manifest.permission.ACCESS_FINE_LOCATION
         else -> error("Unsupported permission: $permission")
@@ -558,6 +560,7 @@ private class InkLightSdkAdapter(
         const val CAMERA = "camera"
         const val MICROPHONE = "microphone"
         const val AUDIO_FILES = "audio-files"
+        const val NOTIFICATIONS = "notifications"
         const val LOCATION_APPROXIMATE = "location-approximate"
         const val LOCATION_PRECISE = "location-precise"
         val DEVICE_KEY_CODES = setOf(24, 25, 27, 80, 317, 318, 319)
