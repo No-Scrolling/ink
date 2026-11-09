@@ -88,6 +88,8 @@ import { check } from "ink/icons";
 
 ## Focus
 
+Set `keepFocus` to keep the input focused when the user taps outside it, for example on a page that exists to try the keyboard. Back still removes focus.
+
 `onBlur` runs with the entered text when the input loses focus. This happens when the user taps outside the input, dismisses the keyboard, or submits without an `onSubmit` handler. Use it to close a search field that the user left empty.
 
 ```tsx

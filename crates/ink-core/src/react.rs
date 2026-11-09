@@ -1109,6 +1109,7 @@ impl ReactTree {
                     options.disabled = props.get("disabled") == Some(&Json::Bool(true));
                     options.read_only = props.get("readOnly") == Some(&Json::Bool(true));
                     options.auto_capitalise = props.get("autoCapitalise") != Some(&Json::Bool(false));
+                    options.keep_focus = props.get("keepFocus") == Some(&Json::Bool(true));
                     options.error = string(props, "error").unwrap_or("").to_owned();
                     options.label = string(props, "label").unwrap_or("").to_owned();
                     options.description = string(props, "description").unwrap_or("").to_owned();

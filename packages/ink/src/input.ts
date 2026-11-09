@@ -11,6 +11,8 @@ export function TextInput(props: HitAreaProps & {
   onBlur?: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  /** Keeps focus when the user taps outside the input. Back still removes focus. */
+  keepFocus?: boolean;
   autoCapitalise?: boolean;
   action?: "return" | "search" | "done";
   inputMode?: "text" | "numeric";

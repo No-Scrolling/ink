@@ -156,6 +156,8 @@ pub(super) struct InputOptions {
     pub disabled: bool,
     pub read_only: bool,
     pub auto_capitalise: bool,
+    /// Taps outside the input leave it focused; only Back or a submit removes focus.
+    pub keep_focus: bool,
     pub invalid: bool,
     pub clearable: bool,
     pub min_lines: usize,
@@ -168,7 +170,7 @@ pub(super) struct InputOptions {
 
 impl Default for InputOptions {
     fn default() -> Self {
-        Self { appearance: InputAppearance::default(), disabled: false, read_only: false, auto_capitalise: true, invalid: false,
+        Self { appearance: InputAppearance::default(), disabled: false, read_only: false, auto_capitalise: true, keep_focus: false, invalid: false,
             clearable: true, min_lines: 1, max_lines: TEXT_INPUT_MAX_LINES, leading_icon: None,
             label: String::new(), description: String::new(), error: String::new() }
     }

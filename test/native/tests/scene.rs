@@ -271,6 +271,22 @@ fn tapping_outside_a_focused_input_reports_blur_with_its_text() {
 }
 
 #[test]
+fn a_kept_input_stays_focused_after_a_tap_outside_until_dismissed() {
+    let mut app = SceneApp::new("input-kept");
+    app.pump_until(|app| !app.engine.text_input_context().is_empty());
+    assert!(edit(&mut app, "draft", 5));
+    app.tree.input_events(&app.engine);
+    let (_, x, y) = app.visible_label("Kept input fixture");
+    app.engine.tap(x, y);
+    assert!(!app.engine.text_input_context().is_empty());
+    assert!(app.tree.input_events(&app.engine).iter().all(|event| event["name"] != "onBlur"));
+    app.engine.edit_text(ink_core::TextEdit::Dismiss);
+    let blurred: Vec<_> = app.tree.input_events(&app.engine).into_iter().filter(|event| event["name"] == "onBlur").collect();
+    assert_eq!(blurred.len(), 1);
+    assert_eq!(blurred[0]["args"], json!(["draft"]));
+}
+
+#[test]
 fn native_editor_rejects_a_cursor_inside_a_surrogate_pair_without_mutating_text() {
     let mut app = SceneApp::new("input");
     app.pump_until(|app| !app.engine.text_input_context().is_empty());

@@ -2128,7 +2128,7 @@ impl Engine {
             }, region.preserve_input));
         let preserve_input = action.as_ref().is_some_and(|(_, preserve)| *preserve);
         let action = action.map(|(action, _)| action);
-        let blurred = self.focused_input.is_some()
+        let blurred = self.focused_input.is_some_and(|state| !self.keeps_focus(state))
             && !preserve_input
             && !matches!(
                 action.as_ref(),
@@ -2844,6 +2844,10 @@ impl Engine {
             NodeKind::TextInput { numeric, .. } => Some(*numeric),
             _ => None,
         }
+    }
+
+    fn keeps_focus(&self, state: StateId) -> bool {
+        matches!(self.text_input_node(state), Some(Node { kind: NodeKind::TextInput { options, .. }, .. }) if options.keep_focus)
     }
 
     fn text_input_node(&self, state: StateId) -> Option<&Node> {
