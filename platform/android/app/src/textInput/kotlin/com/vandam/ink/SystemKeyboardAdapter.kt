@@ -269,8 +269,10 @@ private class SystemKeyboardAdapter(
             }
             syncing = false
         }
-        if (opening || changed) editor.post {
-            if (this.active) {
+        // Pausing can reopen the input before it hides the editor, so the request made then fails. Asking
+        // again whenever the editor lacks focus lets the input take focus back when the app returns.
+        if (opening || changed || !editor.hasFocus()) editor.post {
+            if (this.active && editor.isShown) {
                 editor.requestFocus()
                 inputMethod.restartInput(editor)
                 inputMethod.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
