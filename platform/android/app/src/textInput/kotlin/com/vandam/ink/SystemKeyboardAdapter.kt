@@ -30,6 +30,8 @@ import android.view.MotionEvent
 import kotlin.math.roundToInt
 
 private const val SPELLING_ANNOTATE = "ing.noscroll.ink.spelling.annotate.v1"
+/** How long the keyboard must stay hidden before an input counts as dismissed. */
+private const val DISMISS_SETTLE_MILLIS = 250L
 
 internal fun createTextInputAdapter(
     activity: MainActivity,
@@ -64,6 +66,11 @@ private class SystemKeyboardAdapter(
     private var awaitingEditorDraw = false
     private var hideAfterFrame = false
     private val publish = Runnable { publishEdit() }
+    private val confirmDismiss = Runnable {
+        // Android also hides the keyboard on its own, such as while the app returns to the front, and then
+        // shows it again. Only a keyboard that stays hidden in the focused window was closed by the user.
+        if (active && !imeVisible && activity.hasWindowFocus()) onEdit(TextEdit.Dismiss)
+    }
     private val editorDrawn = Runnable {
         if (!active || !awaitingEditorDraw || inputId < 0) return@Runnable
         awaitingEditorDraw = false
@@ -177,9 +184,10 @@ private class SystemKeyboardAdapter(
         activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         container.setOnApplyWindowInsetsListener { _, insets ->
             val visible = insets.isVisible(WindowInsets.Type.ime())
-            val dismissed = imeVisible && !visible && active
+            val hidden = imeVisible && !visible && active
             imeVisible = visible
-            if (dismissed) onEdit(TextEdit.Dismiss)
+            if (visible) container.removeCallbacks(confirmDismiss)
+            if (hidden) container.postDelayed(confirmDismiss, DISMISS_SETTLE_MILLIS)
             activity.setKeyboardInset(if (visible && active) insets.getInsets(WindowInsets.Type.ime()).bottom else 0)
             insets
         }
@@ -239,9 +247,10 @@ private class SystemKeyboardAdapter(
         this.active = active
         if (!active) {
             container.removeCallbacks(publish)
+            container.removeCallbacks(confirmDismiss)
             pending = false
             inputMethod.hideSoftInputFromWindow(editor.windowToken, 0)
-            editor.clearFocus()
+            releaseFocus()
             imeVisible = false
             activity.setKeyboardInset(0)
             return
@@ -266,6 +275,22 @@ private class SystemKeyboardAdapter(
                 inputMethod.restartInput(editor)
                 inputMethod.showSoftInput(editor, InputMethodManager.SHOW_IMPLICIT)
             }
+        }
+    }
+
+    /**
+     * Moves focus off the editor. `clearFocus` alone lets Android give focus straight back to the editor,
+     * the only view that takes focus in touch mode, so the keyboard stays connected to a closed input.
+     */
+    private fun releaseFocus() {
+        if (!editor.hasFocus()) return
+        val descendants = container.descendantFocusability
+        container.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        try {
+            container.isFocusableInTouchMode = true
+            container.requestFocus()
+        } finally {
+            container.descendantFocusability = descendants
         }
     }
 
