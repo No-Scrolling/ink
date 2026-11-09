@@ -7,6 +7,8 @@ export function TextInput(props: HitAreaProps & {
   value: string;
   onChange: (value: string) => void;
   onSubmit?: (value: string) => void;
+  /** Called with the entered text when the input loses focus, such as after a tap outside it. */
+  onBlur?: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
   autoCapitalise?: boolean;

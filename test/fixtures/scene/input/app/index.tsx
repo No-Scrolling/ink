@@ -11,6 +11,7 @@ export default function App() {
         value={value}
         onChange={setValue}
         onSubmit={(value) => __inkPost(JSON.stringify({ type: "submitted", value }))}
+        onBlur={(value) => __inkPost(JSON.stringify({ type: "blurred", value }))}
       />
       <Text>Echo: {value}</Text>
     </Screen>

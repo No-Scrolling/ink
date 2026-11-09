@@ -250,6 +250,27 @@ fn delayed_react_input_commits_cannot_overwrite_newer_native_keystrokes() {
 }
 
 #[test]
+fn tapping_outside_a_focused_input_reports_blur_with_its_text() {
+    let mut app = SceneApp::new("input");
+    app.pump_until(|app| !app.engine.text_input_context().is_empty());
+    assert!(edit(&mut app, "draft", 5));
+    let focused = app.tree.input_events(&app.engine);
+    assert!(focused.iter().all(|event| event["name"] != "onBlur"));
+    let (_, x, y) = app.visible_label("Input fixture");
+    assert!(app.engine.tap(x, y));
+    let events = app.tree.input_events(&app.engine);
+    let blurred: Vec<_> = events.iter().filter(|event| event["name"] == "onBlur").collect();
+    assert_eq!(blurred.len(), 1);
+    assert_eq!(blurred[0]["args"], json!(["draft"]));
+    app.runtime.send(blurred[0].to_string()).unwrap();
+    assert_eq!(
+        ink_test::message(&app.events, |value| value["type"] == "blurred")["value"],
+        "draft"
+    );
+    assert!(app.tree.input_events(&app.engine).iter().all(|event| event["name"] != "onBlur"));
+}
+
+#[test]
 fn native_editor_rejects_a_cursor_inside_a_surrogate_pair_without_mutating_text() {
     let mut app = SceneApp::new("input");
     app.pump_until(|app| !app.engine.text_input_context().is_empty());

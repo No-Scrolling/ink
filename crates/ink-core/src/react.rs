@@ -137,6 +137,8 @@ pub struct ReactTree {
     icons: HashMap<String, IconVariants>,
     inputs: FxHashMap<usize, InputBinding>,
     free_input_states: Vec<StateId>,
+    /// The input focused when `input_events` last ran, to report when it loses focus.
+    focused_input: Option<StateId>,
     active_screen: Option<usize>,
     scroll_positions: FxHashMap<usize, f32>,
     list_windows: FxHashMap<usize, (usize, usize, u64, bool)>,
@@ -169,6 +171,7 @@ impl Default for ReactTree {
             icons: HashMap::new(),
             inputs: FxHashMap::default(),
             free_input_states: Vec::new(),
+            focused_input: None,
             active_screen: None,
             scroll_positions: FxHashMap::default(),
             list_windows: FxHashMap::default(),
@@ -475,6 +478,10 @@ impl ReactTree {
             if engine.focused_input == Some(input.state) {
                 engine.focused_input = None;
             }
+            // A removed input has no handler left; its state may be reused by a new input.
+            if self.focused_input == Some(input.state) {
+                self.focused_input = None;
+            }
             if engine.native_editor_state == Some(input.state) {
                 engine.native_editor_state = None;
             }
@@ -561,6 +568,15 @@ impl ReactTree {
                 events.push(json!({ "type": "event", "id": id, "name": "onChange",
                     "args": [value, input.event_count] }));
             }
+        }
+        if self.focused_input != engine.focused_input {
+            if let Some(state) = self.focused_input
+                && let Some((id, input)) = self.inputs.iter().find(|(_, input)| input.state == state)
+                && self.nodes.get(id).is_some_and(|node| node.props.get("onBlur") == Some(&Json::Bool(true)))
+            {
+                events.push(json!({ "type": "event", "id": id, "name": "onBlur", "args": [input.value] }));
+            }
+            self.focused_input = engine.focused_input;
         }
         events
     }

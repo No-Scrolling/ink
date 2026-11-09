@@ -86,6 +86,20 @@ import { check } from "ink/icons";
 </div>
 </div>
 
+## Focus
+
+`onBlur` runs with the entered text when the input loses focus. This happens when the user taps outside the input, dismisses the keyboard, or submits without an `onSubmit` handler. Use it to close a search field that the user left empty.
+
+```tsx
+<TextInput
+  value={query}
+  onChange={setQuery}
+  onBlur={value => value || setSearching(false)}
+  action="search"
+  autoFocus
+/>
+```
+
 ## Labels and appearance
 
 Use `label`, `description` and `error` to place associated text around an input. An error replaces the description and applies the theme's `invalid` style.
