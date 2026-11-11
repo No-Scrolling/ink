@@ -38,3 +38,11 @@ export default function Settings() {
 <img src="/images/patterns/field-wrap.png" alt="A saved location value wrapping over multiple lines." width="1080" height="1240" />
 </div>
 </div>
+
+## Images
+
+Use `image` to show a picture before the label, such as an app's icon. It takes the same sources as `Image`: a bundled asset, a managed file or an HTTPS URL.
+
+```tsx
+<Field label="Maps" image={app.icon} onPress={choose}>M</Field>
+```

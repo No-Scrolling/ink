@@ -104,6 +104,9 @@ const BUTTON_ICON_SIZE: f32 = 30.0;
 const BUTTON_ICON_GAP: f32 = 12.0;
 const FIELD_LABEL_SIZE: f32 = 20.0;
 const FIELD_LABEL_HEIGHT: f32 = 25.0;
+/// A field's image and the space it takes with its gap, the same as a row's.
+const FIELD_IMAGE_SIZE: f32 = 50.0;
+const FIELD_IMAGE_SLOT: f32 = 65.0;
 const CONTENT_INSET_START: f32 = 37.0;
 const CONTENT_TOP: f32 = 14.0;
 const CONTENT_BOTTOM: f32 = 20.0;
@@ -719,6 +722,8 @@ enum NodeKind {
         value: String,
         action: Option<Action>,
         disabled: bool,
+        /// A picture before the label, such as an app's icon.
+        image: Option<Box<Node>>,
     },
     Icon {
         mask: Mask,
@@ -910,6 +915,7 @@ impl Node {
                 value,
                 action,
                 disabled: false,
+                image: None,
             },
         }
     }
@@ -3603,22 +3609,11 @@ impl Engine {
                 height: (self.scaled((self.content_gap() - self.section_gap()).max(0.0)) + self.text_line_height(self.section_size()))
                     .min(available.height),
             },
-            NodeKind::Field { label, value, action, .. } if self.theme.field == FieldLayout::Inline => {
-                let lines = self.inline_field_wrap(label, value, action.is_some(), available.width).map_or(0, |lines| lines.len());
-                MeasuredSize {
-                    width: available.width,
-                    height: (self.text_line_height(DEFAULT_TEXT_SIZE) * (1 + lines) as f32).min(available.height),
-                }
-            }
-            NodeKind::Field { label, value, .. } => {
-                let label_width = self.text_width(label, self.scaled_font(FIELD_LABEL_SIZE));
-                let lines = self.wrap_text(value, self.scaled_font(DEFAULT_TEXT_SIZE), available.width, None, false);
-                let value_width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
-                let value_height = self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32;
-                MeasuredSize {
-                    width: label_width.max(value_width).ceil().min(available.width),
-                    height: (self.scaled(FIELD_LABEL_HEIGHT) + value_height).min(available.height),
-                }
+            NodeKind::Field { label, value, action, image, .. } => {
+                let Some(_) = image else { return self.measure_field_text(label, value, action.is_some(), available) };
+                let slot = self.scaled(FIELD_IMAGE_SLOT).min(available.width);
+                let text = self.measure_field_text(label, value, action.is_some(), Rect { width: (available.width - slot).max(0.0), ..available });
+                MeasuredSize { width: available.width, height: text.height.max(self.scaled(FIELD_IMAGE_SIZE)).min(available.height) }
             }
             NodeKind::Icon { size, bounds, .. } => {
                 let size = self.scaled(if *size > 0.0 {
@@ -4185,7 +4180,8 @@ impl Engine {
                 value,
                 action,
                 disabled,
-            } => self.layout_field(label, value, action, *disabled, rect),
+                image,
+            } => self.layout_field(label, value, action, *disabled, image.as_deref(), rect),
             NodeKind::Icon { mask, tone, bounds, .. } => self.scene.masks.push(MaskRun {
                 mask: mask.clone(),
                 rect: bounds.map_or(rect, |bounds| {
@@ -5064,9 +5060,37 @@ impl Engine {
         }
     }
 
-    fn layout_field(&mut self, label: &str, value: &str, action: &Option<Action>, disabled: bool, rect: Rect) {
+    /// The label and value, without the image.
+    fn measure_field_text(&mut self, label: &str, value: &str, pressable: bool, available: Rect) -> MeasuredSize {
         if self.theme.field == FieldLayout::Inline {
-            return self.layout_inline_field(label, value, action, disabled, rect);
+            let lines = self.inline_field_wrap(label, value, pressable, available.width).map_or(0, |lines| lines.len());
+            return MeasuredSize {
+                width: available.width,
+                height: (self.text_line_height(DEFAULT_TEXT_SIZE) * (1 + lines) as f32).min(available.height),
+            };
+        }
+        let label_width = self.text_width(label, self.scaled_font(FIELD_LABEL_SIZE));
+        let lines = self.wrap_text(value, self.scaled_font(DEFAULT_TEXT_SIZE), available.width, None, false);
+        let value_width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
+        let value_height = self.text_line_height(DEFAULT_TEXT_SIZE) * lines.len() as f32;
+        MeasuredSize {
+            width: label_width.max(value_width).ceil().min(available.width),
+            height: (self.scaled(FIELD_LABEL_HEIGHT) + value_height).min(available.height),
+        }
+    }
+
+    fn layout_field(&mut self, label: &str, value: &str, action: &Option<Action>, disabled: bool, image: Option<&Node>, hit: Rect) {
+        let mut rect = hit;
+        if let Some(image) = image {
+            let size = self.scaled(FIELD_IMAGE_SIZE).min(hit.width);
+            self.layout(image, Rect { width: size, height: size, y: hit.y + (hit.height - size) / 2.0, ..hit });
+            let slot = self.scaled(FIELD_IMAGE_SLOT).min(hit.width);
+            let available = Rect { x: hit.x + slot, width: (hit.width - slot).max(0.0), ..hit };
+            let height = self.measure_field_text(label, value, action.is_some(), available).height.min(hit.height);
+            rect = Rect { y: hit.y + (hit.height - height) / 2.0, height, ..available };
+        }
+        if self.theme.field == FieldLayout::Inline {
+            return self.layout_inline_field(label, value, action, disabled, rect, hit);
         }
         let start = self.scene.text.len();
         let label_height = self.scaled(FIELD_LABEL_HEIGHT).min(rect.height);
@@ -5102,7 +5126,7 @@ impl Engine {
                 run.colour = colour;
             }
         } else if let Some(action) = action {
-            self.push_hit_region(rect, action.clone());
+            self.push_hit_region(hit, action.clone());
         }
     }
 
@@ -5121,7 +5145,7 @@ impl Engine {
 
     /// Label at the start with the value and a chevron at the end. Values that don't fit wrap
     /// under the label.
-    fn layout_inline_field(&mut self, label: &str, value: &str, action: &Option<Action>, disabled: bool, rect: Rect) {
+    fn layout_inline_field(&mut self, label: &str, value: &str, action: &Option<Action>, disabled: bool, rect: Rect, hit: Rect) {
         let font_size = self.scaled_font(DEFAULT_TEXT_SIZE);
         let chevron_space = self.inline_field_chevron(action.is_some());
         let available = (rect.width - chevron_space).max(0.0);
@@ -5155,7 +5179,7 @@ impl Engine {
             }
         }
         if let Some(action) = action.as_ref().filter(|_| !disabled) {
-            self.push_hit_region(rect, action.clone());
+            self.push_hit_region(hit, action.clone());
         }
     }
 

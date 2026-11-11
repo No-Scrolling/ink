@@ -109,6 +109,8 @@ export { Canvas, Rectangle, CanvasPath, CanvasRange, CanvasText, CanvasIcon } fr
 
 export function Field<const D extends Destination>(props: PressProps<D> & {
   label: string;
+  /** A picture before the label, such as an app's icon: a bundled asset, a managed file or an HTTPS URL. */
+  image?: string;
   disabled?: boolean;
   children?: ReactNode;
 }) {

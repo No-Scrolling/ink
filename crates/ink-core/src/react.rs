@@ -1316,8 +1316,10 @@ impl ReactTree {
                         label,
                         action,
                     );
-                    if let NodeKind::Field { disabled, .. } = &mut field.kind {
+                    if let NodeKind::Field { disabled, image, .. } = &mut field.kind {
                         *disabled = props.get("disabled") == Some(&Json::Bool(true));
+                        *image = string(props, "image").map(|src| Ok::<_, anyhow::Error>(Box::new(
+                            Node::image(image_source(src)?, None, false, false, 50.0, 50.0, ImageFit::Contain)))).transpose()?;
                     }
                     field
                 } else {
