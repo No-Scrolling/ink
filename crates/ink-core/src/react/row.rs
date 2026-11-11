@@ -9,10 +9,9 @@ impl ReactTree {
         let icon = |name: &str, size| -> Result<Node> {
             Ok(Node { identity: NodeIdentity(0), kind: NodeKind::Icon { mask: self.icon(name)?, size, tone: Tone::Primary, bounds: None } })
         };
-        let mut content = vec![if let Some(name) = string(props, "titleIcon") {
-            Node { identity: NodeIdentity(0), kind: NodeKind::RowTitle { text: title.into(), size: 26.0, max_lines,
-                children: vec![icon(name, 26.0)?] } }
-        } else { Node::text(title.into(), Some(26.0), TextAlign::Start, max_lines, false) }];
+        let children = string(props, "titleIcon").map(|name| icon(name, 26.0)).transpose()?.into_iter().collect();
+        let mut content = vec![Node { identity: NodeIdentity(0), kind: NodeKind::RowTitle { text: title.into(), size: 26.0, max_lines,
+            children, themed: true } }];
         let mut subtitle = Vec::new();
         if let Some(name) = string(props, "subtitleIcon") { subtitle.push(icon(name, 16.0)?); }
         if let Some(text) = string(props, "subtitle") {

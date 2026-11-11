@@ -28,7 +28,7 @@ pub use input::{InputAppearance, InputStyle, InputColour, InputBorder, InputFont
 use input::{InputOptions, input_alignment_offset};
 /// The theme file description, for the compiler.
 pub mod theme_source {
-    pub use crate::theme::{SourceScrollBar, SourceSubtitle, SourceColours, SourceFonts, SourceHeader, SourceImage, SourceRoles, SourceSection, SourceSpacing, SourceText, SourceToggle};
+    pub use crate::theme::{SourceRow, SourceScrollBar, SourceSubtitle, SourceColours, SourceFonts, SourceHeader, SourceImage, SourceRoles, SourceSection, SourceSpacing, SourceText, SourceToggle};
 }
 pub use theme::{CutoutMode, FieldLayout, ScrollBarVisibility, HeaderLayout, Palette, Roles, SelectionStyle, Theme, ThemeBundle, ThemeSource, ToggleStyle, parse_colour};
 
@@ -648,7 +648,8 @@ enum NodeKind {
     Pressable { children: Vec<Node>, action: Option<Action>, long_action: Option<Action>, selected: bool, haptic: bool },
     PlayingTransport { children: Vec<Node>, loading: bool },
     PlayingLabel { text: String, size: f32 },
-    RowTitle { children: Vec<Node>, text: String, size: f32, max_lines: Option<u32> },
+    /// `themed` titles belong to a `Row`, so the theme's row size replaces `size`.
+    RowTitle { children: Vec<Node>, text: String, size: f32, max_lines: Option<u32>, themed: bool },
     PlayingProgress { position: f32, duration: f32, playing: bool, seek: bool, show_times: bool, clock: Option<u64>, speed: f32 },
     PitchIndicator { cents: Option<f32> },
     CaptureReadout { controller: u64, kind: CaptureKind },
@@ -3538,8 +3539,10 @@ impl Engine {
                     }
                 }
             }
-            NodeKind::RowTitle { text, size, max_lines, .. } => {
-                let lines = self.wrap_inset_text(text, self.scaled_font(*size), available.width, *max_lines, false, &[], self.scaled(*size + 6.0));
+            NodeKind::RowTitle { children, text, size, max_lines, themed } => {
+                let size = &self.row_title_size(*size, *themed);
+                let inset = if children.is_empty() { 0.0 } else { self.scaled(*size + 6.0) };
+                let lines = self.wrap_inset_text(text, self.scaled_font(*size), available.width, *max_lines, false, &[], inset);
                 MeasuredSize { width: available.width, height: (self.text_line_height(*size) * lines.len() as f32).min(available.height) }
             }
             NodeKind::PlayingLabel { text, size } => MeasuredSize {
@@ -3869,8 +3872,9 @@ impl Engine {
                     }
                 }
             }
-            NodeKind::RowTitle { children, text, size, max_lines } => {
-                let inset = self.scaled(*size + 6.0);
+            NodeKind::RowTitle { children, text, size, max_lines, themed } => {
+                let size = &self.row_title_size(*size, *themed);
+                let inset = if children.is_empty() { 0.0 } else { self.scaled(*size + 6.0) };
                 let line_height = self.text_line_height(*size);
                 let lines = self.wrap_inset_text(text, self.scaled_font(*size), rect.width, *max_lines, false, &[], inset);
                 if let Some(icon) = children.first() {
@@ -5893,6 +5897,10 @@ impl Engine {
 
     fn header_subtitle_size(&self) -> f32 {
         self.theme.subtitle_size.unwrap_or(LARGE_HEADER_SUBTITLE_SIZE)
+    }
+
+    fn row_title_size(&self, size: f32, themed: bool) -> f32 {
+        if themed { self.theme.row_size.unwrap_or(size) } else { size }
     }
 
     fn section_size(&self) -> f32 {

@@ -931,6 +931,7 @@ impl ReactTree {
                 text: string(props, "text").unwrap_or_default().to_owned(),
                 max_lines: number(props, "maxLines")?.map(|value| value.max(1.0) as u32),
                 children: self.children(host, depth)?,
+                themed: false,
             } },
             HostKind::Row => Node {
                 identity: NodeIdentity(id),

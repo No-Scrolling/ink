@@ -145,6 +145,8 @@ pub struct Theme {
     pub section_gap: Option<f32>,
     /// Size and tone of secondary lines under titles and toggle labels.
     pub subtitle_size: Option<f32>,
+    /// `Row` title size. Default: 26 units, a little under body text.
+    pub row_size: Option<f32>,
     pub subtitle_muted: Option<bool>,
     pub scroll_bar_visibility: ScrollBarVisibility,
     pub scroll_bar_track: bool,
@@ -182,6 +184,7 @@ impl Default for Theme {
             section_size: None,
             section_gap: None,
             subtitle_size: None,
+            row_size: None,
             subtitle_muted: None,
             scroll_bar_visibility: ScrollBarVisibility::Always,
             scroll_bar_track: true,
@@ -218,6 +221,8 @@ pub struct ThemeSource {
     #[serde(default)]
     pub subtitle: SourceSubtitle,
     #[serde(default)]
+    pub row: SourceRow,
+    #[serde(default)]
     pub text_input: crate::InputAppearance,
     #[serde(default)]
     pub hit_slop: crate::HitInsets,
@@ -231,6 +236,12 @@ pub struct ThemeSource {
 pub struct SourceSubtitle {
     pub size: Option<f32>,
     pub tone: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceRow {
+    pub size: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -491,6 +502,7 @@ impl ThemeSource {
             section_size: self.section.size.map(units),
             section_gap: self.section.gap.map(units),
             subtitle_size: self.subtitle.size.map(units),
+            row_size: self.row.size.map(units),
             subtitle_muted: match self.subtitle.tone.as_deref() {
                 None => None,
                 Some("muted") => Some(true),

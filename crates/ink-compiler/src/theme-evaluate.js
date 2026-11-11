@@ -34,6 +34,7 @@ const shape = {
   section: { uppercase: null, size: null, gap: null },
   scrollBar: { colour: null, visibility: null, track: null, width: null, inset: null },
   subtitle: { size: null, tone: null },
+  row: { size: null },
   toggle: null,
   selection: null,
   field: null,
@@ -234,6 +235,9 @@ async function describe(theme) {
     subtitle: {
       size: number(theme.subtitle?.size, "subtitle.size", { min: 8, max: 300 }),
       tone: choice(theme.subtitle?.tone, "subtitle.tone", ["foreground", "muted"]),
+    },
+    row: {
+      size: number(theme.row?.size, "row.size", { min: 8, max: 300 }),
     },
     toggle,
     selection: choice(theme.selection, "selection", ["underline", "check"]),

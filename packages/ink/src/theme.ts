@@ -150,6 +150,10 @@ export interface Theme {
     /** Default: `"muted"` for header subtitles, `"foreground"` for toggle and row subtitles. */
     tone?: "foreground" | "muted";
   };
+  row?: {
+    /** `Row` title size in pixels. Default: a little under body text. */
+    size?: number;
+  };
   scrollBar?: {
     /** Colour of the thumb and track. Default: the foreground. Light mode uses its inverse. */
     colour?: Colour;
