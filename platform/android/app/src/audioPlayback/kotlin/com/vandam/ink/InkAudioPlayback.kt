@@ -235,8 +235,8 @@ private class AudioSessionPlayback(
                 }
                 "skipBack" -> seekBy(-SKIP_INTERVAL_MS)
                 "skipForward" -> seekBy(SKIP_INTERVAL_MS)
-                "previous" -> dispatch(Player::seekToPreviousMediaItem)
-                "next" -> dispatch(Player::seekToNextMediaItem)
+                "previous" -> dispatch { (mediaSession?.player ?: it).seekToPreviousMediaItem() }
+                "next" -> dispatch { (mediaSession?.player ?: it).seekToNextMediaItem() }
                 "setShuffle" -> dispatch { it.shuffleModeEnabled = body.getBoolean("value") }
                 "setRepeat" -> {
                     val mode = when (body.getString("value")) {
@@ -389,7 +389,7 @@ private class AudioSessionPlayback(
                 followAudioUsage(this, usage)
             }
         audioOffload = if (offload) AudioOffload(activity, created, effects, true) else null
-        mediaSession = MediaSession.Builder(activity, created)
+        mediaSession = MediaSession.Builder(activity, AudioSkipPlayer(created, takeFocus))
             .setId("${activity.packageName}:$name:attached")
             .setCallback(object : MediaSession.Callback {
                 override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean =
