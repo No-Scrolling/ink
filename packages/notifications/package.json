@@ -1,13 +1,13 @@
 {
   "name": "@ink/notifications",
-  "version": "0.1.0-alpha.14",
+  "version": "0.1.0-alpha.15",
   "private": true,
   "exports": {
     ".": "./src/index.ts",
     "./commands": "./src/commands.ts"
   },
   "peerDependencies": {
-    "ink": "0.1.0-alpha.14",
+    "ink": "0.1.0-alpha.15",
     "react": "19.2.8"
   }
 }
