@@ -33,6 +33,8 @@ private class InkLightSdkAdapter(
     private var binder: IBinder? = null
     private var bound = false
     private var token = DEFAULT_TOKEN
+    @Volatile
+    private var serverVersion: String? = null
     private val pendingRequests = mutableListOf<PendingRequest>()
     private val runningRequests = ConcurrentHashMap<Long, Future<*>>()
     private val ringtoneFiles = createRingtoneFiles(context)
@@ -56,6 +58,7 @@ private class InkLightSdkAdapter(
         bound = false
         binder = null
         token = DEFAULT_TOKEN
+        serverVersion = null
         pendingRequests.clear()
         runningRequests.values.forEach { it.cancel(true) }
         runningRequests.clear()
@@ -188,6 +191,8 @@ private class InkLightSdkAdapter(
                     payload == MICROPHONE ||
                     payload == AUDIO_FILES ||
                     payload == NOTIFICATIONS ||
+                    payload == PHOTOS ||
+                    payload == VIDEOS ||
                     payload == LOCATION_APPROXIMATE ||
                     payload == LOCATION_PRECISE
             OPEN_DIALLER_OPERATION -> runCatching {
@@ -236,11 +241,13 @@ private class InkLightSdkAdapter(
     override fun onServiceDisconnected(name: ComponentName?) {
         binder = null
         token = DEFAULT_TOKEN
+        serverVersion = null
     }
 
     override fun onBindingDied(name: ComponentName?) {
         binder = null
         token = DEFAULT_TOKEN
+        serverVersion = null
         if (!bound) {
             return
         }
@@ -284,12 +291,13 @@ private class InkLightSdkAdapter(
     }
 
     private fun executeOperation(request: PendingRequest): NativeResult = when (request.operation) {
-        VERSION_OPERATION -> when (val response = authenticatedRequest(GET_VERSION, UNIT_JSON)) {
-            is Response.Success -> NativeResult.Success(
-                JSONObject(response.data).getString("version"),
-            )
-            is Response.Error -> response.failure()
-        }
+        VERSION_OPERATION -> serverVersion?.let { NativeResult.Success(it) }
+            ?: when (val response = authenticatedRequest(GET_VERSION, UNIT_JSON)) {
+                is Response.Success -> NativeResult.Success(
+                    JSONObject(response.data).getString("version").also { serverVersion = it },
+                )
+                is Response.Error -> response.failure()
+            }
         "preferences", "keyboard-options" -> when (val response = authenticatedRequest(
             if (request.operation == "preferences") GET_USER_PREFERENCES else GET_KEYBOARD_OPTIONS,
             UNIT_JSON,
@@ -394,6 +402,8 @@ private class InkLightSdkAdapter(
         MICROPHONE -> android.Manifest.permission.RECORD_AUDIO
         AUDIO_FILES -> android.Manifest.permission.READ_MEDIA_AUDIO
         NOTIFICATIONS -> android.Manifest.permission.POST_NOTIFICATIONS
+        PHOTOS -> android.Manifest.permission.READ_MEDIA_IMAGES
+        VIDEOS -> android.Manifest.permission.READ_MEDIA_VIDEO
         LOCATION_APPROXIMATE -> android.Manifest.permission.ACCESS_COARSE_LOCATION
         LOCATION_PRECISE -> android.Manifest.permission.ACCESS_FINE_LOCATION
         else -> error("Unsupported permission: $permission")
@@ -430,6 +440,7 @@ private class InkLightSdkAdapter(
         when (val version = authenticatedRequest(GET_VERSION, UNIT_JSON)) {
             is Response.Success -> {
                 val serverVersion = JSONObject(version.data).optString("version")
+                this.serverVersion = serverVersion.ifEmpty { null }
                 if (serverVersion != BuildConfig.INK_LIGHT_SDK_VERSION) {
                     Log.w(
                         TAG,
@@ -562,6 +573,8 @@ private class InkLightSdkAdapter(
         const val MICROPHONE = "microphone"
         const val AUDIO_FILES = "audio-files"
         const val NOTIFICATIONS = "notifications"
+        const val PHOTOS = "photos"
+        const val VIDEOS = "videos"
         const val LOCATION_APPROXIMATE = "location-approximate"
         const val LOCATION_PRECISE = "location-precise"
         val DEVICE_KEY_CODES = setOf(24, 25, 27, 80, 317, 318, 319)

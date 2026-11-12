@@ -9,6 +9,7 @@ import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.os.VibratorManager
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -19,12 +20,14 @@ class VibrationLightService : Service() {
             if (code != 1) return super.onTransact(code, data, reply, flags)
             data.enforceInterface("com.thelightphone.sdk.action.BIND_SERVICE")
             val method = data.readString()
+            val payload = data.readString()
             data.readString()
-            data.readString()
+            requests += "$method:$payload"
             val response = when (method) {
                 "GetToken" -> """{"token":"vibration-contract"}"""
                 "GetVersion" -> """{"version":"0.2.3"}"""
                 "GetUserPreferences" -> """{"hapticsEnabled":$enabled}"""
+                "GetPermission" -> """{"permissionResult":"Granted"}"""
                 else -> error("Unexpected Light SDK request: $method")
             }
             reply!!.writeNoException()
@@ -36,6 +39,7 @@ class VibrationLightService : Service() {
 
     companion object {
         @Volatile var enabled = false
+        val requests = CopyOnWriteArrayList<String>()
     }
 }
 
