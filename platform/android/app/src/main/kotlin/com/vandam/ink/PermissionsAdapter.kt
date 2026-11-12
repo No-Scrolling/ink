@@ -10,8 +10,15 @@ internal class PermissionsAdapter(
     private val activity: Activity,
     private val lightSdk: LightSdkAdapter,
 ) : NativeAdapter {
-    private data class Permission(val name: String, val android: Array<String>)
-    private data class Pending(val id: Long, val permission: Permission, val complete: NativeResultHandler, var cancelled: Boolean = false, var routing: Boolean = true)
+    private data class Permission(val name: String, val android: Array<String>, val light: List<String> = listOf(name))
+    private data class Pending(
+        val id: Long,
+        val permission: Permission,
+        val complete: NativeResultHandler,
+        var cancelled: Boolean = false,
+        var routing: Boolean = true,
+        var steps: List<String> = emptyList(),
+    )
     private var pending: Pending? = null
     private val history = activity.getSharedPreferences("ink-permissions", Context.MODE_PRIVATE)
     private val usesLightOs = try {
@@ -42,11 +49,7 @@ internal class PermissionsAdapter(
             if (pending !== request) return@usesLightPermission
             request.routing = false
             if (useLightPermission) {
-                lightSdk.execute(id, "request-permission", permission.name) { result ->
-                    if (result is NativeResult.Failure || result is NativeResult.Success && result.value == "granted") activity.runOnUiThread {
-                        if (pending === request) finish(result)
-                    }
-                }
+                requestLight(request, permission.light)
             } else {
                 val permissions = permission.android
                 if (permissions.all { activity.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) {
@@ -68,14 +71,10 @@ internal class PermissionsAdapter(
             complete(false)
             return
         }
-        if (permission.name == "notifications") {
-            // POST_NOTIFICATIONS joined the server's default grants after 0.2.3.
+        val minimum = LIGHT_SERVER_VERSIONS[permission.name]
+        if (minimum != null) {
             lightSdk.execute(id, "version", "") { result ->
-                val version = (result as? NativeResult.Success)?.value
-                val parts = version?.takeIf { it.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?")) }
-                    ?.substringBefore('+')?.split('.')?.mapNotNull { it.toIntOrNull() }
-                val supported = parts != null && parts.size == 3 &&
-                    (parts[0] > 0 || parts[1] > 2 || parts[1] == 2 && parts[2] >= 4)
+                val supported = atLeast((result as? NativeResult.Success)?.value, minimum)
                 activity.runOnUiThread { complete(supported) }
             }
             return
@@ -89,7 +88,7 @@ internal class PermissionsAdapter(
     private fun status(id: Long, permission: Permission, complete: NativeResultHandler) {
         usesLightPermission(id, permission) { useLightPermission ->
             if (useLightPermission) {
-                lightSdk.execute(id, "permission-status", permission.name, complete)
+                lightStatus(id, permission.light, complete)
                 return@usesLightPermission
             }
             val permissions = permission.android
@@ -109,9 +108,59 @@ internal class PermissionsAdapter(
     fun result(requestCode: Int) {
         if (requestCode != REQUEST_CODE && requestCode != LIGHT_OS_REQUEST_CODE) return
         val request = pending ?: return
-        status(request.id, request.permission) { result -> activity.runOnUiThread {
-            if (pending === request) finish(result)
+        val next = request.steps.drop(1)
+        if (next.isEmpty()) {
+            status(request.id, request.permission) { result -> activity.runOnUiThread {
+                if (pending === request) finish(result)
+            } }
+            return
+        }
+        lightSdk.execute(request.id, "permission-status", request.steps.first()) { result -> activity.runOnUiThread {
+            if (pending !== request) return@runOnUiThread
+            if (result == NativeResult.Success("granted")) {
+                requestLight(request, next)
+            } else {
+                status(request.id, request.permission) { status -> activity.runOnUiThread {
+                    if (pending === request) finish(status)
+                } }
+            }
         } }
+    }
+
+    // LightOS opens one permission screen per launch, so combined permissions ask for each in turn.
+    private fun requestLight(request: Pending, steps: List<String>) {
+        if (steps.isEmpty() || request.cancelled) {
+            finish(NativeResult.Success("granted"))
+            return
+        }
+        request.steps = steps
+        lightSdk.execute(request.id, "request-permission", steps.first()) { result -> activity.runOnUiThread {
+            if (pending !== request) return@runOnUiThread
+            if (result is NativeResult.Failure) finish(result)
+            else if (result == NativeResult.Success("granted")) requestLight(request, steps.drop(1))
+        } }
+    }
+
+    private fun lightStatus(id: Long, steps: List<String>, complete: NativeResultHandler) {
+        lightSdk.execute(id, "permission-status", steps.first()) { first ->
+            val rest = steps.drop(1)
+            if (rest.isEmpty() || first !is NativeResult.Success) {
+                complete(first)
+                return@execute
+            }
+            lightStatus(id, rest) { others ->
+                if (others !is NativeResult.Success) {
+                    complete(others)
+                    return@lightStatus
+                }
+                val statuses = listOf(first.value, others.value)
+                complete(NativeResult.Success(when {
+                    "blocked" in statuses -> "blocked"
+                    statuses.all { it == "granted" } -> "granted"
+                    else -> "denied"
+                }))
+            }
+        }
     }
 
     private fun finish(result: NativeResult) {
@@ -141,7 +190,7 @@ internal class PermissionsAdapter(
             "audio-files" -> arrayOf(Manifest.permission.READ_MEDIA_AUDIO)
             "photos" -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
             "videos" -> arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
-            "photos-and-videos" -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+            "photos-and-videos" -> return Permission(name, arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO), listOf("photos", "videos"))
             "location-approximate" -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
             "location-precise" -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
             else -> return null
@@ -149,8 +198,23 @@ internal class PermissionsAdapter(
         return Permission(name, android)
     }
 
+    private fun atLeast(version: String?, minimum: List<Int>): Boolean {
+        val parts = version?.takeIf { it.matches(VERSION) }?.substringBefore('+')?.split('.')
+            ?.map { it.toIntOrNull() ?: return false } ?: return false
+        val difference = parts.zip(minimum).firstOrNull { (part, required) -> part != required }
+        return difference == null || difference.first > difference.second
+    }
+
     private companion object {
         const val REQUEST_CODE = 10203
         const val LIGHT_OS_REQUEST_CODE = 10101
+        val VERSION = Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:\\+[0-9A-Za-z.-]+)?")
+        // Servers before these versions do not grant the permission.
+        val LIGHT_SERVER_VERSIONS = mapOf(
+            "notifications" to listOf(0, 2, 4),
+            "photos" to listOf(0, 2, 6),
+            "videos" to listOf(0, 2, 6),
+            "photos-and-videos" to listOf(0, 2, 6),
+        )
     }
 }

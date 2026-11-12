@@ -29,9 +29,11 @@ const permission = await lightos.requestPermission("microphone");
 
 Use `lightos.getPermission(name)` to check without a prompt. Both methods return `granted`, `denied` or `blocked`. See [Request a permission](/permissions-guide) for handling each result.
 
-Ink uses LightOS for camera, microphone, audio files and supported location requests. Photo and video library access uses Android. Without LightOS, requests use Android. Denied or blocked LightOS access does not trigger an Android fallback.
+Ink uses LightOS for camera, microphone, audio files and supported location requests. Without LightOS, requests use Android. Denied or blocked LightOS access does not trigger an Android fallback.
 
 Notification checks and requests use LightOS when the connected Light SDK server is 0.2.4 or later. Older servers, including 0.1.1, use Android. If Ink cannot read the server version, notification access also uses Android.
+
+Photo and video checks and requests use LightOS when the connected Light SDK server is 0.2.6 or later. Older servers and unreadable versions use Android. LightOS shows one screen per permission, so `photos-and-videos` asks for photos and then videos. It stops after a denial. `getPermission("photos-and-videos")` returns `granted` only when both are granted, and `blocked` when either is blocked.
 
 Exact reminders use `lightos.canScheduleExact()` and `lightos.requestExactPermission()`. See [Notifications](/notifications#exact-reminders).
 

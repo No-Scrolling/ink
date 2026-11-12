@@ -13,7 +13,7 @@ import { lightos } from "@ink/lightos";
 const permission = await lightos.requestPermission("photos-and-videos");
 ```
 
-The picker checks access without opening a permission prompt. See [Files and media](/files#permissions) for image-only and video-only permissions.
+On Light SDK server 0.2.6 or later, LightOS shows the request. Older hosts and devices without LightOS use Android. The picker checks access without opening a permission prompt. See [Files and media](/files#permissions) for image-only and video-only permissions.
 
 <div className="pattern-example">
 <div>
