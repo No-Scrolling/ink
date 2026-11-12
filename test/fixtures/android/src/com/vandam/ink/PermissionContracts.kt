@@ -152,6 +152,16 @@ internal class PermissionContracts(private val instrumentation: Instrumentation)
         check(request(photos, listOf("videos")) == NativeResult.Success("granted"))
         check(photos.screens == listOf("videos")) { "Granted photos opened a screen: ${photos.screens}" }
 
+        val cancelled = Server(NativeResult.Success("0.2.6"), mutableMapOf("photos" to "denied", "videos" to "denied"), grant = true)
+        val adapter = PermissionsAdapter(activity, cancelled)
+        var result: NativeResult? = null
+        instrumentation.runOnMainSync { adapter.execute(1, "request", """{"permission":"photos-and-videos"}""") { result = it } }
+        instrumentation.runOnMainSync { adapter.cancel(1) }
+        cancelled.close()
+        instrumentation.runOnMainSync { adapter.result(10101) }
+        check(cancelled.screens == listOf("photos")) { "A cancelled request opened another screen: ${cancelled.screens}" }
+        check(result == null)
+
         val granted = Server(NativeResult.Success("0.2.6"), mutableMapOf("photos" to "granted", "videos" to "granted"))
         check(request(granted, emptyList()) == NativeResult.Success("granted"))
         check(granted.screens.isEmpty())

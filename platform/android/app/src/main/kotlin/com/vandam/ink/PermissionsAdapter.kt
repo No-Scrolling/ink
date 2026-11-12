@@ -129,7 +129,7 @@ internal class PermissionsAdapter(
 
     // LightOS opens one permission screen per launch, so combined permissions ask for each in turn.
     private fun requestLight(request: Pending, steps: List<String>) {
-        if (steps.isEmpty()) {
+        if (steps.isEmpty() || request.cancelled) {
             finish(NativeResult.Success("granted"))
             return
         }
