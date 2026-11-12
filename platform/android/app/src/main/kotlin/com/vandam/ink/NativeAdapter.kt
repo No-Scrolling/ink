@@ -37,6 +37,29 @@ internal fun javascriptResult(id: Long, result: NativeResult): String {
         .put("kind", "protocol").put("message", "Native result exceeds the message limit").toString()
 }
 
+// Controller values are already encoded JSON objects, so they are wrapped as text rather than parsed again.
+internal fun javascriptControllerMessage(id: Long, value: String): String {
+    val message = "{\"type\":\"controller\",\"id\":$id,\"value\":$value}"
+    if (utf8Length(message) <= MAX_RESULT_BYTES) return message
+    return JSONObject().put("type", "controller").put("id", id).put("value", JSONObject().put("status", "error")
+        .put("error", inkError("protocol", "Native controller state exceeds the message limit"))).toString()
+}
+
+private fun utf8Length(text: String): Int {
+    var bytes = 0
+    var index = 0
+    while (index < text.length) {
+        val char = text[index++]
+        bytes += when {
+            char.code < 0x80 -> 1
+            char.code < 0x800 -> 2
+            Character.isHighSurrogate(char) && index < text.length && Character.isLowSurrogate(text[index]) -> { index++; 4 }
+            else -> 3
+        }
+    }
+    return bytes
+}
+
 internal interface NativeAdapter {
     fun execute(
         requestId: Long,

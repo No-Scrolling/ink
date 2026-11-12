@@ -20,7 +20,23 @@ function decodeUsage(value: unknown): AudioItem["usage"] {
   throw new NativeError("protocol", "Invalid audio item usage");
 }
 
+interface Queue { revision: number; items: readonly AudioItem[] }
+
 export function decodePlayerState(value: unknown): PlayerState {
+  return decodeState(value)[0];
+}
+
+/** Native sends the queue only when its revision changes, so each subscription keeps the last one it decoded. */
+export function playerStateDecoder(): (value: unknown) => PlayerState {
+  let previous: Queue | undefined;
+  return value => {
+    const [state, queue] = decodeState(value, previous);
+    previous = queue;
+    return state;
+  };
+}
+
+function decodeState(value: unknown, previous?: Queue): [PlayerState, Queue] {
   if (typeof value !== "object" || value === null) throw new NativeError("protocol", "Invalid player state");
   const field = (name: string): unknown => Reflect.get(value, name);
   const text = (name: string) => {
@@ -51,25 +67,30 @@ export function decodePlayerState(value: unknown): PlayerState {
     throw new NativeError("protocol", "Invalid player queue index");
   }
   const duration = number("durationMs");
+  const revision = field("queueRevision");
+  if (typeof revision !== "number" || !Number.isSafeInteger(revision)) throw new NativeError("protocol", "Invalid audio queue revision");
   const queue = field("queue");
   const repeat = field("repeat");
   if (repeat !== "off" && repeat !== "queue" && repeat !== "track") throw new NativeError("protocol", "Invalid repeat mode");
   const shuffle = field("shuffle");
   if (typeof shuffle !== "boolean") throw new NativeError("protocol", "Invalid shuffle mode");
-  if (!Array.isArray(queue)) throw new NativeError("protocol", "Invalid audio queue");
-  return {
+  let items: readonly AudioItem[];
+  if (Array.isArray(queue)) items = queue.map(decodeItem);
+  else if (queue === undefined && previous?.revision === revision) items = previous.items;
+  else throw new NativeError("protocol", "Invalid audio queue");
+  return [{
     ready: field("ready") === true,
     playing: status === "playing",
     playWhenReady: field("playWhenReady") === true,
     buffering: status === "loading",
     loading: field("loading") === true,
     ended: status === "ended",
-    queue: queue.map(decodeItem),
+    queue: items,
     index,
     current: src ? { id: text("id"), src, title: text("title"), artist: text("artist"), album: text("album"), artwork: text("artwork"), duration, usage: decodeUsage(field("usage")) } : null,
     position: number("positionMs"), duration, speed: number("speed"),
     shuffle, repeat,
     skipSilence: field("skipSilence") === true, voiceBoost: field("voiceBoost") === true,
     silenceSaved: number("silenceSavedMs"), error,
-  };
+  }, { revision, items }];
 }

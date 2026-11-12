@@ -147,6 +147,15 @@ internal class ContractTests(private val context: Context) {
         equal("protocol", oversized.getString("kind")); equal(7L, oversized.getLong("id")); equal(1, disposed.get())
         val temporary = File.createTempFile("invalid-file-result", ".body", context.cacheDir)
         equal("protocol", JSONObject(javascriptResult(8, NativeResult.File(temporary.path))).getString("kind")); check(!temporary.exists())
+        val controller = JSONObject(javascriptControllerMessage(-5, JSONObject().put("text", text).toString()))
+        equal("controller", controller.getString("type")); equal(-5L, controller.getLong("id")); equal(text, controller.getJSONObject("value").getString("text"))
+        fun controllerValue(text: String) = JSONObject(javascriptControllerMessage(-5, """{"a":"$text"}""")).getJSONObject("value")
+        val controllerOverhead = "{\"type\":\"controller\",\"id\":-5,\"value\":{\"a\":\"\"}}".toByteArray().size
+        equal(1024 * 1024 - controllerOverhead, controllerValue("a".repeat(1024 * 1024 - controllerOverhead)).getString("a").length)
+        equal("protocol", controllerValue("a".repeat(1024 * 1024 - controllerOverhead + 1)).getJSONObject("error").getString("kind"))
+        // Four UTF-8 bytes but two UTF-16 characters each, so only a byte count exceeds the limit.
+        equal("protocol", controllerValue("😀".repeat(262_140)).getJSONObject("error").getString("kind"))
+        equal(262_000 * 2, controllerValue("😀".repeat(262_000)).getString("a").length)
     }
 
     private fun securePersistence() {

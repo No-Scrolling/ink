@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "ink/internal/react";
 import { useNativeController } from "ink/internal/controller";
 import { NativeError } from "ink/native";
 import { playbackController } from "ink/internal/playback";
-import { decodePlayerState } from "./decode";
+import { decodePlayerState, playerStateDecoder } from "./decode";
 
 export interface AudioItem {
   id: string;
@@ -83,8 +83,9 @@ export function usePlayer(options: PlayerOptions = {}) {
   useEffect(() => {
     const publish = (next: PlayerState) => { current.current = next; setState(next); };
     publish(initial);
+    const decode = playerStateDecoder();
     const detach = controller.attach({ kind: "player", config: { session, playback: mode, usage, cache, offload, preloadNext, startupBuffer } }, value => {
-      try { publish(decodePlayerState(value)); }
+      try { publish(decode(value)); }
       catch (error) { publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) }); }
     }, error => {
       publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) });

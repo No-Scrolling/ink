@@ -32,6 +32,7 @@ class ContractInstrumentation : Instrumentation() {
         VibrationContracts(this).run(test)
         ContactsContracts(this).run(test)
         ContractTests(targetContext).run(test)
+        AudioPlaybackContracts(this).run(test)
         finish(Activity.RESULT_OK, Bundle().apply {
             putString("ink.summary", JSONObject().put("passed", passed).put("failures", JSONArray(failures)).toString())
         })

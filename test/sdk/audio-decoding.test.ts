@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import { decodePlayerState } from "../../packages/audio/src/decode";
+import { decodePlayerState, playerStateDecoder } from "../../packages/audio/src/decode";
 import { NativeError } from "../../packages/ink/src/native";
 
 const item = { id: "episode-1", src: "https://example.com/episode.mp3", title: "Episode 1", artist: "", album: "", artwork: "" };
 const state = {
-  ...item, ready: true, status: "paused", index: 0, queue: [item],
+  ...item, ready: true, status: "paused", index: 0, queue: [item], queueRevision: 0,
   positionMs: 0, durationMs: 120_000, speed: 1, shuffle: false, repeat: "off", silenceSavedMs: 0,
 };
 
@@ -27,4 +27,25 @@ test("audio state preserves each item's usage and an omitted session fallback", 
 test.each(["alarm", "Speech", "", null, 2, false])("audio state rejects invalid item usage: %j", usage => {
   expect(() => decodePlayerState({ ...state, queue: [{ ...item, usage }] })).toThrow(NativeError);
   expect(() => decodePlayerState({ ...state, usage })).toThrow(NativeError);
+});
+
+test("audio state keeps the same queue until native sends a new revision", () => {
+  const decode = playerStateDecoder();
+  const first = decode(state);
+  const playing = decode({ ...state, status: "playing", positionMs: 5_000, queue: undefined });
+  expect(playing.playing).toBe(true);
+  expect(playing.position).toBe(5_000);
+  expect(playing.queue).toBe(first.queue);
+  const next = { ...item, id: "episode-2", title: "Episode 2" };
+  const edited = decode({ ...state, queueRevision: 1, queue: [item, next] });
+  expect(edited.queue.map(item => item.id)).toEqual(["episode-1", "episode-2"]);
+  expect(decode({ ...state, queueRevision: 1, queue: undefined }).queue).toBe(edited.queue);
+});
+
+test("audio state rejects a missing queue after a revision change", () => {
+  const decode = playerStateDecoder();
+  expect(() => decode({ ...state, queue: undefined })).toThrow(NativeError);
+  decode(state);
+  expect(() => decode({ ...state, queueRevision: 1, queue: undefined })).toThrow(NativeError);
+  expect(() => decodePlayerState({ ...state, queue: undefined })).toThrow(NativeError);
 });

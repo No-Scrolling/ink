@@ -39,6 +39,7 @@ internal class AudioContracts(private val context: Context) {
         test("audio external commands follow music and speech controls", ::externalCommands)
         test("audio attributes follow transitions, replacements and session fallback", ::itemUsage)
         test("audio item usage survives the media bridge and queue persistence", ::persistence)
+        test("audio queue persistence saves playlist changes and skips source updates", ::queueWrites)
         test("audio offload excludes effects, speed, pitch and unsuitable routes", ::offloadPreferences)
         test("audio offload remembers PCM fallback for each track and route", ::offloadFallback)
         test("audio headset single, double and triple presses use Media3 commands", ::mediaButtons)
@@ -530,6 +531,58 @@ internal class AudioContracts(private val context: Context) {
             play(id, "renewed", cache = false)
             equal(4, requests.get())
         } finally { server.close(); serving.join(5000); check(!serving.isAlive) }
+    }
+
+    private fun queueWrites() {
+        val name = "queue-write-contract"
+        val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
+        val positions = context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE)
+        preferences.edit().remove(name).commit()
+        positions.edit().remove(name).commit()
+        val file = File(context.cacheDir, "audio-content-contract.wav")
+        val pcmBytes = 30 * 8000 * 2
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16)
+            .put("data".toByteArray()).putInt(pcmBytes).array()
+        file.outputStream().use { it.write(header); it.write(ByteArray(pcmBytes)) }
+        fun content(id: String): MediaItem {
+            val uri = android.net.Uri.parse("content://com.vandam.ink.contracttests.audio/$id")
+            return item(id).buildUpon().setUri(uri).setRequestMetadata(MediaItem.RequestMetadata.Builder().setMediaUri(uri).build()).build()
+        }
+        // Restoring waits for queued writes, then reads what was saved.
+        fun saved(): List<String> = onMain {
+            val restored = ExoPlayer.Builder(context).build()
+            val persistence = AudioQueuePersistence(context, name, restored, AudioEffects.get(context, name))
+            try {
+                persistence.restore()
+                List(restored.mediaItemCount) { restored.getMediaItemAt(it).mediaId }
+            } finally { persistence.close(); restored.release() }
+        }
+        val reasons = LinkedBlockingQueue<Int>()
+        val player = onMain { ExoPlayer.Builder(context).build().apply {
+            addListener(object : Player.Listener {
+                override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) { reasons.add(reason) }
+            })
+        } }
+        val persistence = onMain { AudioQueuePersistence(context, name, player, AudioEffects.get(context, name)) }
+        try {
+            onMain { player.setMediaItems(listOf(content("first"), content("second"))) }
+            equal(listOf("first", "second"), saved())
+            preferences.edit().remove(name).commit()
+            reasons.clear()
+            onMain { player.prepare() }
+            eventually("source prepared") { player.playbackState == Player.STATE_READY }
+            check(Player.TIMELINE_CHANGE_REASON_SOURCE_UPDATE in reasons) { "Preparing did not update the source timeline" }
+            equal(emptyList<String>(), saved())
+            onMain { player.addMediaItem(content("third")) }
+            equal(listOf("first", "second", "third"), saved())
+        } finally {
+            onMain { persistence.close(); player.release() }
+            preferences.edit().remove(name).commit()
+            positions.edit().remove(name).commit()
+            file.delete()
+        }
     }
 
     private fun persistence() {
