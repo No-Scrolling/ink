@@ -35,7 +35,7 @@ private class InkContactsAdapter(private val context: Context) : ContactsAdapter
             val result = try {
                 val data = JSONObject(payload)
                 NativeResult.Success(when (operation) {
-                    "list" -> list(data.optString("query").trim(), signal).toString()
+                    "list" -> list(data.optString("query").trim(), data.optInt("offset"), data.optInt("limit"), signal).toString()
                     "get" -> details(data.getString("id"), signal)?.toString() ?: "null"
                     else -> error("Unknown contacts operation")
                 })
@@ -50,8 +50,12 @@ private class InkContactsAdapter(private val context: Context) : ContactsAdapter
         }
     }
 
-    private fun list(query: String, signal: CancellationSignal): JSONArray {
+    // Pages are cursor positions, so blank names still count towards `next`.
+    private fun list(query: String, offset: Int, limit: Int, signal: CancellationSignal): JSONObject {
+        require(offset >= 0 && limit > 0) { "Invalid contacts page" }
         val contacts = JSONArray()
+        var next: Int? = null
+        var bytes = 0
         val uri = if (query.isEmpty()) Contacts.CONTENT_URI else Uri.withAppendedPath(Contacts.CONTENT_FILTER_URI, Uri.encode(query))
         context.contentResolver.query(
             uri,
@@ -61,13 +65,24 @@ private class InkContactsAdapter(private val context: Context) : ContactsAdapter
             "${Contacts.DISPLAY_NAME_PRIMARY} COLLATE LOCALIZED ASC",
             signal,
         )?.use { cursor ->
-            while (cursor.moveToNext()) {
+            var position = offset
+            while (cursor.moveToPosition(position)) {
                 val name = cursor.getString(2).orEmpty()
-                if (name.isBlank()) continue
-                contacts.put(JSONObject().put("id", contactId(cursor.getLong(0), cursor.getString(1))).put("name", name))
+                if (name.isNotBlank()) {
+                    val contact = JSONObject().put("id", contactId(cursor.getLong(0), cursor.getString(1))).put("name", name)
+                    // Counted as escaped inside the result envelope, which is what the message limit measures.
+                    val size = JSONObject.quote(contact.toString()).toByteArray(Charsets.UTF_8).size - 1
+                    if (contacts.length() == limit || contacts.length() > 0 && bytes + size > PAGE_BYTES) {
+                        next = position
+                        break
+                    }
+                    bytes += size
+                    contacts.put(contact)
+                }
+                position++
             }
         }
-        return contacts
+        return JSONObject().put("contacts", contacts).put("next", next ?: JSONObject.NULL)
     }
 
     // IDs pair the row ID with the lookup key, so a contact can still be found after sync re-aggregates it.
@@ -178,5 +193,7 @@ private class InkContactsAdapter(private val context: Context) : ContactsAdapter
 
     private companion object {
         val DATA_SELECTION = "${Data.CONTACT_ID} = ? AND ${Data.MIMETYPE} = ?"
+        // Half the 1 MiB message limit, so a page and its envelope always fit.
+        const val PAGE_BYTES = 512 * 1024
     }
 }
