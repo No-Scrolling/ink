@@ -13,10 +13,28 @@ function isLabeledValue(value: unknown): value is LabeledValue {
     && typeof Reflect.get(value, "label") === "string" && typeof Reflect.get(value, "value") === "string";
 }
 
-export function decodeContacts(json: string): Contact[] {
-  const contacts: unknown = JSON.parse(json);
-  if (!Array.isArray(contacts) || !contacts.every(isContact)) throw new NativeError("protocol", "Invalid contact list");
-  return contacts;
+export function decodeContactPage(json: string, offset: number): { contacts: Contact[]; next: number | null } {
+  const page: unknown = JSON.parse(json);
+  if (typeof page !== "object" || page === null) throw new NativeError("protocol", "Invalid contact list");
+  const contacts: unknown = Reflect.get(page, "contacts");
+  const next: unknown = Reflect.get(page, "next");
+  if (!Array.isArray(contacts) || !contacts.every(isContact) || !(next === null || typeof next === "number" && Number.isSafeInteger(next))) {
+    throw new NativeError("protocol", "Invalid contact list");
+  }
+  if (next !== null && next <= offset) throw new NativeError("protocol", "Contact pagination did not advance");
+  return { contacts, next };
+}
+
+/** Joins pages into one list. A contact that moves between pages while they load is kept once, where it first appeared. */
+export async function collectContacts(load: (offset: number) => Promise<string>, signal?: AbortSignal): Promise<Contact[]> {
+  const contacts = new Map<string, Contact>();
+  for (let offset: number | null = 0; offset !== null;) {
+    signal?.throwIfAborted();
+    const page = decodeContactPage(await load(offset), offset);
+    for (const contact of page.contacts) contacts.set(contact.id, contact);
+    offset = page.next;
+  }
+  return [...contacts.values()];
 }
 
 export function decodeContactDetails(json: string): ContactDetails | null {

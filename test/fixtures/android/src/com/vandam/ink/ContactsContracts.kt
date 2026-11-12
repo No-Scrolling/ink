@@ -33,6 +33,7 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
         test("contacts list named contacts in localized order and filter them", ::list)
         test("contact details use LightOS labels and drop blank and duplicate values", ::details)
         test("contact IDs survive re-aggregation and resolve to null after deletion", ::identity)
+        test("contacts beyond the message limit list in pages without gaps or duplicates", ::paging)
     }
 
     private fun withContacts(test: (ContactsAdapter) -> Unit) {
@@ -44,12 +45,13 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
             test(adapter)
         } finally {
             adapter.stop()
-            for (id in rawContacts) {
-                resolver.delete(
-                    ContentUris.withAppendedId(RawContacts.CONTENT_URI, id).buildUpon()
-                        .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true").build(),
-                    null, null,
-                )
+            for (ids in rawContacts.chunked(400)) {
+                resolver.applyBatch(ContactsContract.AUTHORITY, ArrayList(ids.map { id ->
+                    ContentProviderOperation.newDelete(
+                        ContentUris.withAppendedId(RawContacts.CONTENT_URI, id).buildUpon()
+                            .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true").build(),
+                    ).build()
+                }))
             }
             rawContacts.clear()
         }
@@ -65,11 +67,25 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
         return (result as? NativeResult.Success)?.value ?: error("Contacts $operation failed: $result")
     }
 
-    private fun list(adapter: ContactsAdapter, query: String? = null): List<Pair<String, String>> {
-        val array = JSONArray(call(adapter, "list", JSONObject().put("query", query)))
-        return (0 until array.length()).map { array.getJSONObject(it) }.map { it.getString("name") to it.getString("id") }
-            .filter { it.first.endsWith(MARKER) }
+    // Pages the way @ink/contacts does, checking that each page fits in one bridge message.
+    private fun pages(adapter: ContactsAdapter, query: String? = null, limit: Int = 2000): List<List<Pair<String, String>>> {
+        val pages = mutableListOf<List<Pair<String, String>>>()
+        var offset: Int? = 0
+        while (offset != null) {
+            val value = call(adapter, "list", JSONObject().put("query", query).put("offset", offset).put("limit", limit))
+            check(javascriptResultFits(value)) { "A contacts page of ${value.toByteArray().size} bytes exceeds the message limit" }
+            val page = JSONObject(value)
+            val contacts = page.getJSONArray("contacts")
+            val next = if (page.isNull("next")) null else page.getInt("next")
+            check(contacts.length() <= limit && (next == null || next > offset && contacts.length() > 0)) { "Invalid page at $offset: $next" }
+            pages += (0 until contacts.length()).map { contacts.getJSONObject(it) }.map { it.getString("name") to it.getString("id") }
+            offset = next
+        }
+        return pages
     }
+
+    private fun list(adapter: ContactsAdapter, query: String? = null): List<Pair<String, String>> =
+        pages(adapter, query).flatten().filter { it.first.endsWith(MARKER) }
 
     private fun insert(vararg rows: Pair<String, ContentValues>): Long {
         val operations = arrayListOf(
@@ -83,6 +99,20 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
         val id = ContentUris.parseId(checkNotNull(resolver.applyBatch(ContactsContract.AUTHORITY, operations)[0].uri))
         rawContacts += id
         return id
+    }
+
+    private fun insertNames(names: List<String>) {
+        val operations = ArrayList<ContentProviderOperation>()
+        for (name in names) {
+            val rawContact = operations.size
+            operations += ContentProviderOperation.newInsert(RawContacts.CONTENT_URI)
+                .withValue(RawContacts.ACCOUNT_TYPE, null).withValue(RawContacts.ACCOUNT_NAME, null).build()
+            operations += ContentProviderOperation.newInsert(Data.CONTENT_URI)
+                .withValueBackReference(Data.RAW_CONTACT_ID, rawContact).withValue(Data.MIMETYPE, StructuredName.CONTENT_ITEM_TYPE)
+                .withValue(StructuredName.DISPLAY_NAME, name).build()
+        }
+        val results = resolver.applyBatch(ContactsContract.AUTHORITY, operations)
+        for (index in results.indices step 2) rawContacts += ContentUris.parseId(checkNotNull(results[index].uri))
     }
 
     private fun name(name: String) = StructuredName.CONTENT_ITEM_TYPE to ContentValues().apply { put(StructuredName.DISPLAY_NAME, name) }
@@ -103,10 +133,8 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
 
         // Localized collation ignores case and accents; byte order would put Bob, Mary and Zoë before adam and Émile.
         check(list(adapter).map { it.first } == listOf("adam", "Bob", "Émile", "Mary Allen", "Zoë").map { "$it $MARKER" }) { list(adapter).toString() }
-        val all = JSONArray(call(adapter, "list", JSONObject()))
-        for (index in 0 until all.length()) {
-            val contact = all.getJSONObject(index)
-            check(contact.getString("name").isNotBlank() && !contact.getString("id").startsWith("$blank:")) { "Listed a contact without a name: $contact" }
+        for ((name, id) in pages(adapter).flatten()) {
+            check(name.isNotBlank() && !id.startsWith("$blank:")) { "Listed a contact without a name: $id" }
         }
         check(list(adapter, "al").map { it.first } == listOf("Mary Allen $MARKER")) { list(adapter, "al").toString() }
         check(list(adapter, "émi").map { it.first } == listOf("Émile $MARKER")) { list(adapter, "émi").toString() }
@@ -181,6 +209,26 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
         resolver.delete(ContentUris.withAppendedId(RawContacts.CONTENT_URI, first), null, null)
         resolver.delete(ContentUris.withAppendedId(RawContacts.CONTENT_URI, second), null, null)
         for (id in ids + joined) check(call(adapter, "get", JSONObject().put("id", id)) == "null") { "$id resolved after deletion" }
+    }
+
+    private fun paging() = withContacts { adapter ->
+        // Local contacts' lookup keys encode the name, so long names also make long IDs. The leading code sets the order.
+        val names = (0 until 3500).map { index ->
+            val code = listOf(index / 676, index / 26 % 26, index % 26).joinToString("") { ('a' + it).toString() }
+            "Q$code Maximilian Alexander Featherstonehaugh-Montgomery (Lower Slaughter Parish Council) $MARKER"
+        }
+        for (chunk in names.chunked(200)) insertNames(chunk)
+
+        val pages = pages(adapter)
+        val all = pages.flatten()
+        val single = JSONArray(all.map { (name, id) -> JSONObject().put("id", id).put("name", name) }).toString()
+        check(pages.size > 1 && !javascriptResultFits(single)) { "${pages.size} pages, ${single.toByteArray().size} bytes" }
+        check(all.map { it.second }.distinct().size == all.size) { "A contact was listed twice" }
+        check(all.map { it.first }.filter { it.endsWith(MARKER) } == names) { "Paged contacts were missing or out of order" }
+
+        val filtered = pages(adapter, "qb", limit = 300)
+        check(filtered.size > 1) { "Filtered ${filtered.size} pages" }
+        check(filtered.flatten().map { it.first }.filter { it.endsWith(MARKER) } == names.filter { it.startsWith("Qb") }) { "Filtered pages were missing or out of order" }
     }
 
     private fun aggregate(type: Int, first: Long, second: Long) {

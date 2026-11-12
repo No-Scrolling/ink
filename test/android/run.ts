@@ -67,12 +67,12 @@ try {
   await command(["adb", "-s", serial, "install", resolve(root, "test/fixtures/android/build/outputs/apk/debug/InkAndroidContracts-debug.apk")], "install");
   installed = true;
   console.log(`Running native Android contracts on ${serial}; real idle expiry takes 61 seconds.`);
-  const result = await command(["adb", "-s", serial, "shell", "am", "instrument", "-w", "-r", `${packageName}/com.vandam.ink.ContractInstrumentation`], "instrumentation", 180_000);
+  const result = await command(["adb", "-s", serial, "shell", "am", "instrument", "-w", "-r", `${packageName}/com.vandam.ink.ContractInstrumentation`], "instrumentation", 300_000);
   console.log(result);
   const summaryLine = result.split("\n").find(line => line.startsWith("INSTRUMENTATION_RESULT: ink.summary="));
   if (!summaryLine) throw new Error(`Instrumentation did not produce a test summary. See ${output}/instrumentation.log`);
   const summary = JSON.parse(summaryLine.slice("INSTRUMENTATION_RESULT: ink.summary=".length)) as { passed: number; failures: string[] };
-  if (!Array.isArray(summary.failures) || summary.passed + summary.failures.length !== 45) throw new Error("Instrumentation returned an incomplete test summary.");
+  if (!Array.isArray(summary.failures) || summary.passed + summary.failures.length !== 46) throw new Error("Instrumentation returned an incomplete test summary.");
   if (summary.failures.length) throw new Error(`${summary.failures.length} Android contract(s) failed. See ${output}/instrumentation.log`);
   console.log(`${summary.passed} Android contracts passed.`);
 } catch (error) {
