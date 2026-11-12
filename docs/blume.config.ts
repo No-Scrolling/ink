@@ -80,6 +80,7 @@ export default defineConfig({
           "/barcode",
           "/camera",
           "/clipboard",
+          "/contacts",
           "/crypto",
           "/files",
           "/light-sdk",

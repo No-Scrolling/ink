@@ -191,6 +191,7 @@ internal class PermissionsAdapter(
             "photos" -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
             "videos" -> arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
             "photos-and-videos" -> return Permission(name, arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO), listOf("photos", "videos"))
+            "contacts" -> arrayOf(Manifest.permission.READ_CONTACTS)
             "location-approximate" -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
             "location-precise" -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
             else -> return null
@@ -215,6 +216,7 @@ internal class PermissionsAdapter(
             "photos" to listOf(0, 2, 6),
             "videos" to listOf(0, 2, 6),
             "photos-and-videos" to listOf(0, 2, 6),
+            "contacts" to listOf(0, 2, 7),
         )
     }
 }

@@ -7,6 +7,7 @@ export default function Modules() {
       <Button href="/modules/audio">Audio</Button>
       <Button href="/modules/background">Background</Button>
       <Button href="/modules/camera">Camera</Button>
+      <Button href="/modules/contacts">Contacts</Button>
       <Button href="/modules/database">Database</Button>
       <Button href="/modules/external">External actions</Button>
       <Button href="/modules/files">Files</Button>

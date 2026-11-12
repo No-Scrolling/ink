@@ -11,6 +11,7 @@
     "@ink/background": "workspace:*",
     "@ink/barcode": "workspace:*",
     "@ink/camera": "workspace:*",
+    "@ink/contacts": "workspace:*",
     "@ink/files": "workspace:*",
     "@ink/lightos": "workspace:*",
     "@ink/location": "workspace:*",

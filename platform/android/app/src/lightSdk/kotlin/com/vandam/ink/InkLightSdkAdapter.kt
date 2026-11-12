@@ -193,6 +193,7 @@ private class InkLightSdkAdapter(
                     payload == NOTIFICATIONS ||
                     payload == PHOTOS ||
                     payload == VIDEOS ||
+                    payload == CONTACTS ||
                     payload == LOCATION_APPROXIMATE ||
                     payload == LOCATION_PRECISE
             OPEN_DIALLER_OPERATION -> runCatching {
@@ -404,6 +405,7 @@ private class InkLightSdkAdapter(
         NOTIFICATIONS -> android.Manifest.permission.POST_NOTIFICATIONS
         PHOTOS -> android.Manifest.permission.READ_MEDIA_IMAGES
         VIDEOS -> android.Manifest.permission.READ_MEDIA_VIDEO
+        CONTACTS -> android.Manifest.permission.READ_CONTACTS
         LOCATION_APPROXIMATE -> android.Manifest.permission.ACCESS_COARSE_LOCATION
         LOCATION_PRECISE -> android.Manifest.permission.ACCESS_FINE_LOCATION
         else -> error("Unsupported permission: $permission")
@@ -575,6 +577,7 @@ private class InkLightSdkAdapter(
         const val NOTIFICATIONS = "notifications"
         const val PHOTOS = "photos"
         const val VIDEOS = "videos"
+        const val CONTACTS = "contacts"
         const val LOCATION_APPROXIMATE = "location-approximate"
         const val LOCATION_PRECISE = "location-precise"
         val DEVICE_KEY_CODES = setOf(24, 25, 27, 80, 317, 318, 319)

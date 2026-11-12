@@ -106,6 +106,15 @@
         "android.permission.ACCESS_NETWORK_STATE"
       ]
     },
+    "contacts": {
+      "cost": "contacts provider queries and permission",
+      "dependencies": [],
+      "permissions": ["android.permission.READ_CONTACTS"],
+      "androidSourceGroup": {
+        "enabled": "contacts",
+        "disabled": "noContacts"
+      }
+    },
     "crypto": {
       "cost": "Android authenticated encryption",
       "dependencies": [],

@@ -32,7 +32,7 @@ kotlin {
             "../../../platform/android/app/src/notifications/kotlin", "../../../platform/android/app/src/crypto/kotlin",
             "../../../platform/android/app/src/noBackground/kotlin", "../../../platform/android/app/src/lightSdkToolManager/kotlin",
             "../../../platform/android/app/src/vibration/kotlin", "../../../platform/android/app/src/lightSdk/kotlin",
-            "../../../platform/android/app/src/noLightSdkRingtone/kotlin"))
+            "../../../platform/android/app/src/noLightSdkRingtone/kotlin", "../../../platform/android/app/src/contacts/kotlin"))
         include(
             "**/ContractInstrumentation.kt", "**/ContractTests.kt", "**/NativeAdapter.kt",
             "**/PermissionsAdapter.kt", "**/LightSdkAdapter.kt", "**/PermissionContracts.kt",
@@ -47,6 +47,7 @@ kotlin {
             "**/NoBackgroundAdapter.kt", "**/BackgroundAdapter.kt",
             "**/VibrationContracts.kt", "**/VibrationAdapter.kt", "**/InkVibrationAdapter.kt",
             "**/InkLightSdkAdapter.kt", "**/RingtoneFiles.kt", "**/NoRingtoneFiles.kt",
+            "**/ContactsContracts.kt", "**/ContactsAdapter.kt", "**/InkContactsAdapter.kt",
         )
     }
 }

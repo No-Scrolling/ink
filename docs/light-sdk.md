@@ -20,6 +20,7 @@ Importing `@ink/lightos` includes the integration and registers the app’s requ
 | `photos` | Photo library. |
 | `videos` | Video library. |
 | `photos-and-videos` | Photos and videos. |
+| `contacts` | Contacts. |
 
 ```ts
 import { lightos } from "@ink/lightos";
@@ -34,6 +35,8 @@ Ink uses LightOS for camera, microphone, audio files and supported location requ
 Notification checks and requests use LightOS when the connected Light SDK server is 0.2.4 or later. Older servers, including 0.1.1, use Android. If Ink cannot read the server version, notification access also uses Android.
 
 Photo and video checks and requests use LightOS when the connected Light SDK server is 0.2.6 or later. Older servers and unreadable versions use Android. LightOS shows one screen per permission, so `photos-and-videos` asks for photos and then videos. It stops after a denial. `getPermission("photos-and-videos")` returns `granted` only when both are granted, and `blocked` when either is blocked.
+
+Contact checks and requests use LightOS when the connected Light SDK server is 0.2.7 or later. Older servers and unreadable versions use Android.
 
 Exact reminders use `lightos.canScheduleExact()` and `lightos.requestExactPermission()`. See [Notifications](/notifications#exact-reminders).
 

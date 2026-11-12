@@ -42,6 +42,7 @@
         "@ink/background": "workspace:*",
         "@ink/barcode": "workspace:*",
         "@ink/camera": "workspace:*",
+        "@ink/contacts": "workspace:*",
         "@ink/files": "workspace:*",
         "@ink/lightos": "workspace:*",
         "@ink/location": "workspace:*",
@@ -106,6 +107,13 @@
     },
     "packages/clipboard": {
       "name": "@ink/clipboard",
+      "version": "0.1.0-alpha.14",
+      "peerDependencies": {
+        "ink": "0.1.0-alpha.14",
+      },
+    },
+    "packages/contacts": {
+      "name": "@ink/contacts",
       "version": "0.1.0-alpha.14",
       "peerDependencies": {
         "ink": "0.1.0-alpha.14",
@@ -217,7 +225,7 @@
       "name": "@ink/vibration",
       "version": "0.1.0-alpha.14",
       "peerDependencies": {
-        "ink": "0.1.0-alpha.13",
+        "ink": "0.1.0-alpha.14",
       },
     },
     "packages/video": {
@@ -503,6 +511,8 @@
     "@ink/camera": ["@ink/camera@workspace:packages/camera"],
 
     "@ink/clipboard": ["@ink/clipboard@workspace:packages/clipboard"],
+
+    "@ink/contacts": ["@ink/contacts@workspace:packages/contacts"],
 
     "@ink/crypto": ["@ink/crypto@workspace:packages/crypto"],
 
@@ -2183,6 +2193,8 @@
     "blume/oxc-transform-react": ["oxc-transform-react@0.145.0", "", { "optionalDependencies": { "@oxc-transform-react/binding-android-arm-eabi": "0.145.0", "@oxc-transform-react/binding-android-arm64": "0.145.0", "@oxc-transform-react/binding-darwin-arm64": "0.145.0", "@oxc-transform-react/binding-darwin-x64": "0.145.0", "@oxc-transform-react/binding-freebsd-x64": "0.145.0", "@oxc-transform-react/binding-linux-arm-gnueabihf": "0.145.0", "@oxc-transform-react/binding-linux-arm-musleabihf": "0.145.0", "@oxc-transform-react/binding-linux-arm64-gnu": "0.145.0", "@oxc-transform-react/binding-linux-arm64-musl": "0.145.0", "@oxc-transform-react/binding-linux-ppc64-gnu": "0.145.0", "@oxc-transform-react/binding-linux-riscv64-gnu": "0.145.0", "@oxc-transform-react/binding-linux-riscv64-musl": "0.145.0", "@oxc-transform-react/binding-linux-s390x-gnu": "0.145.0", "@oxc-transform-react/binding-linux-x64-gnu": "0.145.0", "@oxc-transform-react/binding-linux-x64-musl": "0.145.0", "@oxc-transform-react/binding-openharmony-arm64": "0.145.0", "@oxc-transform-react/binding-win32-arm64-msvc": "0.145.0", "@oxc-transform-react/binding-win32-ia32-msvc": "0.145.0", "@oxc-transform-react/binding-win32-x64-msvc": "0.145.0" } }, "sha512-y8cfjow11WKvDekonySPVvRUvNuIvqNT0LZ0Aey6j5dsNUD6k4hy6Mae/SLmng5egmb1GdJS11GduJ+IoEAXEw=="],
 
     "blume/react": ["react@19.3.0", "", {}, "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog=="],
+
+    "blume/react-dom": ["react-dom@19.3.0", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q=="],
 
     "blume/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

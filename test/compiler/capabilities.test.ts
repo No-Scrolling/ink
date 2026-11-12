@@ -84,6 +84,21 @@ export default function Page() { return <Screen><Button onPress={() => vibrate(2
   });
 }, 60_000);
 
+test("contacts are opt-in", async () => {
+  await withProject(async root => {
+    await symlink(resolve(repository, "packages/contacts"), resolve(root, "node_modules/@ink/contacts"));
+    await writeFile(resolve(root, "app/index.tsx"), `import { contacts } from "@ink/contacts";
+import { Button, Screen } from "ink";
+export default function Page() { return <Screen><Button onPress={() => contacts.list()}>Contacts</Button></Screen>; }
+`);
+    expect(await compile(root)).toMatchObject({ exitCode: 0 });
+    expect(await manifest(root)).toEqual({ version: 1, capabilities: ["contacts", "external"] });
+    await writeFile(resolve(root, "app/index.tsx"), plainPage);
+    expect(await compile(root)).toMatchObject({ exitCode: 0 });
+    expect(await manifest(root)).toEqual({ version: 1, capabilities: ["external"] });
+  });
+}, 60_000);
+
 test.each([
   { declaration: { version: 2, modules: { "index.ts": ["crypto"] } }, message: "Unsupported native requirements declaration" },
   { declaration: { version: 1, modules: { "index.ts": [123] } }, message: "Unsupported native requirements declaration" },

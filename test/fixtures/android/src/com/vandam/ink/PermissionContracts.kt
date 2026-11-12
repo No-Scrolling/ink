@@ -21,12 +21,14 @@ internal class PermissionContracts(private val instrumentation: Instrumentation)
         test("photo and video access keeps Android on older or unknown servers", ::mediaOlderServer)
         test("photos and videos open one LightOS screen per permission", ::mediaScreens)
         test("photos and videos combine LightOS statuses", ::mediaStatus)
-        test("Light SDK caches the server version and maps media permissions", ::lightSdkMedia)
+        test("Light SDK caches the server version and maps media and contact permissions", ::lightSdkMedia)
+        test("contact access uses LightOS from server 0.2.7", ::contactsSupportedServer)
+        test("contact access keeps Android on older or unknown servers", ::contactsOlderServer)
     }
 
     private fun withActivity(test: (Activity) -> Unit) {
         val context = instrumentation.targetContext
-        for (permission in listOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)) {
+        for (permission in listOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_CONTACTS)) {
             instrumentation.uiAutomation.grantRuntimePermission(context.packageName, permission)
         }
         val activity = instrumentation.startActivitySync(
@@ -120,6 +122,28 @@ internal class PermissionContracts(private val instrumentation: Instrumentation)
         }
     }
 
+    private fun contactsSupportedServer() = withActivity { activity ->
+        for (version in listOf("0.2.7", "0.2.10", "0.3.0", "1.0.0", "0.2.7+build.1")) {
+            val sdk = Server(NativeResult.Success(version))
+            val adapter = PermissionsAdapter(activity, sdk)
+            check(call(adapter, "status", "contacts") == NativeResult.Success("blocked")) { "Status bypassed LightOS on $version" }
+            check(call(adapter, "request", "contacts") == sdk.denied) { "Request bypassed LightOS on $version" }
+            check(sdk.calls == listOf("version:", "permission-status:contacts", "version:", "request-permission:contacts")) { sdk.calls.toString() }
+        }
+    }
+
+    private fun contactsOlderServer() = withActivity { activity ->
+        val versions = listOf("0.2.3", "0.2.6", "0.2.6+build.1", "0.2.7-preview", "", "invalid")
+            .map { NativeResult.Success(it) } + NativeResult.Failure(NativeErrorKind.UNAVAILABLE, "Version unavailable", true)
+        for (version in versions) {
+            val sdk = Server(version)
+            val adapter = PermissionsAdapter(activity, sdk)
+            check(call(adapter, "status", "contacts") == NativeResult.Success("granted")) { "Status did not read Android on $version" }
+            check(call(adapter, "request", "contacts") == NativeResult.Success("granted")) { "Request did not use Android on $version" }
+            check(sdk.calls == listOf("version:", "version:")) { "Unsupported server received a permission operation: ${sdk.calls}" }
+        }
+    }
+
     private fun mediaScreens() = withActivity { activity ->
         fun request(sdk: Server, screens: List<String>): NativeResult? {
             val adapter = PermissionsAdapter(activity, sdk)
@@ -196,10 +220,12 @@ internal class PermissionContracts(private val instrumentation: Instrumentation)
             check(VibrationLightService.requests.count { it.startsWith("GetVersion:") } == 1) { "Version was not cached: ${VibrationLightService.requests}" }
             check(call("permission-status", "photos") == NativeResult.Success("granted"))
             check(call("permission-status", "videos") == NativeResult.Success("granted"))
+            check(call("permission-status", "contacts") == NativeResult.Success("granted"))
             val permissions = VibrationLightService.requests.filter { it.startsWith("GetPermission:") }
             check(permissions == listOf(
                 """GetPermission:{"permissionName":"android.permission.READ_MEDIA_IMAGES"}""",
                 """GetPermission:{"permissionName":"android.permission.READ_MEDIA_VIDEO"}""",
+                """GetPermission:{"permissionName":"android.permission.READ_CONTACTS"}""",
             )) { permissions.toString() }
             check(call("permission-status", "photos-and-videos") is NativeResult.Failure)
         } finally {

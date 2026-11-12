@@ -29,6 +29,8 @@ internal class InkActivityBindings(
     private val permissionsAdapter by lazy { PermissionsAdapter(activity, lightSdkAdapter) }
     private var usesPermissions = false
     private val lightSdkAdapter: LightSdkAdapter
+    private val contactsAdapter by lazy { createContactsAdapter(activity) }
+    private var usesContacts = false
     private val vibrationAdapter by lazy { createVibrationAdapter(activity) { lightSdkAdapter.hapticsEnabled } }
     private val assetsAdapter by lazy { AssetsAdapter(runtime.bundle) }
     private val barcodeAdapter by lazy { createBarcodeAdapter(activity) }
@@ -106,6 +108,7 @@ internal class InkActivityBindings(
         "permissions" -> { usesPermissions = true; permissionsAdapter }
         "clipboard" -> clipboardAdapter
         "vibration" -> vibrationAdapter
+        "contacts" -> { usesContacts = true; contactsAdapter }
         "connectivity" -> connectivityAdapter
         "tool-manager" -> toolManagerAdapter
         "files" -> filesAdapter
@@ -485,6 +488,7 @@ internal class InkActivityBindings(
         locationAdapter.stop()
         nfcAdapter.stop()
         vibrationAdapter.stop()
+        if (usesContacts) contactsAdapter.stop()
         backgroundAdapter.stop()
         cameraAdapter.stop()
         mapsAdapter.stop()
