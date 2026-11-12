@@ -20,6 +20,7 @@ pub enum Capability {
     CameraPermission,
     CodeScanner,
     Connectivity,
+    Contacts,
     Crypto,
     Downloads,
     External,

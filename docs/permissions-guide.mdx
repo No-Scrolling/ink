@@ -16,10 +16,11 @@ description: "Check and request permissions."
 | Exact alarms | Reminders scheduled for an exact time. | [Notifications](/notifications#permissions) |
 | Photos and videos | Browsing the media library. | [Files and media](/files#permissions) |
 | Audio files | Reading music from the device media library. | [LightOS](/light-sdk#permissions) |
+| Contacts | Listing and reading contacts. | [Contacts](/contacts#permissions) |
 
 Use `lightos` from `@ink/lightos` to check and request access. Ink uses the LightOS permission screen when available, otherwise the Android prompt.
 
-Notification access uses LightOS on hosts with Light SDK server 0.2.4 or later. Photo and video access uses LightOS on hosts with Light SDK server 0.2.6 or later. Older hosts and devices without LightOS use Android.
+Notification access uses LightOS on hosts with Light SDK server 0.2.4 or later. Photo and video access uses LightOS on hosts with Light SDK server 0.2.6 or later. Contact access uses LightOS on hosts with Light SDK server 0.2.7 or later. Older hosts and devices without LightOS use Android.
 
 ## Request access
 
