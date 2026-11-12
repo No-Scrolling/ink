@@ -85,7 +85,7 @@ internal class InkAudioService : MediaSessionService() {
                 putBoolean(VOICE_BOOST_EXTRA, effects.voiceBoost)
             })
         }
-        val sessionBuilder = MediaSession.Builder(this, player)
+        val sessionBuilder = MediaSession.Builder(this, AudioSkipPlayer(player))
             .setId("$packageName:$name")
             .setCallback(object : MediaSession.Callback {
                 override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean =

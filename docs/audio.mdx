@@ -181,7 +181,7 @@ For a headset's play/pause button:
 | Two | Next track. |
 | Three | Previous track, or restart the current track after more than 3 seconds of playback. |
 
-Presses must arrive within Android's double-tap timeout of each other, usually 300 ms. A single press waits one timeout; two presses wait one timeout after the second press so Ink can detect a third. Three presses act immediately. Dedicated play, pause, next, previous and stop buttons keep Media3's default behaviour.
+Presses must arrive within Android's double-tap timeout of each other, usually 300 ms. A single press waits one timeout; two presses wait one timeout after the second press so Ink can detect a third. Three presses act immediately. Dedicated play, pause, next, previous and stop buttons keep Media3's default behaviour, except that next and previous [start playback](#skip-tracks).
 
 ### Play a DASH stream
 
@@ -340,6 +340,19 @@ The native player resolves the ID when the command runs. Selecting an item prese
 A different item starts at position `0`. Selecting the current item resumes its position, or restarts it if it has ended. Call `play()` without an ID to play the current item.
 
 If the ID is not in the queue, the command rejects without changing playback.
+
+### Skip tracks
+
+```ts
+await player.next();
+await player.previous();
+```
+
+Skipping starts playback, even when the player is paused. Lock screen, notification and headset controls work the same way.
+
+`previous()` always selects the previous item. The lock screen's previous control and three headset presses restart the current item instead after more than 3 seconds of playback, and that restart also starts playback.
+
+If there is no item to skip to, such as calling `next()` on the last item with repeat off, nothing changes and a paused player stays paused.
 
 ### Edit the queue during playback
 

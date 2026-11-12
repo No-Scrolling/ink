@@ -42,6 +42,7 @@ internal class AudioContracts(private val context: Context) {
         test("audio offload excludes effects, speed, pitch and unsuitable routes", ::offloadPreferences)
         test("audio offload remembers PCM fallback for each track and route", ::offloadFallback)
         test("audio headset single, double and triple presses use Media3 commands", ::mediaButtons)
+        test("audio skips from the app, lock screen and headset start playback", ::skipsStartPlayback)
         test("audio content sources play, persist and report access failures", ::contentSources)
         test("audio cache follows item identity across URL changes", ::cachedIdentity)
     }
@@ -245,7 +246,7 @@ internal class AudioContracts(private val context: Context) {
             eventually("triple press skips previous without first skipping next") { player.currentMediaItemIndex == 0 }
             onMain { player.seekTo(1, 4000) }
             presses(3)
-            eventually("triple press restarts after three seconds") { player.currentMediaItemIndex == 1 && player.currentPosition == 0L }
+            eventually("triple press restarts after three seconds") { player.currentMediaItemIndex == 1 && player.currentPosition < 3000 }
             onMain { player.replaceMediaItem(1, player.getMediaItemAt(1).buildUpon()
                 .setMediaMetadata(MediaMetadata.Builder().setExtras(Bundle().apply { putString(ITEM_USAGE_EXTRA, "music") }).build()).build())
                 player.seekTo(1, 0) }
@@ -300,6 +301,104 @@ internal class AudioContracts(private val context: Context) {
             SystemClock.sleep(ViewConfiguration.getDoubleTapTimeout().toLong() + 50)
             onMain { equal(false, pendingPlayer.playWhenReady) }
         } finally { onMain { buttons.close(); pendingSession.release(); pendingPlayer.release() } }
+    }
+
+    private fun skipsStartPlayback() {
+        val name = "skip-contract"
+        val file = File(context.cacheDir, "skip-contract.wav")
+        val pcmBytes = 30 * 8000 * 2
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            .put("RIFF".toByteArray()).putInt(36 + pcmBytes).put("WAVEfmt ".toByteArray())
+            .putInt(16).putShort(1).putShort(1).putInt(8000).putInt(16000).putShort(2).putShort(16)
+            .put("data".toByteArray()).putInt(pcmBytes).array()
+        file.outputStream().use { it.write(header); it.write(ByteArray(pcmBytes)) }
+        val service = Intent(context, InkAudioService::class.java)
+        // The Ink controller carries the app's own next and previous operations to detached playback.
+        val ink = onMain {
+            androidx.media3.session.MediaController.Builder(context, SessionToken(context, ComponentName(context, InkAudioService::class.java)))
+                .setConnectionHints(Bundle().apply {
+                    putBoolean("ink.controller", true)
+                    putString("ink.session", name)
+                })
+                .buildAsync()
+        }.get(10, TimeUnit.SECONDS)
+        // Lock screens and notifications connect without Ink's hints.
+        val lockScreen = onMain { androidx.media3.session.MediaController.Builder(context, checkNotNull(ink.connectedToken)).buildAsync() }
+            .get(10, TimeUnit.SECONDS)
+        val token = SessionToken::class.java.getDeclaredMethod("getPlatformToken").apply { isAccessible = true }
+            .invoke(onMain { ink.connectedToken }) as android.media.session.MediaSession.Token
+        val platform = MediaController(context, token)
+        val attached = onMain { ExoPlayer.Builder(context).build() }
+        fun pausedAt(index: Int, position: Long = 0) {
+            onMain { ink.pause(); ink.seekTo(index, position) }
+            eventually("paused at $index") { !ink.playWhenReady && ink.currentMediaItemIndex == index && ink.playbackState == Player.STATE_READY }
+        }
+        fun playsAt(description: String, index: Int, restarted: Boolean = false) =
+            eventually(description) { ink.currentMediaItemIndex == index && ink.isPlaying && (!restarted || ink.currentPosition < 3000) }
+        fun headset(presses: Int) = repeat(presses) {
+            platform.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_HEADSETHOOK))
+            platform.dispatchMediaButtonEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_HEADSETHOOK))
+            SystemClock.sleep(40)
+        }
+        try {
+            onMain {
+                ink.setMediaItems((0..2).map { MediaItem.Builder().setMediaId("track-$it").setUri(file.toURI().toString()).build() }, 1, 0)
+                ink.prepare()
+            }
+            pausedAt(1)
+            onMain { ink.seekToNextMediaItem() }
+            playsAt("app next plays", 2)
+            pausedAt(1)
+            onMain { ink.seekToPreviousMediaItem() }
+            playsAt("app previous plays", 0)
+            pausedAt(1)
+            onMain { lockScreen.seekToNext() }
+            playsAt("lock screen next plays", 2)
+            pausedAt(1)
+            onMain { lockScreen.seekToPrevious() }
+            playsAt("lock screen previous plays", 0)
+            pausedAt(1)
+            platform.transportControls.skipToNext()
+            playsAt("platform next plays", 2)
+            pausedAt(1)
+            headset(2)
+            playsAt("headset double press plays", 2)
+            pausedAt(1)
+            headset(3)
+            playsAt("headset triple press plays", 0)
+            pausedAt(1, 4000)
+            onMain { lockScreen.seekToPrevious() }
+            playsAt("previous after three seconds restarts and plays", 1, restarted = true)
+            pausedAt(1, 4000)
+            headset(3)
+            playsAt("headset restart plays", 1, restarted = true)
+            pausedAt(2, 1000)
+            onMain { ink.seekToNextMediaItem(); lockScreen.seekToNext() }
+            platform.transportControls.skipToNext()
+            headset(2)
+            SystemClock.sleep(ViewConfiguration.getDoubleTapTimeout() + 500L)
+            onMain {
+                equal(2, ink.currentMediaItemIndex)
+                equal(false, ink.playWhenReady)
+                check(ink.currentPosition in 1000L..1100L) { "Skipping past the last item moved to ${ink.currentPosition}" }
+            }
+            // Attached playback sends the app's skips straight to the session player, without Media3's command checks.
+            onMain {
+                attached.setMediaItems((0..1).map { MediaItem.Builder().setMediaId("attached-$it").setUri(file.toURI().toString()).build() }, 1, 1000)
+                attached.prepare()
+                AudioSkipPlayer(attached).apply { seekToNextMediaItem(); seekToNext() }
+                equal(false, attached.playWhenReady)
+                AudioSkipPlayer(attached).seekToPreviousMediaItem()
+                equal(0, attached.currentMediaItemIndex)
+                equal(true, attached.playWhenReady)
+            }
+        } finally {
+            onMain { lockScreen.release(); ink.release(); attached.release() }
+            context.stopService(service)
+            file.delete()
+            context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE).edit().remove(name).apply()
+            context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE).edit().remove(name).apply()
+        }
     }
 
     private fun contentSources() {

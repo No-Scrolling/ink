@@ -2,6 +2,7 @@ package com.vandam.ink
 
 import android.os.Bundle
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaLibraryInfo
 import androidx.media3.common.Player
@@ -92,6 +93,22 @@ internal fun startAudioPlayback(player: Player, takeFocus: () -> Unit) {
     if (player.playbackState == Player.STATE_IDLE) player.prepare()
     takeFocus()
     player.play()
+}
+
+/** Starts playback after a skip from the app, lock screen, notification or headset. */
+@UnstableApi
+internal class AudioSkipPlayer(player: Player, private val takeFocus: () -> Unit = {}) : ForwardingPlayer(player) {
+    override fun seekToNext() = skip(Player.COMMAND_SEEK_TO_NEXT) { super.seekToNext() }
+    override fun seekToNextMediaItem() = skip(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM) { super.seekToNextMediaItem() }
+    override fun seekToPrevious() = skip(Player.COMMAND_SEEK_TO_PREVIOUS) { super.seekToPrevious() }
+    override fun seekToPreviousMediaItem() = skip(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM) { super.seekToPreviousMediaItem() }
+
+    // Media3 only offers a skip command when the skip would seek, so skipping past the last item stays paused.
+    private fun skip(command: Int, seek: () -> Unit) {
+        val seeks = wrappedPlayer.isCommandAvailable(command)
+        seek()
+        if (seeks) startAudioPlayback(wrappedPlayer, takeFocus)
+    }
 }
 
 @UnstableApi
