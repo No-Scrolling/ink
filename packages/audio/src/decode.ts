@@ -26,17 +26,33 @@ export function decodePlayerState(value: unknown): PlayerState {
   return decodeState(value)[0];
 }
 
+export interface PlayerStateDecoder {
+  (value: unknown): PlayerState;
+  /** Records a queue this subscription is sending until its call settles. Native answers it with a revision and no items. */
+  sending(items: readonly AudioItem[]): () => void;
+}
+
 /** Native sends the queue only when its revision changes, so each subscription keeps the last one it decoded. */
-export function playerStateDecoder(): (value: unknown) => PlayerState {
+export function playerStateDecoder(): PlayerStateDecoder {
   let previous: Queue | undefined;
-  return value => {
-    const [state, queue] = decodeState(value, previous);
+  const sent: (readonly AudioItem[])[] = [];
+  const decode = (value: unknown) => {
+    const [state, queue] = decodeState(value, previous, sent);
     previous = queue;
     return state;
   };
+  return Object.assign(decode, {
+    sending(items: readonly AudioItem[]) {
+      // Native encodes missing text as empty and whole milliseconds, so the kept queue matches one it would send.
+      const queue = items.map(({ id, src, title, artist = "", album = "", artwork = "", duration, usage }) =>
+        ({ id, src, title, artist, album, artwork, duration: duration === undefined ? undefined : Math.trunc(duration), usage }));
+      sent.push(queue);
+      return () => { const index = sent.indexOf(queue); if (index >= 0) sent.splice(index, 1); };
+    },
+  });
 }
 
-function decodeState(value: unknown, previous?: Queue): [PlayerState, Queue] {
+function decodeState(value: unknown, previous?: Queue, sent: (readonly AudioItem[])[] = []): [PlayerState, Queue] {
   if (typeof value !== "object" || value === null) throw new NativeError("protocol", "Invalid player state");
   const field = (name: string): unknown => Reflect.get(value, name);
   const text = (name: string) => {
@@ -77,6 +93,7 @@ function decodeState(value: unknown, previous?: Queue): [PlayerState, Queue] {
   let items: readonly AudioItem[];
   if (Array.isArray(queue)) items = queue.map(decodeItem);
   else if (queue === undefined && previous?.revision === revision) items = previous.items;
+  else if (queue === undefined && sent.length > 0) items = sent.shift()!;
   else throw new NativeError("protocol", "Invalid audio queue");
   return [{
     ready: field("ready") === true,

@@ -280,7 +280,7 @@ internal class AudioContracts(private val context: Context) {
             onMain { plain.release(); player.release() }
             context.stopService(service)
             file.delete()
-            context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE).edit().remove("headset-contract").apply()
+            audioQueueFile(context, "headset-contract").delete()
             context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE).edit().remove("headset-contract").apply()
         }
         val buttons = AudioMediaButtons(context)
@@ -397,14 +397,13 @@ internal class AudioContracts(private val context: Context) {
             onMain { lockScreen.release(); ink.release(); attached.release() }
             context.stopService(service)
             file.delete()
-            context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE).edit().remove(name).apply()
+            audioQueueFile(context, name).delete()
             context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE).edit().remove(name).apply()
         }
     }
 
     private fun contentSources() {
         val name = "audio-content-contract"
-        val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
         val positions = context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE)
         val file = File(context.cacheDir, "audio-content-contract.wav")
         val pcmBytes = 30 * 8000 * 2
@@ -469,7 +468,7 @@ internal class AudioContracts(private val context: Context) {
             }
         } finally {
             onMain { saved.close(); player.release() }
-            preferences.edit().remove(name).commit()
+            audioQueueFile(context, name).delete()
             positions.edit().remove(name).commit()
             file.delete()
         }
@@ -535,9 +534,8 @@ internal class AudioContracts(private val context: Context) {
 
     private fun queueWrites() {
         val name = "queue-write-contract"
-        val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
         val positions = context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE)
-        preferences.edit().remove(name).commit()
+        audioQueueFile(context, name).delete()
         positions.edit().remove(name).commit()
         val file = File(context.cacheDir, "audio-content-contract.wav")
         val pcmBytes = 30 * 8000 * 2
@@ -569,7 +567,7 @@ internal class AudioContracts(private val context: Context) {
         try {
             onMain { player.setMediaItems(listOf(content("first"), content("second"))) }
             equal(listOf("first", "second"), saved())
-            preferences.edit().remove(name).commit()
+            audioQueueFile(context, name).delete()
             reasons.clear()
             onMain { player.prepare() }
             eventually("source prepared") { player.playbackState == Player.STATE_READY }
@@ -579,7 +577,7 @@ internal class AudioContracts(private val context: Context) {
             equal(listOf("first", "second", "third"), saved())
         } finally {
             onMain { persistence.close(); player.release() }
-            preferences.edit().remove(name).commit()
+            audioQueueFile(context, name).delete()
             positions.edit().remove(name).commit()
             file.delete()
         }
@@ -587,9 +585,8 @@ internal class AudioContracts(private val context: Context) {
 
     private fun persistence() {
         val name = "audio-usage-contract"
-        val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
         val positions = context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE)
-        preferences.edit().remove(name).commit()
+        audioQueueFile(context, name).delete()
         positions.edit().remove(name).commit()
         val player = onMain { ExoPlayer.Builder(context).build() }
         val persistence = onMain {
@@ -616,7 +613,7 @@ internal class AudioContracts(private val context: Context) {
                 } finally { saved.close(); restored.release() }
             }
         } finally {
-            preferences.edit().remove(name).commit()
+            audioQueueFile(context, name).delete()
             positions.edit().remove(name).commit()
         }
     }

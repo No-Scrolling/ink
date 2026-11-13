@@ -4,10 +4,11 @@ use std::time::{Duration, Instant};
 use ink_core::StateValue;
 use ink_core::{Engine, ReactCommit, ReactTree, TextEdit};
 use ink_runtime::{AppRuntime, Event, Script};
-use jni::objects::{JByteArray, JClass, JObject, JString};
+use jni::objects::{JByteArray, JClass, JObject, JObjectArray, JString};
 use jni::sys::{jboolean, jlong};
 use jni::EnvUnowned;
 use serde::Deserialize;
+use serde_json::value::RawValue;
 #[cfg(any(feature = "audio", feature = "memory-diagnostics"))]
 use serde_json::Value;
 
@@ -27,18 +28,42 @@ pub(super) struct ScriptRuntime {
     runtime: AppRuntime,
     events: ink_runtime::EventReceiver,
     tree: ReactTree,
-    calls: Vec<String>,
+    calls: Vec<PlatformCall>,
     #[cfg(feature = "presentation-timing")]
     first_commit_applied: bool,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JavaScriptMessage {
+struct JavaScriptMessage<'a> {
     r#type: String,
     colour_scheme: Option<String>,
     level: Option<String>,
     message: Option<String>,
+    #[serde(borrow)]
+    payload: Option<&'a RawValue>,
+}
+
+/// A call for the platform: its envelope without the payload, and the payload's JSON text.
+struct PlatformCall {
+    envelope: String,
+    payload: String,
+}
+
+impl PlatformCall {
+    // The payload is cut out of the message text, so the platform reads it once.
+    fn new(message: &str, payload: Option<&RawValue>) -> Self {
+        let Some(payload) = payload else {
+            return Self { envelope: message.to_owned(), payload: "null".to_owned() };
+        };
+        let text = payload.get();
+        let start = text.as_ptr() as usize - message.as_ptr() as usize;
+        let end = start + text.len();
+        Self {
+            envelope: format!("{}null{}", &message[..start], &message[end..]),
+            payload: text.to_owned(),
+        }
+    }
 }
 
 impl ScriptRuntime {
@@ -156,9 +181,9 @@ impl ScriptRuntime {
                     changed = true;
                 }
                 Event::Message(message) => {
-                    let decoded: JavaScriptMessage = serde_json::from_slice(message.as_bytes())?;
+                    let decoded: JavaScriptMessage = serde_json::from_str(&message)?;
                     match decoded.r#type.as_str() {
-                        "call" | "cancel" => self.calls.push(message),
+                        "call" | "cancel" => self.calls.push(PlatformCall::new(&message, decoded.payload)),
                         "appearance" => {
                             let light = match decoded.colour_scheme.as_deref() {
                                 Some("light") => true,
@@ -358,7 +383,7 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTakeJavaScriptCalls<'
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
-) -> JString<'local> {
+) -> JObjectArray<'local, JString<'local>> {
     let calls = engine(handle)
         .map(|engine| engine.lock_arc())
         .and_then(|mut engine| {
@@ -369,10 +394,19 @@ pub extern "system" fn Java_com_vandam_ink_InkNative_nativeTakeJavaScriptCalls<'
         })
         .unwrap_or_default();
     if calls.is_empty() {
-        return JString::default();
+        return JObjectArray::default();
     }
-    env.with_env(|env| env.new_string(format!("[{}]", calls.join(","))))
-        .resolve::<jni::errors::LogErrorAndDefault>()
+    // Envelopes and payloads alternate.
+    env.with_env(|env| -> jni::errors::Result<_> {
+        let array = JObjectArray::<JString>::new(env, calls.len() * 2, JString::default())?;
+        for (index, text) in calls.iter().flat_map(|call| [&call.envelope, &call.payload]).enumerate() {
+            let element = env.new_string(text)?;
+            array.set_element(env, index, &element)?;
+            env.delete_local_ref(element);
+        }
+        Ok(array)
+    })
+    .resolve::<jni::errors::LogErrorAndDefault>()
 }
 
 #[unsafe(no_mangle)]

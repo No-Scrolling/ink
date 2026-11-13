@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.FileNotFoundException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class AudioContractProvider : ContentProvider() {
     override fun onCreate() = true
@@ -15,6 +17,7 @@ class AudioContractProvider : ContentProvider() {
         when (uri.lastPathSegment) {
             "denied" -> throw SecurityException("Audio permission revoked")
             "missing" -> throw FileNotFoundException("Audio item deleted")
+            "held" -> hold?.await(10, TimeUnit.SECONDS)
         }
         return ParcelFileDescriptor.open(File(requireNotNull(context).cacheDir, "audio-content-contract.wav"), ParcelFileDescriptor.MODE_READ_ONLY)
     }
@@ -22,4 +25,9 @@ class AudioContractProvider : ContentProvider() {
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = 0
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 0
+
+    companion object {
+        // Keeps a "held" item loading until the contract releases it.
+        @Volatile var hold: CountDownLatch? = null
+    }
 }

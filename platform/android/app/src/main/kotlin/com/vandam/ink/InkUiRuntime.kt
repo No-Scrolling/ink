@@ -10,7 +10,6 @@ import android.view.View
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import org.json.JSONArray
 import org.json.JSONObject
 
 internal data class InkSceneRequest(
@@ -130,14 +129,16 @@ internal class InkUiRuntime(
     }
 
     private val javascriptPending = AtomicBoolean(false)
-    private var pendingJavaScriptCalls: JSONArray? = null
+    // Envelopes and payload text alternate, so payloads reach adapters without being parsed here.
+    private var pendingJavaScriptCalls: Array<String>? = null
     private var javascriptCallIndex = 0
     private fun drainJavaScriptCalls(): Boolean {
         val calls = pendingJavaScriptCalls ?: return true
         val deadline = SystemClock.uptimeMillis() + 4
         repeat(32) {
-            if (javascriptCallIndex == calls.length()) { pendingJavaScriptCalls = null; return true }
-            executeJavaScriptCall(calls.getJSONObject(javascriptCallIndex++))
+            if (javascriptCallIndex == calls.size) { pendingJavaScriptCalls = null; return true }
+            executeJavaScriptCall(JSONObject(calls[javascriptCallIndex]), calls[javascriptCallIndex + 1])
+            javascriptCallIndex += 2
             if (SystemClock.uptimeMillis() >= deadline) { onJavaScriptReady(); return false }
         }
         onJavaScriptReady()
@@ -157,8 +158,8 @@ internal class InkUiRuntime(
             modules.appearanceChanged(InkNative.nativeIsLightAppearance(handle))
             modules.presentation?.changed()
             drainNativeRequests()
-            InkNative.nativeTakeJavaScriptCalls(handle)?.let { encoded ->
-                pendingJavaScriptCalls = JSONArray(encoded)
+            InkNative.nativeTakeJavaScriptCalls(handle)?.let { calls ->
+                pendingJavaScriptCalls = calls
                 javascriptCallIndex = 0
                 drainJavaScriptCalls()
             }
@@ -193,7 +194,7 @@ internal class InkUiRuntime(
         modules.resetSession()
     }
 
-    private fun executeJavaScriptCall(call: JSONObject) {
+    private fun executeJavaScriptCall(call: JSONObject, payload: String) {
         val id = call.getLong("id")
         if (call.getString("type") == "cancel") {
             javascriptRequests.cancel(id)
@@ -218,7 +219,6 @@ internal class InkUiRuntime(
         javascriptRequests.execute(id, call.optLong("timeoutMs", 30_000), { adapter.cancel(-id) }) { complete ->
             val session = javascriptSession
             val operation = call.getString("operation")
-            val payload = (call.opt("payload") ?: JSONObject.NULL).toString()
             if (call.has("controller")) {
                 val controller = call.getLong("controller")
                 require(controller in 1..9_007_199_254_740_991L) { "Invalid JavaScript controller ID" }

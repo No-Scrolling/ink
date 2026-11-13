@@ -19,7 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture
 
 @UnstableApi
 internal class InkAudioService : MediaSessionService() {
-    private data class Session(val player: ExoPlayer, val session: MediaSession, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val offload: Boolean, val preloadNext: Long, val startupBuffer: Int, val audioOffload: AudioOffload?, val mediaButtons: AudioMediaButtons)
+    private data class Session(val player: ExoPlayer, val session: MediaSession, val deferred: DeferredAudioQueue, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val offload: Boolean, val preloadNext: Long, val startupBuffer: Int, val audioOffload: AudioOffload?, val mediaButtons: AudioMediaButtons)
     private val sessions = mutableMapOf<String, Session>()
     private val handler = Handler(Looper.getMainLooper())
     private val controllers = mutableSetOf<MediaSession.ControllerInfo>()
@@ -74,7 +74,8 @@ internal class InkAudioService : MediaSessionService() {
             }
         val audioOffload = if (offload) AudioOffload(this, player, effects, true) else null
         val mediaButtons = AudioMediaButtons(this)
-        val persistence = AudioQueuePersistence(this, name, player, effects).apply { restore() }
+        val deferred = DeferredAudioQueue(player)
+        val persistence = AudioQueuePersistence(this, name, player, effects, deferred).apply { restore() }
         lateinit var readiness: AudioReadiness
         var effectiveUsage = player.currentMediaItem?.itemUsage() ?: usage
         fun publishEffects(session: MediaSession) {
@@ -85,7 +86,7 @@ internal class InkAudioService : MediaSessionService() {
                 putBoolean(VOICE_BOOST_EXTRA, effects.voiceBoost)
             })
         }
-        val sessionBuilder = MediaSession.Builder(this, AudioSkipPlayer(player))
+        val sessionBuilder = MediaSession.Builder(this, AudioSkipPlayer(player, deferred = deferred))
             .setId("$packageName:$name")
             .setCallback(object : MediaSession.Callback {
                 override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean =
@@ -93,7 +94,11 @@ internal class InkAudioService : MediaSessionService() {
 
                 override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
                     val ownController = isInkController(controller)
-                    if (ownController) controllers += controller
+                    // A new Ink controller reads its queue from the playlist.
+                    if (ownController) {
+                        controllers += controller
+                        deferred.fill()
+                    }
                     refreshIdleStop()
                     val result = super.onConnect(session, controller)
                     if (!ownController) return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -112,7 +117,7 @@ internal class InkAudioService : MediaSessionService() {
                     customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
                     if (controller.uid == android.os.Process.myUid() && customCommand.customAction == AUDIO_QUEUE_COMMAND) {
                         val result = runCatching {
-                            executeAudioQueue(player, args)
+                            executeAudioQueue(player, args, deferred = deferred)
                             SessionResult(SessionResult.RESULT_SUCCESS)
                         }.getOrElse { SessionResult(SessionError(SessionError.ERROR_BAD_VALUE, it.message ?: "Invalid audio queue command")) }
                         return Futures.immediateFuture(result)
@@ -156,7 +161,7 @@ internal class InkAudioService : MediaSessionService() {
             }
         }
         publishEffects(session)
-        sessions[name] = Session(player, session, persistence, usage, cache, offload, preloadNext, startupBuffer, audioOffload, mediaButtons)
+        sessions[name] = Session(player, session, deferred, persistence, usage, cache, offload, preloadNext, startupBuffer, audioOffload, mediaButtons)
         addSession(session)
         return session
     }
@@ -165,6 +170,7 @@ internal class InkAudioService : MediaSessionService() {
         handler.removeCallbacks(idleStop)
         sessions.values.forEach {
             it.persistence.close()
+            it.deferred.close()
             it.mediaButtons.close()
             it.session.release()
             it.audioOffload?.close()
