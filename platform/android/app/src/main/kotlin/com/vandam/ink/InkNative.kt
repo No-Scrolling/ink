@@ -37,7 +37,7 @@ internal object InkNative {
     external fun nativeIsLightAppearance(handle: Long): Boolean
 
     @JvmStatic
-    external fun nativeTakeJavaScriptCalls(handle: Long): String?
+    external fun nativeTakeJavaScriptCalls(handle: Long): Array<String>?
 
     @JvmStatic
     external fun nativeTakeJavaScriptBytes(handle: Long, id: Long): ByteArray?
