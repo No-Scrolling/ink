@@ -49,3 +49,21 @@ test("audio state rejects a missing queue after a revision change", () => {
   expect(() => decode({ ...state, queueRevision: 1, queue: undefined })).toThrow(NativeError);
   expect(() => decodePlayerState({ ...state, queue: undefined })).toThrow(NativeError);
 });
+
+test("audio state keeps a queue the app sent when native answers with its revision only", () => {
+  const decode = playerStateDecoder();
+  decode(state);
+  const sent = [{ id: "a", src: "https://example.com/a.mp3", title: "A", duration: 1_500.7 }, { id: "b", src: "https://example.com/b.mp3", title: "B", artist: "Artist", usage: "speech" as const }];
+  const settled = decode.sending(sent);
+  const answered = decode({ ...state, queueRevision: 4, index: 1, queue: undefined });
+  expect(answered.queue).toEqual([
+    { id: "a", src: "https://example.com/a.mp3", title: "A", artist: "", album: "", artwork: "", duration: 1_500, usage: undefined },
+    { id: "b", src: "https://example.com/b.mp3", title: "B", artist: "Artist", album: "", artwork: "", duration: undefined, usage: "speech" },
+  ]);
+  expect(answered.index).toBe(1);
+  settled();
+  expect(decode({ ...state, queueRevision: 4, queue: undefined }).queue).toBe(answered.queue);
+  // A call that settles without its revision-only answer leaves nothing for a later revision.
+  decode.sending(sent)();
+  expect(() => decode({ ...state, queueRevision: 5, queue: undefined })).toThrow(NativeError);
+});

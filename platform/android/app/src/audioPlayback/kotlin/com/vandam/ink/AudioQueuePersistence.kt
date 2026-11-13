@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.AtomicFile
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -15,11 +16,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.util.UnstableApi
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.Executors
 
 @UnstableApi
-internal class AudioQueuePersistence(context: Context, private val name: String, private val player: ExoPlayer, private val effects: AudioEffects) : Player.Listener {
+internal class AudioQueuePersistence(context: Context, private val name: String, private val player: ExoPlayer, private val effects: AudioEffects, private val deferred: DeferredAudioQueue? = null) : Player.Listener {
     private val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
+    private val file = audioQueueFile(context, name)
     private val positions = context.getSharedPreferences("ink-audio-progress", Context.MODE_PRIVATE)
     private val handler = Handler(Looper.getMainLooper())
     private var restoring = false
@@ -39,7 +42,13 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
         // Wait for queued writes so the latest queue is read.
         writes.submit {}.get()
         player.skipSilenceEnabled = preferences.getBoolean("skipSilence:$name", false)
-        val saved = preferences.getString(name, null) ?: return
+        // Queues saved before the queue file existed are read once from preferences, then rewritten as a file.
+        val legacy = preferences.getString(name, null)
+        if (legacy != null) {
+            file.startWrite().apply { write(legacy.toByteArray()); file.finishWrite(this) }
+            preferences.edit().remove(name).apply()
+        }
+        val saved = runCatching { file.readFully().toString(Charsets.UTF_8) }.getOrNull() ?: return
         restoring = true
         runCatching {
             val state = JSONObject(positions.getString(name, "{}") ?: "{}")
@@ -72,7 +81,7 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
                 player.repeatMode = state.optInt("repeat", Player.REPEAT_MODE_OFF).takeIf { it in 0..2 } ?: Player.REPEAT_MODE_OFF
                 player.playWhenReady = false
             }
-        }.onFailure { preferences.edit().remove(name).apply() }
+        }.onFailure { file.delete() }
         restoring = false
     }
 
@@ -122,7 +131,7 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
             return
         }
         val state = JSONObject()
-            .put("index", player.currentMediaItemIndex.coerceAtLeast(0))
+            .put("index", player.currentMediaItemIndex.coerceAtLeast(0) + (deferred?.remaining?.start ?: 0))
             .put("position", player.currentPosition.takeIf { it != C.TIME_UNSET && it >= 0 } ?: 0)
             .put("speed", player.playbackParameters.speed)
             .put("shuffle", player.shuffleModeEnabled)
@@ -130,29 +139,35 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
         positions.edit().putString(name, state.toString()).apply()
     }
     // Player state is read on its looper; encoding and writing run in order on one background thread.
+    // A deferred queue is saved whole, with the items that have not joined the player yet.
     private fun saveQueue() {
         val queue = List(player.mediaItemCount, player::getMediaItemAt)
+        val remaining = deferred?.remaining
         writes.execute {
             if (queue.isEmpty()) {
-                preferences.edit().remove(name).apply()
+                file.delete()
                 return@execute
             }
-            val items = JSONArray()
-            queue.forEach { item ->
-                val metadata = item.mediaMetadata
-                val uri = item.localConfiguration?.uri ?: item.requestMetadata.mediaUri ?: return@execute
-                items.put(JSONObject()
-                    .put("uri", uri.toString())
-                    .put("id", item.mediaId)
-                    .put("source", metadata.extras?.getString("ink.source").orEmpty())
-                    .put("title", metadata.title?.toString().orEmpty())
-                    .put("artist", metadata.artist?.toString().orEmpty())
-                    .put("album", metadata.albumTitle?.toString().orEmpty())
-                    .put("artwork", metadata.artworkUri?.toString().orEmpty())
-                    .put("duration", metadata.durationMs)
-                    .put("usage", item.itemUsage()?.value))
+            val playing = queue.map { item ->
+                AudioItem.from(item) to (item.localConfiguration?.uri ?: item.requestMetadata.mediaUri ?: return@execute).toString()
             }
-            preferences.edit().putString(name, items.toString()).apply()
+            val items = JSONArray()
+            (remaining?.before().orEmpty() + playing + remaining?.after().orEmpty()).forEach { (item, uri) ->
+                items.put(JSONObject()
+                    .put("uri", uri)
+                    .put("id", item.id)
+                    .put("source", item.src)
+                    .put("title", item.title)
+                    .put("artist", item.artist)
+                    .put("album", item.album)
+                    .put("artwork", item.artwork)
+                    .put("duration", item.duration)
+                    .put("usage", item.usage?.value))
+            }
+            val stream = file.startWrite()
+            runCatching { stream.write(items.toString().toByteArray()) }
+                .onSuccess { file.finishWrite(stream) }
+                .onFailure { file.failWrite(stream) }
         }
     }
 
@@ -160,3 +175,6 @@ internal class AudioQueuePersistence(context: Context, private val name: String,
         private val writes = Executors.newSingleThreadExecutor()
     }
 }
+
+internal fun audioQueueFile(context: Context, name: String) =
+    AtomicFile(File(File(context.filesDir, "ink-audio-queues").apply { mkdirs() }, "$name.json"))

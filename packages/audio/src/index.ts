@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "ink/internal/react";
 import { useNativeController } from "ink/internal/controller";
 import { NativeError } from "ink/native";
 import { playbackController } from "ink/internal/playback";
-import { decodePlayerState, playerStateDecoder } from "./decode";
+import { decodePlayerState, playerStateDecoder, type PlayerStateDecoder } from "./decode";
 
 export interface AudioItem {
   id: string;
@@ -80,10 +80,12 @@ export function usePlayer(options: PlayerOptions = {}) {
   const [state, setState] = useState(initial);
   const current = useRef(initial);
   const controller = useNativeController("audio", "audio player");
+  const decoder = useRef<PlayerStateDecoder | undefined>(undefined);
   useEffect(() => {
     const publish = (next: PlayerState) => { current.current = next; setState(next); };
     publish(initial);
     const decode = playerStateDecoder();
+    decoder.current = decode;
     const detach = controller.attach({ kind: "player", config: { session, playback: mode, usage, cache, offload, preloadNext, startupBuffer } }, value => {
       try { publish(decode(value)); }
       catch (error) { publish({ ...initial, error: error instanceof Error ? error : new Error(String(error)) }); }
@@ -123,7 +125,9 @@ export function usePlayer(options: PlayerOptions = {}) {
         validateQueue(items);
         const startPosition = options.startPosition ?? 0;
         if (!Number.isFinite(startPosition) || startPosition < 0) throw new RangeError("Audio position must be a non-negative number of milliseconds");
-        await call("setQueue", { items, startIndex: options.startIndex ?? 0, startPosition, prepare: options.prepare ?? true });
+        const forget = decoder.current?.sending(items);
+        try { await call("setQueue", { items, startIndex: options.startIndex ?? 0, startPosition, prepare: options.prepare ?? true }); }
+        finally { forget?.(); }
       },
       async add(item: AudioItem, options: { at?: number | "next" } = {}) {
         validateItem(item);

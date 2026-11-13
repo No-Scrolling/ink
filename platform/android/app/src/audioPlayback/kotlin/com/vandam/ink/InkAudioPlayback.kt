@@ -9,9 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaItem.RequestMetadata
 import androidx.media3.common.MediaLibraryInfo
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -127,6 +125,9 @@ private class AudioSessionPlayback(
     }
     private val controllers = mutableSetOf<Long>()
     private var queueRevision = 0
+    private var queue = emptyList<AudioItem>()
+    private var pendingQueue: PendingQueue? = null
+    private var deferred: DeferredAudioQueue? = null
     private val sentQueueRevisions = mutableMapOf<Long, Int>()
     private var publishScheduled = false
     private val publishScheduledState = Runnable { publishNow() }
@@ -174,7 +175,7 @@ private class AudioSessionPlayback(
                 putString("operation", operation)
                 putString("payload", payload)
                 body.optJSONObject("item")?.let {
-                    putBundle("item", Item.from(it).mediaItem(activity, bundle).toBundleIncludeLocalConfiguration(MediaLibraryInfo.INTERFACE_VERSION))
+                    putBundle("item", AudioItem.from(it).mediaItem(activity, bundle).toBundleIncludeLocalConfiguration(MediaLibraryInfo.INTERFACE_VERSION))
                 }
             }
         }.getOrElse {
@@ -184,7 +185,7 @@ private class AudioSessionPlayback(
         when (val active = player) {
             is ExoPlayer -> {
                 val result = runCatching {
-                    executeAudioQueue(active, args, takeFocus)
+                    executeAudioQueue(active, args, takeFocus, deferred)
                     NativeResult.Success("")
                 }.getOrElse { failure(it.message ?: "Invalid audio queue command") }
                 publishNow()
@@ -221,15 +222,17 @@ private class AudioSessionPlayback(
                 "seekBy" -> seekBy(body.getLong("value"))
                 "replaceSource" -> replaceSource(body)
                 "play" -> {
-                    body.optJSONObject("item")?.let { setQueue(listOf(Item.from(it)), 0) }
+                    body.optJSONObject("item")?.let { setQueue(listOf(AudioItem.from(it)), 0) }
                     dispatch(::startPlayback)
                 }
                 "prepare" -> dispatch { if (it.mediaItemCount > 0 && it.playbackState == Player.STATE_IDLE) it.prepare() }
                 "setQueue" -> setQueue(
-                    Item.list(body.getJSONArray("items")),
+                    AudioItem.list(body.getJSONArray("items")),
                     body.optInt("startIndex"),
                     body.optLong("startPosition", 0),
                     body.optBoolean("prepare", true),
+                    controller,
+                    payload,
                 )
                 "pause" -> dispatch(Player::pause)
                 "toggle" -> dispatch { if (it.playWhenReady && it.playbackState != Player.STATE_ENDED) it.pause() else startPlayback(it) }
@@ -240,8 +243,6 @@ private class AudioSessionPlayback(
                 }
                 "skipBack" -> seekBy(-SKIP_INTERVAL_MS)
                 "skipForward" -> seekBy(SKIP_INTERVAL_MS)
-                "previous" -> dispatch { (mediaSession?.player ?: it).seekToPreviousMediaItem() }
-                "next" -> dispatch { (mediaSession?.player ?: it).seekToNextMediaItem() }
                 "setShuffle" -> dispatch { it.shuffleModeEnabled = body.getBoolean("value") }
                 "setRepeat" -> {
                     val mode = when (body.getString("value")) {
@@ -344,7 +345,26 @@ private class AudioSessionPlayback(
 
     // Source updates only refine timeline windows; queue items come from the playlist.
     override fun onTimelineChanged(timeline: Timeline, reason: Int) {
-        if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) queueRevision++
+        if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) refreshQueue()
+    }
+
+    // A detached controller reports its own playlist change and then the service's, so only a different queue gets a revision.
+    private fun refreshQueue() {
+        val player = player
+        pendingQueue?.let { if (starting(it)) return }
+        pendingQueue = null
+        val items = if (player == null) emptyList() else List(player.mediaItemCount) { AudioItem.from(player.getMediaItemAt(it)) }
+        if (items == queue) return
+        queue = items
+        queueRevision++
+    }
+
+    // Until the deferred items join, the queue is the one that was sent.
+    // The service acknowledges the start before it reports the filled playlist, so any later playlist but the start item alone follows the fill.
+    private fun starting(pending: PendingQueue): Boolean = when (val player = player) {
+        is ExoPlayer -> deferred?.pending == true
+        null -> true
+        else -> !pending.acknowledged || (player.mediaItemCount == 1 && player.getMediaItemAt(0).mediaId == pending.start.mediaId)
     }
 
     override fun onEvents(player: Player, events: Player.Events) {
@@ -401,14 +421,16 @@ private class AudioSessionPlayback(
                 followAudioUsage(this, usage)
             }
         audioOffload = if (offload) AudioOffload(activity, created, effects, true) else null
-        mediaSession = MediaSession.Builder(activity, AudioSkipPlayer(created, takeFocus))
+        val deferred = DeferredAudioQueue(created) { refreshQueue(); publish() }
+        this.deferred = deferred
+        mediaSession = MediaSession.Builder(activity, AudioSkipPlayer(created, takeFocus, deferred))
             .setId("${activity.packageName}:$name:attached")
             .setCallback(object : MediaSession.Callback {
                 override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean =
                     mediaButtons.onMediaButtonEvent(session, controllerInfo, intent)
             }).build()
         readiness = AudioReadiness { publish() }.also { created.addListener(it) }
-        persistence = AudioQueuePersistence(activity, name, created, effects).apply { restore() }
+        persistence = AudioQueuePersistence(activity, name, created, effects, deferred).apply { restore() }
         connect(created)
         return created
     }
@@ -477,7 +499,7 @@ private class AudioSessionPlayback(
             return
         }
         player = connected
-        queueRevision++
+        refreshQueue()
         connected.addListener(this)
         val actions = pending.toList()
         pending.clear()
@@ -489,21 +511,56 @@ private class AudioSessionPlayback(
 
     private fun startPlayback(player: Player) = startAudioPlayback(player, takeFocus)
 
-    private fun setQueue(items: List<Item>, startIndex: Int, startPosition: Long = 0, prepare: Boolean = true) {
+    /** A prepared queue starts with only its selected item; see [DeferredAudioQueue]. Detached playback defers it in the service. */
+    private fun setQueue(items: List<AudioItem>, startIndex: Int, startPosition: Long = 0, prepare: Boolean = true, sender: Long? = null, text: String? = null) {
         require(items.isNotEmpty()) { "Audio queues cannot be empty" }
         require(startPosition >= 0) { "Start position must be non-negative" }
         require(startIndex in items.indices) { "Start index must reference an audio item" }
-        val mediaItems = items.map { item -> item.mediaItem(activity, bundle) }
         require(items.map { it.id }.toSet().size == items.size) { "Audio queue item IDs must be unique" }
+        val uris = items.map { audioSourceUri(activity, it.src, bundle::audioUri) }
+        val deferring = prepare && items.size > 1
+        val start = items[startIndex].mediaItem(uris[startIndex])
         failure = null
+        // A queue set while detached playback connects is applied after its command completes, so its sender gets the items.
+        val sentBy = sender.takeIf { player != null }
         dispatch { player ->
             if (!prepare) {
                 player.pause()
                 player.stop()
             }
-            player.setMediaItems(mediaItems, startIndex, startPosition)
-            if (prepare) player.prepare()
+            val revision = queueRevision
+            pendingQueue = if (deferring) PendingQueue(startIndex, start, acknowledged = player is ExoPlayer) else null
+            when {
+                !deferring -> {
+                    discardDeferred(player)
+                    player.setMediaItems(items.mapIndexed { index, item -> item.mediaItem(uris[index]) }, startIndex, startPosition)
+                    if (prepare) player.prepare()
+                }
+                player is ExoPlayer -> requireNotNull(deferred).start(start, lazyOf(items), uris.map(Uri::toString), startIndex, startPosition)
+                player is MediaController -> {
+                    val pending = pendingQueue
+                    player.sendCustomCommand(SessionCommand(AUDIO_QUEUE_COMMAND, Bundle.EMPTY), Bundle().apply {
+                        putString("operation", "start")
+                        putString("payload", JSONObject().put("startIndex", startIndex).put("position", startPosition).toString())
+                        putString("queue", text)
+                        putStringArrayList("uris", ArrayList(uris.map(Uri::toString)))
+                        putBundle("item", start.toBundleIncludeLocalConfiguration(MediaLibraryInfo.INTERFACE_VERSION))
+                    }).addListener({ if (pendingQueue === pending) pendingQueue = pending?.copy(acknowledged = true) }, activity.mainExecutor)
+                }
+            }
+            // JavaScript keeps the items it sent, so the sender learns only the revision, even for an identical queue.
+            if (queueRevision == revision) queueRevision++
+            queue = items
+            sentBy?.let { sentQueueRevisions[it] = queueRevision }
         }
+    }
+
+    // Commands from one controller reach the service in order, so the deferred items are gone before the new queue arrives.
+    private fun discardDeferred(player: Player) {
+        if (player is MediaController) player.sendCustomCommand(SessionCommand(AUDIO_QUEUE_COMMAND, Bundle.EMPTY), Bundle().apply {
+            putString("operation", "discard")
+            putString("payload", "{}")
+        }) else deferred?.discard()
     }
 
     private fun replaceSource(body: JSONObject) {
@@ -516,7 +573,7 @@ private class AudioSessionPlayback(
             val position = if (body.has("position")) body.getDouble("position").also {
                 require(it.isFinite() && it >= 0) { "Audio position must be non-negative milliseconds" }
             }.toLong() else player.currentPosition + body.optLong("offset", 0)
-            val replacement = Item(current.mediaId, body.getString("src"), metadata.title?.toString().orEmpty(),
+            val replacement = AudioItem(current.mediaId, body.getString("src"), metadata.title?.toString().orEmpty(),
                 metadata.artist?.toString().orEmpty(), metadata.albumTitle?.toString().orEmpty(),
                 metadata.artworkUri?.toString().orEmpty(), duration.takeIf { it > 0 }, current.itemUsage()).mediaItem(activity, bundle)
             val index = player.currentMediaItemIndex
@@ -532,7 +589,9 @@ private class AudioSessionPlayback(
 
     private fun clear() {
         failure = null
+        pendingQueue = null
         dispatch { player ->
+            discardDeferred(player)
             player.pause()
             player.stop()
             player.clearMediaItems()
@@ -579,15 +638,14 @@ private class AudioSessionPlayback(
         }
     }
 
-    private fun queueJson() = JSONArray().apply {
-        player?.let { player -> repeat(player.mediaItemCount) { put(player.getMediaItemAt(it).audioItemJson()) } }
-    }
+    private fun queueJson() = JSONArray().apply { queue.forEach { put(it.json()) } }
 
     private fun snapshot(): JSONObject {
         val player = player
-        val mediaItem = player?.currentMediaItem
+        val starting = pendingQueue?.takeIf(::starting)
+        val mediaItem = starting?.start ?: player?.currentMediaItem
         val metadata = mediaItem?.mediaMetadata
-        val index = player
+        val index = starting?.index ?: player
             ?.takeIf { it.mediaItemCount > 0 }
             ?.currentMediaItemIndex
             ?.takeIf { it >= 0 }
@@ -643,6 +701,9 @@ private class AudioSessionPlayback(
     }
 
     private fun release() {
+        deferred?.close()
+        deferred = null
+        pendingQueue = null
         controllers.forEach { clock.removePlaybackClock(-it) }
         handler.removeCallbacks(progress)
         pending.clear()
@@ -658,6 +719,7 @@ private class AudioSessionPlayback(
         player?.removeListener(this)
         player?.release()
         player = null
+        queue = emptyList()
         queueRevision++
         failure = null
     }
@@ -670,59 +732,7 @@ private class AudioSessionPlayback(
 
     private data class Failure(val kind: String, val message: String, val retryable: Boolean)
 
-    private data class Item(
-        val id: String,
-        val src: String,
-        val title: String,
-        val artist: String,
-        val album: String,
-        val artwork: String,
-        val duration: Long?,
-        val usage: AudioUsage?,
-    ) {
-        fun mediaItem(activity: Activity, bundle: InkBundle): MediaItem {
-            val uri = audioSourceUri(activity, src, bundle::audioUri)
-            val metadata = MediaMetadata.Builder()
-                .setTitle(title)
-                .setDurationMs(duration)
-                .setArtist(artist.ifEmpty { null })
-                .setAlbumTitle(album.ifEmpty { null })
-                .apply { if (artwork.isNotEmpty()) setArtworkUri(Uri.parse(artwork)) }
-                .setExtras(Bundle().apply {
-                    putString(SOURCE_METADATA_KEY, src)
-                    usage?.let { putString(ITEM_USAGE_EXTRA, it.value) }
-                })
-                .build()
-            return MediaItem.Builder()
-                .setMediaId(id)
-                .setUri(uri)
-                .setRequestMetadata(RequestMetadata.Builder().setMediaUri(uri).build())
-                .setMediaMetadata(metadata)
-                .build()
-                .withAudioUsageTag()
-        }
-
-        companion object {
-            fun from(value: JSONObject): Item {
-                val src = value.getString("src")
-                return Item(
-                    id = value.getString("id").also { require(it.isNotBlank()) { "Audio item IDs must not be blank" } },
-                    src = src,
-                    title = value.getString("title"),
-                    artist = value.optString("artist"),
-                    album = value.optString("album"),
-                    artwork = value.optString("artwork"),
-                    duration = if (value.has("duration")) value.getDouble("duration").also {
-                        require(it.isFinite() && it >= 0) { "Audio duration must be non-negative milliseconds" }
-                    }.toLong() else null,
-                    usage = if (value.has("usage")) AudioUsage.from(value.getString("usage")) else null,
-                )
-            }
-
-            fun list(values: JSONArray): List<Item> =
-                List(values.length()) { from(values.getJSONObject(it)) }
-        }
-    }
+    private data class PendingQueue(val index: Int, val start: MediaItem, val acknowledged: Boolean)
 
     private companion object {
         private const val PROGRESS_INTERVAL_MS = 250L
