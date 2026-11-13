@@ -1,6 +1,6 @@
 {
   "name": "@ink/audio",
-  "version": "0.1.0-alpha.15",
+  "version": "0.1.0-alpha.16",
   "private": true,
   "exports": {
     ".": "./src/index.ts",
@@ -8,8 +8,8 @@
     "./recording": "./src/recording.ts"
   },
   "peerDependencies": {
-    "@ink/files": "0.1.0-alpha.15",
-    "ink": "0.1.0-alpha.15",
+    "@ink/files": "0.1.0-alpha.16",
+    "ink": "0.1.0-alpha.16",
     "react": "19.2.8"
   }
 }
