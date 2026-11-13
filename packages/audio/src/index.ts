@@ -162,7 +162,10 @@ export function usePlayer(options: PlayerOptions = {}) {
       setVoiceBoost: (enabled: boolean) => call("setVoiceBoost", { value: enabled }),
       setSkipSilence: (enabled: boolean) => call("setSkipSilence", { value: enabled }),
       next: () => call("next"),
-      previous: () => call("previous"),
+      previous(options: { restart?: boolean } = {}) {
+        if (options.restart !== undefined && typeof options.restart !== "boolean") return Promise.reject(new TypeError("Audio restart must be a boolean"));
+        return call("previous", { restart: options.restart });
+      },
       seek(position: number) {
         if (!Number.isFinite(position) || position < 0) return Promise.reject(new RangeError("Audio position must be a non-negative number of milliseconds"));
         return call("seekTo", { value: position });

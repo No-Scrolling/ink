@@ -114,7 +114,9 @@ const actions = [
 </div>
 </div>
 
-Transport controls default to `{ kind: "track" }`, which calls the matching `previous()` or `next()` method on `playback`. `{ kind: "skip", seconds: 10 }` calls `seekBy()` with the matching direction and interval. Unavailable methods disable the control.
+Transport controls default to `{ kind: "track" }`. Previous calls `playback.previous({ restart: true })`; next calls `playback.next()`. With `@ink/audio`, previous restarts the current item after more than 3 seconds, or selects the previous item otherwise, and starts playback. This matches the lock screen and headset controls. Custom players can accept the optional `restart` boolean or keep a no-argument `previous()` method.
+
+`{ kind: "skip", seconds: 10 }` calls `seekBy()` with the matching direction and interval. Unavailable methods disable the control.
 
 Use `{ kind: "custom", icon, onPress }` for a custom transport action. Its icon and handler are explicit, so there is no default action to override. Every variant accepts `onLongPress` and `disabled`; long presses remain separate from taps.
 

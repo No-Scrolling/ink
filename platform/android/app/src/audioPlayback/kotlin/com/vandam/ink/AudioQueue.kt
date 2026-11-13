@@ -55,7 +55,9 @@ internal fun executeAudioQueue(player: ExoPlayer, args: Bundle, takeFocus: () ->
     deferred?.fill()
     when (args.getString("operation")) {
         "next" -> AudioSkipPlayer(player, takeFocus, deferred).seekToNextMediaItem()
-        "previous" -> AudioSkipPlayer(player, takeFocus, deferred).seekToPreviousMediaItem()
+        "previous" -> AudioSkipPlayer(player, takeFocus, deferred).apply {
+            if (body.optBoolean("restart")) seekToPrevious() else seekToPreviousMediaItem()
+        }
         "playItem" -> {
             val index = indexOf(body.getString("id"))
             if (index != player.currentMediaItemIndex) player.seekTo(index, 0)

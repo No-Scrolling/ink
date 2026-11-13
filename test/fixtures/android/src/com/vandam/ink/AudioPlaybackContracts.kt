@@ -24,6 +24,7 @@ internal class AudioPlaybackContracts(private val instrumentation: Instrumentati
         test("audio state coalesces player events and sends the queue only when it changes", ::queueUpdates)
         test("detached audio sends the restored queue after connecting", ::detachedQueue)
         test("detached audio starts a long queue with its first item and adds the rest once ready", ::deferredQueue)
+        test("audio previous optionally restarts and plays like the lock screen", ::previousRestarts)
     }
 
     private fun equal(expected: Any?, actual: Any?) {
@@ -206,6 +207,101 @@ internal class AudioPlaybackContracts(private val instrumentation: Instrumentati
         }
     }
 
+    private fun previousRestarts() {
+        val file = writeAudio()
+        val activity = instrumentation.startActivitySync(Intent(context, PermissionContractActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        try {
+            for (mode in listOf("attached", "detached")) {
+                val name = "previous-$mode-contract"
+                clearQueue(name)
+                val sent = mutableListOf<JSONObject>()
+                val playback = onMain { createAudioPlayback(activity, { _, value -> sent += JSONObject(value) }, InkBundle(activity, "contract"), clock) }
+                fun execute(operation: String, payload: JSONObject = JSONObject()): String {
+                    val results = LinkedBlockingQueue<NativeResult>()
+                    onMain { playback.execute(1, operation, payload.toString()) { results.add(it) } }
+                    val result = checkNotNull(results.poll(10, TimeUnit.SECONDS)) { "$mode $operation did not complete" }
+                    check(result is NativeResult.Success) { "$mode $operation failed: $result" }
+                    return result.value
+                }
+                fun state() = JSONObject(execute("getState"))
+                fun eventually(description: String, predicate: () -> Boolean) {
+                    val deadline = SystemClock.elapsedRealtime() + 10_000
+                    while (!predicate()) {
+                        check(SystemClock.elapsedRealtime() < deadline) { "$mode $description: ${state()}" }
+                        SystemClock.sleep(20)
+                    }
+                }
+                fun pausedAt(index: Int, position: Long) {
+                    execute("pause")
+                    execute("playItem", JSONObject().put("id", listOf("a", "b", "c")[index]))
+                    execute("pause")
+                    execute("seekTo", JSONObject().put("value", position))
+                    eventually("paused at $index/$position") {
+                        state().let { it.getInt("index") == index && it.getString("status") == "paused" && kotlin.math.abs(it.getLong("positionMs") - position) < 250 }
+                    }
+                }
+                fun playsAt(index: Int) = eventually("previous plays $index from its start") {
+                    state().let { it.getInt("index") == index && it.getString("status") == "playing" && it.getLong("positionMs") < 1000 }
+                }
+                var lockScreen: androidx.media3.session.MediaController? = null
+                try {
+                    onMain { playback.activate(1, JSONObject().put("session", name).put("playback", mode).toString()) }
+                    eventually("connected") { onMain { sent.any { it.getBoolean("ready") } } }
+                    execute("setQueue", JSONObject().put("items", JSONArray(listOf("a", "b", "c").map { item(it) })))
+                    if (mode == "detached") {
+                        lockScreen = onMain {
+                            androidx.media3.session.MediaController.Builder(context, androidx.media3.session.SessionToken(context, android.content.ComponentName(context, InkAudioService::class.java)))
+                                .setConnectionHints(Bundle().apply { putString("ink.session", name) }).buildAsync()
+                        }.get(10, TimeUnit.SECONDS)
+                    }
+                    data class Case(val repeat: String, val index: Int, val position: Long, val expected: Int)
+                    for ((repeat, index, position, expected) in listOf(
+                        Case("off", 1, 4000L, 1), Case("off", 1, 1000L, 0),
+                        Case("off", 0, 1000L, 0), Case("off", 0, 4000L, 0),
+                        Case("queue", 0, 1000L, 2),
+                        Case("track", 1, 1000L, 0), Case("track", 1, 4000L, 1),
+                        Case("track", 0, 1000L, 0),
+                    )) {
+                        execute("setRepeat", JSONObject().put("value", repeat))
+                        pausedAt(index, position)
+                        execute("previous", JSONObject().put("restart", true))
+                        playsAt(expected)
+                        lockScreen?.let { controller ->
+                            pausedAt(index, position)
+                            eventually("lock-screen previous available") { onMain { controller.isCommandAvailable(Player.COMMAND_SEEK_TO_PREVIOUS) } }
+                            onMain { controller.seekToPrevious() }
+                            playsAt(expected)
+                        }
+                    }
+                    execute("setRepeat", JSONObject().put("value", "off"))
+                    pausedAt(1, 4000)
+                    execute("previous")
+                    playsAt(0)
+                    pausedAt(1, 4000)
+                    execute("previous", JSONObject().put("restart", false))
+                    playsAt(0)
+
+                    execute("setShuffle", JSONObject().put("value", true))
+                    execute("setRepeat", JSONObject().put("value", "queue"))
+                    pausedAt(1, 1000)
+                    execute("next")
+                    eventually("shuffle next plays") { state().getString("status") == "playing" }
+                    execute("pause")
+                    execute("seekTo", JSONObject().put("value", 1000))
+                    execute("previous", JSONObject().put("restart", true))
+                    playsAt(1)
+                } finally {
+                    onMain { lockScreen?.release(); playback.stop() }
+                    context.stopService(Intent(context, InkAudioService::class.java))
+                    clearQueue(name)
+                }
+            }
+        } finally {
+            instrumentation.runOnMainSync { activity.finish() }
+            file.delete()
+        }
+    }
+
     private fun deferredQueue() {
         val name = "deferred-queue-contract"
         clearQueue(name)
@@ -294,6 +390,11 @@ internal class AudioPlaybackContracts(private val instrumentation: Instrumentati
                 hold()
                 platform.transportControls.skipToPrevious()
                 eventually("a platform skip reaches a deferred item") { observer.mediaItemCount == held.size && observer.currentMediaItem?.mediaId == "b" }
+                hold()
+                check(execute("previous", JSONObject().put("restart", true)) is NativeResult.Success)
+                eventually("app previous fills the deferred queue and plays its real previous item") {
+                    observer.mediaItemCount == held.size && observer.currentMediaItem?.mediaId == "b" && observer.isPlaying
+                }
                 // Skips follow the deferred items even when ExoPlayer's own commands stay the same.
                 fun skipsNext() = lockScreen.isCommandAvailable(Player.COMMAND_SEEK_TO_NEXT)
                 check(execute("setQueue", JSONObject().put("items", JSONArray(listOf(item("held"), item("x"))))) is NativeResult.Success)

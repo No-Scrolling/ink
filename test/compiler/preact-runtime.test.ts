@@ -449,6 +449,65 @@ export default function App() {
   });
 });
 
+test("track previous requests restart while custom players can keep a no-argument method", async () => {
+  await project(async (_root, build) => {
+    const app = runtime();
+    app.evaluate(await build(`
+import { PlayingScreen } from "ink";
+export default function App() {
+  return <PlayingScreen title="Previous contract" artists={[]}
+    playback={{state: {position: 120000, duration: 213000, playWhenReady: false},
+      toggle() {}, seek() {}, previous() { __inkPost(JSON.stringify({args: [...arguments], position: this.state.position})); },
+      next() { __inkPost(JSON.stringify({next: [...arguments]})); }}} />;
+}`));
+    await app.settle();
+    const screen = app.batches.flat().find(op => op.type === "PlayingScreen")!;
+    for (const name of ["onPreviousPress", "onNextPress"]) {
+      app.evaluate(`__inkReceive(${JSON.stringify(JSON.stringify({ type: "event", id: screen.id, name, args: [] }))})`);
+      await app.settle();
+    }
+    expect(app.messages).toEqual([{ args: [{ restart: true }], position: 120000 }, { next: [] }]);
+  });
+});
+
+test("audio previous encodes only a boolean restart option and preserves the default", async () => {
+  await project(async (root, build) => {
+    await mkdir(resolve(root, "node_modules/@ink"));
+    await symlink(resolve(repository, "packages/audio"), resolve(root, "node_modules/@ink/audio"));
+    const app = runtime();
+    app.evaluate("globalThis.__inkNextId = (() => { let id = 0; return () => ++id; })()");
+    app.evaluate(await build(`
+import { useEffect } from "react";
+import { usePlayer } from "@ink/audio";
+import { onNativeMessage } from "ink/native";
+export default function App() {
+  const player = usePlayer();
+  useEffect(() => onNativeMessage("contract", message => {
+    player.previous(...message.args).catch(error => __inkPost(JSON.stringify({error: error.name})));
+  }), [player.previous]);
+  return null;
+}`));
+    await app.settle();
+    const activate = app.messages.find(message => message.operation === "activate")!;
+    app.evaluate(`__inkResolveNativeResult(${activate.id}, "")`);
+    app.evaluate(`__inkReceive(${JSON.stringify(JSON.stringify({ type: "controller", id: activate.controller, value: {
+      ready: true, status: "paused", src: "", index: -1, queue: [], queueRevision: 1,
+      positionMs: 0, durationMs: 0, speed: 1, shuffle: false, repeat: "off", silenceSavedMs: 0,
+    } }))})`);
+    await app.settle();
+    for (const args of [[], [{ restart: true }], [{ restart: false }], [{ restart: "true" }]]) {
+      app.send("previous", { args });
+      await app.settle();
+      const call = app.messages.at(-1)!;
+      if (call.operation === "previous") app.evaluate(`__inkResolveNativeResult(${call.id}, "")`);
+    }
+    expect(app.messages.filter(message => message.operation === "previous").map(message => message.payload)).toEqual([
+      {}, { restart: true }, { restart: false },
+    ]);
+    expect(app.messages.at(-1)).toEqual({ error: "TypeError" });
+  });
+});
+
 test("15-second transport controls select their filled icons and seek in milliseconds", async () => {
   await project(async (_root, build) => {
     const app = runtime();
@@ -458,7 +517,8 @@ export default function App() {
   return <PlayingScreen title="Seek contract" artists={[]}
     previous={{kind: "skip", seconds: 15}} next={{kind: "skip", seconds: 15}}
     playback={{state: {position: 42000, duration: 213000, playWhenReady: false},
-      toggle() {}, seek() {}, seekBy(offset) { __inkPost(JSON.stringify({offset})); }}} />;
+      toggle() {}, seek() {}, previous(...args) { __inkPost(JSON.stringify({previous: args})); },
+      seekBy(offset) { __inkPost(JSON.stringify({offset})); }}} />;
 }`));
     await app.settle();
     const screen = app.batches.flat().find(op => op.type === "PlayingScreen")!;
@@ -471,6 +531,7 @@ export default function App() {
       await app.settle();
     }
     expect(app.messages.filter(message => "offset" in message)).toEqual([{ offset: -15000 }, { offset: 15000 }]);
+    expect(app.messages.some(message => "previous" in message)).toBe(false);
   });
 });
 
