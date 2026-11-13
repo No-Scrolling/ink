@@ -15,6 +15,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -125,6 +126,10 @@ private class AudioSessionPlayback(
         }
     }
     private val controllers = mutableSetOf<Long>()
+    private var queueRevision = 0
+    private val sentQueueRevisions = mutableMapOf<Long, Int>()
+    private var publishScheduled = false
+    private val publishScheduledState = Runnable { publishNow() }
     private var persistence: AudioQueuePersistence? = null
     private var usage = AudioUsage.MUSIC
     private var detached = false
@@ -136,7 +141,7 @@ private class AudioSessionPlayback(
     override fun activate(controller: Long, config: String): NativeResult {
         if (!controllers.add(controller)) return NativeResult.Success("")
         if (controllers.size > 1) {
-            publish()
+            publishNow()
             return NativeResult.Success("")
         }
         val configuredUsage = runCatching { JSONObject(config).optString("usage", "music") }
@@ -150,7 +155,7 @@ private class AudioSessionPlayback(
         } else {
             attachedPlayer()
         }
-        publish()
+        publishNow()
         return NativeResult.Success("")
     }
 
@@ -182,7 +187,7 @@ private class AudioSessionPlayback(
                     executeAudioQueue(active, args, takeFocus)
                     NativeResult.Success("")
                 }.getOrElse { failure(it.message ?: "Invalid audio queue command") }
-                publish()
+                publishNow()
                 complete(result)
             }
             is MediaController -> {
@@ -197,7 +202,7 @@ private class AudioSessionPlayback(
                     }.getOrElse {
                         NativeResult.Failure(NativeErrorKind.UNAVAILABLE, it.message ?: "Audio queue command failed", true)
                     }
-                    publish()
+                    publishNow()
                     complete(result)
                 }, activity.mainExecutor)
             }
@@ -212,7 +217,7 @@ private class AudioSessionPlayback(
         return runCatching {
             val body = JSONObject(payload.ifEmpty { "{}" })
             when (operation) {
-                "getState" -> return NativeResult.Success(snapshot().toString())
+                "getState" -> return NativeResult.Success(snapshot().put("queue", queueJson()).toString())
                 "seekBy" -> seekBy(body.getLong("value"))
                 "replaceSource" -> replaceSource(body)
                 "play" -> {
@@ -277,12 +282,12 @@ private class AudioSessionPlayback(
                 }
                 else -> return failure("Unknown audio player operation: $operation")
             }
-            publish()
+            publishNow()
             NativeResult.Success("")
         }.getOrElse { error ->
             val message = error.message ?: "Audio playback failed"
             this.failure = Failure("unexpected", message, false)
-            publish()
+            publishNow()
             NativeResult.Failure(NativeErrorKind.UNEXPECTED, message, false)
         }
     }
@@ -305,6 +310,7 @@ private class AudioSessionPlayback(
             return
         }
         controllers.remove(controller)
+        sentQueueRevisions.remove(controller)
         clock.removePlaybackClock(-controller)
         if (controllers.isEmpty()) release()
     }
@@ -321,6 +327,7 @@ private class AudioSessionPlayback(
     override fun stop() {
         release()
         controllers.clear()
+        sentQueueRevisions.clear()
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) = publish()
@@ -334,6 +341,11 @@ private class AudioSessionPlayback(
     }
 
     override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) = publish()
+
+    // Source updates only refine timeline windows; queue items come from the playlist.
+    override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+        if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) queueRevision++
+    }
 
     override fun onEvents(player: Player, events: Player.Events) {
         if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_MEDIA_METADATA_CHANGED, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED, Player.EVENT_POSITION_DISCONTINUITY)) publish()
@@ -465,6 +477,7 @@ private class AudioSessionPlayback(
             return
         }
         player = connected
+        queueRevision++
         connected.addListener(this)
         val actions = pending.toList()
         pending.clear()
@@ -543,11 +556,31 @@ private class AudioSessionPlayback(
             duration, player?.isPlaying == true, player?.playbackParameters?.speed ?: 1f) }
     }
 
+    // Player callbacks arrive in bursts, so they share one update per main-looper turn.
     private fun publish() {
+        if (controllers.isEmpty() || publishScheduled) return
+        publishScheduled = true
+        handler.post(publishScheduledState)
+    }
+
+    // Commands publish before completing, so JavaScript sees their state when the promise resolves.
+    private fun publishNow() {
+        handler.removeCallbacks(publishScheduledState)
+        publishScheduled = false
         if (controllers.isEmpty()) return
         updateClocks()
-        val encoded = snapshot().toString()
-        controllers.forEach { updateController(it, encoded) }
+        val state = snapshot()
+        val encoded = state.toString()
+        val queued = if (controllers.all { sentQueueRevisions[it] == queueRevision }) null
+            else state.put("queue", queueJson()).toString()
+        controllers.forEach { controller ->
+            val sent = sentQueueRevisions.put(controller, queueRevision) == queueRevision
+            updateController(controller, queued.takeUnless { sent } ?: encoded)
+        }
+    }
+
+    private fun queueJson() = JSONArray().apply {
+        player?.let { player -> repeat(player.mediaItemCount) { put(player.getMediaItemAt(it).audioItemJson()) } }
     }
 
     private fun snapshot(): JSONObject {
@@ -575,9 +608,7 @@ private class AudioSessionPlayback(
             .put("artwork", metadata?.artworkUri?.toString().orEmpty())
             .put("usage", mediaItem?.itemUsage()?.value)
             .put("index", index)
-            .put("queue", JSONArray().apply {
-                if (player != null) repeat(player.mediaItemCount) { put(player.getMediaItemAt(it).audioItemJson()) }
-            })
+            .put("queueRevision", queueRevision)
             .put("positionMs", player?.currentPosition?.coerceAtLeast(0) ?: 0)
             .put("durationMs", player?.duration?.validTime()?.takeIf { it > 0 } ?: metadata?.durationMs ?: 0)
             .put("bufferedMs", player?.bufferedPosition?.coerceAtLeast(0) ?: 0)
@@ -627,6 +658,7 @@ private class AudioSessionPlayback(
         player?.removeListener(this)
         player?.release()
         player = null
+        queueRevision++
         failure = null
     }
 

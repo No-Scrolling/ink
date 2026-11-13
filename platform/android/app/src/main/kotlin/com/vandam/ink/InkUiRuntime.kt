@@ -278,14 +278,7 @@ internal class InkUiRuntime(
         val session = javascriptSession
         onMain {
             if (handle != 0L && javascriptSession === session && javascriptControllers.containsKey(-controller)) {
-                val event = JSONObject().put("type", "controller").put("id", -controller)
-                    .put("value", JSONObject(value))
-                var message = event.toString()
-                if (message.toByteArray(Charsets.UTF_8).size > 1024 * 1024) {
-                    message = event.put("value", JSONObject().put("status", "error")
-                        .put("error", inkError("protocol", "Native controller state exceeds the message limit"))).toString()
-                }
-                InkNative.nativeJavaScriptReceive(handle, message)
+                InkNative.nativeJavaScriptReceive(handle, javascriptControllerMessage(-controller, value))
             }
         }
     }
