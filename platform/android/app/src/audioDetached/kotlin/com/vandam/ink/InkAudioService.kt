@@ -103,7 +103,7 @@ internal class InkAudioService : MediaSessionService() {
                     val result = super.onConnect(session, controller)
                     if (!ownController) return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                         .setAvailableSessionCommands(result.availableSessionCommands)
-                        .setAvailablePlayerCommands(if (controller.uid == android.os.Process.myUid()) result.availablePlayerCommands else externalAudioCommands(effectiveUsage))
+                        .setAvailablePlayerCommands(externalAudioCommands(effectiveUsage))
                         .build()
                     return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                         .setAvailablePlayerCommands(result.availablePlayerCommands)
@@ -156,7 +156,7 @@ internal class InkAudioService : MediaSessionService() {
         followAudioUsage(player, usage) { next ->
             effectiveUsage = next
             publishEffects(session)
-            session.connectedControllers.filter { it.uid != android.os.Process.myUid() }.forEach { controller ->
+            session.connectedControllers.filterNot(::isInkController).forEach { controller ->
                 session.setAvailableCommands(controller, MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS, externalAudioCommands(next))
             }
         }

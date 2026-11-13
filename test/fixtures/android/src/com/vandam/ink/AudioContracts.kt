@@ -255,8 +255,8 @@ internal class AudioContracts(private val context: Context) {
             presses(2)
             eventually("double press transitions music to speech") { player.currentMediaItemIndex == 2 && player.sessionExtras.getString(SESSION_USAGE_EXTRA) == "speech" }
             onMain {
-                check(plain.availableCommands.contains(Player.COMMAND_SEEK_TO_PREVIOUS)) { "Same-app controller lost previous after usage refresh" }
-                check(plain.availableCommands.contains(Player.COMMAND_SEEK_FORWARD)) { "Same-app controller lost seek after usage refresh" }
+                check(!plain.availableCommands.contains(Player.COMMAND_SEEK_TO_PREVIOUS)) { "External controller kept previous after speech refresh" }
+                check(plain.availableCommands.contains(Player.COMMAND_SEEK_FORWARD)) { "External controller lost seek after speech refresh" }
             }
             presses(3)
             eventually("triple press works after music to speech refresh") { player.currentMediaItemIndex == 1 }

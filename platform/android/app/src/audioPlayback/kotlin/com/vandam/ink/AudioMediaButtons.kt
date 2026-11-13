@@ -11,7 +11,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.session.MediaSession
 
-/** Extends Media3's legacy mobile play/pause gesture; other keys keep Media3's handling. */
+/**
+ * Extends Media3's legacy mobile play/pause gesture and sends skips straight to the player, since the
+ * platform session withholds them from speech for LightOS's controls; other keys keep Media3's handling.
+ */
 @UnstableApi
 internal class AudioMediaButtons(private val context: Context) {
     private var handler: Handler? = null
@@ -27,12 +30,13 @@ internal class AudioMediaButtons(private val context: Context) {
             context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) {
             val hadPending = pending != null
             flush()
-            // Queue this key behind the resolved gesture, then let Media3 map it normally.
-            if (hadPending) {
-                MediaController(context, session.platformToken).dispatchMediaButtonEvent(event)
-                return true
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT -> session.player.seekToNext()
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> session.player.seekToPrevious()
+                // Queue this key behind the resolved gesture, then let Media3 map it normally.
+                else -> if (hadPending) MediaController(context, session.platformToken).dispatchMediaButtonEvent(event) else return false
             }
-            return false
+            return true
         }
         val scheduler = handler ?: Handler(session.player.applicationLooper).also { handler = it }
         pending?.let(scheduler::removeCallbacks)
@@ -41,13 +45,10 @@ internal class AudioMediaButtons(private val context: Context) {
             val count = presses
             presses = 0
             pending = null
-            val transport = MediaController(context, session.platformToken).transportControls
-            // Use the platform controller so Media3 still enforces session commands and its
-            // prepare/restart behaviour, including seekToPrevious's default 3-second threshold.
             when (count) {
-                1 -> if (Util.shouldShowPlayButton(session.player, session.showPlayButtonIfPlaybackIsSuppressed)) transport.play() else transport.pause()
-                2 -> transport.skipToNext()
-                else -> transport.skipToPrevious()
+                1 -> Util.handlePlayPauseButtonAction(session.player, session.showPlayButtonIfPlaybackIsSuppressed)
+                2 -> session.player.seekToNext()
+                else -> session.player.seekToPrevious()
             }
         }
         if (presses == 3) flush()
