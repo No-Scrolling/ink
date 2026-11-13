@@ -11,7 +11,7 @@ export interface Playback {
   toggle(): void | Promise<void>;
   seek(position: number): void | Promise<void>;
   seekBy?(offset: number): void | Promise<void>;
-  previous?(): void | Promise<void>;
+  previous?(options?: { restart?: boolean }): void | Promise<void>;
   next?(): void | Promise<void>;
 }
 
@@ -48,7 +48,11 @@ export function PlayingScreen({ image, preloadImages = [], title, onTitlePress, 
       const seekBy = playback.seekBy;
       return seekBy && (() => seekBy.call(playback, direction * action.seconds * 1000));
     }
-    const move = direction === -1 ? playback.previous : playback.next;
+    if (direction === -1) {
+      const move = playback.previous;
+      return move && (() => move.call(playback, { restart: true }));
+    }
+    const move = playback.next;
     return move && (() => move.call(playback));
   };
   const previousPress = transport(previous, -1);

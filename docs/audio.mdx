@@ -350,7 +350,13 @@ await player.previous();
 
 Skipping starts playback, even when the player is paused. Lock screen, notification and headset controls work the same way.
 
-`previous()` always selects the previous item. The lock screen's previous control and three headset presses restart the current item instead after more than 3 seconds of playback, and that restart also starts playback.
+`previous()` selects the previous item regardless of playback position. To match the lock screen's previous control and three headset presses, pass `restart: true`:
+
+```ts
+await player.previous({ restart: true });
+```
+
+This restarts the current item after more than 3 seconds of playback, or selects the previous item otherwise. It also restarts the first item when repeat is off. Both actions start playback, even when paused. Shuffle and repeat follow the lock screen's behaviour.
 
 If there is no item to skip to, such as calling `next()` on the last item with repeat off, nothing changes and a paused player stays paused.
 
