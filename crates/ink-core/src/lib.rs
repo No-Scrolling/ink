@@ -5069,9 +5069,12 @@ impl Engine {
     fn measure_field_text(&mut self, label: &str, value: &str, pressable: bool, available: Rect) -> MeasuredSize {
         if self.theme.field == FieldLayout::Inline {
             let lines = self.inline_field_wrap(label, value, pressable, available.width).map_or(0, |lines| lines.len());
+            // At least a toggle row's height, so fields and toggles share one rhythm in a list.
             return MeasuredSize {
                 width: available.width,
-                height: (self.text_line_height(DEFAULT_TEXT_SIZE) * (1 + lines) as f32).min(available.height),
+                height: (self.text_line_height(DEFAULT_TEXT_SIZE) * (1 + lines) as f32)
+                    .max(self.scaled(TOGGLE_HEIGHT))
+                    .min(available.height),
             };
         }
         let label_width = self.text_width(label, self.scaled_font(FIELD_LABEL_SIZE));
@@ -5155,11 +5158,14 @@ impl Engine {
         let chevron_space = self.inline_field_chevron(action.is_some());
         let available = (rect.width - chevron_space).max(0.0);
         let line_height = self.text_line_height(DEFAULT_TEXT_SIZE);
-        let first = Rect { y: rect.y + self.scaled(1.0), height: (line_height - self.scaled(1.0)).max(0.0), width: available, ..rect };
+        let wrapped = self.inline_field_wrap(label, value, action.is_some(), rect.width);
+        // The text sits in the middle of a row that is taller than its lines.
+        let top = rect.y + (rect.height - line_height * (1 + wrapped.as_ref().map_or(0, |lines| lines.len())) as f32).max(0.0) / 2.0;
+        let first = Rect { y: top + self.scaled(1.0), height: (line_height - self.scaled(1.0)).max(0.0), width: available, ..rect };
         let primary = self.scene.colour(if disabled { Colour::MUTED } else { Colour::WHITE });
         let muted = self.scene.colour(Colour::MUTED);
         let mut runs = Vec::new();
-        if let Some(lines) = self.inline_field_wrap(label, value, action.is_some(), rect.width) {
+        if let Some(lines) = wrapped {
             runs.push((self.ellipsize(label, font_size, available), first, primary, TextAlign::Start));
             for (index, line) in lines.iter().enumerate() {
                 runs.push((line.text.to_string(), Rect { y: first.y + line_height * (index + 1) as f32, ..first }, muted, TextAlign::Start));
@@ -5176,7 +5182,7 @@ impl Engine {
         if chevron_space > 0.0 {
             let size = self.scaled(BUTTON_ICON_SIZE * 0.6);
             let x = rect.x + rect.width - size * 0.7;
-            let centre = rect.y + line_height / 2.0;
+            let centre = top + line_height / 2.0;
             let half = size / 2.0;
             let points = [[x, centre - half], [x + half * 0.9, centre], [x, centre + half]];
             for pair in points.windows(2) {
