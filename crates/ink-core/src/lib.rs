@@ -4378,8 +4378,8 @@ impl Engine {
         let (header, back_x, end_x, x, width, subtitle_lines) = loop {
             let header = self.unobstructed_header(Rect { height: header_height, ..rect });
             let back_x = if back_at_end { header.x + header.width - end_inset - header_button_size } else { header.x + header_inset };
-            // An end back button takes the end slot; the screen's end action moves in beside it.
-            let end_x = header.x + header.width - end_inset - header_button_size * if back_at_end { 2.0 } else { 1.0 };
+            // An end back button takes the end slot; the screen's end actions keep their usual spacing beside it.
+            let end_x = header.x + header.width - end_inset - header_button_size - if back_at_end { action_stride } else { 0.0 };
             let x = (header.x + self.scaled(self.content_inset()))
                 .max(if has_left { header.x + header_inset + header_button_size } else { 0.0 });
             let end = if !right_actions.is_empty() { end_x - action_stride * (right_actions.len() - 1) as f32 }
@@ -4677,11 +4677,12 @@ impl Engine {
         self.scene.scroll_offset = self.scroll_offset;
         self.scene.scroll_max = self.scroll_max;
 
+        // Scrolled rows run on under the bottom padding to the screen edge, so the last visible row is not cut short above it.
         let scroll_clip = Rect {
             x: rect.x,
             y: content.y,
             width: rect.width,
-            height: content.height,
+            height: content.height + inset_bottom,
         };
         self.scene.scroll_clip = Some(scroll_clip);
         let previous_clip = self.clip;
