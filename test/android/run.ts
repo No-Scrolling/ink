@@ -67,7 +67,7 @@ try {
   await command(["adb", "-s", serial, "install", resolve(root, "test/fixtures/android/build/outputs/apk/debug/InkAndroidContracts-debug.apk")], "install");
   installed = true;
   console.log(`Running native Android contracts on ${serial}; real idle expiry takes 61 seconds.`);
-  const result = await command(["adb", "-s", serial, "shell", "am", "instrument", "-w", "-r", `${packageName}/com.vandam.ink.ContractInstrumentation`], "instrumentation", 300_000);
+  const result = await command(["adb", "-s", serial, "shell", "am", "instrument", "-w", "-r", `${packageName}/com.vandam.ink.ContractInstrumentation`], "instrumentation", 180_000);
   console.log(result);
   const summaryLine = result.split("\n").find(line => line.startsWith("INSTRUMENTATION_RESULT: ink.summary="));
   if (!summaryLine) throw new Error(`Instrumentation did not produce a test summary. See ${output}/instrumentation.log`);

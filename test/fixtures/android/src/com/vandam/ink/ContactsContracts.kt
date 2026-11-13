@@ -212,10 +212,11 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
     }
 
     private fun paging() = withContacts { adapter ->
-        // Local contacts' lookup keys encode the name, so long names also make long IDs. The leading code sets the order.
-        val names = (0 until 3500).map { index ->
+        // Local contacts' lookup keys encode the name, so long names also make long IDs. A few hundred long names
+        // pass the message limit far faster than thousands of short ones. The leading code sets the order.
+        val names = (0 until 500).map { index ->
             val code = listOf(index / 676, index / 26 % 26, index % 26).joinToString("") { ('a' + it).toString() }
-            "Q$code Maximilian Alexander Featherstonehaugh-Montgomery (Lower Slaughter Parish Council) $MARKER"
+            "Q$code ${"Featherstonehaugh".repeat(60)} $MARKER"
         }
         for (chunk in names.chunked(200)) insertNames(chunk)
 
@@ -226,9 +227,9 @@ internal class ContactsContracts(private val instrumentation: Instrumentation) {
         check(all.map { it.second }.distinct().size == all.size) { "A contact was listed twice" }
         check(all.map { it.first }.filter { it.endsWith(MARKER) } == names) { "Paged contacts were missing or out of order" }
 
-        val filtered = pages(adapter, "qb", limit = 300)
+        val filtered = pages(adapter, "qab", limit = 10)
         check(filtered.size > 1) { "Filtered ${filtered.size} pages" }
-        check(filtered.flatten().map { it.first }.filter { it.endsWith(MARKER) } == names.filter { it.startsWith("Qb") }) { "Filtered pages were missing or out of order" }
+        check(filtered.flatten().map { it.first }.filter { it.endsWith(MARKER) } == names.filter { it.startsWith("Qab") }) { "Filtered pages were missing or out of order" }
     }
 
     private fun aggregate(type: Int, first: Long, second: Long) {
