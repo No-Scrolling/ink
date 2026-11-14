@@ -29,6 +29,10 @@ export interface TextInputStyle {
   background?: InputColour;
   paddingX?: number;
   paddingY?: number;
+  /** Overrides `paddingY` above the text. */
+  paddingTop?: number;
+  /** Overrides `paddingY` below the text. */
+  paddingBottom?: number;
   minHeight?: number;
   fontSize?: number;
   /** Choose a font from `fonts`. Supply a font file with the required weight. */
@@ -120,6 +124,8 @@ export interface Theme {
     layout?: "centred" | "large";
     /** Title size in pixels. */
     size?: number;
+    /** Lines a `"large"` title can wrap onto before it ends in "…". Default: 1. */
+    lines?: number;
     /** Space above the title row, in pixels. Default: 36 for `"large"`; for `"centred"`, half of what fills Ink's header bar. */
     top?: number;
     /** Space between the title row (or subtitle) and the content, in pixels. Default: 56 for `"large"`; for `"centred"`, the same as `top`. */
@@ -127,13 +133,13 @@ export interface Theme {
     back?: {
       /** `"start"` (default) or `"end"`. At the end, Back takes the end slot and the screen's end action moves in beside it. */
       position?: "start" | "end";
-      /** `"chevron"` (default) or `"arrow"`. */
-      icon?: "chevron" | "arrow";
+      /** `"chevron"` (default), `"arrow"` or `"none"`. With `"none"` the header has no Back button; system Back and Esc still go back. */
+      icon?: "chevron" | "arrow" | "none";
     };
     /** Size of Back and header action icons in pixels, like `Icon` `size`. Material Symbols leave space around the drawn shape, so an arrow drawn 34 pixels wide needs about 60. */
     iconSize?: number;
-    /** Camera cutouts at the top of the screen. `"beside"`: the header fits in the widest space beside them (default). `"below"`: the screen starts below them. */
-    cutout?: "beside" | "below";
+    /** Camera cutouts at the top of the screen. `"beside"`: the header fits in the widest space beside them (default). `"below"`: the screen starts below them. `"none"`: the header ignores them, for designs that already keep clear of the camera. */
+    cutout?: "beside" | "below" | "none";
   };
   section?: {
     /** Show section titles in capitals. Default: `true`. */
@@ -153,6 +159,17 @@ export interface Theme {
   row?: {
     /** `Row` title size in pixels. Default: a little under body text. */
     size?: number;
+  };
+  /** The bar of tab icons at the bottom of a `Tabs` layout. */
+  tabBar?: {
+    /** Horizontal padding in pixels. When set, icons are spaced evenly across the space between, each centred in an equal slot. */
+    inset?: number;
+    /** Space above the icons, in pixels. */
+    top?: number;
+    /** Space below the icons, in pixels. */
+    bottom?: number;
+    /** Icon size in pixels. */
+    iconSize?: number;
   };
   scrollBar?: {
     /** Colour of the thumb and track. Default: the foreground. Light mode uses its inverse. */

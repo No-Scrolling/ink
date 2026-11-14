@@ -28,7 +28,7 @@ pub use input::{InputAppearance, InputStyle, InputColour, InputBorder, InputFont
 use input::{InputOptions, input_alignment_offset};
 /// The theme file description, for the compiler.
 pub mod theme_source {
-    pub use crate::theme::{SourceRow, SourceScrollBar, SourceSubtitle, SourceColours, SourceFonts, SourceHeader, SourceImage, SourceRoles, SourceSection, SourceSpacing, SourceText, SourceToggle};
+    pub use crate::theme::{SourceRow, SourceScrollBar, SourceTabBar, SourceSubtitle, SourceColours, SourceFonts, SourceHeader, SourceImage, SourceRoles, SourceSection, SourceSpacing, SourceText, SourceToggle};
 }
 pub use theme::{CutoutMode, FieldLayout, ScrollBarVisibility, HeaderLayout, Palette, Roles, SelectionStyle, Theme, ThemeBundle, ThemeSource, ToggleStyle, parse_colour};
 
@@ -697,6 +697,7 @@ enum NodeKind {
         align: TextAlign,
         max_lines: Option<u32>,
         tabular_numbers: bool,
+        tone: Tone,
     },
     TextInput {
         placeholder: String,
@@ -859,6 +860,7 @@ impl Node {
                 align,
                 max_lines,
                 tabular_numbers,
+                tone: Tone::Primary,
             },
         }
     }
@@ -987,6 +989,8 @@ impl Node {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tab {
     icon: Mask,
+    /// Drawn instead of `icon` while the tab is selected, such as a filled variant.
+    active_icon: Option<Mask>,
     action: Action,
     screen: Node,
 }
@@ -995,9 +999,15 @@ impl Tab {
     pub const fn new(icon: Mask, action: Action, screen: Node) -> Self {
         Self {
             icon,
+            active_icon: None,
             action,
             screen,
         }
+    }
+
+    pub fn with_active_icon(mut self, icon: Option<Mask>) -> Self {
+        self.active_icon = icon;
+        self
     }
 }
 
@@ -1652,6 +1662,7 @@ struct FixedTextRun {
     font_size: Option<f32>,
     align: TextAlign,
     tabular_numbers: bool,
+    tone: Tone,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -3507,6 +3518,7 @@ impl Engine {
                 axis,
                 gap,
                 theme_gap,
+                justify,
                 ..
             } => {
                 let gap = self.scaled(self.stack_gap(*gap, *theme_gap));
@@ -3526,10 +3538,11 @@ impl Engine {
                     }
                     Axis::Horizontal => {
                         let measured = self.measure_horizontal_children(children, gap, available);
+                        // Justified rows spread their children, so they take the whole width.
+                        let content = measured.iter().map(|size| size.width).sum::<f32>()
+                            + gap * children.len().saturating_sub(1) as f32;
                         MeasuredSize {
-                            width: (measured.iter().map(|size| size.width).sum::<f32>()
-                                + gap * children.len().saturating_sub(1) as f32)
-                                .min(available.width),
+                            width: if *justify == Justification::Start { content.min(available.width) } else { available.width },
                             height: measured
                                 .iter()
                                 .map(|size| size.height)
@@ -3557,6 +3570,7 @@ impl Engine {
                 max_lines,
                 tabular_numbers,
                 links,
+                ..
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font_size = self.scaled_font(size);
@@ -3883,7 +3897,7 @@ impl Engine {
                 }
                 for (index, line) in lines.iter().enumerate() {
                     let inset = if index == 0 { inset } else { 0.0 };
-                    self.layout_text_lines(std::slice::from_ref(line), *size, TextAlign::Start, false, Rect {
+                    self.layout_text_lines(std::slice::from_ref(line), *size, TextAlign::Start, false, Colour::WHITE, Rect {
                         x: rect.x + inset, y: rect.y + index as f32 * line_height,
                         width: (rect.width - inset).max(0.0), height: line_height.min((rect.height - index as f32 * line_height).max(0.0)),
                     });
@@ -4120,7 +4134,7 @@ impl Engine {
                 align,
                 max_lines,
                 tabular_numbers,
-                links, width,
+                links, width, tone,
             } => {
                 let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
                 let font = self.scaled_font(size);
@@ -4154,10 +4168,10 @@ impl Engine {
                     }
                 }
                 let run = self.scene.text.len();
-                self.layout_text_lines(&lines, size, *align, *tabular_numbers, rect);
+                self.layout_text_lines(&lines, size, *align, *tabular_numbers, tone_colour(*tone), rect);
                 if node.identity.0 != 0 && *max_lines == Some(1) && links.is_empty() && self.scene.text.len() == run + 1 {
                     if let Some(width) = width { self.fixed_text_runs.insert(node.identity, FixedTextRun {
-                        run, width: *width, font_size: *font_size, align: *align, tabular_numbers: *tabular_numbers,
+                        run, width: *width, font_size: *font_size, align: *align, tabular_numbers: *tabular_numbers, tone: *tone,
                     }); }
                 }
             }
@@ -4293,7 +4307,15 @@ impl Engine {
         }
     }
 
+    fn headerless_top(&self) -> f32 {
+        match (self.theme.header, self.theme.header_top) {
+            (HeaderLayout::Large, Some(top)) => top,
+            _ => CONTENT_TOP,
+        }
+    }
+
     fn unobstructed_header(&self, rect: Rect) -> Rect {
+        if self.theme.header_cutout == CutoutMode::None { return rect; }
         let mut cutouts: Vec<_> = self.display_cutouts.iter()
             .map(|cutout| cutout.intersection(rect))
             .filter(|cutout| cutout.width > 0.0 && cutout.height > 0.0)
@@ -4343,7 +4365,8 @@ impl Engine {
             rect
         };
         let automatic_back = left_action.is_none();
-        let has_header = title.is_some() || self.back_icon.is_some() || left_action.is_some() || !right_actions.is_empty();
+        let back_icon = self.back_icon.clone().filter(|_| !self.theme.back_hidden);
+        let has_header = title.is_some() || back_icon.is_some() || left_action.is_some() || !right_actions.is_empty();
         let large = self.theme.header == HeaderLayout::Large && title.is_some();
         let title_size = self.theme.header_size.unwrap_or(if large { LARGE_HEADER_TEXT_SIZE } else { HEADER_TEXT_SIZE });
         let subtitle = subtitle.filter(|_| large);
@@ -4364,7 +4387,7 @@ impl Engine {
         let header_icon = self.theme.header_icon_size.unwrap_or(HEADER_BACK_ICON_SIZE);
         let header_button_size = self.scaled(HEADER_BUTTON_SIZE.max(header_icon));
         let action_stride = header_button_size + self.scaled(header_icon * HEADER_ACTION_GAP);
-        let back_visible = self.back_icon.is_some() && automatic_back;
+        let back_visible = back_icon.is_some() && automatic_back;
         let back_at_end = back_visible && self.theme.back_at_end;
         let subtitle_line_height = self.scaled(self.header_subtitle_size() * 1.4);
         let subtitle_font_size = self.scaled_font(self.header_subtitle_size());
@@ -4375,7 +4398,8 @@ impl Engine {
             header_inset
         };
         let has_left = (back_visible && !back_at_end) || left_action.is_some();
-        let (header, back_x, end_x, x, width, subtitle_lines) = loop {
+        let title_font_size = self.scaled_font_in(title_size, self.theme.display_font);
+        let (header, back_x, end_x, x, width, subtitle_lines, title_lines) = loop {
             let header = self.unobstructed_header(Rect { height: header_height, ..rect });
             let back_x = if back_at_end { header.x + header.width - end_inset - header_button_size } else { header.x + header_inset };
             // An end back button takes the end slot; the screen's end actions keep their usual spacing beside it.
@@ -4387,15 +4411,20 @@ impl Engine {
                 else { header.x + header.width - self.scaled(self.content_inset()) };
             let width = (end - x).max(0.0);
             let lines = subtitle.map(|text| self.wrap_text(text, subtitle_font_size, width, None, false));
-            if let Some(lines) = &lines {
-                let height = self.scaled(header_top + title_row + header_bottom) + subtitle_line_height * lines.len() as f32;
+            let title_lines = title.filter(|_| large).map(|title| Self::wrap_lines(
+                title, title_font_size, width, Some(self.theme.header_lines), false, &[], 0.0, self.theme.display_font,
+            ));
+            let title_count = title_lines.as_ref().map_or(1, |lines| lines.len().max(1));
+            if lines.is_some() || title_count > 1 {
+                let height = self.scaled(header_top + title_row * title_count as f32 + header_bottom)
+                    + lines.as_ref().map_or(0.0, |lines| subtitle_line_height * lines.len() as f32);
                 // Growing the header can bring another cutout into its bounds and narrow the text.
                 if height > header_height {
                     header_height = height;
                     continue;
                 }
             }
-            break (header, back_x, end_x, x, width, lines);
+            break (header, back_x, end_x, x, width, lines, title_lines);
         };
         if back_visible {
             self.push_hit_region(
@@ -4428,21 +4457,22 @@ impl Engine {
                 scrolling: false,
             });
         }
-        if let Some(title) = title.filter(|_| large) {
+        if let (Some(_), Some(title_lines)) = (title.filter(|_| large), title_lines) {
             let line = self.scaled(title_size * 1.25);
-            let font_size = self.scaled_font_in(title_size, self.theme.display_font);
-            self.scene.text.push(TextRun { font: self.theme.display_font,
-                tabular_numbers: false,
-                text: Self::ellipsize_in(title, font_size, width, self.theme.display_font).into(),
-                rect: Rect { x, y: header_centre - line / 2.0, width, height: line },
-                clip: self.clip,
-                font_size,
-                colour: self.scene.colour(Colour::WHITE),
-                align: TextAlign::Start,
-                scrolling: self.scrolling,
-            });
+            for (index, title_line) in title_lines.iter().enumerate() {
+                self.scene.text.push(TextRun { font: self.theme.display_font,
+                    tabular_numbers: false,
+                    text: title_line.text.clone(),
+                    rect: Rect { x, y: header_centre - line / 2.0 + line * index as f32, width, height: line },
+                    clip: self.clip,
+                    font_size: title_font_size,
+                    colour: self.scene.colour(Colour::WHITE),
+                    align: TextAlign::Start,
+                    scrolling: self.scrolling,
+                });
+            }
             if let Some(lines) = subtitle_lines {
-                let y = rect.y + self.scaled(header_top + title_size * 1.25);
+                let y = rect.y + self.scaled(header_top + title_size * 1.25 * title_lines.len().max(1) as f32);
                 let colour = self.scene.colour(if self.theme.subtitle_muted == Some(false) { Colour::WHITE } else { Colour::MUTED });
                 for (index, line) in lines.iter().enumerate() {
                     self.scene.text.push(TextRun { font: self.theme.body_font,
@@ -4459,7 +4489,7 @@ impl Engine {
             }
         } else if let Some(title) = title {
             let title_inset = header_inset
-                + if self.back_icon.is_some() || left_action.is_some() || !right_actions.is_empty() {
+                + if back_icon.is_some() || left_action.is_some() || !right_actions.is_empty() {
                     header_button_size
                 } else {
                     0.0
@@ -4562,7 +4592,7 @@ impl Engine {
             let bottom = self.scaled(CONTENT_BOTTOM);
             let note_rect = Rect { x: rect.x + inset, y: rect.y + rect.height - bottom - height, width, height };
             let start = self.scene.text.len();
-            self.layout_text_lines(&lines, SCREEN_NOTE_SIZE, TextAlign::Centre, false, note_rect);
+            self.layout_text_lines(&lines, SCREEN_NOTE_SIZE, TextAlign::Centre, false, Colour::WHITE, note_rect);
             let colour = self.scene.colour(Colour::MUTED);
             for run in &mut self.scene.text[start..] {
                 run.colour = colour;
@@ -4574,7 +4604,7 @@ impl Engine {
         };
 
         let (children, header_height) = if pinned_header && !children.is_empty() {
-            let top = self.scaled(if has_header { HEADER_CONTENT_TOP } else { CONTENT_TOP });
+            let top = self.scaled(if has_header { HEADER_CONTENT_TOP } else { self.headerless_top() });
             let available = Rect {
                 x: rect.x + self.scaled(content_inset),
                 y: rect.y + header_height + top,
@@ -4605,7 +4635,8 @@ impl Engine {
         } else if has_header {
             self.scaled(HEADER_CONTENT_TOP)
         } else {
-            self.scaled(CONTENT_TOP)
+            // A screen without a title starts its content where a large theme puts the title.
+            self.scaled(self.headerless_top())
         };
         let requested_bottom_inset = if bottom_inset && !media_picker && !fills_remaining && !pinned_footer {
             self.scaled(CONTENT_BOTTOM)
@@ -4732,7 +4763,7 @@ impl Engine {
             });
         }
 
-        if let Some(back) = self.back_icon.clone().filter(|_| automatic_back) {
+        if let Some(back) = back_icon.filter(|_| automatic_back) {
             let icon_size = self.scaled(header_icon);
             let optical = if large && back_at_end { self.icon_trailing_space(&back) * icon_size } else { 0.0 };
             self.scene.masks.push(MaskRun {
@@ -5031,10 +5062,10 @@ impl Engine {
         let size = font_size.unwrap_or(DEFAULT_TEXT_SIZE);
         let font_size = self.scaled_font(size);
         let lines = self.wrap_text(text, font_size, rect.width, max_lines, tabular_numbers);
-        self.layout_text_lines(&lines, size, align, tabular_numbers, rect);
+        self.layout_text_lines(&lines, size, align, tabular_numbers, Colour::WHITE, rect);
     }
 
-    fn layout_text_lines(&mut self, lines: &[WrappedLine], size: f32, align: TextAlign, tabular_numbers: bool, rect: Rect) {
+    fn layout_text_lines(&mut self, lines: &[WrappedLine], size: f32, align: TextAlign, tabular_numbers: bool, colour: Colour, rect: Rect) {
         let font_size = self.scaled_font(size);
         let line_height = self.text_line_height(size);
         for (index, line) in lines.iter().enumerate() {
@@ -5054,7 +5085,7 @@ impl Engine {
                 rect: line_rect,
                 clip: self.clip,
                 font_size,
-                colour: self.scene.colour(Colour::WHITE),
+                colour: self.scene.colour(colour),
                 align: if align == TextAlign::Justify && !line.wrapped {
                     TextAlign::Start
                 } else {
@@ -5387,11 +5418,22 @@ impl Engine {
     }
 
     fn layout_tabs(&mut self, value: &usize, tabs: &[Tab], rect: Rect) {
-        let keyboard_visible = self.keyboard_inset > 0;
+        // With a hardware keyboard, some phones keep a 1-pixel input window open; only an on-screen
+        // keyboard, taller than Ink's bar, hides it.
+        let keyboard_visible = self.keyboard_inset as f32 > self.scaled(NAV_HEIGHT);
+        let theme_icon = self.theme.tab_bar_icon_size;
+        let icon_units = theme_icon.unwrap_or(NAV_ICON_SIZE);
+        let top_units = self.theme.tab_bar_top.unwrap_or(NAV_VERTICAL_INSET);
+        // A themed bar is its padding and icons; Ink's own bar keeps its fixed height.
+        let height_units = if theme_icon.is_some() || self.theme.tab_bar_top.is_some() || self.theme.tab_bar_bottom.is_some() {
+            top_units + icon_units + self.theme.tab_bar_bottom.unwrap_or(NAV_HEIGHT - NAV_VERTICAL_INSET - NAV_ICON_SIZE)
+        } else {
+            NAV_HEIGHT
+        };
         let nav_height = if keyboard_visible {
             0.0
         } else {
-            self.scaled(NAV_HEIGHT).min(rect.height)
+            self.scaled(height_units).min(rect.height)
         };
         let content = Rect {
             height: (rect.height - nav_height).max(0.0),
@@ -5406,25 +5448,32 @@ impl Engine {
             return;
         }
         let nav_y = rect.y + rect.height - nav_height;
-        let icon_size = self.scaled(NAV_ICON_SIZE).min(nav_height);
-        let icon_y = nav_y + self.scaled(NAV_VERTICAL_INSET);
-        let nav_inset = self.scaled(20.0);
-        let first_centre = rect.x + nav_inset + icon_size / 2.0;
-        let last_centre = rect.x + rect.width - nav_inset - icon_size / 2.0;
-        let centre_gap = if tabs.len() > 1 {
-            (last_centre - first_centre) / (tabs.len() - 1) as f32
+        let icon_size = self.scaled(icon_units).min(nav_height);
+        let icon_y = nav_y + self.scaled(top_units);
+        let centres: Vec<_> = if let Some(inset) = self.theme.tab_bar_inset {
+            // Equal slots across the padded width, each icon centred in its slot.
+            let inset = self.scaled(inset);
+            let slot = (rect.width - inset * 2.0).max(0.0) / tabs.len().max(1) as f32;
+            (0..tabs.len()).map(|index| rect.x + inset + slot * (index as f32 + 0.5)).collect()
         } else {
-            0.0
+            let nav_inset = self.scaled(20.0);
+            let first_centre = rect.x + nav_inset + icon_size / 2.0;
+            let last_centre = rect.x + rect.width - nav_inset - icon_size / 2.0;
+            let centre_gap = if tabs.len() > 1 {
+                (last_centre - first_centre) / (tabs.len() - 1) as f32
+            } else {
+                0.0
+            };
+            (0..tabs.len())
+                .map(|index| {
+                    if tabs.len() == 1 {
+                        rect.x + rect.width / 2.0
+                    } else {
+                        first_centre + centre_gap * index as f32
+                    }
+                })
+                .collect()
         };
-        let centres: Vec<_> = (0..tabs.len())
-            .map(|index| {
-                if tabs.len() == 1 {
-                    rect.x + rect.width / 2.0
-                } else {
-                    first_centre + centre_gap * index as f32
-                }
-            })
-            .collect();
         for (index, tab) in tabs.iter().enumerate() {
             let left = if index == 0 {
                 rect.x
@@ -5442,8 +5491,9 @@ impl Engine {
                 width: right - left,
                 height: nav_height,
             };
+            let icon = if index == active { tab.active_icon.as_ref().unwrap_or(&tab.icon) } else { &tab.icon };
             self.scene.masks.push(MaskRun {
-                mask: tab.icon.clone(),
+                mask: icon.clone(),
                 rect: Rect {
                     x: centres[index] - icon_size / 2.0,
                     y: icon_y,

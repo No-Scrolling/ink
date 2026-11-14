@@ -21,7 +21,7 @@ if (theme == null || typeof theme !== "object") fail("export the theme as the de
 // Each key maps to its allowed child keys, or null for a value. Keep this in step with the `Theme`
 // type and the Rust `ThemeSource`; test/fixtures/scene/themes/theme.ts sets every key to check all three.
 const inputStyle = Object.fromEntries([
-  "border", "borderWidth", "borderColour", "radius", "background", "paddingX", "paddingY", "minHeight",
+  "border", "borderWidth", "borderColour", "radius", "background", "paddingX", "paddingY", "paddingTop", "paddingBottom", "minHeight",
   "fontSize", "font", "align", "textColour", "placeholderColour", "affixColour", "cursorColour",
   "selectionColour", "clearColour", "clearSize", "clearPadding", "clearGap",
 ].map(key => [key, null]));
@@ -30,11 +30,12 @@ const shape = {
   colours: { background: null, foreground: null, muted: null, light: { background: null, foreground: null, muted: null } },
   text: { size: null },
   spacing: { inset: null, gap: null, rowGap: null },
-  header: { layout: null, size: null, top: null, bottom: null, cutout: null, back: { position: null, icon: null }, iconSize: null },
+  header: { layout: null, size: null, lines: null, top: null, bottom: null, cutout: null, back: { position: null, icon: null }, iconSize: null },
   section: { uppercase: null, size: null, gap: null },
   scrollBar: { colour: null, visibility: null, track: null, width: null, inset: null },
   subtitle: { size: null, tone: null },
   row: { size: null },
+  tabBar: { inset: null, top: null, bottom: null, iconSize: null },
   toggle: null,
   selection: null,
   field: null,
@@ -211,12 +212,13 @@ async function describe(theme) {
     header: {
       layout: choice(theme.header?.layout, "header.layout", ["centred", "large"]),
       size: number(theme.header?.size, "header.size", { min: 8, max: 300 }),
+      lines: number(theme.header?.lines, "header.lines", { min: 1, max: 4 }),
       top: number(theme.header?.top, "header.top", { max: 600 }),
       bottom: number(theme.header?.bottom, "header.bottom", { max: 600 }),
-      cutout: choice(theme.header?.cutout, "header.cutout", ["beside", "below"]),
+      cutout: choice(theme.header?.cutout, "header.cutout", ["beside", "below", "none"]),
       back: theme.header?.back && {
         position: choice(theme.header.back.position, "header.back.position", ["start", "end"]),
-        icon: choice(theme.header.back.icon, "header.back.icon", ["chevron", "arrow"]),
+        icon: choice(theme.header.back.icon, "header.back.icon", ["chevron", "arrow", "none"]),
       },
       iconSize: number(theme.header?.iconSize, "header.iconSize", { min: 8, max: 300 }),
     },
@@ -238,6 +240,12 @@ async function describe(theme) {
     },
     row: {
       size: number(theme.row?.size, "row.size", { min: 8, max: 300 }),
+    },
+    tabBar: {
+      inset: number(theme.tabBar?.inset, "tabBar.inset", { max: 400 }),
+      top: number(theme.tabBar?.top, "tabBar.top", { max: 400 }),
+      bottom: number(theme.tabBar?.bottom, "tabBar.bottom", { max: 400 }),
+      iconSize: number(theme.tabBar?.iconSize, "tabBar.iconSize", { min: 8, max: 300 }),
     },
     toggle,
     selection: choice(theme.selection, "selection", ["underline", "check"]),

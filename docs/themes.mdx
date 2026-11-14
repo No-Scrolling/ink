@@ -103,7 +103,9 @@ header: {
 },
 ```
 
-<p><code>top</code> and <code>bottom</code> set the space above and below the title row. <code>back.position: "end"</code> moves Back to the end of the header, and <code>iconSize</code> sets the size of Back and header action icons.</p>
+<p><code>top</code> and <code>bottom</code> set the space above and below the title row. In the large layout, screens without a title start their content at <code>top</code>. <code>back.position: "end"</code> moves Back to the end of the header, and <code>iconSize</code> sets the size of Back and header action icons.</p>
+
+<p>Large titles stay on one line by default. Set <code>lines</code> to let them wrap onto up to 4 lines before they end in "…"; header actions stay level with the first line. <code>back.icon: "none"</code> leaves Back out of the header, for apps reached by keyboard or a tab bar; the system Back gesture and Esc still go back.</p>
 
 </div>
 <div className="pattern-preview">
@@ -140,7 +142,7 @@ import { Screen, Text } from "ink";
 <div className="pattern-example">
 <div>
 
-<p>By default, the header fits in the widest space beside a camera cutout. Set <code>header.cutout</code> to <code>"below"</code> to start the screen below the cutout instead. <code>header.top</code> is then measured from the bottom of the cutout.</p>
+<p>By default, the header fits in the widest space beside a camera cutout. Set <code>header.cutout</code> to <code>"below"</code> to start the screen below the cutout instead. <code>header.top</code> is then measured from the bottom of the cutout. Use <code>"none"</code> when the design already keeps the header clear of the camera; the header then ignores the cutout.</p>
 
 ```ts
 header: { layout: "large", cutout: "below" },
@@ -211,6 +213,16 @@ subtitle: { size: 32, tone: "muted" },
 row: { size: 45 },
 ```
 
+## Tab bar
+
+`tabBar` sets the padding and icon size of the `Tabs` bar, in pixels:
+
+```ts
+tabBar: { inset: 90, top: 40, bottom: 64, iconSize: 60 },
+```
+
+With `inset`, the icons are spaced evenly between the side padding, each centred in an equal slot. `top` and `bottom` set the space above and below the icons.
+
 ## Text inputs
 
 <div className="pattern-example">
@@ -250,7 +262,7 @@ export default defineTheme({
 | Settings | Purpose |
 | --- | --- |
 | `border`, `borderWidth`, `borderColour`, `radius`, `background` | Border and surface |
-| `paddingX`, `paddingY`, `minHeight` | Space inside the field and minimum height |
+| `paddingX`, `paddingY`, `paddingTop`, `paddingBottom`, `minHeight` | Space inside the field and minimum height. `paddingTop` and `paddingBottom` override `paddingY` on one side |
 | `fontSize`, `font`, `align` | Text size, font role and alignment (`"start"`, `"center"` or `"end"`) |
 | `textColour`, `placeholderColour`, `affixColour` | Text, placeholder, prefix, suffix and leading icon colours |
 | `cursorColour`, `selectionColour` | Native editor cursor and text selection |

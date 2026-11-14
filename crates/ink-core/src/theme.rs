@@ -74,6 +74,8 @@ pub enum CutoutMode {
     Beside,
     /// The screen starts below the cutouts.
     Below,
+    /// The header ignores cutouts, for designs that already keep clear of the camera.
+    None,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -137,6 +139,10 @@ pub struct Theme {
     pub back_at_end: bool,
     /// Use an arrow for Back instead of a chevron.
     pub back_arrow: bool,
+    /// Leave Back out of the header; system Back still goes back.
+    pub back_hidden: bool,
+    /// Lines a large title can wrap onto.
+    pub header_lines: u32,
     pub toggle: ToggleStyle,
     pub selection: SelectionStyle,
     pub field: FieldLayout,
@@ -153,6 +159,11 @@ pub struct Theme {
     /// Thumb width and distance from the screen edge to the bar, in reference units.
     pub scroll_bar_width: Option<f32>,
     pub scroll_bar_inset: Option<f32>,
+    /// Tab bar padding and icon size, in reference units.
+    pub tab_bar_inset: Option<f32>,
+    pub tab_bar_top: Option<f32>,
+    pub tab_bar_bottom: Option<f32>,
+    pub tab_bar_icon_size: Option<f32>,
 }
 
 impl Default for Theme {
@@ -177,6 +188,8 @@ impl Default for Theme {
             header_icon_size: None,
             back_at_end: false,
             back_arrow: false,
+            back_hidden: false,
+            header_lines: 1,
             toggle: ToggleStyle::Line,
             selection: SelectionStyle::Underline,
             field: FieldLayout::Stacked,
@@ -190,6 +203,10 @@ impl Default for Theme {
             scroll_bar_track: true,
             scroll_bar_width: None,
             scroll_bar_inset: None,
+            tab_bar_inset: None,
+            tab_bar_top: None,
+            tab_bar_bottom: None,
+            tab_bar_icon_size: None,
         }
     }
 }
@@ -223,6 +240,8 @@ pub struct ThemeSource {
     #[serde(default)]
     pub row: SourceRow,
     #[serde(default)]
+    pub tab_bar: SourceTabBar,
+    #[serde(default)]
     pub text_input: crate::InputAppearance,
     #[serde(default)]
     pub hit_slop: crate::HitInsets,
@@ -242,6 +261,15 @@ pub struct SourceSubtitle {
 #[serde(deny_unknown_fields)]
 pub struct SourceRow {
     pub size: Option<f32>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceTabBar {
+    pub inset: Option<f32>,
+    pub top: Option<f32>,
+    pub bottom: Option<f32>,
+    pub icon_size: Option<f32>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -297,6 +325,7 @@ pub struct SourceSpacing {
 pub struct SourceHeader {
     pub layout: Option<String>,
     pub size: Option<f32>,
+    pub lines: Option<u32>,
     pub top: Option<f32>,
     pub bottom: Option<f32>,
     pub cutout: Option<String>,
@@ -474,7 +503,8 @@ impl ThemeSource {
             header_cutout: match self.header.cutout.as_deref() {
                 None | Some("beside") => CutoutMode::Beside,
                 Some("below") => CutoutMode::Below,
-                Some(mode) => bail!("header.cutout must be \"beside\" or \"below\", got {mode:?}"),
+                Some("none") => CutoutMode::None,
+                Some(mode) => bail!("header.cutout must be \"beside\", \"below\" or \"none\", got {mode:?}"),
             },
             header_icon_size: self.header.icon_size.map(units),
             back_at_end: match self.header.back.as_ref().and_then(|back| back.position.as_deref()) {
@@ -483,9 +513,15 @@ impl ThemeSource {
                 Some(position) => bail!("header.back.position must be \"start\" or \"end\", got {position:?}"),
             },
             back_arrow: match self.header.back.as_ref().and_then(|back| back.icon.as_deref()) {
-                None | Some("chevron") => false,
+                None | Some("chevron" | "none") => false,
                 Some("arrow") => true,
-                Some(icon) => bail!("header.back.icon must be \"chevron\" or \"arrow\", got {icon:?}"),
+                Some(icon) => bail!("header.back.icon must be \"chevron\", \"arrow\" or \"none\", got {icon:?}"),
+            },
+            back_hidden: self.header.back.as_ref().and_then(|back| back.icon.as_deref()) == Some("none"),
+            header_lines: match self.header.lines {
+                None => 1,
+                Some(lines @ 1..=4) => lines,
+                Some(lines) => bail!("header.lines must be from 1 to 4, got {lines}"),
             },
             toggle,
             selection: match self.selection.as_deref() {
@@ -517,6 +553,10 @@ impl ThemeSource {
             scroll_bar_track: self.scroll_bar.track.unwrap_or(true),
             scroll_bar_width: self.scroll_bar.width.map(units),
             scroll_bar_inset: self.scroll_bar.inset.map(units),
+            tab_bar_inset: self.tab_bar.inset.map(units),
+            tab_bar_top: self.tab_bar.top.map(units),
+            tab_bar_bottom: self.tab_bar.bottom.map(units),
+            tab_bar_icon_size: self.tab_bar.icon_size.map(units),
         };
         Ok((theme, self.variants))
     }

@@ -130,6 +130,23 @@ export default function Layout() {
 
 Each name refers to a neighbouring page. Keep detail pages outside the tab folder so they open above the tab bar. Nested directories and nested tabs are not supported inside a tab layout.
 
+Give a tab a filled variant for its selected state with `activeIcon`:
+
+```tsx
+<Tabs.Screen name="index" icon={home} activeIcon={homeFilled} />
+```
+
+To keep the tab bar on a detail page, put the page in the tab folder without declaring it as a tab and set `showOnPages`. The page shows in place of the tab it was opened from, which stays selected. Selecting a tab closes it, and Back returns to the tab.
+
+```tsx
+<Tabs showOnPages>
+  <Tabs.Screen name="index" icon={homeFilled} />
+  <Tabs.Screen name="settings" icon={settingsFilled} />
+</Tabs>
+```
+
+Detail pages in the tab folder need static paths. Pass their data as route parameters, such as `navigate({ path: "/show", params: { id: "7" } })`.
+
 ### Tab-bar actions
 
 Add `Tabs.Action` alongside the tab declarations for a button that opens another page:

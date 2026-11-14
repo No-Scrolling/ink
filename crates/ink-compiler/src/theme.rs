@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use ink_core::{
     ThemeSource,
-    theme_source::{SourceColours, SourceFonts, SourceHeader, SourceImage, SourceRoles, SourceRow, SourceScrollBar, SourceSubtitle, SourceSection, SourceSpacing, SourceText, SourceToggle},
+    theme_source::{SourceColours, SourceFonts, SourceHeader, SourceImage, SourceRoles, SourceRow, SourceScrollBar, SourceTabBar, SourceSubtitle, SourceSection, SourceSpacing, SourceText, SourceToggle},
 };
 use serde::Deserialize;
 
@@ -27,6 +27,8 @@ struct Evaluated {
     subtitle: SourceSubtitle,
     #[serde(default)]
     row: SourceRow,
+    #[serde(default)]
+    tab_bar: SourceTabBar,
     toggle: Option<EvaluatedToggle>,
     selection: Option<String>,
     field: Option<String>,
@@ -208,6 +210,7 @@ impl Blobs {
             scroll_bar: evaluated.scroll_bar,
             subtitle: evaluated.subtitle,
             row: evaluated.row,
+            tab_bar: evaluated.tab_bar,
             variants: BTreeMap::new(),
         })
     }

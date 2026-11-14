@@ -18,6 +18,7 @@ export default defineTheme({
   header: {
     layout: "large",
     size: 74,
+    lines: 2,
     top: 50,
     bottom: 50,
     back: { position: "end", icon: "arrow" },
@@ -26,6 +27,7 @@ export default defineTheme({
   },
   section: { uppercase: true, size: 31, gap: 20 },
   subtitle: { size: 30, tone: "muted" },
+  tabBar: { inset: 90, top: 40, bottom: 64, iconSize: 60 },
   scrollBar: { colour: "#ff6600", visibility: "scrolling", track: false, width: 8, inset: 30 },
   field: "inline",
   selection: "check",

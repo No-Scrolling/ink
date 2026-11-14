@@ -175,7 +175,12 @@ export function Slot() {
   return layout.content;
 }
 
-type TabScreenProps = { name: string; icon: IconAsset };
+type TabScreenProps = {
+  name: string;
+  icon: IconAsset;
+  /** Drawn instead of `icon` while the tab is selected, such as a filled variant. */
+  activeIcon?: IconAsset;
+};
 function TabScreen(_props: TabScreenProps): ReactNode {
   throw new Error("Tabs.Screen must be a direct child of Tabs");
 }
@@ -191,26 +196,33 @@ function actionItem(action: ReactElement<TabActionProps>) {
   });
 }
 
-export function Tabs({ children }: { children: ReactNode }) {
+export function Tabs({ children, showOnPages = false }: {
+  children: ReactNode;
+  /**
+   * Keep the tab bar on this layout's other pages, such as a detail page opened from a tab. The
+   * page shows in place of the tab it was opened from, which stays selected.
+   */
+  showOnPages?: boolean;
+}) {
   const layout = useContext(LayoutContext);
   const registerTabs = useContext(TabRoutesContext);
   if (!layout) throw new Error("Tabs.Screen belongs in an app/_layout.tsx file");
   if (layout.directories.length) throw new Error(`Tab layouts support neighbouring page files only. Move detail directories outside this tab group: ${layout.directories.join(", ")}`);
   const names = new Set<string>();
-  const items: ({ action: ReactElement<TabActionProps> } | { name: string; icon: IconAsset; path: string; page: ReactNode })[] = [];
+  const items: ({ action: ReactElement<TabActionProps> } | { name: string; icon: IconAsset; activeIcon?: IconAsset; path: string; page: ReactNode })[] = [];
   Children.toArray(children).forEach(child => {
     if (isValidElement<TabActionProps>(child) && child.type === TabAction) {
       items.push({ action: child });
       return;
     }
     if (!isValidElement<TabScreenProps>(child) || child.type !== TabScreen) throw new Error("Use Tabs.Screen or Tabs.Action in a file-based tab layout");
-    const { name, icon } = child.props;
+    const { name, icon, activeIcon } = child.props;
     if (names.has(name)) throw new Error(`Duplicate tab: ${name}`);
     names.add(name);
     const page = layout.pages.get(name);
     if (!page) throw new Error(`No neighbouring page for tab: ${name}`);
     if (parameterNames(page.path).length) throw new Error(`Tabs need static paths. Move ${page.path} outside the tab group`);
-    items.push({ name, icon, ...page });
+    items.push({ name, icon, activeIcon, ...page });
   });
   const tabs = items.filter(item => "path" in item);
   if (!tabs.length) throw new Error("Tabs requires at least one Tabs.Screen");
@@ -221,16 +233,21 @@ export function Tabs({ children }: { children: ReactNode }) {
   }, [layout.group, JSON.stringify(paths), ownsStart, registerTabs]);
   const selected = tabs.find(tab => tab.path === (layout.tabPath ?? layout.activePath)) ?? tabs[0];
   const active = items.indexOf(selected);
-  const visible = paths.includes(layout.activePath) || layout.tabPath === layout.activePath;
+  const onPage = showOnPages && !paths.includes(layout.activePath)
+    && [...layout.pages.values()].some(page => page.path === layout.activePath);
+  const visible = paths.includes(layout.activePath) || layout.tabPath === layout.activePath || onPage;
+  const pages = layout.ordinaryPages(paths);
   const bar = createElement("Tabs", { active }, items.map((tab, index) => {
     if ("action" in tab) return actionItem(tab.action);
     return createElement("Tab", {
-      key: tab.name, icon: tab.icon, onPress: () => layout.selectTab(tab.path),
-    }, createElement(Activity, { mode: index === active ? "visible" : "hidden", children: tab.page }));
+      key: tab.name, icon: tab.icon, activeIcon: tab.activeIcon, onPress: () => layout.selectTab(tab.path),
+    },
+    createElement(Activity, { mode: index === active && !onPage ? "visible" : "hidden", children: tab.page }),
+    index === active && showOnPages ? pages : null);
   }));
   return createElement(Fragment, null,
     createElement(Activity, { mode: visible ? "visible" : "hidden", children: bar }),
-    layout.ordinaryPages(paths));
+    showOnPages ? null : pages);
 }
 
 Tabs.Screen = TabScreen;

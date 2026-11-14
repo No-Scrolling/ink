@@ -65,6 +65,8 @@ export type TextProps<D extends Destination = Destination> = PressProps<D> & {
   align?: "start" | "center" | "end" | "justify";
   maxLines?: number;
   tabularNumbers?: boolean;
+  /** `"muted"` draws the text in the theme's muted colour, like a muted `Icon`. Default: `"primary"`. */
+  tone?: "primary" | "muted";
 }
 
 // Keep text as a host element while checking literal route parameters in JSX.

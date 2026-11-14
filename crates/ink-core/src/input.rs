@@ -56,6 +56,9 @@ pub struct InputStyle {
     pub background: Option<InputColour>,
     pub padding_x: Option<f32>,
     pub padding_y: Option<f32>,
+    /// Override `padding_y` above or below the text.
+    pub padding_top: Option<f32>,
+    pub padding_bottom: Option<f32>,
     pub min_height: Option<f32>,
     pub font_size: Option<f32>,
     pub font: Option<InputFont>,
@@ -75,7 +78,7 @@ impl InputStyle {
     pub(super) fn merge(&mut self, other: &Self) {
         macro_rules! fields { ($($field:ident),*) => { $(if other.$field.is_some() { self.$field = other.$field.clone(); })* }; }
         fields!(border, border_width, border_colour, radius, background, padding_x, padding_y,
-            min_height, font_size, font, align, text_colour, placeholder_colour, affix_colour,
+            padding_top, padding_bottom, min_height, font_size, font, align, text_colour, placeholder_colour, affix_colour,
             cursor_colour, selection_colour, clear_colour, clear_size, clear_padding, clear_gap);
     }
 
@@ -83,6 +86,7 @@ impl InputStyle {
         for (name, value) in [
             ("borderWidth", &mut self.border_width), ("radius", &mut self.radius),
             ("paddingX", &mut self.padding_x), ("paddingY", &mut self.padding_y),
+            ("paddingTop", &mut self.padding_top), ("paddingBottom", &mut self.padding_bottom),
             ("minHeight", &mut self.min_height), ("fontSize", &mut self.font_size),
             ("clearSize", &mut self.clear_size), ("clearPadding", &mut self.clear_padding), ("clearGap", &mut self.clear_gap),
         ] {
@@ -105,7 +109,11 @@ impl InputStyle {
 
     pub(super) fn size(&self) -> f32 { self.font_size.unwrap_or(TEXT_INPUT_TEXT_SIZE) }
     pub(super) fn line_height(&self) -> f32 { self.size() * (TEXT_INPUT_HEIGHT - TEXT_INPUT_BOTTOM_PADDING) / TEXT_INPUT_TEXT_SIZE }
-    pub(super) fn bottom_padding(&self) -> f32 { if self.padding_y.is_some() { 0.0 } else { TEXT_INPUT_BOTTOM_PADDING } }
+    pub(super) fn bottom_padding(&self) -> f32 {
+        if self.padding_y.is_some() || self.padding_top.is_some() || self.padding_bottom.is_some() { 0.0 } else { TEXT_INPUT_BOTTOM_PADDING }
+    }
+    pub(super) fn pad_top(&self) -> f32 { self.padding_top.or(self.padding_y).unwrap_or(0.0) }
+    pub(super) fn pad_bottom(&self) -> f32 { self.padding_bottom.or(self.padding_y).unwrap_or(0.0) }
     pub(super) fn colour(&self, scene: &Scene, paint: &Option<InputColour>, fallback: Colour) -> Colour {
         paint.as_ref().map_or_else(|| scene.colour(fallback), |paint| paint.resolve(scene))
     }
@@ -225,7 +233,7 @@ impl Engine {
         } else { 1 };
         let line_height = self.scaled(style.line_height());
         let line_height = if self.native_editor_state == Some(state) { line_height.round() } else { line_height };
-        let height = line_height * lines as f32 + self.scaled(style.bottom_padding() + style.padding_y.unwrap_or(0.0) * 2.0);
+        let height = line_height * lines as f32 + self.scaled(style.bottom_padding() + style.pad_top() + style.pad_bottom());
         MeasuredSize { width: available.width, height: height.max(self.scaled(style.min_height.unwrap_or(0.0))).min(available.height) }
     }
 
@@ -301,9 +309,10 @@ impl Engine {
         let style = self.theme.text_input.resolve(self.focused_input == Some(state), options);
         self.input_surface(rect, &style);
         let padding_x = self.scaled(style.padding_x.unwrap_or(0.0)).min(rect.width / 2.0);
-        let padding_y = self.scaled(style.padding_y.unwrap_or(0.0)).min(rect.height / 2.0);
-        let inner = Rect { x: rect.x + padding_x, y: rect.y + padding_y,
-            width: (rect.width - padding_x * 2.0).max(0.0), height: (rect.height - padding_y * 2.0 - self.scaled(style.bottom_padding())).max(0.0) };
+        let padding_top = self.scaled(style.pad_top()).min(rect.height / 2.0);
+        let padding_bottom = self.scaled(style.pad_bottom()).min(rect.height / 2.0);
+        let inner = Rect { x: rect.x + padding_x, y: rect.y + padding_top,
+            width: (rect.width - padding_x * 2.0).max(0.0), height: (rect.height - padding_top - padding_bottom - self.scaled(style.bottom_padding())).max(0.0) };
         let role = style.font(&self.theme);
         let font_size = self.scaled_font_in(style.size(), role);
         let line_height = self.scaled(style.line_height());

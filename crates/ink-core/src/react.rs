@@ -56,6 +56,7 @@ enum HostProps {
         align: TextAlign,
         max_lines: Option<u32>,
         tabular_numbers: bool,
+        tone: Tone,
     },
     List(Box<ListProps>),
     Other(Map<String, Json>),
@@ -104,6 +105,11 @@ impl HostProps {
                 align,
                 max_lines,
                 tabular_numbers: props.get("tabularNumbers") == Some(&Json::Bool(true)),
+                tone: match string(&props, "tone").unwrap_or("primary") {
+                    "primary" => Tone::Primary,
+                    "muted" => Tone::Muted,
+                    value => bail!("unsupported text tone {value}"),
+                },
             });
         }
         Ok(props)
@@ -679,6 +685,7 @@ impl ReactTree {
             align,
             max_lines,
             tabular_numbers,
+            tone,
             text: content,
             on_press,
         } = &host.props
@@ -695,9 +702,10 @@ impl ReactTree {
                 text.into()
             };
             let mut node = Node::text(text, *size, *align, *max_lines, *tabular_numbers);
-            if let NodeKind::Text { width: node_width, links, .. } = &mut node.kind {
+            if let NodeKind::Text { width: node_width, links, tone: node_tone, .. } = &mut node.kind {
                 *node_width = *width;
                 *links = text_links;
+                *node_tone = *tone;
             }
             node.identity = NodeIdentity(id);
             return Ok(Some(node));
@@ -844,12 +852,13 @@ impl ReactTree {
                 for child in &host.children {
                     let tab = self.node(*child)?;
                     ensure!(tab.kind == HostKind::Tab, "Tabs requires Tab children");
+                    let active_icon = string(&tab.props, "activeIcon").map(|icon| self.icon(icon)).transpose()?;
                     tabs.push(Tab::new(
                         self.icon(string(&tab.props, "icon").context("Tab requires an icon")?)?,
                         event(*child, "onPress", vec![]),
                         self.render_node(*child, depth + 1)?
                             .unwrap_or_else(empty_screen),
-                    ));
+                    ).with_active_icon(active_icon));
                 }
                 Node::tabs_with_value(active as usize, tabs)
             }
@@ -1361,10 +1370,10 @@ impl Engine {
         let mut result = Vec::with_capacity(patches.len());
         for patch in patches {
             let node = patch.as_ref()?;
-            let NodeKind::Text { width: Some(width), text, font_size, align, max_lines: Some(1), tabular_numbers, links } = &node.kind else { return None; };
+            let NodeKind::Text { width: Some(width), text, font_size, align, max_lines: Some(1), tabular_numbers, links, tone } = &node.kind else { return None; };
             let previous = self.fixed_text_runs.get(&node.identity)?;
             if !links.is_empty() || *align == TextAlign::Justify || previous.width != *width || previous.font_size != *font_size
-                || previous.align != *align || previous.tabular_numbers != *tabular_numbers { return None; }
+                || previous.align != *align || previous.tabular_numbers != *tabular_numbers || previous.tone != *tone { return None; }
             let run = previous.run;
             let rect = self.scene.text[run].rect;
             let lines = Self::wrap_lines(text, self.scaled_font(font_size.unwrap_or(super::DEFAULT_TEXT_SIZE)), rect.width, Some(1), *tabular_numbers, &[], 0.0, self.theme.body_font);
