@@ -7,7 +7,6 @@ internal const val SKIP_SILENCE_COMMAND = "ink.audio.skipSilence"
 internal const val SKIP_SILENCE_EXTRA = "ink.skipSilence"
 internal const val VOICE_BOOST_COMMAND = "ink.audio.voiceBoost"
 internal const val VOICE_BOOST_EXTRA = "ink.voiceBoost"
-internal const val OFFLOAD_HINT = "ink.offload"
 
 internal class AudioEffects private constructor(context: Context, private val name: String) {
     private val preferences = context.getSharedPreferences("ink-audio-queues", Context.MODE_PRIVATE)
