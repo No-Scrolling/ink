@@ -19,7 +19,7 @@ import com.google.common.util.concurrent.ListenableFuture
 
 @UnstableApi
 internal class InkAudioService : MediaSessionService() {
-    private data class Session(val player: ExoPlayer, val session: MediaSession, val deferred: DeferredAudioQueue, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val offload: Boolean, val preloadNext: Long, val startupBuffer: Int, val audioOffload: AudioOffload?, val mediaButtons: AudioMediaButtons)
+    private data class Session(val player: ExoPlayer, val session: MediaSession, val deferred: DeferredAudioQueue, val persistence: AudioQueuePersistence, val usage: AudioUsage, val cache: Boolean, val preloadNext: Long, val startupBuffer: Int, val mediaButtons: AudioMediaButtons)
     private val sessions = mutableMapOf<String, Session>()
     private val handler = Handler(Looper.getMainLooper())
     private val controllers = mutableSetOf<MediaSession.ControllerInfo>()
@@ -45,13 +45,12 @@ internal class InkAudioService : MediaSessionService() {
         if (!Regex("[A-Za-z0-9._-]{1,64}").matches(name)) return null
         val usage = runCatching { AudioUsage.from(controllerInfo.connectionHints.getString(USAGE_HINT, "music")) }.getOrNull() ?: return null
         val cache = controllerInfo.connectionHints.getBoolean(CACHE_HINT, false)
-        val offload = controllerInfo.connectionHints.getBoolean(OFFLOAD_HINT, false)
         val preloadNext = controllerInfo.connectionHints.getLong(PRELOAD_NEXT_HINT, 0)
         val startupBuffer = controllerInfo.connectionHints.getInt(STARTUP_BUFFER_HINT, 1000)
         if (startupBuffer !in 0..30_000) return null
         if (preloadNext !in 0..30_000) return null
         sessions[name]?.let {
-            return if (it.cache == cache && it.offload == offload && it.preloadNext == preloadNext && it.startupBuffer == startupBuffer && it.usage == usage) it.session else null
+            return if (it.cache == cache && it.preloadNext == preloadNext && it.startupBuffer == startupBuffer && it.usage == usage) it.session else null
         }
         if (sessions.size >= 8) return null
         val effects = AudioEffects.get(this, name)
@@ -72,7 +71,6 @@ internal class InkAudioService : MediaSessionService() {
                     override fun onIsPlayingChanged(isPlaying: Boolean) = refreshIdleStop()
                 })
             }
-        val audioOffload = if (offload) AudioOffload(this, player, effects, true) else null
         val mediaButtons = AudioMediaButtons(this)
         val deferred = DeferredAudioQueue(player)
         val persistence = AudioQueuePersistence(this, name, player, effects, deferred).apply { restore() }
@@ -161,7 +159,7 @@ internal class InkAudioService : MediaSessionService() {
             }
         }
         publishEffects(session)
-        sessions[name] = Session(player, session, deferred, persistence, usage, cache, offload, preloadNext, startupBuffer, audioOffload, mediaButtons)
+        sessions[name] = Session(player, session, deferred, persistence, usage, cache, preloadNext, startupBuffer, mediaButtons)
         addSession(session)
         return session
     }
@@ -173,7 +171,6 @@ internal class InkAudioService : MediaSessionService() {
             it.deferred.close()
             it.mediaButtons.close()
             it.session.release()
-            it.audioOffload?.close()
             it.player.release()
         }
         sessions.clear()

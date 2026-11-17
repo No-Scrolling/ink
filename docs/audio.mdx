@@ -88,7 +88,6 @@ Detached playback continues after leaving the screen.
 | [`usage: "music"`](#choose-a-usage) (default) | Music playback. |
 | [`usage: "speech"`](#choose-a-usage) | Spoken audio. |
 | `cache: true` | Reuses cached HTTP(S) audio. Off by default. |
-| [`offload: true`](#reduce-playback-power-use) | Allows hardware audio offload on compatible devices and output routes. Off by default. |
 | `preloadNext: 1500` | Targets 1,500 ms of buffered audio for the next queued item when the current item is not loading. Off by default; accepts 0–30,000 ms. |
 | `startupBuffer: 300` | Buffers 300 ms before streamed audio starts. Defaults to 1,000 ms; accepts 0–30,000 ms. Smaller values can start sooner but provide less protection against a slow connection. Does not change normal buffering or buffering after an interruption. |
 
@@ -160,16 +159,6 @@ The cache stores only audio fetched during playback and buffering. It does not d
 Cache entries use resource URLs, independently of queue item IDs. Changing a URL, including its signed query string, creates a separate entry. The same rule applies to each segment URL in a [DASH stream](#play-a-dash-stream).
 
 Enable caching only when a URL continues to identify the same audio. Leave it off for live radio and URLs that serve changing content.
-
-### Reduce playback power use
-
-Set `offload: true` to let compatible hardware decode audio to save power. The option works in attached and detached mode.
-
-```ts
-const player = usePlayer({ session: "music", mode: "detached", offload: true });
-```
-
-Offload works only over Bluetooth outputs. Ink disables it while playback speed differs from 1, skip silence is enabled or voice boost is active. Ink falls back to normal playback automatically when offload is unavailable or fails.
 
 ### Headset buttons
 
@@ -281,7 +270,7 @@ const silence = useAction((enabled: boolean) => player.setSkipSilence(enabled));
 
 ### Sessions
 
-Players with the same `session` name share playback. They must use the same `mode`, `usage`, `cache`, `offload`, `preloadNext` and `startupBuffer` values while the session exists. This includes detached playback after you leave a screen.
+Players with the same `session` name share playback. They must use the same `mode`, `usage`, `cache`, `preloadNext` and `startupBuffer` values while the session exists. This includes detached playback after you leave a screen.
 
 Different session names keep separate queues. Starting one session pauses the others.
 

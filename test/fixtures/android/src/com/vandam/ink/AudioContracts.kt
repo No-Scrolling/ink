@@ -3,7 +3,6 @@ package com.vandam.ink
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.media.AudioDeviceInfo
 import android.media.session.MediaController
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -16,9 +15,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaLibraryInfo
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import java.io.File
@@ -40,8 +37,6 @@ internal class AudioContracts(private val context: Context) {
         test("audio attributes follow transitions, replacements and session fallback", ::itemUsage)
         test("audio item usage survives the media bridge and queue persistence", ::persistence)
         test("audio queue persistence saves playlist changes and skips source updates", ::queueWrites)
-        test("audio offload excludes effects, speed, pitch and unsuitable routes", ::offloadPreferences)
-        test("audio offload remembers PCM fallback for each track and route", ::offloadFallback)
         test("audio headset single, double and triple presses use Media3 commands", ::mediaButtons)
         test("audio skips from the app, lock screen and headset start playback", ::skipsStartPlayback)
         test("audio content sources play, persist and report access failures", ::contentSources)
@@ -109,79 +104,6 @@ internal class AudioContracts(private val context: Context) {
             onMain { player.clearMediaItems() }
             expectUsage("music", C.AUDIO_CONTENT_TYPE_MUSIC)
         } finally { onMain { player.release() } }
-    }
-
-    private fun offloadFallback() {
-        val policy = AudioOffloadPolicy(true)
-        val bluetooth = AudioOffloadRoute("8", false)
-        val other = AudioOffloadRoute("26", false)
-        check(policy.allows("first", bluetooth, false))
-        policy.rememberFallback("first", bluetooth)
-        check(!policy.allows("first", other, false))
-        check(!policy.allows("second", bluetooth, false))
-        check(policy.allows("second", other, false))
-        check(!policy.allows(null, other, false))
-        check(!AudioOffloadPolicy(false).allows("second", other, false))
-    }
-
-    private fun offloadPreferences() = onMain {
-        val effects = AudioEffects.get(context, "offload-contract")
-        effects.setVoiceBoost(false)
-        val player = ExoPlayer.Builder(context, InkAudioRenderersFactory(context, effects)).build()
-        var route = AudioOffloadRoute(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP.toString(), false)
-        val offload = AudioOffload(context, player, effects, true) { route }
-        fun expect(enabled: Boolean) {
-            val preferences = player.trackSelectionParameters.audioOffloadPreferences
-            equal(if (enabled) AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED else AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED,
-                preferences.audioOffloadMode)
-            equal(enabled, preferences.isGaplessSupportRequired)
-            equal(false, preferences.isSpeedChangeSupportRequired)
-        }
-        try {
-            expect(false)
-            player.setMediaItems(listOf(item("first"), item("second")))
-            expect(true)
-            player.skipSilenceEnabled = true
-            expect(false)
-            player.skipSilenceEnabled = false
-            expect(true)
-            effects.setVoiceBoost(true)
-            expect(false)
-            effects.setVoiceBoost(false)
-            expect(true)
-            player.playbackParameters = PlaybackParameters(1.5f)
-            expect(false)
-            player.playbackParameters = PlaybackParameters(1f, 1.2f)
-            expect(false)
-            player.playbackParameters = PlaybackParameters.DEFAULT
-            expect(true)
-            route = AudioOffloadRoute("2", true)
-            player.seekTo(1, 0)
-            expect(false)
-            route = AudioOffloadRoute("8", false)
-            player.seekTo(0, 0)
-            expect(true)
-        } finally {
-            offload.close()
-            player.release()
-            effects.setVoiceBoost(false)
-        }
-        val speaker = ExoPlayer.Builder(context).build()
-        val disabled = AudioOffload(context, speaker, effects, false)
-        try {
-            speaker.setMediaItem(item("default-disabled"))
-            equal(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED, speaker.trackSelectionParameters.audioOffloadPreferences.audioOffloadMode)
-        } finally { disabled.close(); speaker.release() }
-        val routed = ExoPlayer.Builder(context).build()
-        val actualRoute = AudioOffload(context, routed, effects, true)
-        try {
-            routed.setMediaItem(item("speaker"))
-            val devices = context.getSystemService(android.media.AudioManager::class.java)
-                .getAudioDevicesForAttributes(routed.audioAttributes.platformAudioAttributes)
-            if (devices.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }) {
-                equal(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED, routed.trackSelectionParameters.audioOffloadPreferences.audioOffloadMode)
-            }
-        } finally { actualRoute.close(); routed.release() }
     }
 
     private fun eventually(description: String, predicate: () -> Boolean) {
